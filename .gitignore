@@ -1,0 +1,31 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local runtimes and build output
+.venv/
+.uv-cache/
+.uv-python/
+.env
+*.log
+*.tmp
+build/
+dist/
+
+# Runtime data and generated outputs
+data/
+Outputs/
+scratch/
+import_err.txt
+
+# Claude local-only state
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local/editor noise, but keep shared Cursor rules versionable
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**

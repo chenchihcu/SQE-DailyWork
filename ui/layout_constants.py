@@ -1,0 +1,150 @@
+"""版面數值單一來源（對齊 MITCorp 工業檢測風格設計系統）。"""
+
+from __future__ import annotations
+
+# 標準表單區最大寬度（對話框置中時與最小寬度并用）
+FORM_MAX_WIDTH = 960
+
+# 主視窗螢幕適配契約
+MAIN_WINDOW_MIN_WIDTH = 1024
+MAIN_WINDOW_MIN_HEIGHT = 680
+MAIN_WINDOW_DEFAULT_WIDTH = 1360
+MAIN_WINDOW_DEFAULT_HEIGHT = 860
+MAIN_WINDOW_MAX_WIDTH = 1920
+MAIN_WINDOW_MAX_HEIGHT = 1200
+WINDOW_SCREEN_MARGIN = 24
+WINDOW_SCREEN_FRACTION = 0.95
+
+# 對話框螢幕適配契約
+DIALOG_SCREEN_MARGIN_X = 40
+DIALOG_SCREEN_MARGIN_Y = 60
+DIALOG_SCREEN_FRACTION = 0.95
+DIALOG_MIN_HEIGHT = 480
+
+# 全域捲軸寬度（設為 0 以隱藏捲軸）
+SCROLLBAR_WIDTH = 0
+
+# 主面板內距：左、上、右、下（px）
+PANEL_MARGINS = (12, 10, 12, 10)
+
+# 頂層頁面外框（與主面板對齊；新頁面預設使用此常數）
+PAGE_OUTER_MARGINS = (24, 24, 24, 24)
+
+# 首頁 Hero Banner 外框（左/右與其他頁對齊，上下略緊湊以平衡視覺）
+HERO_BANNER_MARGINS = (24, 22, 24, 18)
+
+# 參考資料頁外框（刻意較緊湊以容納密集卡片網格）
+REFERENCE_PAGE_MARGINS = (12, 10, 12, 12)
+
+# 頂部工具列／控制列（橫向 subpanel）
+SUBPANEL_TOOLBAR_MARGINS = (24, 20, 24, 20)
+
+# 左側導覽側欄
+SIDEBAR_WIDTH = 220
+SIDEBAR_LOGO_HEIGHT = 64
+SIDEBAR_NAV_ITEM_HEIGHT = 44
+PAGE_HEADER_HEIGHT = 56
+BRAND_ACCENT_DOT_W = 14   # 寬扁矩形，呼應 Mitcorp 官網雙點裝飾
+BRAND_ACCENT_DOT_H = 4
+BRAND_ACCENT_DOT_SIZE = BRAND_ACCENT_DOT_W  # backward compat alias
+
+# 根版面中上下兩大區塊的間距
+ROOT_SECTION_SPACING = 8
+
+# 雙欄表單格線：欄距與列距
+GRID_GUTTER = 12
+ROW_GAP = 8
+
+# 對話框外框
+DIALOG_OUTER_MARGINS = (16, 14, 16, 14)
+
+# QFormLayout
+FORM_HORIZONTAL_SPACING = 16
+FORM_VERTICAL_SPACING = 12
+
+# KPI／統計小卡內距（極致緊湊以適應縮短後的高度）
+CARD_INNER_MARGINS = (8, 6, 8, 6)
+
+# 圖表／排行區面板
+RANK_PANEL_MARGINS = (10, 6, 10, 6)
+
+# QGroupBox 內容區
+GROUPBOX_CONTENT_MARGINS = (16, 12, 16, 14)
+
+# 技轉小卡
+TECH_CARD_INNER_MARGINS = (12, 10, 12, 10)
+
+# 參考資料網格內小格
+REF_CELL_MARGINS = (12, 8, 12, 8)
+
+REF_GRID_SPACING_H = 12
+REF_GRID_SPACING_V = 8
+
+# 分頁列上方留白
+PAGINATION_TOP_MARGIN = 8
+
+# 主檔分頁內表格區頂部
+TAB_CONTENT_TOP_MARGIN = 8
+
+# 工具列按鈕間距、列內並排小間距
+TOOLBAR_ITEM_SPACING = 8
+INLINE_SPACING = 8
+
+# 緊湊內嵌間距（如統計頁排行小元素並排）
+INLINE_TIGHT_SPACING = 2
+
+# 圖表動態高度計算常數
+CHART_MIN_HEIGHT = 280
+CHART_BAR_HEIGHT = 24
+CHART_HEADER_FOOTER_OFFSET = 60
+
+# ---------------------------------------------------------------------------
+# 單行控制項／介面 chrome 高度與內距（對應 ui/theme.py QSS；數值單一來源）
+# ---------------------------------------------------------------------------
+# QLineEdit / QComboBox / QDateEdit / QSpinBox、預設 QPushButton
+CONTROL_MIN_HEIGHT = 30
+
+# 工具列樣式按鈕、QTabBar::tab 最小高度、主檔搜尋框
+TOOLBAR_CONTROL_MIN_HEIGHT = 30
+
+# 舊版頂部導覽相容常數；新主導覽使用 QTabWidget#MainWorkflowTabs
+NAV_TAB_MIN_HEIGHT = 30
+
+# 預設 QPushButton
+BUTTON_PADDING_VERTICAL = 4
+BUTTON_PADDING_HORIZONTAL = 16
+
+# QPushButton[variant="secondary"]
+BUTTON_SECONDARY_PADDING_VERTICAL = 4
+BUTTON_SECONDARY_PADDING_HORIZONTAL = 16
+
+# QPushButton[variant="toolbarPrimary" / "toolbarSecondary" / "toolbarGhost"]
+TOOLBAR_BUTTON_PADDING_VERTICAL = 4
+TOOLBAR_PRIMARY_PADDING_HORIZONTAL = 18
+TOOLBAR_SECONDARY_PADDING_HORIZONTAL = 16
+TOOLBAR_GHOST_PADDING_HORIZONTAL = 16
+
+# QTabBar::tab（一般）
+TAB_BAR_TAB_MIN_HEIGHT = TOOLBAR_CONTROL_MIN_HEIGHT
+TAB_BAR_TAB_PADDING_VERTICAL = 6
+TAB_BAR_TAB_PADDING_HORIZONTAL = 18
+
+# QTabWidget#MasterDataTabs QTabBar::tab（較窄）
+MASTER_TAB_BAR_TAB_PADDING_VERTICAL = 5
+MASTER_TAB_BAR_TAB_PADDING_HORIZONTAL = 10
+
+# QFrame#MasterInlineToolbar 外框內距
+MASTER_INLINE_TOOLBAR_PADDING_VERTICAL = 8
+MASTER_INLINE_TOOLBAR_PADDING_HORIZONTAL = 12
+
+# QTableWidget::item、表頭、選單列
+TABLE_ITEM_MIN_HEIGHT = 32
+TABLE_CELL_PADDING = 6
+HEADER_SECTION_PADDING = 6
+MENU_PADDING = 6
+MENU_ITEM_PADDING_VERTICAL = 7
+MENU_ITEM_PADDING_HORIZONTAL = 18
+
+# QCalendarWidget 內嵌控制項（與全臺階層一致略縮）
+CALENDAR_TOOLBUTTON_MIN_HEIGHT = 26
+CALENDAR_SPINBOX_MIN_HEIGHT = 24

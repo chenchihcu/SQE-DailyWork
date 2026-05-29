@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 180" role="img" aria-label="Industrial videoscope line art">
+  <g fill="none" stroke="#D8F1FA" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.82">
+    <path d="M52 132 C88 94 132 80 181 90 C220 98 250 126 290 132 C350 142 400 107 465 54" />
+    <path d="M118 86 L198 63 L286 73 L324 113 L265 139 L178 127 Z" />
+    <path d="M192 65 L215 33 L276 39 L286 73" />
+    <path d="M322 112 L360 89 L385 103 L344 132" />
+    <path d="M77 124 L136 146 L214 149" />
+    <path d="M386 101 C415 87 442 70 467 51" />
+    <path d="M463 49 C479 37 493 34 501 43 C509 52 501 66 485 80" />
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.5">
+    <path d="M151 101 L241 116" />
+    <path d="M167 118 L254 132" />
+    <path d="M222 80 L279 86" />
+  </g>
+</svg>

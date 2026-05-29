@@ -1,0 +1,139 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./data/**)",
+      "Read(./Outputs/**)",
+      "Edit(./data/**)",
+      "Edit(./Outputs/**)",
+      "Write(./data/**)",
+      "Write(./Outputs/**)",
+      "Bash(Remove-Item -Recurse *)",
+      "Bash(Remove-Item * -Recurse *)",
+      "Bash(rm -rf *)",
+      "Bash(rmdir /s *)",
+      "Bash(del /s *)",
+      "Bash(taskkill /IM python.exe /F*)",
+      "Bash(taskkill /F /IM python.exe*)"
+    ],
+    "ask": [
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1*)",
+      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1*)",
+      "Bash(C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1*)",
+      "Bash(C:\\Program Files\\PowerShell\\7\\pwsh.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1*)",
+      "Bash(python run_mig.py*)",
+      "Bash(py run_mig.py*)",
+      "Bash(.venv/Scripts/python.exe run_mig.py*)",
+      "Bash(python scripts/recode_anomaly_no_all_dbs.py --apply*)",
+      "Bash(py scripts/recode_anomaly_no_all_dbs.py --apply*)",
+      "Bash(.venv/Scripts/python.exe scripts/recode_anomaly_no_all_dbs.py --apply*)"
+    ],
+    "allow": [
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1)",
+      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1)",
+      "Bash(C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1)",
+      "Bash(C:\\Program Files\\PowerShell\\7\\pwsh.exe -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command .\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --no-screenshot)",
+      "Bash(pwsh -NoProfile -ExecutionPolicy Bypass -Command .\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --no-screenshot)",
+      "Bash(C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command .\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --no-screenshot)",
+      "Bash(C:\\Program Files\\PowerShell\\7\\pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command .\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --no-screenshot)",
+      "Bash(.\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --no-screenshot)",
+      "Bash(python -m unittest discover -s tests*)",
+      "Bash(py -m unittest discover -s tests*)",
+      "Bash(.venv/Scripts/python.exe -m unittest discover -s tests*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-session-start.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-session-start.ps1"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-user-prompt-submit.ps1"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-pre-tool-use.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-pre-tool-use.ps1"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-stop.ps1"
+          }
+        ]
+      }
+    ]
+  }
+}

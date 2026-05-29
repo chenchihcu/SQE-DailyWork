@@ -1,0 +1,81 @@
+# Repository AGENTS.md — SQETOOL
+
+## Scope
+This file defines `SQETOOL` repo-local instructions. It serves as the single source of truth and authoritative repository policy for all AI assistants (including Cursor, Codex, Claude Code, and Gemini/Antigravity). It narrows the global baseline for this single project; it does not replace or weaken the global baseline.
+
+## Knowledge Map
+- Product and runtime overview: `README.md`.
+- UI layout and theme contract: `docs/ui-layout-theme-contract.md`.
+- Cursor rules: `.cursor/rules/agents_gateway.mdc`.
+- Active risks: `docs/risk-ledger.md`.
+- Closed-loop harness: `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `docs/harness/quality-score.md`, and `docs/harness/doc-gardening.md`.
+- Claude Code automation: `docs/harness/claude-code-automation.md`, `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, and `.claude/agents/`.
+- AI rules compatibility and source-control boundary: `docs/harness/ai-rules-compatibility.md`, `docs/harness/source-baseline-manifest.md`, `.agents/rules/agents_gateway.md`, `.cursor/rules/agents_gateway.mdc`, `CLAUDE.md`, and `.codex/rules/project.rules`.
+- Execution plans: `docs/exec-plans/active/` and `docs/exec-plans/completed/`.
+- Verification gate: `scripts/verify.ps1`; harness structure check: `scripts/harness_check.ps1`.
+- Native Qt visual probe: `scripts/qt_visual_probe.py`.
+- Command policy: `.codex/rules/project.rules`.
+
+## Local Guardrails
+- Keep the app a single-user local PySide6 + SQLite Supplier Quality Engineering desktop tool.
+- Preserve the workflow contracts in `README.md`: anomaly create/close, visit create/complete, closed cases, statistics, master lists, exports, and report generation.
+- Preserve v2 data contracts and existing storage paths unless the user explicitly requests a contract change.
+- Keep SQETOOL terminology aligned across services, dialogs, tables, `ui/popup_i18n.py`, and `README.md`.
+- Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
+
+## 1. Core Architectural Laws (The Atomic Path)
+Every core design change must be reflected across the entire stack. Never leave "ghost" fields or orphaned code.
+1. **Data layer**: `database/` (connection, repository, migration).
+2. **Service layer**: `services/` (business rules, Excel export).
+3. **Desktop UI**: `ui/` — `main_window.py` routing, `ui/widgets/` pages, `ui/theme.py` (QSS), **`ui/layout_constants.py`** (single source of layout numbers: 960 / 24 / 16).
+4. **User-visible copy**: Prefer `ui/popup_i18n.py` for service messages; keep terminology consistent across dialogs and tables.
+
+## 2. Business Process Rules
+- **Lightweight visit defect notes**: `登錄訪廠紀錄` and the home `登錄異常事件` quick action share the visit-record form. A visit may contain multiple `visit_product_sections` plus lightweight `visit_defect_notes` (`缺失內容` required, `改善內容` optional, `備註` optional). These notes are on-site records for tracking only; do not create formal anomaly numbers, 8D/CAPA fields, audit severity, owner approval, or closure workflow unless a future explicit conversion feature is added.
+- **Anomaly ↔ Visit link (`anomalies.visit_id`)**: The schema allows `NULL` for legacy, tests, or when the user turns off visit sync. Product-default behavior (e.g. `defect_form_widget`「同步建立訪廠紀錄」checked): call `create_anomaly_with_visit_link` with `sync_visit=True` so the system reuses a same-day visit or creates one and stores `visit_id`. Use `sync_visit=False` or `create_anomaly` without `visit_id` only when intentionally omitting a visit link.
+- **Closure (`anomalies.status`)**: Only `待處理` / `已結案`. Closing goes through `close_anomaly`: non-empty `improvement_desc` (改善說明) is required, and `closed_at` is set (normalized date; service/repository defaults apply). Do not refer to legacy names `verification_result` / `verified_at` in new code—they are not v2 columns.
+- **Soft Delete**: Use `is_active: bool = True` for Models. Filter by `is_active=True` in all standard queries.
+- **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
+
+## 3. UI/UX & Styling Standards (Slate + Electric Blue)
+- **Terminology**: Keep labels and status terms consistent with existing dialogs and `ui/popup_i18n.py` patterns.
+- **Grid Layout** (implemented in `ui/layout_constants.py`):
+  - Standard form area max width: `960px` (dialog `setMaximumWidth`).
+  - Panel padding: `24px`.
+  - 2-column rhythm: `24px` gutter, `16px` row-gap where `QGridLayout` / `QFormLayout` applies.
+- **Aesthetics**: High density, light Slate surfaces, Electric Blue primary actions, card-based professional internal-tool look.
+- **Feedback**: `QMessageBox` for confirmations; destructive actions use explicit confirm dialogs.
+
+## 4. Coding & Refactoring Standards
+- **Desktop QSS**: Prefer QSS roles (`role`, `variant`) and theme tokens over ad-hoc per-widget `setStyleSheet`, except where already established (e.g. tech-transfer cards).
+- **Rename before Delete**: When removing fields, rename them first (e.g., `status` -> `status_DELETING`) to let the compiler highlight all references.
+- **Grep Search**: After changes, verify application directories (`database/`, `services/`, `ui/`) are clean of old terms.
+
+## 5. AI Verification Guardrails (Evidence-First Protocol)
+To ensure system stability and avoid "suspicion-based" errors, the following rules are mandatory:
+1. **NO GUESS-WORK**: Never modify code based on a guess or "suspicion." You must use diagnostic tools to confirm the state before proposing a fix.
+2. **THE "SUSPECT" TRIGGER**: If you find yourself using words like "suspect," "probably," or "likely," you are forbidden from proposing an edit until you have verified the root cause with evidence.
+3. **ROOT CAUSE ANALYSIS (RCA)**: Every implementation plan must include an "RCA" section providing technical proof of why the change is necessary.
+4. **LOGGING OVER GUESSING**: If you cannot find the root cause through static analysis, you must first propose adding diagnostic logs to capture runtime behavior before attempting a fix.
+
+## Closed-loop Harness
+- Use the completion impact format for task delivery: `Changes`, `Impact`, `Verification`, `Residual risk`, and `Next action`.
+- For debugging, regressions, repeated failures, or Investigation Path work, add Debug/RCA fields: `Observed`, `Root cause`, `Fix`, `Harness update needed`, and `Destination`.
+- If a harness update is needed, update the narrowest durable location: repo docs, tests, `scripts/verify.ps1`, `scripts/harness_check.ps1`, `.codex/rules/project.rules`, `.cursor/rules/agents_gateway.mdc`, or this file.
+- Keep one-off bug details out of global Codex rules. Promote only reusable project knowledge into `docs/harness/closed-loop-log.md` or the relevant source-of-truth doc.
+- For complex changes, create a short plan under `docs/exec-plans/active/` and move it to `docs/exec-plans/completed/` after completion.
+- This format does not weaken global Hard Triggers, `blocked`, `not verified`, or `not pass` semantics.
+
+## 7. Verification
+- Small text/docs-only edits: focused inspection plus `scripts\harness_check.ps1` when harness files changed.
+- Python code edits: use `scripts\verify.ps1` when practical; otherwise run the closest focused unittest or compile check and report the gap.
+- UI behavior changes: use offscreen Qt only for structural smoke checks such as startup, widget existence, and signal wiring.
+- UI visual review, screenshots, typography, and Chinese text rendering checks must use the native Windows Qt platform through `scripts\qt_visual_probe.py` or an equivalent native-platform capture. Do not treat `QT_QPA_PLATFORM=offscreen` screenshots as visual evidence because offscreen can miss Windows CJK fonts and render square glyphs.
+- Data migration, destructive data changes, or export/data-contract changes follow the global Hard Trigger rules and require explicit verification evidence.
+
+## 8. Multi-Assistant Coexistence
+- **Coexistence Policy:** Codex, Claude Code, Cursor, and Gemini/Antigravity operate in the same workspace. All assistants must treat this file as the authoritative repository policy. Cursor rules are defined in `.cursor/rules/` and point to this file.
+- **Gemini (Antigravity) Flow & Workflow Sync:** When operating via Antigravity, strictly follow `~/.gemini/GEMINI.md` triage (L0/L1/M1/F1/F2), implementation plans, and the Gate A~F checklists. Deliverables (plans, tasks, walkthroughs) must use Traditional Chinese (繁體中文). If changes were directly made using Cursor or Claude Code without prior Gemini plan approval, the developer must perform `git diff` when switching back to Gemini, manually update `walkthrough.md` to document changes, and resolve any process gaps before completing the task.
+- **Command Policy & Codex Sync Rule:** Any modifications or additions to verification and development commands must be synchronized with the Python-like rules in `.codex/rules/project.rules` to prevent Codex sandbox blocks.
+- **AI Rules Compatibility:** Read `docs/harness/ai-rules-compatibility.md` before cross-tool handoff or governance edits. Official claims, local observations, audit inferences, assumptions, and `not verified` items must remain labeled.
+- **Source-Control Boundary:** If `git status --short` is noisy, the source baseline is absent, or the repo was just initialized, use one writer per worktree. Do not run parallel writing AI tools in the same checkout. Prefer Antigravity New Worktree Mode for complex or parallel tasks; Local Mode is for small interactive work only.
