@@ -92,7 +92,7 @@ class HeroBannerFrame(QFrame):
     def _setup_content(self) -> None:
         layout = QHBoxLayout(self)
         layout.setContentsMargins(*HERO_BANNER_MARGINS)
-        layout.setSpacing(32)
+        layout.setSpacing(20)
 
         # --- 左側：品牌識別 (Logo + 公司名稱) ---
         brand_layout = QVBoxLayout()
@@ -105,16 +105,15 @@ class HeroBannerFrame(QFrame):
         logo_pixmap = QPixmap(str(asset_path("mitcorp_logo.png")))
         if not logo_pixmap.isNull():
             scaled_logo = logo_pixmap.scaled(
-                260,
-                60,
+                240,
+                56,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
             logo.setPixmap(scaled_logo)
-            # 移除 setFixedSize，讓 QLabel 根據內容與 CSS 內距自動擴展
             logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         else:
-            logo.setFixedSize(260, 60)
+            logo.setFixedSize(240, 56)
             logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         brand_layout.addWidget(logo)
@@ -129,13 +128,13 @@ class HeroBannerFrame(QFrame):
         product_line = QLabel()
         product_line.setObjectName("HeroProductLine")
         product_line.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        product_line.setFixedSize(210, 84)
+        product_line.setFixedSize(160, 70)
         product_pixmap = QPixmap(str(asset_path("mitcorp_videoscope_line.svg")))
         if not product_pixmap.isNull():
             product_line.setPixmap(
                 product_pixmap.scaled(
-                    210,
-                    84,
+                    160,
+                    70,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -144,7 +143,10 @@ class HeroBannerFrame(QFrame):
         layout.addStretch(1)
 
         # --- 右側：功能文案 ---
-        copy_layout = QVBoxLayout()
+        copy_widget = QWidget()
+        copy_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        copy_layout = QVBoxLayout(copy_widget)
+        copy_layout.setContentsMargins(0, 0, 0, 0)
         copy_layout.setSpacing(14)
         copy_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
@@ -155,15 +157,14 @@ class HeroBannerFrame(QFrame):
         copy_layout.addWidget(title)
 
         meta_row = QHBoxLayout()
-        meta_row.setSpacing(8)
-        meta_row.addStretch(1)
+        meta_row.setSpacing(6)
         for text in ("Industrial Videoscope", "Made in Taiwan", "Quality · Innovation"):
             chip = QLabel(text)
             chip.setProperty("role", "heroBannerMeta")
             meta_row.addWidget(chip)
         copy_layout.addLayout(meta_row)
 
-        layout.addLayout(copy_layout)
+        layout.addWidget(copy_widget)
 
 
 class HomeWidget(QWidget):
@@ -219,10 +220,12 @@ class HomeWidget(QWidget):
             self._kpi_cards[key] = card
             kpi_grid.addWidget(card, 0, col)
             kpi_grid.setColumnStretch(col, 1)
+        # Row 1: 僅 2 張卡，放在 col 0~1，col 2 以彈性空間補足視覺平衡
         for col, (key, text, color, tone) in enumerate(row1_defs):
             card = KpiCard(text, color, tone=tone)
             self._kpi_cards[key] = card
             kpi_grid.addWidget(card, 1, col)
+        # col 2 (row 1) 沒有 card — 保留 columnStretch(2)=1 以維持等寬
         kpi_outer.addLayout(kpi_grid)
         root.addWidget(kpi_panel)
 

@@ -201,7 +201,7 @@ class SidebarNav(QFrame):
         layout.setContentsMargins(12, 8, 12, 16)
         layout.setSpacing(0)
 
-        btn = QPushButton("＋  新增異常")
+        btn = QPushButton("＋ 新增異常")
         btn.setObjectName("SidebarQuickCreate")
         btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)

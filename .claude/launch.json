@@ -1,0 +1,48 @@
+{
+  "version": "0.0.1",
+  "note": "SQETOOL is a PySide6 desktop app — no HTTP port. port fields are null. preview_start is not applicable; use runtimeExecutable + runtimeArgs to launch directly.",
+  "configurations": [
+    {
+      "name": "SQETOOL 主程式",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["main.py"],
+      "port": null
+    },
+    {
+      "name": "完整驗證套件",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts\\verify.ps1"],
+      "port": null
+    },
+    {
+      "name": "Harness Check",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts\\harness_check.ps1"],
+      "port": null
+    },
+    {
+      "name": "Smoke Test",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["scripts\\smoke_test_v2.py"],
+      "port": null
+    },
+    {
+      "name": "週報產生器",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["scripts\\generate_weekly_report.py"],
+      "port": null
+    },
+    {
+      "name": "視覺探針 (Qt Screenshot)",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["scripts\\qt_visual_probe.py"],
+      "port": null
+    },
+    {
+      "name": "資料庫遷移 (v2)",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["run_mig.py"],
+      "port": null
+    }
+  ]
+}

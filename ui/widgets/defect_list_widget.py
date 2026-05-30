@@ -183,7 +183,7 @@ class EventListWidget(QWidget):
             self.month_input.setDate(QDate.currentDate())
             self.month_input.setCalendarPopup(True)
             self.month_input.setEnabled(False)
-            self.month_input.setFixedWidth(100)
+            self.month_input.setFixedWidth(104)
             self.all_months_checkbox.toggled.connect(
                 lambda checked: self.month_input.setEnabled(not checked)
             )
@@ -267,12 +267,15 @@ class EventListWidget(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 類型
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 料號
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 階段
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 工單
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)            # 問題/摘要
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)       # 工單（限寬）
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
         header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
         header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 狀態
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
+        # 初始工單欄寬度 — 防止超長工單號擠壓 Stretch 欄；使用者仍可手動拖寬
+        self.table.setColumnWidth(6, 140)
+        header.setMinimumSectionSize(40)
 
         self.table.cellDoubleClicked.connect(self._on_table_row_clicked)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
@@ -411,6 +414,15 @@ class EventListWidget(QWidget):
             or self._filter_yyyymm is not None
         )
 
+    def _default_empty_message(self) -> str:
+        if self.fixed_scope == event_service.EVENT_SCOPE_VISIT_ONLY:
+            return "目前沒有訪廠紀錄，請先新增訪廠。"
+        if self.fixed_scope == event_service.EVENT_SCOPE_ANOMALY_ONLY:
+            return "目前沒有異常事件，請先新增異常。"
+        if self.fixed_scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+            return "目前沒有已結案紀錄。"
+        return "目前沒有事件資料，請先新增訪廠或異常。"
+
     def _update_empty_state(self) -> None:
         has_rows = len(self._all_rows) > 0
         self.empty_state.setVisible(not has_rows)
@@ -419,7 +431,7 @@ class EventListWidget(QWidget):
             if self._has_active_filters():
                 self.empty_state.set_message("找不到符合條件的事件，請調整篩選條件。")
             else:
-                self.empty_state.set_message("目前沒有事件資料，請先新增訪廠或異常。")
+                self.empty_state.set_message(self._default_empty_message())
 
     def _clear_implicit_month_filter(self):
         self._implicit_month_once = None

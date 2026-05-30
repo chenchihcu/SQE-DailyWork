@@ -894,6 +894,7 @@ class MasterDataWidget(QWidget):
             ["供應商", "聯絡人", "部門", "電子郵件", "電話/行動", "狀態"]
         )
         style_table(self.supplier_table, single_selection=False)
+        self.supplier_table.horizontalHeader().setStretchLastSection(True)
         apply_table_action_affordance(
             self.supplier_table,
             "點擊供應商列開啟管理動作；Ctrl/Shift 可多選後批次刪除",
@@ -923,6 +924,7 @@ class MasterDataWidget(QWidget):
             ["料號", "品名", "階段", "主供應商", "次要供應商", "狀態"]
         )
         style_table(self.product_table)
+        self.product_table.horizontalHeader().setStretchLastSection(True)
         apply_table_action_affordance(
             self.product_table,
             "點擊產品列開啟編輯、停用、刪除或階段紀錄動作",
