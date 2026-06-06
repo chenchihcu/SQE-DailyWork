@@ -8,4 +8,4 @@ alwaysApply: true
 To maintain project consistency across all AI assistants (Gemini, Claude Code, Codex, and Cursor), all core Supplier Quality Engineering (SQE) business logic, database structure, and validation constraints are centralized in the repository policy file.
 
 Please read and strictly follow:
-→ **[AGENTS.md](file:///C:/Users/user/Documents/SQETOOL/AGENTS.md)**
+→ **[AGENTS.md](file:///C:/Users/user/Documents/SQE%20DailyWork/AGENTS.md)**

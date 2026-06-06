@@ -22,7 +22,7 @@ from database.repository import create_schema  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Migrate SQETOOL/ncr/data/defect.db into SQETOOL/data/sqe_v2.db."
+        description="Migrate ncr/data/defect.db into data/sqe_v2.db."
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Inspect only; do not write.")

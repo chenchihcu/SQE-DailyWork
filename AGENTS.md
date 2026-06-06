@@ -1,7 +1,11 @@
-# Repository AGENTS.md — SQETOOL
+# Repository AGENTS.md — SQE DailyWork
 
 ## Scope
-This file defines `SQETOOL` repo-local instructions. It serves as the single source of truth and authoritative repository policy for all AI assistants (including Cursor, Codex, Claude Code, and Gemini/Antigravity). It narrows the global baseline for this single project; it does not replace or weaken the global baseline.
+This file defines `SQE DailyWork` repo-local instructions. It serves as the
+single source of truth and authoritative repository policy for all AI assistants
+(including Cursor, Codex, Claude Code, and Gemini/Antigravity). It narrows the
+global baseline for this single project; it does not replace or weaken the
+global baseline.
 
 ## Knowledge Map
 - Product and runtime overview: `README.md`.
@@ -13,6 +17,7 @@ This file defines `SQETOOL` repo-local instructions. It serves as the single sou
 - Claude Code automation: `docs/harness/claude-code-automation.md`, `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, and `.claude/agents/`.
 - AI rules compatibility and source-control boundary: `docs/harness/ai-rules-compatibility.md`, `docs/harness/source-baseline-manifest.md`, `.agents/rules/agents_gateway.md`, `.cursor/rules/agents_gateway.mdc`, `CLAUDE.md`, and `.codex/rules/project.rules`.
 - Execution plans: `docs/exec-plans/active/` and `docs/exec-plans/completed/`.
+- Data backup: `scripts/backup_data.ps1`.
 - Verification gate: `scripts/verify.ps1`; harness structure check: `scripts/harness_check.ps1`.
 - Native Qt visual probe: `scripts/qt_visual_probe.py`.
 - Command policy: `.codex/rules/project.rules`.
@@ -21,7 +26,7 @@ This file defines `SQETOOL` repo-local instructions. It serves as the single sou
 - Keep the app a single-user local PySide6 + SQLite Supplier Quality Engineering desktop tool.
 - Preserve the workflow contracts in `README.md`: supplier event create/close, visit or audit create/complete, warehouse nonconforming-product records, separated statistics, shared master lists, imports, exports, and report generation.
 - Preserve v2 data contracts and existing storage paths unless the user explicitly requests a contract change.
-- Keep SQETOOL terminology aligned across services, dialogs, tables, `src/ui/popup_i18n.py`, and `README.md`.
+- Keep SQE DailyWork terminology aligned across services, dialogs, tables, `src/ui/popup_i18n.py`, and `README.md`.
 - Keep `docs/architecture-workflow-contract.md` synchronized when changing workflow tables, import behavior, statistics, or entrypoint routing.
 - Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
 

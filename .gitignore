@@ -17,6 +17,7 @@ dist/
 
 # Runtime data and generated outputs
 data/
+data_backups/
 Outputs/
 scratch/
 import_err.txt

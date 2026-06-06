@@ -1,4 +1,4 @@
-# SQETOOL UI Layout and Theme Contract
+# SQE DailyWork UI Layout and Theme Contract
 
 ## Entrypoint Matrix
 
@@ -93,7 +93,7 @@
 
 ## UI/UX Check - 2026-06-03
 
-- Entrypoint: one daily shell, `SQETOOL/main.py`, with sidebar groups for
+- Entrypoint: one daily shell, root `main.py`, with sidebar groups for
   event management, query/history, shared master data, and warehouse physical
   nonconforming products.
 - Home topology: `HomeKpiPanel` is the only home workbench panel and contains

@@ -1,9 +1,9 @@
 {
   "version": "0.0.1",
-  "note": "SQETOOL is a PySide6 desktop app — no HTTP port. port fields are null. preview_start is not applicable; use runtimeExecutable + runtimeArgs to launch directly.",
+  "note": "SQE DailyWork is a PySide6 desktop app — no HTTP port. port fields are null. preview_start is not applicable; use runtimeExecutable + runtimeArgs to launch directly.",
   "configurations": [
     {
-      "name": "SQETOOL 主程式",
+      "name": "SQE DailyWork 主程式",
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["main.py"],
       "port": null

@@ -3,7 +3,7 @@ chcp 65001 > nul
 setlocal
 cd /d "%~dp0"
 
-echo [SQETOOL] Starting desktop app...
+echo [SQE DailyWork] Starting desktop app...
 
 where uv > nul 2>&1
 if %ERRORLEVEL% EQU 0 (

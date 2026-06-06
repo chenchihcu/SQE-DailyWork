@@ -58,7 +58,7 @@ Date: 2026-06-03
 Task: Retire legacy NCR shells while preserving separated workflow data lines.
 Changes: Added the architecture workflow contract; made shared master imports record batch/row audit data; converted visit defect notes to supplier anomalies only through explicit confirmation; kept warehouse statistics on `defect_records`; updated UI/UX docs and embedded NCR compatibility tests.
 Impact: Future changes must treat supplier event management and warehouse physical nonconforming-product management as separate sources, with shared `suppliers/products` imports audited through `import_batches/import_batch_rows`.
-Verification: Run `scripts\verify.ps1`, root `scripts\verify_all.ps1`, focused workflow tests, stale-term searches, and `scripts\qt_visual_probe.py`.
+Verification: Run `scripts\verify.ps1`, focused workflow tests, stale-term searches, and `scripts\qt_visual_probe.py`.
 Residual risk: legacy references may remain in historical completed exec-plan documents only; active code/docs should not reintroduce standalone NCR launch or `ncr/data/defect.db` initialization.
 Next action: Keep import and statistics changes tied to `docs/architecture-workflow-contract.md` and focused boundary tests.
 Debug/RCA (when applicable):

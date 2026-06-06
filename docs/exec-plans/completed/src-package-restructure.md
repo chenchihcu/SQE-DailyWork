@@ -1,3 +1,9 @@
+# Historical Checkpoint Note
+
+This completed plan predates the root-flatten normalization. References to the
+former outer root verification wrapper are historical only; the active
+verification gate is now root `scripts\verify.ps1`.
+
 # Exec Plan — Restructure source folders into a formal `src/` layout
 
 ## Goal

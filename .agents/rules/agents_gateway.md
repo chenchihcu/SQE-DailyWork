@@ -1,4 +1,4 @@
-# Antigravity Gateway - SQETOOL
+# Antigravity Gateway - SQE DailyWork
 
 Read and follow `AGENTS.md` before editing. `AGENTS.md` is the repository policy source for Codex, Claude Code, Cursor, and Antigravity.
 

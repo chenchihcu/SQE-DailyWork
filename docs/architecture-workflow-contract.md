@@ -1,9 +1,9 @@
-# SQETOOL Architecture Workflow Contract
+# SQE DailyWork Architecture Workflow Contract
 
 ## Purpose
 
-This contract is the design checkpoint for every SQETOOL change. The app is a
-single ERP-style desktop program with two daily workflow data lines and one
+This contract is the design checkpoint for every SQE DailyWork change. The app
+is a single ERP-style desktop program with two daily workflow data lines and one
 shared master-data area.
 
 ## Data Responsibility Matrix
@@ -38,7 +38,7 @@ shared master-data area.
 - Sidebar page indexes and stack routing must stay stable when labels, groups,
   or visual treatment change.
 - Warehouse nonconforming-product tracking stays under the single embedded
-  `src/ncr/` workflow page. Do not add a second root launcher or duplicate
+  `src/ncr/` workflow page. Do not add an outer launcher layer or duplicate
   warehouse shell pages.
 - Supplier and warehouse sidebar badges are read-only status indicators. They
   must not create cross-line writes or merge supplier-event and warehouse
@@ -76,6 +76,5 @@ After each change, verify:
 - visible copy names the correct workflow source
 - folder placement matches the owning workflow or documentation index
 - focused tests cover the affected boundary
-- `scripts/verify.ps1` passes for SQETOOL changes
-- root `scripts/verify_all.ps1` passes when launchers, root scripts, or
-  cross-workspace governance are touched
+- `scripts/verify.ps1` passes for source, script, UI, data-boundary, and
+  governance changes

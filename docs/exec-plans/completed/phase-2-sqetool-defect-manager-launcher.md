@@ -1,3 +1,11 @@
+# Retired Historical Reference
+
+This completed plan preserves the pre-root-flatten wrapper-era integration
+history. Paths such as `SQETOOL/...`, `run_dailywork.*`, and `verify_all.ps1`
+are historical references only; the active project root is now
+`C:\Users\user\Documents\SQE DailyWork`, with root `main.py` and
+`scripts\verify.ps1`.
+
 # Phase 2 Plan - SQETOOL Primary Shell Link for Defect Manager
 
 Date: 2026-06-02

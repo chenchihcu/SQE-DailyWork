@@ -1,10 +1,10 @@
-# SQETOOL v2 Desktop
+# SQE DailyWork Desktop
 
 ## Product Positioning
 
-`SQETOOL` is the single local desktop main program for daily Supplier Quality
-Engineering work. It behaves like an ERP-style workbench: one app shell opens
-different workflows from the sidebar and home workbench.
+`SQE DailyWork` is the single local desktop main program for daily Supplier
+Quality Engineering work. It behaves like an ERP-style workbench: one app shell
+opens different workflows from the sidebar and home workbench.
 
 The two daily workflow lines are intentionally separated:
 
@@ -20,16 +20,11 @@ statistics remain separated by source.
 
 ```powershell
 python main.py
+.\run_app.bat
 ```
 
-or from the root workspace:
-
-```powershell
-.\run_dailywork.ps1
-```
-
-Root launchers call `SQETOOL/main.py`. There is no standalone root launcher UI
-and no standalone NCR main window.
+The repository root is the application root. There is no outer launcher layer,
+no separate launcher window, and no standalone NCR main window.
 
 ## UI Workbench
 
@@ -156,6 +151,15 @@ dry run, reconciliation, and focused verification.
 ```powershell
 .\scripts\verify.ps1
 ```
+
+## Backup
+
+```powershell
+.\scripts\backup_data.ps1
+```
+
+This backs up root `data/sqe_v2.db` and the archived NCR source database when
+present.
 
 Focused checks should cover:
 
