@@ -316,6 +316,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
     supplier_id = (payload.get("supplier_id") or "").strip()
     product_id = _require_product_id(payload)
     anomaly_date = payload.get("anomaly_date") or date.today().isoformat()
+    visit_id = (payload.get("visit_id") or "").strip() or None
     sync_visit = bool(payload.get("sync_visit", True))
     visit_summary = payload.get("visit_summary", "")
 
@@ -338,6 +339,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             product_name=product_name,
             outsource_work_order=payload.get("outsource_work_order", ""),
             batch_qty=payload.get("batch_qty", 0),
+            visit_id=visit_id,
             sync_visit=sync_visit,
             visit_summary=visit_summary,
             pending_items=payload.get("pending_items", ""),
@@ -419,6 +421,23 @@ def list_visits_for_supplier(supplier_id: str) -> list[dict]:
         return []
     with get_connection() as conn:
         return repository.list_visits_by_supplier(conn, supplier_id)
+
+
+def list_pending_visit_defect_notes(*, limit: int | None = None) -> list[dict]:
+    with get_connection() as conn:
+        return repository.list_pending_visit_defect_notes(conn, limit=limit)
+
+
+def confirm_visit_defect_note_as_anomaly(note_id: str, payload: dict | None = None) -> dict:
+    params = payload or {}
+    with get_connection() as conn:
+        return repository.confirm_visit_defect_note_as_anomaly(
+            conn,
+            note_id=note_id,
+            product_id=params.get("product_id"),
+            responsible_person=params.get("responsible_person", ""),
+            due_date=params.get("due_date", ""),
+        )
 
 
 def delete_anomaly(anomaly_id: str) -> None:
@@ -612,6 +631,7 @@ def list_events(filters: dict | None = None) -> list[dict]:
             yyyymm=params.get("yyyymm"),
             limit=params.get("limit"),
             event_scope=params.get("event_scope"),
+            overdue_only=bool(params.get("overdue_only", False)),
         )
 
 
@@ -648,6 +668,32 @@ def export_event_pdf(path: str, row: dict) -> tuple[bool, str]:
         )
     except Exception as exc:
         return False, f"匯出失敗：{exc}"
+
+
+def export_brief_event_pdf(path: str, row: dict) -> tuple[bool, str]:
+    try:
+        detail, linked_visit = _event_pdf_payload(row)
+        return event_pdf_exporter.export_brief_event_pdf(
+            path,
+            row,
+            detail,
+            linked_visit=linked_visit,
+        )
+    except Exception as exc:
+        return False, f"匯出精簡版失敗：{exc}"
+
+
+def render_brief_event_image(row: dict) -> "QImage | None":
+    """將精簡報告渲染為 QImage 供 LINE 剪貼簿圖片傳送。"""
+    try:
+        detail, linked_visit = _event_pdf_payload(row)
+        return event_pdf_exporter.render_brief_event_to_image(
+            row,
+            detail,
+            linked_visit=linked_visit,
+        )
+    except Exception:
+        return None
 
 
 def get_dashboard_summary() -> dict:

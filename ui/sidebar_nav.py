@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStyle,
     QVBoxLayout,
     QWidget,
 )
 
+from ui.design_tokens import PALETTE as _PALETTE
 from ui.layout_constants import (
     SIDEBAR_LOGO_HEIGHT,
     SIDEBAR_NAV_ITEM_HEIGHT,
@@ -20,23 +23,69 @@ from ui.layout_constants import (
 )
 from ui.theme import asset_path
 
-_NAV_ITEMS = [
-    ("首頁",       "首頁",       False),
-    ("異常管理",   "異常管理",   True),   # badge_enabled=True
-    ("訪廠紀錄",   "訪廠紀錄",   False),
-    ("統計分析",   "統計分析",   False),
+_NAV_ICON_SIZE = 18
+_NAV_GROUP_GAP = 14  # 群組以「圖示 + 間距」區隔，取代原本的分組標題文字
+_NAV_ICON_COLOR = _PALETTE["sidebar_text"]
+_NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
+
+# (label, page_name, badge_enabled, icon_asset)
+_OVERVIEW_ITEMS = [
+    ("首頁", "首頁", False, "icons/home.svg"),
 ]
 
-_SECONDARY_ITEMS = [
-    ("已結案紀錄", "已結案紀錄", False),
-    ("基礎資料",   "基礎資料",   False),
+_EVENT_ITEMS = [
+    ("異常一覽表", "異常一覽表", True, "icons/anomaly.svg"),   # badge_enabled=True
+    ("訪廠紀錄一覽表", "訪廠紀錄一覽表", False, "icons/visit.svg"),
 ]
+
+_INSIGHT_ITEMS = [
+    ("異常事件統計", "異常事件統計", False, "icons/stats.svg"),
+    ("異常已結案查詢", "異常已結案查詢", False, "icons/closed.svg"),
+]
+
+_MASTER_ITEMS = [
+    ("基礎資料", "基礎資料", False, "icons/master.svg"),
+]
+
+# 倉庫不合格品 module pages, embedded in-process after the SQETOOL pages.
+# Flat index 6 (must match ncr.embed.NCR_PAGE_SPECS order).
+_NCR_ITEMS = [
+    ("不合格品追蹤", True, "icons/warehouse.svg"),
+]
+
+
+def _render_tinted_nav_icon(
+    asset_name: str, color: str, size: int = _NAV_ICON_SIZE
+) -> QPixmap:
+    """Render a monochrome SVG nav icon and recolor its opaque pixels to ``color``."""
+    base = QPixmap(size, size)
+    base.fill(Qt.GlobalColor.transparent)
+    renderer = QSvgRenderer(str(asset_path(asset_name)))
+    if renderer.isValid():
+        painter = QPainter(base)
+        renderer.render(painter, QRectF(0, 0, size, size))
+        painter.end()
+    tinted = QPixmap(base.size())
+    tinted.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(tinted)
+    painter.drawPixmap(0, 0, base)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(tinted.rect(), QColor(color))
+    painter.end()
+    return tinted
 
 
 class _NavButton(QPushButton):
     """單一側欄導覽按鈕，支援 badge 數字顯示。"""
 
-    def __init__(self, label: str, *, badge_enabled: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        label: str,
+        *,
+        badge_enabled: bool = False,
+        icon: str | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("NavButton")
         self.setFixedHeight(SIDEBAR_NAV_ITEM_HEIGHT)
@@ -45,9 +94,22 @@ class _NavButton(QPushButton):
 
         row = QHBoxLayout(self)
         row.setContentsMargins(16, 0, 12, 0)
-        row.setSpacing(8)
+        row.setSpacing(10)
+
+        self._icon_normal: QPixmap | None = None
+        self._icon_active: QPixmap | None = None
+        self._icon_label = QLabel()
+        self._icon_label.setObjectName("NavIcon")
+        self._icon_label.setFixedSize(_NAV_ICON_SIZE, _NAV_ICON_SIZE)
+        self._icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        if icon:
+            self._icon_normal = _render_tinted_nav_icon(icon, _NAV_ICON_COLOR)
+            self._icon_active = _render_tinted_nav_icon(icon, _NAV_ICON_COLOR_ACTIVE)
+            self._icon_label.setPixmap(self._icon_normal)
+        row.addWidget(self._icon_label)
 
         self._label = QLabel(label)
+        self._label.setObjectName("NavLabel")
         self._label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row.addWidget(self._label, 1)
@@ -73,6 +135,8 @@ class _NavButton(QPushButton):
 
     def set_active(self, active: bool) -> None:
         self.setProperty("nav_active", "true" if active else "false")
+        if self._icon_normal is not None:
+            self._icon_label.setPixmap(self._icon_active if active else self._icon_normal)
         style = self.style()
         style.unpolish(self)
         style.polish(self)
@@ -80,21 +144,38 @@ class _NavButton(QPushButton):
             style.unpolish(child)
             style.polish(child)
 
+    def _is_active(self) -> bool:
+        return self.property("nav_active") == "true"
+
+    def enterEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._icon_active is not None and not self._is_active():
+            self._icon_label.setPixmap(self._icon_active)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._icon_normal is not None and not self._is_active():
+            self._icon_label.setPixmap(self._icon_normal)
+        super().leaveEvent(event)
+
 
 class SidebarNav(QFrame):
     """左側 220px 深色固定側欄，發出 page_changed(int) signal。
 
     索引對應：
         0 = 首頁
-        1 = 異常管理
-        2 = 訪廠紀錄
-        3 = 統計分析
-        4 = 已結案紀錄
+        1 = 異常一覽表
+        2 = 訪廠紀錄一覽表
+        3 = 異常事件統計
+        4 = 異常已結案查詢
         5 = 基礎資料
+        6 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
+
+    導覽項目放在可捲動區域內，區分事件管理與倉庫不合格品實物管理。
     """
 
     page_changed = Signal(int)
     quick_create_clicked = Signal()
+    warehouse_create_clicked = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -112,19 +193,65 @@ class SidebarNav(QFrame):
         root.addWidget(self._build_logo_section())
         root.addSpacing(8)
 
-        for idx, (label, _name, badge) in enumerate(_NAV_ITEMS):
-            btn = self._make_nav_btn(label, idx, badge_enabled=badge)
-            root.addWidget(btn)
+        # ── 可捲動導覽區（logo 與 footer 固定，項目過多時於此捲動）──────────
+        nav_scroll = QScrollArea()
+        nav_scroll.setObjectName("SidebarScroll")
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        root.addWidget(self._build_divider())
-        root.addWidget(self._build_group_label("查詢紀錄"))
+        nav_body = QWidget()
+        nav_body.setObjectName("SidebarNavBody")
+        nav_layout = QVBoxLayout(nav_body)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(0)
 
-        offset = len(_NAV_ITEMS)
-        for idx, (label, _name, badge) in enumerate(_SECONDARY_ITEMS):
-            btn = self._make_nav_btn(label, offset + idx, badge_enabled=badge)
-            root.addWidget(btn)
+        # 分組以「圖示 + 間距」呈現工作流程結構，不再使用分組標題文字或分隔線。
+        # 頁面索引與堆疊路由維持不變（見 docs/architecture-workflow-contract.md）。
+        nav_layout.addSpacing(4)
 
-        root.addStretch(1)
+        for idx, (label, _name, badge, icon) in enumerate(_OVERVIEW_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        offset = len(_OVERVIEW_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_EVENT_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        offset += len(_EVENT_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_INSIGHT_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        offset += len(_INSIGHT_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
+
+        # ── 倉庫不合格品實物管理（嵌入式，索引 6）────────────────
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        ncr_offset = (
+            len(_OVERVIEW_ITEMS)
+            + len(_EVENT_ITEMS)
+            + len(_INSIGHT_ITEMS)
+            + len(_MASTER_ITEMS)
+        )
+        for idx, (label, badge, icon) in enumerate(_NCR_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, ncr_offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addStretch(1)
+
+        # 讓深色側欄背景透出（Phase D 會以正式 QSS 取代行內透明設定）
+        nav_body.setStyleSheet("background: transparent;")
+        nav_scroll.setWidget(nav_body)
+        nav_scroll.viewport().setStyleSheet("background: transparent;")
+        root.addWidget(nav_scroll, 1)
+
         root.addWidget(self._build_footer())
 
         self.set_active(0)
@@ -176,30 +303,17 @@ class SidebarNav(QFrame):
 
         return section
 
-    def _build_group_label(self, text: str) -> QWidget:
-        wrapper = QWidget()
-        wrapper.setObjectName("SidebarGroupLabel")
-        layout = QHBoxLayout(wrapper)
-        layout.setContentsMargins(16, 8, 16, 2)
-        lbl = QLabel(text.upper())
-        lbl.setObjectName("SidebarGroupLabelText")
-        layout.addWidget(lbl)
-        return wrapper
-
-    def _build_divider(self) -> QFrame:
-        divider = QFrame()
-        divider.setObjectName("SidebarDivider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFixedHeight(1)
-        return divider
-
     def _build_footer(self) -> QWidget:
         footer = QWidget()
         footer.setObjectName("SidebarFooter")
 
         layout = QVBoxLayout(footer)
-        layout.setContentsMargins(12, 8, 12, 16)
-        layout.setSpacing(0)
+        layout.setContentsMargins(12, 10, 12, 16)
+        layout.setSpacing(8)
+
+        label = QLabel("快速建立")
+        label.setObjectName("SidebarFooterLabel")
+        layout.addWidget(label)
 
         btn = QPushButton("＋ 新增異常")
         btn.setObjectName("SidebarQuickCreate")
@@ -208,10 +322,24 @@ class SidebarNav(QFrame):
         btn.clicked.connect(self.quick_create_clicked)
         layout.addWidget(btn)
 
+        warehouse_btn = QPushButton("＋ 建立不合格品")
+        warehouse_btn.setObjectName("SidebarWarehouseQuickCreate")
+        warehouse_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        warehouse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        warehouse_btn.clicked.connect(self.warehouse_create_clicked)
+        layout.addWidget(warehouse_btn)
+
         return footer
 
-    def _make_nav_btn(self, label: str, index: int, *, badge_enabled: bool = False) -> _NavButton:
-        btn = _NavButton(label, badge_enabled=badge_enabled)
+    def _make_nav_btn(
+        self,
+        label: str,
+        index: int,
+        *,
+        badge_enabled: bool = False,
+        icon: str | None = None,
+    ) -> _NavButton:
+        btn = _NavButton(label, badge_enabled=badge_enabled, icon=icon)
         btn.clicked.connect(lambda _checked=False, i=index: self._on_nav_clicked(i))
         self._buttons.append(btn)
         return btn

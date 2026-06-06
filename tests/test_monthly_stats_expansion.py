@@ -46,6 +46,13 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
             summary=f"Visit at {visit_date}",
         )
 
+    def _set_due_date(self, anomaly_no: str, due_date: str) -> None:
+        self.conn.execute(
+            "UPDATE anomalies SET due_date = ? WHERE anomaly_no = ?",
+            (due_date, anomaly_no),
+        )
+        self.conn.commit()
+
     def _force_close(self, anomaly_no: str, closed_at: str) -> None:
         self.conn.execute(
             """
@@ -132,6 +139,45 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
             ["Beta", "Alpha", "Delta", "Gamma", "Epsilon", "Zeta"],
             top_names,
         )
+
+    def test_list_events_overdue_only_matches_monthly_overdue_count(self) -> None:
+        supplier_id = self._create_supplier("Supplier-A")
+
+        overdue_no = self._create_anomaly(supplier_id, "2026-04-02")
+        self._set_due_date(overdue_no, "2020-01-01")  # 已逾期（待處理且過期）
+        future_no = self._create_anomaly(supplier_id, "2026-04-03")
+        self._set_due_date(future_no, "2999-12-31")  # 尚未到期
+        self._create_anomaly(supplier_id, "2026-04-04")  # due_date 空白 → 不算逾期
+
+        rows = repository.list_events(
+            self.conn,
+            event_type="ANOMALY",
+            status="待處理",
+            yyyymm="202604",
+            overdue_only=True,
+        )
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(overdue_no, rows[0]["ref_no"])
+
+        summary = repository.get_monthly_stats(self.conn, "202604")
+        self.assertEqual(summary["overdue_open_anomaly_count"], len(rows))
+
+    def test_list_events_overdue_only_excludes_visits(self) -> None:
+        supplier_id = self._create_supplier("Supplier-A")
+        self._create_visit(supplier_id, "2026-04-05")
+        overdue_no = self._create_anomaly(supplier_id, "2026-04-02")
+        self._set_due_date(overdue_no, "2020-01-01")
+
+        rows = repository.list_events(
+            self.conn,
+            event_type="ALL",
+            status="待處理",
+            overdue_only=True,
+        )
+
+        self.assertEqual(1, len(rows))
+        self.assertTrue(all(row["event_type"] == "ANOMALY" for row in rows))
 
 
 class MonthlyStatsExpansionExportTests(unittest.TestCase):

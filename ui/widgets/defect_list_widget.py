@@ -72,8 +72,6 @@ class EventListWidget(QWidget):
         self._all_rows: list[dict] = []
         self._current_page = 1
         self._page_size = 12
-        self._implicit_month_once: str | None = None
-        self._implicit_month_pending = False
         self._filter_event_type = "ALL"
         self._sort_col: int | None = None
         self._sort_asc: bool = True
@@ -92,6 +90,7 @@ class EventListWidget(QWidget):
         self._filter_status = fixed_status if fixed_status else "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm: str | None = None
+        self._filter_overdue_only = False
         self.event_type_combo: QComboBox | None = None
         self.event_scope_tab_bar: QTabBar | None = None
         self.status_combo: QComboBox | None = None
@@ -99,6 +98,7 @@ class EventListWidget(QWidget):
         self.month_input: QDateEdit | None = None
         self.all_months_checkbox: QCheckBox | None = None
         self.export_pdf_button: QPushButton | None = None
+        self.source_tag_label: QLabel | None = None
         self._selected_event_row: dict | None = None
         self._event_actions = EventActionsController(self, main_window)
         self._setup_ui()
@@ -218,6 +218,12 @@ class EventListWidget(QWidget):
         toolbar_row = QHBoxLayout()
         toolbar_row.setSpacing(8)
 
+        if self.mode == "query":
+            self.source_tag_label = QLabel(self._source_tag_text())
+            self.source_tag_label.setProperty("role", "sourceTag")
+            self.source_tag_label.setToolTip("目前列表的資料流程來源")
+            toolbar_row.addWidget(self.source_tag_label)
+
         self.pagination = PaginationBar(
             on_page_changed=self._on_page_changed,
             on_page_size_changed=self._on_page_size_changed,
@@ -234,6 +240,7 @@ class EventListWidget(QWidget):
             )
             self.export_pdf_button.clicked.connect(self._export_selected_pdf)
             toolbar_row.addWidget(self.export_pdf_button)
+            self._sync_export_pdf_state()
 
         control_outer.addLayout(toolbar_row)
 
@@ -288,6 +295,39 @@ class EventListWidget(QWidget):
         if self.mode == "query":
             self._sync_filter_widgets_from_state()
 
+    def _source_tag_text(self) -> str:
+        scope = self.fixed_scope or self._filter_event_scope
+        if scope == event_service.EVENT_SCOPE_VISIT_ONLY:
+            base = "供應商事件 / 訪廠紀錄"
+        elif scope == event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY:
+            base = "供應商事件 / 訪廠發現異常"
+        elif scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+            base = "供應商事件 / 已結案"
+        elif scope == event_service.EVENT_SCOPE_ANOMALY_ONLY:
+            base = "供應商事件 / 單獨異常"
+        else:
+            base = "供應商事件"
+        if self._filter_overdue_only:
+            return f"{base} / 逾期未結"
+        return base
+
+    def _sync_source_tag(self) -> None:
+        if self.source_tag_label is None:
+            return
+        self.source_tag_label.setText(self._source_tag_text())
+
+    def _sync_export_pdf_state(self) -> None:
+        if self.export_pdf_button is None:
+            return
+        has_selection = self._selected_event_row is not None
+        self.export_pdf_button.setEnabled(has_selection)
+        if has_selection:
+            self.export_pdf_button.setToolTip("輸出目前選取的單筆事件 PDF")
+            self.export_pdf_button.setStatusTip("輸出目前選取的單筆事件 PDF")
+        else:
+            self.export_pdf_button.setToolTip("請先選取一筆事件以輸出 PDF")
+            self.export_pdf_button.setStatusTip("請先選取一筆事件以輸出 PDF")
+
     def _build_new_event_buttons(self) -> tuple[QPushButton | None, QPushButton | None]:
         """Create the standard 「新增訪廠」/「新增異常」 button pair shared by query and entry modes."""
         btn_new_visit = None
@@ -338,6 +378,7 @@ class EventListWidget(QWidget):
     def _sync_filter_widgets_from_state(self) -> None:
         if self.mode != "query" or self.status_combo is None:
             return
+        self._sync_source_tag()
         if self.event_scope_tab_bar is not None:
             index = self._scope_tab_index(self._filter_event_scope)
             self.event_scope_tab_bar.blockSignals(True)
@@ -378,15 +419,18 @@ class EventListWidget(QWidget):
         scope = self._normalize_event_scope(self.event_scope_tab_bar.tabData(index))
         if scope is None or scope == self._filter_event_scope:
             return
-        self._clear_implicit_month_filter()
+        # Switching scope tabs exits the KPI overdue drill-down lens.
+        self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
+        self._sync_source_tag()
         self.refresh_data()
 
     def _apply_filters_from_ui(self) -> None:
         if self.mode != "query" or self.status_combo is None:
             return
-        self._clear_implicit_month_filter()
+        # Manual filter interaction exits the KPI overdue drill-down lens.
+        self._filter_overdue_only = False
         self._filter_status = str(self.status_combo.currentData() or "ALL")
         self._filter_supplier = (
             self.supplier_filter_input.text().strip() if self.supplier_filter_input else ""
@@ -395,12 +439,14 @@ class EventListWidget(QWidget):
             self._filter_yyyymm = self.month_input.date().toString("yyyyMM")
         else:
             self._filter_yyyymm = None
+        # Drop the "逾期未結" source tag now that the overdue lens is cleared.
+        self._sync_source_tag()
         self.refresh_data()
 
     def _reset_filters_ui(self) -> None:
         if self.mode != "query":
             return
-        self._clear_implicit_month_filter()
+        self._filter_overdue_only = False
         self._filter_status = "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm = None
@@ -412,6 +458,7 @@ class EventListWidget(QWidget):
             self._filter_status != "ALL"
             or bool(str(self._filter_supplier or "").strip())
             or self._filter_yyyymm is not None
+            or self._filter_overdue_only
         )
 
     def _default_empty_message(self) -> str:
@@ -432,10 +479,6 @@ class EventListWidget(QWidget):
                 self.empty_state.set_message("找不到符合條件的事件，請調整篩選條件。")
             else:
                 self.empty_state.set_message(self._default_empty_message())
-
-    def _clear_implicit_month_filter(self):
-        self._implicit_month_once = None
-        self._implicit_month_pending = False
 
     def _normalize_month_filter(self, yyyymm: str | None) -> str | None:
         text = str(yyyymm or "").strip().replace("-", "")
@@ -474,6 +517,7 @@ class EventListWidget(QWidget):
         yyyymm: str | None = None,
         status: str = "ALL",
         event_scope: str | None = None,
+        overdue_only: bool = False,
     ):
         event_type_key = str(event_type or "").strip().upper()
         scope_key = self._normalize_event_scope(event_scope)
@@ -512,10 +556,11 @@ class EventListWidget(QWidget):
         if self.mode == "query" and self._filter_status not in ("ALL", "待處理", "已結案"):
             self._filter_status = "ALL"
         self._filter_supplier = str(supplier_keyword or "").strip()
+        self._filter_overdue_only = bool(overdue_only)
 
-        month_key = self._normalize_month_filter(yyyymm)
-        self._implicit_month_once = month_key
-        self._implicit_month_pending = month_key is not None
+        # Make the drill-down month an explicit, visible filter (control bar
+        # reflects it) rather than a one-time hidden condition.
+        self._filter_yyyymm = self._normalize_month_filter(yyyymm)
 
         self._sync_filter_widgets_from_state()
         self.refresh_data()
@@ -528,13 +573,11 @@ class EventListWidget(QWidget):
         }
         if self.mode == "query" and self._filter_event_scope:
             filters["event_scope"] = self._filter_event_scope
-        if self._implicit_month_pending and self._implicit_month_once:
-            filters["yyyymm"] = self._implicit_month_once
-        elif self._filter_yyyymm:
+        if self._filter_yyyymm:
             filters["yyyymm"] = self._filter_yyyymm
+        if self._filter_overdue_only:
+            filters["overdue_only"] = True
         self._all_rows = event_service.list_events(filters)
-        if self._implicit_month_pending:
-            self._clear_implicit_month_filter()
         self._apply_sort()
         self._current_page = 1
         self._render_current_page()
@@ -569,6 +612,7 @@ class EventListWidget(QWidget):
             self.table.setItem(idx, 10, create_status_item(status_text))
 
         self.table.clearSelection()
+        self._sync_export_pdf_state()
         self.pagination.set_state(
             total_items=len(self._all_rows),
             current_page=self._current_page,
@@ -622,9 +666,11 @@ class EventListWidget(QWidget):
     def _on_table_selection_changed(self) -> None:
         if not self.table.selectedIndexes():
             self._selected_event_row = None
+            self._sync_export_pdf_state()
             return
         row = self._row_data(self.table.currentRow())
         self._selected_event_row = dict(row) if row is not None else None
+        self._sync_export_pdf_state()
 
     def _export_selected_pdf(self) -> None:
         row = self._selected_event_row
@@ -666,6 +712,7 @@ class EventListWidget(QWidget):
             return
         self._selected_event_row = dict(row)
         self.table.selectRow(row_idx)
+        self._sync_export_pdf_state()
         menu, action_map = build_event_action_menu(self, row)
         if not action_map:
             return
@@ -688,6 +735,7 @@ class EventListWidget(QWidget):
             on_preview_anomaly=self.open_preview_anomaly_dialog,
             on_preview_visit=self.open_preview_visit_dialog,
             on_reopen_anomaly=self.reopen_anomaly,
+            on_send_line=self.send_line_brief_report,
         )
 
     def open_close_dialog(self, anomaly_id: str, problem_desc: str):
@@ -716,3 +764,17 @@ class EventListWidget(QWidget):
 
     def reopen_anomaly(self, anomaly_id: str, ref_no: str):
         self._event_actions.reopen_anomaly(anomaly_id, ref_no)
+
+    def send_line_brief_report(self, row: dict):
+        from services import line_service
+
+        image = event_service.render_brief_event_image(row)
+        if image is None:
+            QMessageBox.critical(self, "失敗", "無法產生精簡報告圖片")
+            return
+
+        success, workflow_msg = line_service.send_brief_report_to_line(image)
+        if success:
+            QMessageBox.information(self, "傳送報告至 LINE", localize_popup_message(workflow_msg))
+        else:
+            QMessageBox.critical(self, "失敗", localize_popup_message(workflow_msg))

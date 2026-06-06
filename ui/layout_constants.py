@@ -21,8 +21,8 @@ DIALOG_SCREEN_MARGIN_Y = 60
 DIALOG_SCREEN_FRACTION = 0.95
 DIALOG_MIN_HEIGHT = 480
 
-# 全域捲軸寬度（設為 0 以隱藏捲軸）
-SCROLLBAR_WIDTH = 0
+# 全域捲軸寬度：密集資料頁需保留可見捲動邊界
+SCROLLBAR_WIDTH = 8
 
 # 主面板內距：左、上、右、下（px）
 PANEL_MARGINS = (12, 10, 12, 10)

@@ -1,4 +1,4 @@
-"""UX：事件管理篩選列、空狀態、基礎清單返回導覽。"""
+"""UX：事件管理篩選列、空狀態、基礎資料返回導覽。"""
 
 from __future__ import annotations
 
@@ -76,7 +76,8 @@ class _EventQueryFilterTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_empty_state_message_without_filters(self) -> None:
-        self.w._clear_implicit_month_filter()
+        self.w._filter_yyyymm = None
+        self.w._filter_overdue_only = False
         self.w._filter_event_type = "ALL"
         self.w._filter_status = "ALL"
         self.w._filter_supplier = ""
@@ -89,7 +90,8 @@ class _EventQueryFilterTests(unittest.TestCase):
         self.assertTrue(any("目前沒有事件資料" in text for text in empty_texts))
 
     def test_empty_state_message_with_filters(self) -> None:
-        self.w._clear_implicit_month_filter()
+        self.w._filter_yyyymm = None
+        self.w._filter_overdue_only = False
         self.w._filter_status = "ALL"
         self.w._filter_supplier = "測試"
         self.w._all_rows = []

@@ -140,6 +140,7 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
         self.assertEqual("停用", self.widget.btn_product_toggle.text())
         self.assertEqual("刪除", self.widget.btn_product_delete.text())
         self.assertEqual("紀錄", self.widget.btn_product_stage_logs.text())
+        self.assertEqual("匯入", self.widget.btn_product_import.text())
         self.assertEqual("篩選", self.widget.btn_product_filter.text())
         self.assertEqual("清空", self.widget.btn_product_clear.text())
 
@@ -147,6 +148,62 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
         self.assertEqual("刪除選取供應商", self.widget.btn_supplier_delete_selected.toolTip())
         self.assertEqual("新增產品", self.widget.btn_product_create.toolTip())
         self.assertEqual("查詢產品階段異動紀錄", self.widget.btn_product_stage_logs.toolTip())
+        self.assertEqual(
+            "從 Excel / ERP 匯出檔匯入共用產品與供應商主檔",
+            self.widget.btn_product_import.toolTip(),
+        )
+
+    def test_master_actions_disabled_until_selection_and_status_names_target(self) -> None:
+        self.assertFalse(self.widget.btn_supplier_update.isEnabled())
+        self.assertFalse(self.widget.btn_supplier_toggle.isEnabled())
+        self.assertFalse(self.widget.btn_supplier_delete.isEnabled())
+        self.assertFalse(self.widget.btn_supplier_delete_selected.isEnabled())
+        self.assertEqual("未選取供應商", self.widget.selection_status_label.text())
+
+        self.widget._supplier_rows = [
+            {
+                "id": "supplier-1",
+                "supplier_name": "供應商-A",
+                "contact_name": "",
+                "department": "",
+                "contact_email": "",
+                "phone": "",
+                "is_active": 1,
+            }
+        ]
+        self.widget._render_supplier_table()
+        self.widget.supplier_table.selectRow(0)
+        self.app.processEvents()
+        self.assertTrue(self.widget.btn_supplier_update.isEnabled())
+        self.assertTrue(self.widget.btn_supplier_toggle.isEnabled())
+        self.assertTrue(self.widget.btn_supplier_delete.isEnabled())
+        self.assertIn("供應商-A", self.widget.selection_status_label.text())
+
+        self.widget.tabs.setCurrentIndex(1)
+        self.app.processEvents()
+        self.assertFalse(self.widget.btn_product_update.isEnabled())
+        self.assertFalse(self.widget.btn_product_toggle.isEnabled())
+        self.assertFalse(self.widget.btn_product_delete.isEnabled())
+        self.assertEqual("未選取產品", self.widget.selection_status_label.text())
+
+        self.widget._product_rows = [
+            {
+                "id": "product-1",
+                "product_code": "PN-001",
+                "product_name": "產品-A",
+                "product_stage": "量產",
+                "supplier_name": "供應商-A",
+                "secondary_supplier_name": "",
+                "is_active": 1,
+            }
+        ]
+        self.widget._render_product_table()
+        self.widget.product_table.selectRow(0)
+        self.app.processEvents()
+        self.assertTrue(self.widget.btn_product_update.isEnabled())
+        self.assertTrue(self.widget.btn_product_toggle.isEnabled())
+        self.assertTrue(self.widget.btn_product_delete.isEnabled())
+        self.assertIn("[PN-001] 產品-A", self.widget.selection_status_label.text())
 
 
 if __name__ == "__main__":

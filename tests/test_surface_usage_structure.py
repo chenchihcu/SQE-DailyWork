@@ -46,19 +46,22 @@ class SurfaceUsageStructureTests(unittest.TestCase):
             parent = parent.parentWidget()
         return False
 
-    def test_home_page_contains_feature_and_quick_action_panels(self) -> None:
+    def test_home_page_contains_workbench_panels(self) -> None:
         home = self.window.home_widget
         frames = home.findChildren(QFrame)
         panels = [f for f in frames if f.property("role") == "panel"]
-        
-        # Should have feature guide and quick action panels
-        self.assertGreaterEqual(len(panels), 2)
-        
-        # Verify specific labels exist
+
+        # Workbench home keeps only the KPI management panel.
+        self.assertEqual(1, len(panels))
+        self.assertEqual("HomeKpiPanel", panels[0].objectName())
+
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]
-        self.assertIn("功能導覽", texts)
-        self.assertIn("快速操作", texts)
+        self.assertNotIn("快速入口", texts)
+        self.assertIn("總異常件數", texts)
+
+        kpi_cards = [f for f in frames if f.property("role") == "kpiCard"]
+        self.assertEqual(6, len(kpi_cards))
 
     def test_query_page_subpanel_structure_and_roles_are_consistent(self) -> None:
         query = self.window.events_widget

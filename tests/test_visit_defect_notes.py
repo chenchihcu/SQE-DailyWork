@@ -220,6 +220,148 @@ class VisitDefectNotesTests(unittest.TestCase):
         self.assertEqual(1, detail["defect_note_count"])
         self.assertEqual("", detail["product_name"])
 
+    def test_confirmed_visit_defect_creates_supplier_anomaly_not_warehouse_defect(
+        self,
+    ) -> None:
+        supplier_id = self._create_supplier("Shared Master Data Supplier")
+        product_id = self._create_product(supplier_id, "SHARED-001", "共用公司產品")
+        visit_id = repository.create_visit(
+            self.conn,
+            visit_date="2026-05-22",
+            supplier_id=supplier_id,
+            product_id=product_id,
+            defect_notes=[
+                {
+                    "defect_desc": "訪廠稽核發現製程檢查表未即時更新",
+                    "improvement_desc": "供應商需補齊紀錄",
+                }
+            ],
+        )
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            result = event_service.create_anomaly_with_visit_link(
+                {
+                    "visit_id": visit_id,
+                    "sync_visit": False,
+                    "anomaly_date": "2026-05-22",
+                    "supplier_id": supplier_id,
+                    "product_id": product_id,
+                    "category": "訪廠/稽核缺失",
+                    "problem_desc": "訪廠稽核發現製程檢查表未即時更新",
+                    "pending_items": "供應商需補齊紀錄",
+                }
+            )
+
+        self.assertEqual("linked", result["visit_action"])
+        anomaly = self.conn.execute(
+            """
+            SELECT visit_id, supplier_id, product_id, category, problem_desc
+            FROM anomalies
+            WHERE anomaly_no = ?
+            """,
+            (result["anomaly_no"],),
+        ).fetchone()
+        self.assertIsNotNone(anomaly)
+        assert anomaly is not None
+        self.assertEqual(visit_id, anomaly["visit_id"])
+        self.assertEqual(supplier_id, anomaly["supplier_id"])
+        self.assertEqual(product_id, anomaly["product_id"])
+        self.assertEqual("訪廠/稽核缺失", anomaly["category"])
+
+        warehouse_defect_count = self.conn.execute(
+            "SELECT COUNT(*) FROM defect_records"
+        ).fetchone()[0]
+        self.assertEqual(0, warehouse_defect_count)
+
+        self.assertIsNotNone(repository.get_supplier(self.conn, supplier_id))
+        self.assertIsNotNone(repository.get_product(self.conn, product_id))
+
+    def test_pending_visit_defect_note_can_be_confirmed_once(self) -> None:
+        supplier_id = self._create_supplier("Pending Audit Supplier")
+        product_id = self._create_product(supplier_id, "PENDING-001", "待確認產品")
+        visit_id = repository.create_visit(
+            self.conn,
+            visit_date="2026-05-23",
+            supplier_id=supplier_id,
+            product_id=product_id,
+            defect_notes=[
+                {
+                    "defect_desc": "稽核發現製程紀錄未每日簽核",
+                    "improvement_desc": "供應商需補簽並建立日檢點",
+                }
+            ],
+        )
+        pending = repository.list_pending_visit_defect_notes(self.conn)
+        self.assertEqual(1, len(pending))
+        self.assertEqual(visit_id, pending[0]["visit_id"])
+        self.assertEqual(product_id, pending[0]["product_id"])
+
+        result = repository.confirm_visit_defect_note_as_anomaly(
+            self.conn,
+            note_id=pending[0]["id"],
+            responsible_person="SQE",
+            due_date="2026-06-15",
+        )
+
+        self.assertEqual("linked", result["visit_action"])
+        self.assertEqual(0, len(repository.list_pending_visit_defect_notes(self.conn)))
+        detail = repository.get_visit_detail(self.conn, visit_id)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        confirmed_note = detail["defect_notes"][0]
+        self.assertEqual(result["anomaly_id"], confirmed_note["confirmed_anomaly_id"])
+        self.assertTrue(confirmed_note["confirmed_at"])
+        anomaly = self.conn.execute(
+            """
+            SELECT visit_id, product_id, category, problem_desc, responsible_person, due_date
+            FROM anomalies
+            WHERE id = ?
+            """,
+            (result["anomaly_id"],),
+        ).fetchone()
+        self.assertIsNotNone(anomaly)
+        assert anomaly is not None
+        self.assertEqual(visit_id, anomaly["visit_id"])
+        self.assertEqual(product_id, anomaly["product_id"])
+        self.assertEqual("訪廠/稽核缺失", anomaly["category"])
+        self.assertEqual("SQE", anomaly["responsible_person"])
+        self.assertEqual("2026-06-15", anomaly["due_date"])
+        self.assertEqual(
+            0,
+            self.conn.execute("SELECT COUNT(*) FROM defect_records").fetchone()[0],
+        )
+        with self.assertRaises(ValueError):
+            repository.confirm_visit_defect_note_as_anomaly(
+                self.conn,
+                note_id=pending[0]["id"],
+            )
+
+    def test_confirmed_visit_defect_notes_block_visit_rewrite(self) -> None:
+        supplier_id = self._create_supplier("Confirmed Rewrite Supplier")
+        product_id = self._create_product(supplier_id, "CONF-001", "已確認產品")
+        visit_id = repository.create_visit(
+            self.conn,
+            visit_date="2026-05-24",
+            supplier_id=supplier_id,
+            product_id=product_id,
+            defect_notes=[{"defect_desc": "缺失已轉異常"}],
+        )
+        note = repository.list_pending_visit_defect_notes(self.conn)[0]
+        repository.confirm_visit_defect_note_as_anomaly(
+            self.conn,
+            note_id=note["id"],
+        )
+
+        with self.assertRaises(ValueError):
+            repository.update_visit(
+                self.conn,
+                visit_id=visit_id,
+                visit_date="2026-05-24",
+                supplier_id=supplier_id,
+                product_id=product_id,
+                defect_notes=[{"defect_desc": "覆寫缺失"}],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

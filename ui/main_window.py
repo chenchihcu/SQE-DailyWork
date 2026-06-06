@@ -1,9 +1,12 @@
+import sqlite3
 import sys
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QStackedWidget,
@@ -11,7 +14,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database.connection import get_connection
 from services import event_service
+from ncr.db.database import DatabaseMigrationError
+from ncr.embed import NCR_PAGE_OFFSET, NCR_PAGE_SPECS, NcrController
+import ncr.services.stats_service as ncr_stats_service
 from ui.layout_constants import (
     MAIN_WINDOW_DEFAULT_HEIGHT,
     MAIN_WINDOW_DEFAULT_WIDTH,
@@ -43,18 +50,34 @@ STANDALONE_ANOMALY_PAGE_INDEX = ANOMALY_PAGE_INDEX
 
 _PAGE_TITLES = {
     HOME_PAGE_INDEX:    ("首頁",       "Mitcorp SQE Tool"),
-    ANOMALY_PAGE_INDEX: ("異常管理",   "異常事件追蹤與改善閉環"),
-    VISIT_PAGE_INDEX:   ("訪廠紀錄",   "廠商訪視與現場缺失記錄"),
-    STATS_PAGE_INDEX:   ("統計分析",   "品質數據統計與趨勢分析"),
-    CLOSED_PAGE_INDEX:  ("已結案紀錄", "歷史結案事件查詢"),
+    ANOMALY_PAGE_INDEX: ("異常一覽表", "異常事件追蹤與改善閉環"),
+    VISIT_PAGE_INDEX:   ("訪廠紀錄一覽表", "廠商訪視與現場缺失記錄"),
+    STATS_PAGE_INDEX:   ("異常事件統計", "供應商事件統計與倉庫不合格品實物統計"),
+    CLOSED_PAGE_INDEX:  ("異常已結案查詢", "歷史結案事件查詢"),
     MASTER_PAGE_INDEX:  ("基礎資料",   "供應商與品名主檔管理"),
 }
+
+# Embedded warehouse nonconforming-product page occupies stack index 6.
+NCR_PAGE_INDEX = NCR_PAGE_OFFSET + 0
+NCR_PAGE_COUNT = len(NCR_PAGE_SPECS)
+
+# Compatibility aliases kept for external callers
+NCR_HOME_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_ENTRY_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_TRACKING_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_TRACE_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_ANALYSIS_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_PRODUCT_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_SUPPLIER_PAGE_INDEX = NCR_PAGE_INDEX
+
+for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
+    _PAGE_TITLES[NCR_PAGE_OFFSET + _i] = (_title, _subtitle)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Mitcorp 供應商品質管理系統")
+        self.setWindowTitle("SQE DailyWork - SQE 工作台")
         self.setWindowIcon(QIcon(str(asset_path("mitcorp_logo.png"))))
         fit_widget_to_available_screen(
             self,
@@ -66,6 +89,7 @@ class MainWindow(QMainWindow):
             maximum_height=MAIN_WINDOW_MAX_HEIGHT,
         )
         self._last_non_master_index = HOME_PAGE_INDEX
+        self.ncr: NcrController | None = None
         self._setup_ui()
         self._refresh_sidebar_badge()
 
@@ -82,6 +106,9 @@ class MainWindow(QMainWindow):
         self.sidebar = SidebarNav()
         self.sidebar.page_changed.connect(self._on_sidebar_page_changed)
         self.sidebar.quick_create_clicked.connect(self.open_new_anomaly_dialog)
+        self.sidebar.warehouse_create_clicked.connect(
+            self.open_warehouse_nonconforming_create
+        )
         root.addWidget(self.sidebar)
 
         # ── 右側內容區 ────────────────────────────────────
@@ -126,6 +153,16 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(CLOSED_PAGE_INDEX,  self.closed_event_widget)
         self.stack.insertWidget(MASTER_PAGE_INDEX,  self.master_widget)
 
+        # ── 嵌入倉庫不合格品實物管理模組頁面（索引 6）──
+        # NCR 資料庫問題不可拖垮主程式；失敗時以 placeholder 佔位並保持索引對齊。
+        try:
+            self.ncr = NcrController(self)
+            for offset_idx, ncr_page in enumerate(self.ncr.pages()):
+                self.stack.insertWidget(NCR_PAGE_OFFSET + offset_idx, ncr_page)
+        except (DatabaseMigrationError, sqlite3.Error) as exc:
+            self.ncr = None
+            self._insert_ncr_placeholders(str(exc))
+
         # Compatibility aliases used by tests / older callers
         # events_widget points to the anomaly list at index 1 (primary event management page)
         self.events_widget = self.standalone_anomaly_widget
@@ -136,7 +173,21 @@ class MainWindow(QMainWindow):
 
         self._switch_primary_page(HOME_PAGE_INDEX)
 
+    def _insert_ncr_placeholders(self, reason: str) -> None:
+        """NCR 載入失敗時插入佔位頁，維持側欄索引與嵌入頁對齊。"""
+        for offset_idx in range(NCR_PAGE_COUNT):
+            placeholder = QLabel(
+                f"倉庫不合格品追蹤模組暫時無法載入。\n\n{reason}"
+            )
+            placeholder.setObjectName("NcrUnavailablePlaceholder")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder.setWordWrap(True)
+            self.stack.insertWidget(NCR_PAGE_OFFSET + offset_idx, placeholder)
+
     # ── Navigation ──────────────────────────────────────────────────────────
+
+    def _is_ncr_index(self, index: int) -> bool:
+        return NCR_PAGE_OFFSET <= index < NCR_PAGE_OFFSET + NCR_PAGE_COUNT
 
     def _switch_primary_page(self, page_index: int) -> None:
         count = self.stack.count()
@@ -148,12 +199,24 @@ class MainWindow(QMainWindow):
         self._header_bar.set_page(title, subtitle)
         if page_index != MASTER_PAGE_INDEX:
             self._last_non_master_index = page_index
+        if self.ncr is not None and self._is_ncr_index(page_index):
+            self.ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
 
     def _on_sidebar_page_changed(self, index: int) -> None:
+        # 離開含未存資料的 NCR 頁面前先確認（NCR 內建髒資料守衛）
+        current = self.stack.currentIndex()
+        if self.ncr is not None and self._is_ncr_index(current):
+            if not self.ncr.confirm_can_leave(current - NCR_PAGE_OFFSET):
+                self.sidebar.set_active(current)  # 還原側欄高亮
+                return
         if index == MASTER_PAGE_INDEX:
             self._open_master_data()
         else:
             self._switch_primary_page(index)
+
+    def show_ncr_status(self, message: str, timeout_ms: int = 5000) -> None:
+        """顯示 NCR 模組的狀態訊息（例如已建立不良單）於主視窗狀態列。"""
+        self.statusBar().showMessage(message, timeout_ms)
 
     def _open_master_data(self) -> None:
         self._switch_primary_page(MASTER_PAGE_INDEX)
@@ -172,6 +235,7 @@ class MainWindow(QMainWindow):
         yyyymm: str | None = None,
         status: str = "ALL",
         event_scope: str | None = None,
+        overdue_only: bool = False,
     ) -> None:
         target_index = ANOMALY_PAGE_INDEX
         target_widget = self.standalone_anomaly_widget
@@ -200,6 +264,7 @@ class MainWindow(QMainWindow):
             yyyymm=yyyymm,
             status=status,
             event_scope=event_scope,
+            overdue_only=overdue_only,
         )
 
     # ── Dialogs ─────────────────────────────────────────────────────────────
@@ -210,7 +275,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(
             self,
             "需先建立供應商",
-            "目前沒有可用供應商，請先到基礎清單建立供應商。",
+            "目前沒有可用供應商，請先到基礎資料建立供應商。",
         )
         self._open_master_data()
         return False
@@ -236,6 +301,16 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self.refresh_all_views()
 
+    def open_warehouse_nonconforming_tracker(self) -> None:
+        """切換至嵌入式倉庫不合格品追蹤模組（同一視窗內）。"""
+        self._switch_primary_page(NCR_HOME_PAGE_INDEX)
+
+    def open_warehouse_nonconforming_create(self) -> None:
+        """切換至嵌入式倉庫不合格品建立表單。"""
+        self._switch_primary_page(NCR_HOME_PAGE_INDEX)
+        if self.ncr is not None:
+            self.ncr.open_create_entry()
+
     # ── Data refresh ────────────────────────────────────────────────────────
 
     def refresh_all_views(self):
@@ -255,6 +330,25 @@ class MainWindow(QMainWindow):
         except Exception:
             count = 0
         self.sidebar.set_badge(ANOMALY_PAGE_INDEX, count)
+        try:
+            with get_connection() as conn:
+                warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
+            warehouse_count = int(warehouse_summary.get("open_count", 0))
+        except Exception:
+            warehouse_count = 0
+        self.sidebar.set_badge(NCR_PAGE_INDEX, warehouse_count)
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def closeEvent(self, event):  # noqa: N802
+        # NCR 嵌入頁有未存資料則攔截關閉；否則關閉共用 DB 連線。
+        if self.ncr is not None:
+            for local_index in range(NCR_PAGE_COUNT):
+                if not self.ncr.confirm_can_leave(local_index):
+                    event.ignore()
+                    return
+            self.ncr.close()
+        event.accept()
 
 
 if __name__ == "__main__":

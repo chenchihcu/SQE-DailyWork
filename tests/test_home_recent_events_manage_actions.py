@@ -21,6 +21,9 @@ class _DummyMainWindow:
     def open_new_anomaly_dialog(self) -> None:
         return
 
+    def open_warehouse_nonconforming_tracker(self) -> None:
+        return
+
 
 class HomeSimplifiedActionContractTests(unittest.TestCase):
     @classmethod

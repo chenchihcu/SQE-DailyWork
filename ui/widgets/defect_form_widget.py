@@ -178,6 +178,16 @@ def _make_divider_title(text: str) -> QLabel:
     return title
 
 
+def _set_text_edit_visible_rows(editor: QTextEdit, rows: int) -> None:
+    line_height = editor.fontMetrics().lineSpacing()
+    document_margin = int(editor.document().documentMargin() * 2)
+    frame_height = editor.frameWidth() * 2
+    vertical_padding = 14
+    editor.setFixedHeight(
+        line_height * max(rows, 1) + vertical_padding + document_margin + frame_height
+    )
+
+
 def _paired_label(label: str | QWidget | None) -> QWidget | None:
     if label is None:
         return None
@@ -762,7 +772,7 @@ class ProductSectionEditor(QGroupBox):
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("產品區段摘要（選填）")
-        self.summary_input.setFixedHeight(70)
+        _set_text_edit_visible_rows(self.summary_input, 3)
         self.defect_table = DefectNoteTable()
         add_note_button = QPushButton("新增缺失")
         add_note_button.setProperty("variant", "secondary")
@@ -969,11 +979,11 @@ class NewAnomalyDialog(QDialog):
         
         self.problem_input = QTextEdit()
         self.problem_input.setPlaceholderText("輸入不良現象、異常描述與補充說明（必填）")
-        self.problem_input.setFixedHeight(180)
+        _set_text_edit_visible_rows(self.problem_input, 7)
         
         self.pending_items_input = QTextEdit()
         self.pending_items_input.setPlaceholderText("確認事項（選填，每行一項）")
-        self.pending_items_input.setFixedHeight(100)
+        _set_text_edit_visible_rows(self.pending_items_input, 4)
         
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
         self.sync_visit_check.setChecked(True)
@@ -1562,7 +1572,7 @@ class NewAnomalyDialog(QDialog):
         if not supplier_id:
             message = "請先選擇供應商。"
         elif not has_products and not product_id:
-            message = "此供應商尚未建立產品，請先到基礎清單新增產品。"
+            message = "此供應商尚未建立產品，請先到基礎資料新增產品。"
             tone = "warning"
         elif not product_id:
             message = "請選擇產品後再儲存。"
@@ -1756,6 +1766,8 @@ class NewVisitDialog(QDialog):
         self.setMinimumWidth(760)
         self.setMaximumWidth(FORM_MAX_WIDTH)
         self._setup_ui()
+        if self._is_edit:
+            self.confirm_supplier_anomaly_check.setVisible(False)
         self._load_suppliers()
         if self._is_edit:
             self._apply_initial_data()
@@ -1785,7 +1797,7 @@ class NewVisitDialog(QDialog):
         self.visitor_input.setPlaceholderText("訪廠人員（選填）")
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("活動摘要（選填）")
-        self.summary_input.setFixedHeight(200)
+        _set_text_edit_visible_rows(self.summary_input, 5)
 
         self.work_order_input = QLineEdit()
         self.time_slot_input = QLineEdit()
@@ -1887,6 +1899,11 @@ class NewVisitDialog(QDialog):
         visit_defect_group = QGroupBox("訪廠層級缺失（不限定產品）")
         visit_defect_layout = QVBoxLayout(visit_defect_group)
         self.visit_defect_table = DefectNoteTable()
+        self.confirm_supplier_anomaly_check = QCheckBox("確認後建立正式供應商異常事件")
+        self.confirm_supplier_anomaly_check.setObjectName("VisitConfirmSupplierAnomalyCheck")
+        self.confirm_supplier_anomaly_check.setToolTip(
+            "僅將訪廠/稽核缺失轉成供應商異常事件，不寫入倉庫不合格品追蹤。"
+        )
         visit_defect_buttons = QHBoxLayout()
         btn_add_visit_defect = QPushButton("新增缺失")
         btn_add_visit_defect.setProperty("variant", "secondary")
@@ -1899,6 +1916,7 @@ class NewVisitDialog(QDialog):
         visit_defect_buttons.addStretch(1)
         visit_defect_layout.addWidget(self.visit_defect_table)
         visit_defect_layout.addLayout(visit_defect_buttons)
+        visit_defect_layout.addWidget(self.confirm_supplier_anomaly_check)
 
         primary_defect_group = QGroupBox("主要產品缺失")
         primary_defect_layout = QVBoxLayout(primary_defect_group)
@@ -1965,6 +1983,7 @@ class NewVisitDialog(QDialog):
         self.tech_transfer_check.setEnabled(False)
         self.visit_defect_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.primary_defect_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.confirm_supplier_anomaly_check.setEnabled(False)
         for editor in self._extra_section_editors:
             editor.set_read_only()
 
@@ -2317,6 +2336,12 @@ class NewVisitDialog(QDialog):
                 if section is not None:
                     section["sort_order"] = len(product_sections)
                     product_sections.append(section)
+            if self.confirm_supplier_anomaly_check.isChecked():
+                self._validate_supplier_anomaly_conversion(
+                    product_id=product_id,
+                    visit_level_notes=visit_level_notes,
+                    product_sections=product_sections,
+                )
             if not product_sections and not visit_level_notes:
                 QMessageBox.warning(
                     self,
@@ -2358,8 +2383,23 @@ class NewVisitDialog(QDialog):
                 event_service.update_visit(self._visit_id, payload)
                 QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已更新"))
             else:
-                event_service.create_visit(payload)
-                QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已完成"))
+                visit_id = event_service.create_visit(payload)
+                created_anomalies = self._create_confirmed_supplier_anomalies(
+                    visit_id=visit_id,
+                    payload=payload,
+                    visit_level_notes=visit_level_notes,
+                    product_sections=product_sections,
+                )
+                if created_anomalies:
+                    QMessageBox.information(
+                        self,
+                        "成功",
+                        localize_popup_message(
+                            f"訪廠紀錄已完成，並建立 {created_anomalies} 筆正式供應商異常事件"
+                        ),
+                    )
+                else:
+                    QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已完成"))
             self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
@@ -2369,6 +2409,70 @@ class NewVisitDialog(QDialog):
                 "錯誤",
                 localize_popup_message(f"建立訪廠失敗：{localize_exception(exc)}"),
             )
+
+    def _validate_supplier_anomaly_conversion(
+        self,
+        *,
+        product_id: str,
+        visit_level_notes: list[dict],
+        product_sections: list[dict],
+    ) -> None:
+        if not (visit_level_notes or any(section.get("defect_notes") for section in product_sections)):
+            return
+        if visit_level_notes and not product_id:
+            raise ValueError("建立正式供應商異常事件需選擇主要產品。")
+        for section in product_sections:
+            if section.get("defect_notes") and not str(section.get("product_id") or "").strip():
+                raise ValueError("建立正式供應商異常事件需選擇缺失所屬產品。")
+
+    def _create_confirmed_supplier_anomalies(
+        self,
+        *,
+        visit_id: str,
+        payload: dict,
+        visit_level_notes: list[dict],
+        product_sections: list[dict],
+    ) -> int:
+        if self._is_edit or not self.confirm_supplier_anomaly_check.isChecked():
+            return 0
+        count = 0
+        for note in visit_level_notes:
+            event_service.create_anomaly_with_visit_link(
+                {
+                    "visit_id": visit_id,
+                    "sync_visit": False,
+                    "anomaly_date": payload["visit_date"],
+                    "supplier_id": payload["supplier_id"],
+                    "product_id": payload["product_id"],
+                    "product_stage": self.product_stage_combo.currentText(),
+                    "problem_desc": note.get("defect_desc", ""),
+                    "pending_items": note.get("improvement_desc", ""),
+                    "category": "訪廠/稽核缺失",
+                    "visit_summary": payload.get("summary", ""),
+                }
+            )
+            count += 1
+        for section in product_sections:
+            section_product_id = str(section.get("product_id") or "").strip()
+            for note in section.get("defect_notes") or []:
+                event_service.create_anomaly_with_visit_link(
+                    {
+                        "visit_id": visit_id,
+                        "sync_visit": False,
+                        "anomaly_date": payload["visit_date"],
+                        "supplier_id": payload["supplier_id"],
+                        "product_id": section_product_id,
+                        "product_stage": section.get("product_stage") or PRODUCT_STAGE_MASS_PRODUCTION,
+                        "problem_desc": note.get("defect_desc", ""),
+                        "pending_items": note.get("improvement_desc", ""),
+                        "category": "訪廠/稽核缺失",
+                        "outsource_work_order": section.get("work_order_no", ""),
+                        "batch_qty": section.get("production_qty", 0),
+                        "visit_summary": payload.get("summary", ""),
+                    }
+                )
+                count += 1
+        return count
 
 
 class CloseAnomalyDialog(QDialog):

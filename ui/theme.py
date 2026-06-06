@@ -6,6 +6,7 @@ from textwrap import dedent
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
+from ui.design_tokens import PALETTE as _P
 from ui.layout_constants import (
     BUTTON_PADDING_HORIZONTAL,
     BUTTON_PADDING_VERTICAL,
@@ -43,6 +44,7 @@ PREFERRED_CJK_FONT_FAMILIES = (
     "Microsoft JhengHei",
     "Microsoft YaHei UI",
     "Microsoft YaHei",
+    "DengXian",
     "Segoe UI",
     "PingFang TC",
     "Noto Sans CJK TC",
@@ -53,133 +55,137 @@ PREFERRED_CJK_FONT_FAMILIES = (
     "Arial Unicode MS",
 )
 
+# Values re-sourced from the unified design_tokens.PALETTE (keys unchanged, so
+# every QSS selector below recolors automatically). See ui/design_tokens.py.
 TOKENS = {
-    "brand_blue": "#0274BE",
-    "brand_primary": "#065977",
-    "brand_navy": "#04354C",
-    "brand_cyan": "#29A8E0",
-    "brand_steel": "#617484",
-    "page_bg": "#EEF3F7",
-    "panel_bg": "#FFFFFF",
-    "panel_alt_bg": "#F7FAFC",
-    "subtle_bg": "#D8E4EC",
-    "surface_hover": "#F2F8FC",
-    "surface_active": "#E4F3FB",
-    "surface_accent": "#D7EEF8",
-    "surface_warning": "#FFFBEB",
-    "surface_danger": "#FEF2F2",
-    "focus_ring": "#64B5E8",
-    "border": "#C5D4DE",
-    "border_soft": "#D9E2EA",
-    "border_strong": "#8BA2B2",
-    "grid": "#D8E4EC",
-    "text_primary": "#102A3A",
-    "text_secondary": "#3E596B",
-    "text_muted": "#5D7180",
-    "text_disabled": "#96A8B5",
-    "primary_btn": "#0274BE",
-    "primary_btn_hover": "#065977",
-    "primary_faint": "#E5F5FB",
-    "selection_bg": "#CDECF8",
-    "danger": "#991B1B",
-    "danger_border": "#FCA5A5",
-    "danger_hover": "#FEF2F2",
-    "warning": "#854D0E",
-    "warning_bg": "#FEF9C3",
-    "warning_border": "#FEF08A",
-    "success": "#166534",
-    "success_bg": "#DCFCE7",
-    "info": "#065977",
-    "info_bg": "#E2F3FA",
-    "info_border": "#8FD0EA",
-    "status_pending_fg": "#8A4B05",
-    "status_pending_bg": "#FFF4D8",
-    "status_pending_border": "#F4C766",
-    "status_pending_chart": "#D88A14",
-    "status_success_fg": "#0F6B45",
-    "status_success_bg": "#DDF7EA",
-    "status_success_border": "#80D7AC",
-    "status_success_chart": "#159766",
-    "status_danger_fg": "#9E1B2F",
-    "status_danger_bg": "#FDE8EC",
-    "status_danger_border": "#F3A0AE",
-    "status_danger_chart": "#C9354B",
-    "status_info_fg": "#065977",
-    "status_info_bg": "#E2F3FA",
-    "status_info_border": "#8FD0EA",
-    "status_info_chart": "#0274BE",
-    "status_unknown_fg": "#4B6474",
-    "status_unknown_bg": "#EEF3F7",
-    "status_unknown_border": "#C5D4DE",
-    "status_unknown_chart": "#617484",
-    "status_na_fg": "#355064",
-    "status_na_bg": "#E0E8EE",
-    "status_na_border": "#9DAFBC",
-    "status_na_chart": "#617484",
-    "chart_grid": "#D4E1E9",
-    "chart_axis_text": "#274254",
-    "radius_sm": 3,
-    "radius_md": 4,
-    "radius_lg": 4,
-    "toolbar_bar_bg": "#F7FAFC",
-    "toolbar_bar_border": "#D9E2EA",
-    "toolbar_primary": "#0274BE",
-    "toolbar_primary_hover": "#065977",
-    "toolbar_secondary_bg": "#FFFFFF",
-    "toolbar_secondary_text": "#3E596B",
-    "toolbar_secondary_hover": "#F2F8FC",
-    "toolbar_ghost_bg": "#F7FAFC",
-    "toolbar_ghost_text": "#3E596B",
-    "toolbar_ghost_border": "#C5D4DE",
-    "nav_bg": "#EEF3F7",
-    "nav_bg_hover": "#D8E4EC",
-    "nav_text": "#3E596B",
-    "nav_text_active": "#102A3A",
+    "brand_blue": _P["primary"],
+    "brand_primary": _P["primary_hover"],
+    "brand_navy": _P["hero_start"],
+    "brand_cyan": _P["accent_cyan"],
+    "brand_steel": _P["steel"],
+    "page_bg": _P["app_bg"],
+    "panel_bg": _P["surface"],
+    "panel_alt_bg": _P["surface_alt"],
+    "subtle_bg": _P["surface_sunken"],
+    "surface_hover": _P["surface_hover"],
+    "surface_active": _P["surface_active"],
+    "surface_accent": _P["surface_accent"],
+    "surface_warning": _P["pending_bg"],
+    "surface_danger": _P["danger_bg"],
+    "focus_ring": _P["focus_ring"],
+    "border": _P["border"],
+    "border_soft": _P["border_soft"],
+    "border_strong": _P["border_strong"],
+    "grid": _P["grid"],
+    "text_primary": _P["text_primary"],
+    "text_secondary": _P["text_secondary"],
+    "text_muted": _P["text_muted"],
+    "text_disabled": _P["text_disabled"],
+    "primary_btn": _P["primary"],
+    "primary_btn_hover": _P["primary_hover"],
+    "primary_faint": _P["primary_faint"],
+    "selection_bg": _P["selection_bg"],
+    "danger": _P["danger_fg"],
+    "danger_border": _P["danger_border"],
+    "danger_hover": _P["danger_bg"],
+    "warning": _P["pending_fg"],
+    "warning_bg": _P["pending_bg"],
+    "warning_border": _P["pending_border"],
+    "success": _P["success_fg"],
+    "success_bg": _P["success_bg"],
+    "info": _P["info_fg"],
+    "info_bg": _P["info_bg"],
+    "info_border": _P["info_border"],
+    "status_pending_fg": _P["pending_fg"],
+    "status_pending_bg": _P["pending_bg"],
+    "status_pending_border": _P["pending_border"],
+    "status_pending_chart": _P["pending_chart"],
+    "status_success_fg": _P["success_fg"],
+    "status_success_bg": _P["success_bg"],
+    "status_success_border": _P["success_border"],
+    "status_success_chart": _P["success_chart"],
+    "status_danger_fg": _P["danger_fg"],
+    "status_danger_bg": _P["danger_bg"],
+    "status_danger_border": _P["danger_border"],
+    "status_danger_chart": _P["danger_chart"],
+    "status_info_fg": _P["info_fg"],
+    "status_info_bg": _P["info_bg"],
+    "status_info_border": _P["info_border"],
+    "status_info_chart": _P["info_chart"],
+    "status_unknown_fg": _P["na_fg"],
+    "status_unknown_bg": _P["na_bg"],
+    "status_unknown_border": _P["na_border"],
+    "status_unknown_chart": _P["na_chart"],
+    "status_na_fg": _P["na_fg"],
+    "status_na_bg": _P["na_bg"],
+    "status_na_border": _P["na_border"],
+    "status_na_chart": _P["na_chart"],
+    "chart_grid": _P["chart_grid"],
+    "chart_axis_text": _P["chart_axis"],
+    "radius_sm": _P["radius_sm"],
+    "radius_md": _P["radius_md"],
+    "radius_lg": _P["radius_lg"],
+    "toolbar_bar_bg": _P["surface_alt"],
+    "toolbar_bar_border": _P["border_soft"],
+    "toolbar_primary": _P["primary"],
+    "toolbar_primary_hover": _P["primary_hover"],
+    "toolbar_secondary_bg": _P["surface"],
+    "toolbar_secondary_text": _P["text_secondary"],
+    "toolbar_secondary_hover": _P["surface_hover"],
+    "toolbar_ghost_bg": _P["surface_alt"],
+    "toolbar_ghost_text": _P["text_secondary"],
+    "toolbar_ghost_border": _P["border"],
+    "nav_bg": _P["app_bg"],
+    "nav_bg_hover": _P["surface_sunken"],
+    "nav_text": _P["text_secondary"],
+    "nav_text_active": _P["text_primary"],
     # Hero Banner
-    "hero_gradient_start": "#04354C",
-    "hero_gradient_mid": "#065977",
-    "hero_gradient_end": "#0274BE",
-    "hero_title_color": "#FFFFFF",
-    "hero_subtitle_color": "#D8F1FA",
-    "hero_meta_text": "#EAF8FC",
+    "hero_gradient_start": _P["hero_start"],
+    "hero_gradient_mid": _P["hero_mid"],
+    "hero_gradient_end": _P["hero_end"],
+    "hero_title_color": _P["text_inverse"],
+    "hero_subtitle_color": _P["on_hero_subtitle"],
+    "hero_meta_text": _P["on_hero_meta"],
     # 主導覽 Tab Bar （深色）
-    "nav_dark_bg": "#04354C",
-    "nav_dark_hover_bg": "#065977",
-    "nav_dark_text": "#CBE8F2",
-    "nav_dark_text_active": "#FFFFFF",
-    "nav_dark_selected_indicator": "#29A8E0",
-    "filter_active_bg": "#E5F5FB",
-    "filter_active_border": "#29A8E0",
-    "filter_active_text": "#065977",
-    "filter_hover_bg": "#F2F8FC",
-    "empty_state_bg": "#F7FAFC",
-    "empty_state_border": "#C5D4DE",
-    "attachment_bg": "#F7FAFC",
-    "attachment_hover_bg": "#E5F5FB",
-    "attachment_selected_bg": "#CDECF8",
-    "attachment_selected_border": "#29A8E0",
+    "nav_dark_bg": _P["sidebar_bg"],
+    "nav_dark_hover_bg": _P["sidebar_hover"],
+    "nav_dark_text": _P["sidebar_text"],
+    "nav_dark_text_active": _P["sidebar_text_active"],
+    "nav_dark_selected_indicator": _P["sidebar_indicator"],
+    "filter_active_bg": _P["primary_faint"],
+    "filter_active_border": _P["accent_cyan"],
+    "filter_active_text": _P["info_fg"],
+    "filter_hover_bg": _P["surface_hover"],
+    "empty_state_bg": _P["surface_alt"],
+    "empty_state_border": _P["border"],
+    "attachment_bg": _P["surface_alt"],
+    "attachment_hover_bg": _P["primary_faint"],
+    "attachment_selected_bg": _P["selection_bg"],
+    "attachment_selected_border": _P["accent_cyan"],
     # Mitcorp 品牌第二色（雙色品牌點：深青 + 綠）
-    "brand_green": "#3EB54B",
+    "brand_green": _P["brand_green"],
     # 左側導覽側欄
-    "sidebar_bg": "#062E3F",
-    "sidebar_active_bg": "#0E5475",
-    "sidebar_hover_bg": "#0D3C52",
-    "sidebar_active_indicator": "#29A8E0",
-    "sidebar_text": "#CBE8F2",
-    "sidebar_text_active": "#FFFFFF",
-    "sidebar_divider": "#0E4A64",
+    "sidebar_bg": _P["sidebar_bg"],
+    "sidebar_panel": _P["sidebar_panel"],
+    "sidebar_active_bg": _P["sidebar_active_bg"],
+    "sidebar_hover_bg": _P["sidebar_hover"],
+    "sidebar_active_indicator": _P["sidebar_indicator"],
+    "sidebar_text": _P["sidebar_text"],
+    "sidebar_text_active": _P["sidebar_text_active"],
+    "sidebar_muted": _P["sidebar_muted"],
+    "sidebar_divider": _P["sidebar_divider"],
     # 頁面頂部標題列
-    "page_header_bg": "#FFFFFF",
-    "page_header_shadow": "#E0E8EE",
+    "page_header_bg": _P["surface"],
+    "page_header_shadow": _P["border_soft"],
     # 逾期警示橫幅
-    "overdue_banner_bg": "#FEE2E2",
-    "overdue_banner_border": "#F87171",
-    "overdue_banner_text": "#7F1D1D",
-    "overdue_banner_link": "#065977",
+    "overdue_banner_bg": _P["danger_bg"],
+    "overdue_banner_border": _P["danger_border"],
+    "overdue_banner_text": _P["danger_fg"],
+    "overdue_banner_link": _P["info_fg"],
 }
 
 TYPOGRAPHY = {
-    "font_family": '"Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "PingFang TC", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Zen Hei", "Arial Unicode MS", sans-serif',
+    "font_family": '"Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei UI", "Microsoft YaHei", "DengXian", "Segoe UI", "PingFang TC", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Zen Hei", "Arial Unicode MS", sans-serif',
     "base": 13,
     "brand_title": 22,
     "nav_tab": 13,
@@ -359,6 +365,17 @@ def get_theme_qss() -> str:
             font-weight: 600;
         }}
 
+        QLabel[role="sourceTag"],
+        QLabel[role="selectionStatus"] {{
+            background: {TOKENS["surface_active"]};
+            border: 1px solid {TOKENS["border_soft"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+            color: {TOKENS["text_secondary"]};
+            font-size: {TYPOGRAPHY["caption"]}px;
+            font-weight: 700;
+            padding: 3px 8px;
+        }}
+
         QLabel[role="kpiValue"] {{
             background: transparent;
             font-size: {TYPOGRAPHY["kpi_value"]}px;
@@ -442,28 +459,6 @@ def get_theme_qss() -> str:
             color: {TOKENS["text_primary"]};
         }}
 
-        QFrame#HeroBanner {{
-            background: qlineargradient(
-                x1:0, y1:0, x2:1, y2:1,
-                stop:0 {TOKENS["hero_gradient_start"]},
-                stop:0.58 {TOKENS["hero_gradient_mid"]},
-                stop:1 {TOKENS["hero_gradient_end"]}
-            );
-            border: 1px solid {TOKENS["brand_cyan"]};
-            border-radius: {TOKENS["radius_lg"]}px;
-        }}
-
-        QLabel#MitcorpHeroLogo {{
-            background: rgba(255, 255, 255, 0.96);
-            border: 1px solid rgba(255, 255, 255, 0.78);
-            border-radius: {TOKENS["radius_sm"]}px;
-            padding: 6px 16px;
-        }}
-
-        QLabel#HeroProductLine {{
-            background: transparent;
-        }}
-
         QTabWidget#MainWorkflowTabs::pane {{
             border: 1px solid {TOKENS["border"]};
             border-radius: {TOKENS["radius_lg"]}px;
@@ -531,6 +526,55 @@ def get_theme_qss() -> str:
 
         QTabBar::tab:hover:!selected {{
             background: {TOKENS["subtle_bg"]};
+            color: {TOKENS["text_primary"]};
+        }}
+
+        QWidget#StatsView {{
+            background: {TOKENS["page_bg"]};
+        }}
+
+        QTabWidget#StatsTabs {{
+            background: {TOKENS["panel_bg"]};
+        }}
+
+        QTabWidget#StatsTabs::tab-bar {{
+            background: {TOKENS["panel_bg"]};
+        }}
+
+        QTabWidget#StatsTabs::pane {{
+            border: 1px solid {TOKENS["border_soft"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+            top: -1px;
+            background: {TOKENS["panel_bg"]};
+        }}
+
+        QTabWidget#StatsTabs QTabBar {{
+            background: {TOKENS["panel_bg"]};
+        }}
+
+        QTabWidget#StatsTabs QTabBar::tab {{
+            min-width: 132px;
+            min-height: {TAB_BAR_TAB_MIN_HEIGHT}px;
+            background: {TOKENS["page_bg"]};
+            color: {TOKENS["text_secondary"]};
+            border: 1px solid {TOKENS["border_soft"]};
+            border-top-left-radius: {TOKENS["radius_sm"]}px;
+            border-top-right-radius: {TOKENS["radius_sm"]}px;
+            padding: {TAB_BAR_TAB_PADDING_VERTICAL}px 14px;
+            margin-right: 3px;
+            font-weight: 600;
+        }}
+
+        QTabWidget#StatsTabs QTabBar::tab:selected {{
+            background: {TOKENS["panel_bg"]};
+            color: {TOKENS["primary_btn"]};
+            border-color: {TOKENS["border"]};
+            border-bottom: 1px solid {TOKENS["panel_bg"]};
+            font-weight: 700;
+        }}
+
+        QTabWidget#StatsTabs QTabBar::tab:hover:!selected {{
+            background: {TOKENS["surface_hover"]};
             color: {TOKENS["text_primary"]};
         }}
 
@@ -757,6 +801,35 @@ def get_theme_qss() -> str:
             background: {TOKENS["page_bg"]};
             border: 1px solid {TOKENS["border_soft"]};
             border-left: 6px solid {TOKENS["border_soft"]};
+            color: {TOKENS["text_disabled"]};
+        }}
+
+        QFrame[role="summaryStrip"] {{
+            background: transparent;
+            border: none;
+        }}
+
+        QPushButton[role="decisionSummary"] {{
+            min-height: 36px;
+            padding: 6px 10px;
+            text-align: left;
+            border: 1px solid {TOKENS["border_soft"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+            background: {TOKENS["panel_bg"]};
+            color: {TOKENS["text_secondary"]};
+            font-size: {TYPOGRAPHY["helper_text"]}px;
+            font-weight: 700;
+        }}
+
+        QPushButton[role="decisionSummary"]:hover {{
+            background: {TOKENS["surface_hover"]};
+            border-color: {TOKENS["focus_ring"]};
+            color: {TOKENS["text_primary"]};
+        }}
+
+        QPushButton[role="decisionSummary"]:disabled {{
+            background: {TOKENS["page_bg"]};
+            border-color: {TOKENS["border_soft"]};
             color: {TOKENS["text_disabled"]};
         }}
 
@@ -1115,35 +1188,6 @@ def get_theme_qss() -> str:
             color: {TOKENS["text_primary"]};
         }}
 
-        QLabel[role="heroBannerEyebrow"] {{
-            background: transparent;
-            color: {TOKENS["hero_meta_text"]};
-            font-size: {TYPOGRAPHY["caption"]}px;
-            font-weight: 700;
-        }}
-
-        QLabel[role="heroBannerTitle"] {{
-            background: transparent;
-            color: {TOKENS["hero_title_color"]};
-            font-size: {TYPOGRAPHY["hero_title"]}px;
-            font-weight: 700;
-        }}
-
-        QLabel[role="heroBannerSubtitle"] {{
-            background: transparent;
-            color: {TOKENS["hero_subtitle_color"]};
-            font-size: {TYPOGRAPHY["hero_subtitle"]}px;
-            font-weight: 600;
-        }}
-
-        QLabel[role="heroBannerMeta"] {{
-            color: {TOKENS["hero_meta_text"]};
-            font-size: {TYPOGRAPHY["hero_meta"]}px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 10px;
-            padding: 3px 12px;
-        }}
-
         QDialog#VisitDetailDialog {{
             background: {TOKENS["page_bg"]};
         }}
@@ -1392,7 +1436,7 @@ def get_theme_qss() -> str:
         }}
 
         QWidget#SidebarLogoSection {{
-            background: {TOKENS["sidebar_bg"]};
+            background: {TOKENS["sidebar_panel"]};
             border-bottom: 1px solid {TOKENS["sidebar_divider"]};
         }}
 
@@ -1452,22 +1496,9 @@ def get_theme_qss() -> str:
             font-weight: 700;
         }}
 
-        QFrame#SidebarDivider {{
-            background: {TOKENS["sidebar_divider"]};
+        QLabel#NavIcon {{
+            background: transparent;
             border: none;
-            min-height: 1px;
-            max-height: 1px;
-        }}
-
-        QWidget#SidebarGroupLabel {{
-            background: transparent;
-        }}
-
-        QLabel#SidebarGroupLabelText {{
-            color: {TOKENS["nav_dark_text"]};
-            font-size: 10px;
-            font-weight: 700;
-            background: transparent;
         }}
 
         QLabel#NavBadge {{
@@ -1478,6 +1509,18 @@ def get_theme_qss() -> str:
             border-radius: 8px;
             padding: 1px 5px;
             min-width: 16px;
+        }}
+
+        QWidget#SidebarFooter {{
+            background: {TOKENS["sidebar_panel"]};
+            border-top: 1px solid {TOKENS["sidebar_divider"]};
+        }}
+
+        QLabel#SidebarFooterLabel {{
+            color: {TOKENS["sidebar_muted"]};
+            background: transparent;
+            font-size: 10px;
+            font-weight: 700;
         }}
 
         QPushButton#SidebarQuickCreate {{
@@ -1497,6 +1540,27 @@ def get_theme_qss() -> str:
 
         QPushButton#SidebarQuickCreate:pressed {{
             background: {TOKENS["brand_primary"]};
+        }}
+
+        QPushButton#SidebarWarehouseQuickCreate {{
+            background: rgba(255, 255, 255, 0.08);
+            color: {TOKENS["nav_dark_text_active"]};
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid {TOKENS["sidebar_divider"]};
+            border-left: 4px solid {TOKENS["brand_green"]};
+            border-radius: {TOKENS["radius_md"]}px;
+            padding: 8px 16px;
+            min-height: 36px;
+        }}
+
+        QPushButton#SidebarWarehouseQuickCreate:hover {{
+            background: {TOKENS["sidebar_hover_bg"]};
+            border-color: {TOKENS["brand_green"]};
+        }}
+
+        QPushButton#SidebarWarehouseQuickCreate:pressed {{
+            background: {TOKENS["sidebar_active_bg"]};
         }}
 
         /* ── 頁面頂部標題列 ─────────────────────────────── */

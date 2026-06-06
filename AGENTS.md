@@ -5,6 +5,7 @@ This file defines `SQETOOL` repo-local instructions. It serves as the single sou
 
 ## Knowledge Map
 - Product and runtime overview: `README.md`.
+- Architecture and data-boundary contract: `docs/architecture-workflow-contract.md`.
 - UI layout and theme contract: `docs/ui-layout-theme-contract.md`.
 - Cursor rules: `.cursor/rules/agents_gateway.mdc`.
 - Active risks: `docs/risk-ledger.md`.
@@ -18,9 +19,10 @@ This file defines `SQETOOL` repo-local instructions. It serves as the single sou
 
 ## Local Guardrails
 - Keep the app a single-user local PySide6 + SQLite Supplier Quality Engineering desktop tool.
-- Preserve the workflow contracts in `README.md`: anomaly create/close, visit create/complete, closed cases, statistics, master lists, exports, and report generation.
+- Preserve the workflow contracts in `README.md`: supplier event create/close, visit or audit create/complete, warehouse nonconforming-product records, separated statistics, shared master lists, imports, exports, and report generation.
 - Preserve v2 data contracts and existing storage paths unless the user explicitly requests a contract change.
 - Keep SQETOOL terminology aligned across services, dialogs, tables, `ui/popup_i18n.py`, and `README.md`.
+- Keep `docs/architecture-workflow-contract.md` synchronized when changing workflow tables, import behavior, statistics, or entrypoint routing.
 - Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
 
 ## 1. Core Architectural Laws (The Atomic Path)
@@ -31,9 +33,14 @@ Every core design change must be reflected across the entire stack. Never leave 
 4. **User-visible copy**: Prefer `ui/popup_i18n.py` for service messages; keep terminology consistent across dialogs and tables.
 
 ## 2. Business Process Rules
-- **Lightweight visit defect notes**: `登錄訪廠紀錄` and the home `登錄異常事件` quick action share the visit-record form. A visit may contain multiple `visit_product_sections` plus lightweight `visit_defect_notes` (`缺失內容` required, `改善內容` optional, `備註` optional). These notes are on-site records for tracking only; do not create formal anomaly numbers, 8D/CAPA fields, audit severity, owner approval, or closure workflow unless a future explicit conversion feature is added.
+- **Two workflow data lines**: Supplier event management and warehouse physical nonconforming-product management are different sources and must not be merged in code, UI copy, reports, or statistics.
+- **Shared master data**: `suppliers` and `products` are shared company master data and may be used by both workflow lines. Existing NCR compatibility tables such as `product_records` are warehouse-module support data, not the primary shared product master.
+- **Warehouse nonconforming products**: `defect_records` stores physical products in the nonconforming-product warehouse only. Do not write supplier visit/audit findings into `defect_records`.
+- **Lightweight visit defect notes**: `登錄訪廠紀錄` and `登錄訪廠缺失` share the visit-record form. A visit may contain multiple `visit_product_sections` plus lightweight `visit_defect_notes` (`缺失內容` required, `改善內容` optional, `備註` optional). These notes are supplier visit/audit records for tracking only. They may become formal supplier anomaly events only through an explicit confirmation/conversion path that keeps the `visit_id` link.
 - **Anomaly ↔ Visit link (`anomalies.visit_id`)**: The schema allows `NULL` for legacy, tests, or when the user turns off visit sync. Product-default behavior (e.g. `defect_form_widget`「同步建立訪廠紀錄」checked): call `create_anomaly_with_visit_link` with `sync_visit=True` so the system reuses a same-day visit or creates one and stores `visit_id`. Use `sync_visit=False` or `create_anomaly` without `visit_id` only when intentionally omitting a visit link.
 - **Closure (`anomalies.status`)**: Only `待處理` / `已結案`. Closing goes through `close_anomaly`: non-empty `improvement_desc` (改善說明) is required, and `closed_at` is set (normalized date; service/repository defaults apply). Do not refer to legacy names `verification_result` / `verified_at` in new code—they are not v2 columns.
+- **Statistics boundary**: Supplier event statistics must query supplier event tables; warehouse nonconforming-product statistics must query `defect_records`. Do not combine these counts into a generic quality-abnormality metric unless the UI explicitly labels and separates both sources.
+- **Import boundary**: Keep database import paths because future ERP imports will reduce manual entry. Imports that update shared master data must target `suppliers/products` with preview, backup, and reconciliation. Warehouse compatibility imports may update warehouse support tables only when clearly labeled as warehouse-module data.
 - **Soft Delete**: Use `is_active: bool = True` for Models. Filter by `is_active=True` in all standard queries.
 - **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
 
@@ -44,6 +51,7 @@ Every core design change must be reflected across the entire stack. Never leave 
   - Panel padding: `24px`.
   - 2-column rhythm: `24px` gutter, `16px` row-gap where `QGridLayout` / `QFormLayout` applies.
 - **Aesthetics**: High density, light Slate surfaces, Electric Blue primary actions, card-based professional internal-tool look.
+- **Workbench topology**: Keep the first screen operational, not decorative. Do not reintroduce hero/cover panels, feature tours, project-structure copy, or card-in-card wrappers for the home workbench.
 - **Feedback**: `QMessageBox` for confirmations; destructive actions use explicit confirm dialogs.
 
 ## 4. Coding & Refactoring Standards

@@ -24,6 +24,8 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
             "filter_active_bg",
             "attachment_selected_border",
             "empty_state_bg",
+            "sidebar_panel",
+            "sidebar_muted",
         ):
             self.assertIn(token, TOKENS)
 
@@ -74,6 +76,27 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         danger = _selector_block(qss, 'QPushButton[variant="danger"]')
         self.assertIn(f'color: {TOKENS["danger"]};', danger)
         self.assertIn(f'border: 1px solid {TOKENS["danger_border"]};', danger)
+
+    def test_sidebar_palette_uses_distinct_visual_roles(self) -> None:
+        self.assertNotEqual(TOKENS["sidebar_bg"], TOKENS["sidebar_panel"])
+        self.assertNotEqual(TOKENS["sidebar_active_bg"], TOKENS["sidebar_bg"])
+        self.assertNotEqual(TOKENS["sidebar_active_indicator"], TOKENS["sidebar_active_bg"])
+        self.assertNotEqual(TOKENS["status_danger_chart"], TOKENS["primary_btn"])
+        self.assertNotEqual(TOKENS["brand_green"], TOKENS["primary_btn"])
+
+        qss = get_theme_qss()
+        logo = _selector_block(qss, "QWidget#SidebarLogoSection")
+        self.assertIn(f'background: {TOKENS["sidebar_panel"]};', logo)
+
+        active = _selector_block(qss, 'QPushButton#NavButton[nav_active="true"]')
+        self.assertIn(f'background: {TOKENS["sidebar_active_bg"]};', active)
+        self.assertIn(f'border-left: 4px solid {TOKENS["sidebar_active_indicator"]};', active)
+
+        badge = _selector_block(qss, "QLabel#NavBadge")
+        self.assertIn(f'background: {TOKENS["status_danger_chart"]};', badge)
+
+        secondary = _selector_block(qss, "QPushButton#SidebarWarehouseQuickCreate")
+        self.assertIn(f'border-left: 4px solid {TOKENS["brand_green"]};', secondary)
 
 
 if __name__ == "__main__":

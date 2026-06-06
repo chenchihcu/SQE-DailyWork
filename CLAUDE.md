@@ -18,3 +18,7 @@ Claude Code reads this file first and imports `AGENTS.md` as the shared repo pol
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
 ```
+
+- Interpreter for tests / `py_compile` / probe: `.venv\Scripts\python.exe` (Python 3.14.3) — not the `.uv-python/3.12` tree.
+- Iterate with focused tests (`$env:QT_QPA_PLATFORM='offscreen'; .venv\Scripts\python.exe -m unittest tests.<module>`); the full suite (`-m unittest discover -s tests`) is ~279 tests / several minutes.
+- `scripts/qt_visual_probe.py --target main|form-density|stats-stress` writes a native PNG — **read the PNG** for CJK evidence; the console prints CJK as mojibake (cp950 display artifact, not broken data).

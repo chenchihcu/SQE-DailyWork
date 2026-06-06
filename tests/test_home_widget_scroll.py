@@ -21,6 +21,9 @@ class MockMainWindow:
     def open_new_anomaly_dialog(self) -> None:
         return
 
+    def open_warehouse_nonconforming_tracker(self) -> None:
+        return
+
 
 class HomeWidgetLayoutContractTests(unittest.TestCase):
     @classmethod
@@ -35,8 +38,15 @@ class HomeWidgetLayoutContractTests(unittest.TestCase):
 
         self.assertIsNone(widget.findChild(QScrollArea, "HomeScrollArea"))
         self.assertIsNone(widget.findChild(QFrame, "InfoPanel"))
-        self.assertIsNotNone(widget.findChild(QFrame, "HomeQuickActionPanel"))
-        self.assertIsNotNone(widget.findChild(QFrame, "HomeFeaturesPanel"))
+        self.assertIsNone(widget.findChild(QFrame, "HomeQuickActionPanel"))
+        self.assertIsNotNone(widget.findChild(QFrame, "HomeKpiPanel"))
+
+        kpi_cards = [
+            frame
+            for frame in widget.findChildren(QFrame)
+            if frame.property("role") == "kpiCard"
+        ]
+        self.assertEqual(6, len(kpi_cards))
         widget.close()
 
 

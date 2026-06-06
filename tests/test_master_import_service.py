@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+
+from openpyxl import Workbook
+
+from database import repository
+from services import master_import_service
+
+
+class ProductMasterImportServiceTests(unittest.TestCase):
+    def create_connection(self, db_path: Path | None = None) -> sqlite3.Connection:
+        conn = sqlite3.connect(db_path or ":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        repository.create_schema(conn)
+        return conn
+
+    def write_workbook(self, path: Path, rows: list[tuple[object, ...]]) -> None:
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.append(["料號", "產品名稱", "主供應商", "階段"])
+        for row in rows:
+            worksheet.append(row)
+        workbook.save(path)
+
+    def test_import_creates_shared_supplier_product_and_not_warehouse_defect(
+        self,
+    ) -> None:
+        conn = self.create_connection()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("ERP-ITEM-001", "ERP Product A", "ERP Supplier A", "量產")],
+                )
+
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    workbook_path,
+                )
+                self.assertTrue(preview.can_import)
+                self.assertEqual(preview.add_count, 1)
+                self.assertEqual(preview.supplier_create_count, 1)
+
+                result = master_import_service.apply_product_master_import(
+                    conn,
+                    preview,
+                    source_file=workbook_path,
+                )
+
+                self.assertEqual(result.added_count, 1)
+                self.assertEqual(result.supplier_created_count, 1)
+                self.assertIsNotNone(result.batch_id)
+                supplier = conn.execute(
+                    "SELECT id FROM suppliers WHERE supplier_name = ?",
+                    ("ERP Supplier A",),
+                ).fetchone()
+                self.assertIsNotNone(supplier)
+                product = conn.execute(
+                    """
+                    SELECT product_name, supplier_id
+                    FROM products
+                    WHERE product_code = ?
+                    """,
+                    ("ERP-ITEM-001",),
+                ).fetchone()
+                self.assertIsNotNone(product)
+                assert supplier is not None
+                assert product is not None
+                self.assertEqual(product["product_name"], "ERP Product A")
+                self.assertEqual(product["supplier_id"], supplier["id"])
+                defect_count = conn.execute(
+                    "SELECT COUNT(*) FROM defect_records"
+                ).fetchone()[0]
+                self.assertEqual(defect_count, 0)
+                anomaly_count = conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0]
+                visit_count = conn.execute("SELECT COUNT(*) FROM visits").fetchone()[0]
+                note_count = conn.execute(
+                    "SELECT COUNT(*) FROM visit_defect_notes"
+                ).fetchone()[0]
+                self.assertEqual(0, anomaly_count)
+                self.assertEqual(0, visit_count)
+                self.assertEqual(0, note_count)
+                batch = conn.execute(
+                    """
+                    SELECT source_file, status, added_count, supplier_created_count,
+                           error_count, backup_path
+                    FROM import_batches
+                    WHERE id = ?
+                    """,
+                    (result.batch_id,),
+                ).fetchone()
+                self.assertIsNotNone(batch)
+                assert batch is not None
+                self.assertEqual("erp_products.xlsx", batch["source_file"])
+                self.assertEqual(master_import_service.IMPORT_BATCH_COMPLETED, batch["status"])
+                self.assertEqual(1, batch["added_count"])
+                self.assertEqual(1, batch["supplier_created_count"])
+                self.assertEqual(0, batch["error_count"])
+                row_count = conn.execute(
+                    "SELECT COUNT(*) FROM import_batch_rows WHERE batch_id = ?",
+                    (result.batch_id,),
+                ).fetchone()[0]
+                self.assertEqual(1, row_count)
+        finally:
+            conn.close()
+
+    def test_file_database_import_creates_backup_before_write(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "sqe_v2.db"
+            conn = self.create_connection(db_path)
+            try:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("ERP-ITEM-002", "ERP Product B", "ERP Supplier B", "量產")],
+                )
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    workbook_path,
+                )
+
+                result = master_import_service.apply_product_master_import(
+                    conn,
+                    preview,
+                    source_file=workbook_path,
+                )
+
+                self.assertIsNotNone(result.backup_path)
+                self.assertIsNotNone(result.batch_id)
+                assert result.backup_path is not None
+                self.assertTrue(result.backup_path.exists())
+                backup_conn = sqlite3.connect(result.backup_path)
+                try:
+                    backup_count = backup_conn.execute(
+                        "SELECT COUNT(*) FROM products"
+                    ).fetchone()[0]
+                finally:
+                    backup_conn.close()
+                self.assertEqual(backup_count, 0)
+            finally:
+                conn.close()
+
+    def test_existing_supplier_mismatch_is_blocked(self) -> None:
+        conn = self.create_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO suppliers(id, supplier_name, is_active, created_at, updated_at)
+                VALUES ('supplier-a', 'Supplier A', 1, '2026-06-02', '2026-06-02')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO suppliers(id, supplier_name, is_active, created_at, updated_at)
+                VALUES ('supplier-b', 'Supplier B', 1, '2026-06-02', '2026-06-02')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO products(
+                    id, product_code, product_name, product_stage, supplier_id,
+                    is_active, created_at, updated_at
+                ) VALUES (
+                    'product-a', 'ERP-ITEM-003', 'Current Product', '量產',
+                    'supplier-a', 1, '2026-06-02', '2026-06-02'
+                )
+                """
+            )
+            conn.commit()
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("ERP-ITEM-003", "Changed Product", "Supplier B", "量產")],
+                )
+
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    workbook_path,
+                )
+                self.assertFalse(preview.can_import)
+                self.assertEqual(preview.error_count, 1)
+                with self.assertRaises(ValueError):
+                    master_import_service.apply_product_master_import(conn, preview)
+                batch_id = master_import_service.record_product_master_import_rejection(
+                    conn,
+                    preview,
+                    source_file=workbook_path,
+                )
+
+                product = conn.execute(
+                    """
+                    SELECT product_name, supplier_id
+                    FROM products
+                    WHERE product_code = 'ERP-ITEM-003'
+                    """
+                ).fetchone()
+                self.assertIsNotNone(product)
+                assert product is not None
+                self.assertEqual(product["product_name"], "Current Product")
+                self.assertEqual(product["supplier_id"], "supplier-a")
+                batch = conn.execute(
+                    """
+                    SELECT status, error_count, added_count, updated_count, backup_path
+                    FROM import_batches
+                    WHERE id = ?
+                    """,
+                    (batch_id,),
+                ).fetchone()
+                self.assertIsNotNone(batch)
+                assert batch is not None
+                self.assertEqual(master_import_service.IMPORT_BATCH_BLOCKED, batch["status"])
+                self.assertEqual(1, batch["error_count"])
+                self.assertEqual(0, batch["added_count"])
+                self.assertEqual(0, batch["updated_count"])
+                self.assertEqual("", batch["backup_path"])
+        finally:
+            conn.close()
+
+    def test_no_write_import_records_skipped_batch(self) -> None:
+        conn = self.create_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO suppliers(id, supplier_name, is_active, created_at, updated_at)
+                VALUES ('supplier-a', 'ERP Supplier C', 1, '2026-06-03', '2026-06-03')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO products(
+                    id, product_code, product_name, product_stage, supplier_id,
+                    is_active, created_at, updated_at
+                ) VALUES (
+                    'product-c', 'ERP-ITEM-004', 'ERP Product C', '量產',
+                    'supplier-a', 1, '2026-06-03', '2026-06-03'
+                )
+                """
+            )
+            conn.commit()
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("ERP-ITEM-004", "ERP Product C", "ERP Supplier C", "量產")],
+                )
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    workbook_path,
+                )
+
+                result = master_import_service.apply_product_master_import(
+                    conn,
+                    preview,
+                    source_file=workbook_path,
+                )
+
+                self.assertEqual(0, result.added_count)
+                self.assertEqual(0, result.updated_count)
+                self.assertIsNone(result.backup_path)
+                self.assertIsNotNone(result.batch_id)
+                batch = conn.execute(
+                    "SELECT status, skipped_count FROM import_batches WHERE id = ?",
+                    (result.batch_id,),
+                ).fetchone()
+                self.assertIsNotNone(batch)
+                assert batch is not None
+                self.assertEqual(master_import_service.IMPORT_BATCH_SKIPPED, batch["status"])
+                self.assertEqual(1, batch["skipped_count"])
+        finally:
+            conn.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

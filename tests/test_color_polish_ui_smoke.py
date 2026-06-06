@@ -33,32 +33,24 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             # Sidebar navigation replaces old QTabWidget
             self.assertIsNotNone(window.sidebar)
             self.assertIsInstance(window.sidebar, SidebarNav)
-            self.assertEqual(6, len(window.sidebar._buttons))
-            self.assertIsNotNone(window.findChild(QFrame, "HeroBanner"))
-            hero_logo = window.findChild(QLabel, "MitcorpHeroLogo")
-            self.assertIsNotNone(hero_logo)
-            assert hero_logo is not None
-            self.assertIsNotNone(hero_logo.pixmap())
-            self.assertFalse(hero_logo.pixmap().isNull())
-            self.assertIsNotNone(window.findChild(QLabel, "HeroProductLine"))
+            self.assertEqual(7, len(window.sidebar._buttons))
+            self.assertIsNotNone(window.findChild(QFrame, "HomeKpiPanel"))
+            self.assertIsNone(window.findChild(QFrame, "HomeQuickActionPanel"))
             self.assertIsNotNone(window.findChild(QFrame, "MasterInlineToolbar"))
             kpi_cards = [
                 frame
                 for frame in window.findChildren(QFrame)
                 if frame.property("role") == "kpiCard"
             ]
-            self.assertGreaterEqual(len(kpi_cards), 4)
+            self.assertEqual(6, len(kpi_cards))
         finally:
             window.close()
 
-    def test_mitcorp_brand_assets_load_in_qt(self) -> None:
+    def test_mitcorp_app_icon_asset_loads_in_qt(self) -> None:
         logo_path = Path("ui/assets/mitcorp_logo.png")
-        line_path = Path("ui/assets/mitcorp_videoscope_line.svg")
 
         self.assertTrue(logo_path.is_file())
-        self.assertTrue(line_path.is_file())
         self.assertFalse(QPixmap(str(logo_path)).isNull())
-        self.assertFalse(QPixmap(str(line_path)).isNull())
 
     def test_attachment_editor_uses_preview_list_surface(self) -> None:
         editor = AttachmentEditor()

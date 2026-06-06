@@ -5,12 +5,13 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTextEdit, QWidget
 
 from database.connection import initialize_database
 from ui.layout_constants import FORM_MAX_WIDTH
 from ui.widgets.defect_form_widget import (
     CloseAnomalyDialog,
+    NewAnomalyDialog,
     NewVisitDialog,
     ProductSectionEditor,
 )
@@ -50,6 +51,24 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         for widget in widgets:
             self.assertTrue(row.isAncestorOf(widget), widget.objectName() or repr(widget))
 
+    def _assert_compacted_text_edit(self, editor: QTextEdit, legacy_height: int) -> None:
+        self.assertLess(editor.maximumHeight(), legacy_height)
+        self.assertEqual(editor.minimumHeight(), editor.maximumHeight())
+
+    def test_anomaly_dialog_compacts_long_text_fields_without_new_pairs(self) -> None:
+        dialog = self._show_dialog(NewAnomalyDialog())
+
+        self._assert_compacted_text_edit(dialog.problem_input, 180)
+        self._assert_compacted_text_edit(dialog.pending_items_input, 100)
+        paired_rows = [
+            row
+            for row in dialog.findChildren(QWidget)
+            if row.objectName().endswith("Row")
+        ]
+        for row in paired_rows:
+            self.assertFalse(row.isAncestorOf(dialog.supplier_combo))
+            self.assertFalse(row.isAncestorOf(dialog.product_combo))
+
     def test_visit_dialog_pairs_only_good_candidate_fields(self) -> None:
         dialog = self._show_dialog(NewVisitDialog())
 
@@ -72,6 +91,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.qty_input,
             dialog.tech_transfer_check,
         )
+        self._assert_compacted_text_edit(dialog.summary_input, 200)
 
     def test_product_section_pairs_time_and_work_order_only(self) -> None:
         editor = ProductSectionEditor("產品區段")
@@ -81,6 +101,8 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self.assertFalse(row.isAncestorOf(editor.product_combo))
         self.assertFalse(row.isAncestorOf(editor.product_code_input))
         self.assertFalse(row.isAncestorOf(editor.qty_input))
+        self.assertEqual(editor.summary_input.minimumHeight(), editor.summary_input.maximumHeight())
+        self.assertLessEqual(editor.summary_input.maximumHeight(), 80)
 
     def test_close_anomaly_pairs_close_owner_and_cause(self) -> None:
         dialog = self._show_dialog(CloseAnomalyDialog("missing-id", "測試問題描述"))

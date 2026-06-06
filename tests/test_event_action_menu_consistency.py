@@ -64,7 +64,10 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             widget.close()
             self.app.processEvents()
 
-        self.assertEqual(["預覽內容", "編輯異常", "刪除異常", "結案", "關聯訪廠"], actions)
+        self.assertEqual(
+            ["預覽內容", "編輯異常", "刪除異常", "結案", "關聯訪廠", "", "傳送精簡報告至 LINE"],
+            actions,
+        )
 
 
 if __name__ == "__main__":

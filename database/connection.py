@@ -93,6 +93,12 @@ def initialize_database() -> dict:
                     "backup_path": "",
                 }
         product_stage_sync = sync_all_product_stages_to_events_once(conn)
+
+        # NCR (不良品追蹤) 資料庫一次性遷移
+        from database.ncr_migration import migrate_ncr_data_once
+        ncr_db = PROJECT_ROOT / "ncr" / "data" / "defect.db"
+        ncr_migration_report = migrate_ncr_data_once(conn, ncr_db)
+
     report["anomaly_no_recode"] = anomaly_no_recode
     report["product_seed"] = seed_report
     report["supplier_consolidation"] = supplier_consolidation
@@ -100,6 +106,7 @@ def initialize_database() -> dict:
         supplier_consolidation.get("backup_path") or ""
     )
     report["product_stage_sync"] = product_stage_sync
+    report["ncr_migration"] = ncr_migration_report
     if report.get("migrated"):
         print(f"Migrated legacy data from {LEGACY_DB_PATH} -> {DB_PATH}")
     return report

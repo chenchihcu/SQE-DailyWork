@@ -152,6 +152,11 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertIsNotNone(self.widget.export_pdf_button)
         assert self.widget.export_pdf_button is not None
         self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
+        self.assertFalse(self.widget.export_pdf_button.isEnabled())
+        self.assertIn("請先選取", self.widget.export_pdf_button.toolTip())
+        self.assertIsNotNone(self.widget.source_tag_label)
+        assert self.widget.source_tag_label is not None
+        self.assertEqual("供應商事件 / 訪廠紀錄", self.widget.source_tag_label.text())
 
     def test_switching_query_scope_tab_refreshes_with_scope(self) -> None:
         self._list_events.reset_mock()
@@ -173,6 +178,22 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             self.assertIsNotNone(self.widget.export_pdf_button)
             assert self.widget.export_pdf_button is not None
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
+            self.assertFalse(self.widget.export_pdf_button.isEnabled())
+
+    def test_export_pdf_button_enables_only_after_row_selection(self) -> None:
+        assert self.widget.export_pdf_button is not None
+        self.assertFalse(self.widget.export_pdf_button.isEnabled())
+
+        self.widget.table.setCurrentCell(0, 0)
+        self.widget.table.selectRow(0)
+        self._drain_events()
+        self.assertTrue(self.widget.export_pdf_button.isEnabled())
+        self.assertIn("目前選取", self.widget.export_pdf_button.toolTip())
+
+        self.widget.table.clearSelection()
+        self._drain_events()
+        self.assertFalse(self.widget.export_pdf_button.isEnabled())
+        self.assertIn("請先選取", self.widget.export_pdf_button.toolTip())
 
     def test_reset_filters_keeps_current_query_scope(self) -> None:
         assert self.widget.event_scope_tab_bar is not None
@@ -314,7 +335,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("ANOMALY", row["event_type"])
         self.assertEqual("成功", info.call_args.args[1])
 
-    def test_apply_quick_filters_includes_hidden_month_once(self) -> None:
+    def test_apply_quick_filters_sets_visible_month(self) -> None:
         self._list_events.reset_mock()
         self.widget.apply_quick_filters(
             event_type="ANOMALY",
@@ -331,6 +352,10 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("供應商-A", filters["supplier"])
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("202604", filters["yyyymm"])
+        # C4: the drill-down month is now an explicit, visible filter (not hidden).
+        self.assertEqual("202604", self.widget._filter_yyyymm)
+        self.assertFalse(self.widget.all_months_checkbox.isChecked())
+        self.assertEqual("202604", self.widget.month_input.date().toString("yyyyMM"))
 
     def test_apply_quick_filters_applies_status_when_valid(self) -> None:
         self._list_events.reset_mock()
@@ -367,7 +392,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, filters["event_scope"])
         self.assertEqual("ALL", self.widget._filter_status)
 
-    def test_user_filter_change_clears_hidden_month(self) -> None:
+    def test_subsequent_quick_filter_without_month_clears_month(self) -> None:
         self.widget.apply_quick_filters(
             event_type="ANOMALY",
             supplier_keyword="供應商-A",
@@ -376,7 +401,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self._drain_events()
 
         self._list_events.reset_mock()
-        # 以第二次 quick filter 模擬使用者改狀態（不再帶隱含月份）
+        # 第二次 quick filter 不帶月份 → 明確月份被清掉
         self.widget.apply_quick_filters(
             event_type="ANOMALY",
             supplier_keyword="供應商-A",
@@ -388,8 +413,48 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self._list_events.assert_called_once()
         filters = self._list_events.call_args.args[0]
         self.assertNotIn("yyyymm", filters)
+        self.assertIsNone(self.widget._filter_yyyymm)
         self.assertEqual("待處理", filters["status"])
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, filters["event_scope"])
+
+    def test_apply_quick_filters_overdue_only_sets_lens(self) -> None:
+        self._list_events.reset_mock()
+        self.widget.apply_quick_filters(
+            event_type="ANOMALY",
+            yyyymm="202604",
+            status="待處理",
+            event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
+            overdue_only=True,
+        )
+        self._drain_events()
+
+        self._list_events.assert_called_once()
+        filters = self._list_events.call_args.args[0]
+        self.assertIs(True, filters["overdue_only"])
+        self.assertEqual("待處理", filters["status"])
+        self.assertEqual("202604", filters["yyyymm"])
+        self.assertTrue(self.widget._filter_overdue_only)
+        self.assertIn("逾期未結", self.widget.source_tag_label.text())
+
+    def test_manual_filter_change_clears_overdue_lens(self) -> None:
+        self.widget.apply_quick_filters(
+            event_type="ANOMALY",
+            yyyymm="202604",
+            status="待處理",
+            event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
+            overdue_only=True,
+        )
+        self._drain_events()
+        self.assertTrue(self.widget._filter_overdue_only)
+
+        # 手動操作控制列 → 逾期鏡頭解除
+        self.widget._apply_filters_from_ui()
+        self._drain_events()
+
+        self.assertFalse(self.widget._filter_overdue_only)
+        self.assertNotIn("逾期未結", self.widget.source_tag_label.text())
+        filters = self._list_events.call_args.args[0]
+        self.assertNotIn("overdue_only", filters)
 
 
 if __name__ == "__main__":

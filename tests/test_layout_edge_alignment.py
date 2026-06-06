@@ -49,19 +49,6 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
                 if frame.parentWidget() is content
             ]
 
-        hero = page.findChild(QFrame, "HeroBanner")
-        if hero is not None and hero.parentWidget() is page:
-            return [
-                frame
-                for frame in page.findChildren(QFrame)
-                if frame.parentWidget() is page
-                and (
-                    frame is hero
-                    or frame.objectName() == "OverdueBanner"  # optional top alert banner
-                    or frame.property("role") in ("panel", "subpanel")
-                )
-            ]
-
         return [
             frame
             for frame in page.findChildren(QFrame)

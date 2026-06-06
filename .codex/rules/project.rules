@@ -80,7 +80,9 @@ prefix_rule(
     justification = "SQETOOL native Qt visual probe is non-destructive and writes only a temp screenshot for visual evidence.",
     match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py\"",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --target form-density\"",
         "powershell -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py\"",
+        "powershell -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --target form-density\"",
     ],
     not_match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --allow-offscreen\"",

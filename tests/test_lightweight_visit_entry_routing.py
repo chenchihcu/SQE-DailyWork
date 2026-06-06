@@ -40,25 +40,28 @@ class _HomeHost:
     def open_new_anomaly_dialog(self) -> None:
         self.anomaly_calls += 1
 
+    def open_warehouse_nonconforming_tracker(self) -> None:
+        return
+
 
 class LightweightVisitEntryRoutingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_home_anomaly_registration_routes_to_lightweight_visit_defect_form(self) -> None:
+    def test_home_no_longer_owns_lightweight_visit_defect_button(self) -> None:
         host = _HomeHost()
         widget = HomeWidget(host)
         self.addCleanup(widget.close)
 
-        buttons = {
-            button.text().strip(): button
+        button_texts = [
+            button.text().strip()
             for button in widget.findChildren(QPushButton)
             if button.text().strip()
-        }
-        buttons["登錄訪廠缺失"].click()
+        ]
 
-        self.assertEqual(1, host.defect_calls)
+        self.assertNotIn("登錄訪廠缺失", button_texts)
+        self.assertEqual(0, host.defect_calls)
         self.assertEqual(0, host.anomaly_calls)
 
     def test_main_window_keeps_formal_anomaly_entry_separate(self) -> None:

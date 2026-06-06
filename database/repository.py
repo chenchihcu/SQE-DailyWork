@@ -392,11 +392,14 @@ def create_schema(conn: sqlite3.Connection) -> None:
             defect_desc TEXT NOT NULL,
             improvement_desc TEXT NOT NULL DEFAULT '',
             note TEXT NOT NULL DEFAULT '',
+            confirmed_anomaly_id TEXT,
+            confirmed_at TEXT,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (visit_id) REFERENCES visits(id),
-            FOREIGN KEY (visit_product_section_id) REFERENCES visit_product_sections(id)
+            FOREIGN KEY (visit_product_section_id) REFERENCES visit_product_sections(id),
+            FOREIGN KEY (confirmed_anomaly_id) REFERENCES anomalies(id)
         );
         CREATE INDEX IF NOT EXISTS idx_visit_defect_notes_visit
             ON visit_defect_notes(visit_id, sort_order);
@@ -432,13 +435,168 @@ def create_schema(conn: sqlite3.Connection) -> None:
             ON product_stage_change_logs(product_id, changed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_stage_logs_changed_at
             ON product_stage_change_logs(changed_at DESC);
+
+        CREATE TABLE IF NOT EXISTS import_batches (
+            id TEXT PRIMARY KEY,
+            import_type TEXT NOT NULL,
+            source_file TEXT NOT NULL DEFAULT '',
+            source_path TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL CHECK(status IN ('completed','blocked','skipped')),
+            total_rows INTEGER NOT NULL DEFAULT 0,
+            added_count INTEGER NOT NULL DEFAULT 0,
+            updated_count INTEGER NOT NULL DEFAULT 0,
+            supplier_created_count INTEGER NOT NULL DEFAULT 0,
+            skipped_count INTEGER NOT NULL DEFAULT 0,
+            error_count INTEGER NOT NULL DEFAULT 0,
+            backup_path TEXT NOT NULL DEFAULT '',
+            message TEXT NOT NULL DEFAULT '',
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_import_batches_type_completed
+            ON import_batches(import_type, completed_at DESC);
+
+        CREATE TABLE IF NOT EXISTS import_batch_rows (
+            id TEXT PRIMARY KEY,
+            batch_id TEXT NOT NULL,
+            row_number INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            product_code TEXT NOT NULL DEFAULT '',
+            product_name TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            product_stage TEXT NOT NULL DEFAULT '',
+            message TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (batch_id) REFERENCES import_batches(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch
+            ON import_batch_rows(batch_id, row_number);
+
+        -- NCR (不良品追蹤) 整合 Table
+        CREATE TABLE IF NOT EXISTS defect_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            defect_no TEXT NOT NULL UNIQUE CHECK(TRIM(defect_no) <> ''),
+            event_date TEXT NOT NULL
+                CHECK(
+                    event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    AND date(event_date) IS NOT NULL
+                ),
+            return_slip_type TEXT NOT NULL DEFAULT '',
+            work_order_no TEXT NOT NULL CHECK(TRIM(work_order_no) <> ''),
+            internal_work_order_no TEXT NOT NULL DEFAULT '',
+            transfer_slip_no TEXT NOT NULL DEFAULT '',
+            item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),
+            product_name TEXT NOT NULL DEFAULT '',
+            qty INTEGER NOT NULL CHECK(qty > 0),
+            category TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            outsource_supplier_name TEXT NOT NULL DEFAULT '',
+            defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
+            status TEXT NOT NULL DEFAULT '',
+            disposition TEXT NOT NULL DEFAULT '',
+            responsibility TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL CHECK(TRIM(created_at) <> '')
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uniq_defect_records_business_key
+            ON defect_records(event_date, work_order_no, internal_work_order_no, transfer_slip_no, item_no, defect_desc);
+
+        CREATE TABLE IF NOT EXISTS ui_settings (
+            setting_key TEXT PRIMARY KEY,
+            setting_value TEXT NOT NULL
+        );
         """
     )
     _remove_products_spec_desc_column_if_present(conn)
+
+    conn.executescript(
+        """
+        -- 共享品名主檔 VIEW 與 INSTEAD OF Triggers
+        CREATE VIEW IF NOT EXISTS product_records AS
+        SELECT
+            id,
+            product_code AS item_no,
+            product_name,
+            created_at
+        FROM products;
+
+        CREATE TRIGGER IF NOT EXISTS trg_product_records_insert
+        INSTEAD OF INSERT ON product_records
+        BEGIN
+            INSERT INTO products (id, product_code, product_name, created_at, updated_at, is_active)
+            VALUES (
+                COALESCE(NEW.id, hex(randomblob(16))),
+                NEW.item_no,
+                NEW.product_name,
+                COALESCE(NEW.created_at, datetime('now', 'localtime')),
+                datetime('now', 'localtime'),
+                1
+            )
+            ON CONFLICT(product_code) DO UPDATE SET
+                product_name = NEW.product_name,
+                updated_at = datetime('now', 'localtime');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_product_records_update
+        INSTEAD OF UPDATE ON product_records
+        BEGIN
+            UPDATE products
+            SET product_code = NEW.item_no,
+                product_name = NEW.product_name,
+                updated_at = datetime('now', 'localtime')
+            WHERE id = OLD.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_product_records_delete
+        INSTEAD OF DELETE ON product_records
+        BEGIN
+            DELETE FROM products WHERE id = OLD.id;
+        END;
+
+        -- 共享供應商主檔 VIEW 與 INSTEAD OF Triggers
+        CREATE VIEW IF NOT EXISTS supplier_records AS
+        SELECT
+            id,
+            supplier_name AS name,
+            '正式供應商' AS category,
+            created_at
+        FROM suppliers;
+
+        CREATE TRIGGER IF NOT EXISTS trg_supplier_records_insert
+        INSTEAD OF INSERT ON supplier_records
+        BEGIN
+            INSERT INTO suppliers (id, supplier_name, created_at, updated_at, is_active)
+            VALUES (
+                COALESCE(NEW.id, hex(randomblob(16))),
+                NEW.name,
+                COALESCE(NEW.created_at, datetime('now', 'localtime')),
+                datetime('now', 'localtime'),
+                1
+            )
+            ON CONFLICT(supplier_name) DO NOTHING;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_supplier_records_update
+        INSTEAD OF UPDATE ON supplier_records
+        BEGIN
+            UPDATE suppliers
+            SET supplier_name = NEW.name,
+                updated_at = datetime('now', 'localtime')
+            WHERE id = OLD.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_supplier_records_delete
+        INSTEAD OF DELETE ON supplier_records
+        BEGIN
+            DELETE FROM suppliers WHERE id = OLD.id;
+        END;
+        """
+    )
     _ensure_column(conn, "suppliers", "department", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "suppliers", "contact_email", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "products", "product_stage", "TEXT NOT NULL DEFAULT '量產'")
     _ensure_column(conn, "products", "secondary_supplier_id", "TEXT")
+    _ensure_column(conn, "visit_defect_notes", "confirmed_anomaly_id", "TEXT")
+    _ensure_column(conn, "visit_defect_notes", "confirmed_at", "TEXT")
     _ensure_column(conn, "anomalies", "product_lot_no", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "anomalies", "product_name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "anomalies", "product_id", "TEXT")
@@ -3150,6 +3308,8 @@ def list_visit_defect_notes(
             defect_desc,
             improvement_desc,
             note,
+            confirmed_anomaly_id,
+            confirmed_at,
             sort_order
         FROM visit_defect_notes
         WHERE visit_id = ?
@@ -3168,6 +3328,132 @@ def list_visit_defect_notes(
         item = dict(row)
         item["status"] = _defect_note_status(item.get("improvement_desc"))
         result.append(item)
+    return result
+
+
+def list_pending_visit_defect_notes(
+    conn: sqlite3.Connection,
+    *,
+    limit: int | None = None,
+) -> list[dict]:
+    params: list[Any] = []
+    sql = """
+        SELECT
+            n.id AS id,
+            n.visit_id AS visit_id,
+            n.visit_product_section_id AS visit_product_section_id,
+            n.defect_desc AS defect_desc,
+            n.improvement_desc AS improvement_desc,
+            n.note AS note,
+            n.sort_order AS sort_order,
+            n.created_at AS created_at,
+            v.visit_date AS visit_date,
+            v.supplier_id AS supplier_id,
+            s.supplier_name AS supplier_name,
+            COALESCE(sec.product_id, v.product_id, '') AS product_id,
+            COALESCE(sec.product_code, p.product_code, '') AS product_code,
+            COALESCE(sec.product_name, v.product_name, p.product_name, '') AS product_name,
+            COALESCE(sec.product_stage, v.product_stage, p.product_stage, '量產') AS product_stage
+        FROM visit_defect_notes n
+        JOIN visits v ON v.id = n.visit_id
+        JOIN suppliers s ON s.id = v.supplier_id
+        LEFT JOIN visit_product_sections sec ON sec.id = n.visit_product_section_id
+        LEFT JOIN products p ON p.id = v.product_id
+        WHERE n.confirmed_anomaly_id IS NULL OR trim(n.confirmed_anomaly_id) = ''
+        ORDER BY v.visit_date DESC, n.created_at DESC, n.sort_order ASC
+    """
+    if limit is not None:
+        normalized_limit = max(0, _as_int(limit, 0))
+        sql += " LIMIT ?"
+        params.append(normalized_limit)
+    rows = conn.execute(sql, params).fetchall()
+    result: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        item["status"] = _defect_note_status(item.get("improvement_desc"))
+        item["product_stage"] = _normalize_product_stage_for_read(
+            item.get("product_stage")
+        )
+        result.append(item)
+    return result
+
+
+def confirm_visit_defect_note_as_anomaly(
+    conn: sqlite3.Connection,
+    *,
+    note_id: str,
+    product_id: str | None = None,
+    responsible_person: str = "",
+    due_date: str = "",
+) -> dict[str, str | None]:
+    note_key = (note_id or "").strip()
+    if not note_key:
+        raise ValueError("Visit defect note id is required")
+    note = conn.execute(
+        """
+        SELECT
+            n.id AS id,
+            n.visit_id AS visit_id,
+            n.visit_product_section_id AS visit_product_section_id,
+            n.defect_desc AS defect_desc,
+            n.improvement_desc AS improvement_desc,
+            n.confirmed_anomaly_id AS confirmed_anomaly_id,
+            v.visit_date AS visit_date,
+            v.supplier_id AS supplier_id,
+            COALESCE(sec.product_id, v.product_id, '') AS inferred_product_id,
+            COALESCE(sec.product_stage, v.product_stage, '量產') AS product_stage,
+            COALESCE(sec.work_order_no, v.work_order_no, '') AS work_order_no,
+            COALESCE(sec.production_qty, v.production_qty, 0) AS production_qty
+        FROM visit_defect_notes n
+        JOIN visits v ON v.id = n.visit_id
+        LEFT JOIN visit_product_sections sec ON sec.id = n.visit_product_section_id
+        WHERE n.id = ?
+        LIMIT 1
+        """,
+        (note_key,),
+    ).fetchone()
+    if note is None:
+        raise ValueError("Visit defect note not found")
+    if str(note["confirmed_anomaly_id"] or "").strip():
+        raise ValueError("Visit defect note is already confirmed as supplier anomaly")
+
+    resolved_product_id = (product_id or "").strip() or str(
+        note["inferred_product_id"] or ""
+    ).strip()
+    if not resolved_product_id:
+        raise ValueError("Product is required to confirm visit defect as supplier anomaly")
+
+    result = create_anomaly_with_visit_link(
+        conn,
+        anomaly_date=str(note["visit_date"]),
+        supplier_id=str(note["supplier_id"]),
+        problem_desc=str(note["defect_desc"]),
+        category="訪廠/稽核缺失",
+        product_id=resolved_product_id,
+        product_stage=_normalize_product_stage_for_read(note["product_stage"]),
+        outsource_work_order=str(note["work_order_no"] or ""),
+        batch_qty=_as_int(note["production_qty"], 0),
+        visit_id=str(note["visit_id"]),
+        sync_visit=False,
+        pending_items=str(note["improvement_desc"] or ""),
+        responsible_person=responsible_person,
+        due_date=due_date,
+    )
+    anomaly_id = str(result.get("anomaly_id") or "").strip()
+    if not anomaly_id:
+        raise ValueError("Supplier anomaly confirmation did not return anomaly id")
+    conn.execute(
+        """
+        UPDATE visit_defect_notes
+        SET confirmed_anomaly_id = ?,
+            confirmed_at = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (anomaly_id, _now_iso(), _now_iso(), note_key),
+    )
+    conn.commit()
+    result["visit_defect_note_id"] = note_key
     return result
 
 
@@ -3200,6 +3486,10 @@ def update_visit(
     existing = get_visit_detail(conn, visit_key)
     if existing is None:
         raise ValueError("Visit not found")
+    if _confirmed_visit_defect_note_count(conn, visit_key) > 0:
+        raise ValueError(
+            "Visit has confirmed supplier anomaly defect notes; edit the anomaly record instead"
+        )
 
     normalized_supplier_id = (supplier_id or "").strip()
     if not normalized_supplier_id:
@@ -3350,6 +3640,7 @@ def create_anomaly_with_visit_link(
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
     outsource_work_order: str = "",
     batch_qty: int = 0,
+    visit_id: str | None = None,
     sync_visit: bool = True,
     visit_summary: str = "",
     pending_items: str = "",
@@ -3392,7 +3683,19 @@ def create_anomaly_with_visit_link(
 
     linked_visit_id: str | None = None
     visit_action = "none"
-    if sync_visit:
+    requested_visit_id = (visit_id or "").strip()
+    if requested_visit_id:
+        visit_row = conn.execute(
+            "SELECT supplier_id FROM visits WHERE id = ?",
+            (requested_visit_id,),
+        ).fetchone()
+        if visit_row is None:
+            raise ValueError("Visit not found")
+        if str(visit_row["supplier_id"] or "").strip() != normalized_supplier_id:
+            raise ValueError("Visit supplier does not match selected supplier")
+        linked_visit_id = requested_visit_id
+        visit_action = "linked"
+    elif sync_visit:
         linked_visit_id = _find_latest_visit_id(
             conn, supplier_id=normalized_supplier_id, visit_date=normalized_date
         )
@@ -3592,6 +3895,7 @@ def list_events(
     yyyymm: str | None = None,
     limit: int | None = None,
     event_scope: str | None = None,
+    overdue_only: bool = False,
 ) -> list[dict]:
     events: list[dict] = []
     keyword = (supplier_keyword or "").strip().lower()
@@ -3611,6 +3915,10 @@ def list_events(
     else:
         include_anomalies = event_type_key in {"ALL", "ANOMALY"}
         include_visits = event_type_key in {"ALL", "VISIT"}
+
+    if overdue_only:
+        # Overdue is a due_date condition on anomalies; visits have no due_date.
+        include_visits = False
 
     if include_anomalies:
         pending_items_expr = (
@@ -3661,6 +3969,9 @@ def list_events(
         elif scope in (EVENT_SCOPE_VISIT_WITH_ANOMALY, EVENT_SCOPE_ANOMALY_ONLY):
             # Move closed events to dedicated tab: exclude them from active tabs by default.
             anomaly_sql += " AND a.status != '已結案'"
+
+        if overdue_only:
+            anomaly_sql += " AND a.due_date <> '' AND a.due_date < date('now', 'localtime')"
 
         if keyword:
             anomaly_sql += " AND lower(s.supplier_name) LIKE ?"
@@ -4583,6 +4894,23 @@ def _normalize_visit_defect_notes(raw_notes: list[dict] | None) -> list[dict]:
     return normalized
 
 
+def _confirmed_visit_defect_note_count(
+    conn: sqlite3.Connection,
+    visit_id: str,
+) -> int:
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM visit_defect_notes
+        WHERE visit_id = ?
+          AND confirmed_anomaly_id IS NOT NULL
+          AND trim(confirmed_anomaly_id) <> ''
+        """,
+        ((visit_id or "").strip(),),
+    ).fetchone()
+    return _as_int(row["c"], 0) if row is not None else 0
+
+
 def _replace_visit_product_sections_and_defect_notes(
     conn: sqlite3.Connection,
     *,
@@ -4593,6 +4921,10 @@ def _replace_visit_product_sections_and_defect_notes(
     visit_key = (visit_id or "").strip()
     if not visit_key:
         raise ValueError("Visit id is required")
+    if _confirmed_visit_defect_note_count(conn, visit_key) > 0:
+        raise ValueError(
+            "Visit has confirmed supplier anomaly defect notes; edit the anomaly record instead"
+        )
     conn.execute("DELETE FROM visit_defect_notes WHERE visit_id = ?", (visit_key,))
     conn.execute("DELETE FROM visit_product_sections WHERE visit_id = ?", (visit_key,))
 

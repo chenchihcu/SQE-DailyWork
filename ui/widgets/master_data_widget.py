@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -7,6 +9,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -26,13 +29,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database.connection import get_connection
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     PRODUCT_STAGE_OPTIONS,
     PRODUCT_STAGE_TRIAL_PRODUCTION,
     normalize_product_stage_ui,
 )
-from services import event_service
+from services import event_service, master_import_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -628,11 +632,11 @@ class MasterDataWidget(QWidget):
 
         master_header = QHBoxLayout()
         master_header.setSpacing(TOOLBAR_ITEM_SPACING)
-        title_master = QLabel("基礎清單")
+        title_master = QLabel("基礎資料")
         title_master.setProperty("role", "sectionTitle")
         self.btn_return = QPushButton("返回上一頁")
         self.btn_return.setProperty("variant", "secondary")
-        apply_clickable_affordance(self.btn_return, tooltip="返回進入基礎清單前的頁面")
+        apply_clickable_affordance(self.btn_return, tooltip="返回進入基礎資料前的頁面")
         self.btn_return.clicked.connect(self.main_window.return_from_master)
         master_header.addWidget(title_master)
         master_header.addStretch(1)
@@ -659,6 +663,12 @@ class MasterDataWidget(QWidget):
         self.query_input.setProperty("role", "masterQuery")
         self.query_input.returnPressed.connect(self._on_query_submitted)
 
+        self.selection_status_label = QLabel("未選取供應商")
+        self.selection_status_label.setObjectName("MasterSelectionStatus")
+        self.selection_status_label.setProperty("role", "selectionStatus")
+        self.selection_status_label.setToolTip("目前管理動作的選取對象")
+        self.selection_status_label.setMinimumWidth(190)
+
         self.action_stack = QStackedWidget()
         self.action_stack.setObjectName("MasterActionStack")
         self.action_stack.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -666,6 +676,7 @@ class MasterDataWidget(QWidget):
         self.action_stack.addWidget(self._build_product_actions_row())
 
         primary_layout.addWidget(self.query_input)
+        primary_layout.addWidget(self.selection_status_label)
         primary_layout.addStretch(1)
         primary_layout.addWidget(self.action_stack)
 
@@ -859,6 +870,12 @@ class MasterDataWidget(QWidget):
             variant="toolbarSecondary",
             on_click=self._show_product_stage_logs,
         )
+        self.btn_product_import = self._create_toolbar_button(
+            "匯入",
+            tooltip="從 Excel / ERP 匯出檔匯入共用產品與供應商主檔",
+            variant="toolbarSecondary",
+            on_click=self._import_products_from_excel,
+        )
         self.btn_product_filter = self._create_toolbar_button(
             "篩選",
             tooltip="聚焦關鍵字篩選欄",
@@ -877,6 +894,7 @@ class MasterDataWidget(QWidget):
         row_layout.addWidget(self.btn_product_toggle)
         row_layout.addWidget(self.btn_product_delete)
         row_layout.addWidget(self.btn_product_stage_logs)
+        row_layout.addWidget(self.btn_product_import)
         row_layout.addWidget(self.btn_product_filter)
         row_layout.addSpacing(16)
         row_layout.addWidget(self.btn_product_clear)
@@ -967,6 +985,7 @@ class MasterDataWidget(QWidget):
         try:
             self._render_supplier_table()
             self._render_product_table()
+            self._sync_action_buttons()
         except RuntimeError:
             # During Qt teardown, tab signals may fire after child widgets are deleted.
             return
@@ -1069,6 +1088,25 @@ class MasterDataWidget(QWidget):
         self.btn_product_toggle.setEnabled(has_product)
         self.btn_product_delete.setEnabled(has_product)
         self.btn_product_stage_logs.setEnabled(has_product)
+        self._sync_selection_status()
+
+    def _sync_selection_status(self) -> None:
+        if not hasattr(self, "selection_status_label"):
+            return
+        if self.tabs.currentIndex() == 0:
+            selected_ids = self._selected_table_ids(self.supplier_table)
+            if not selected_ids:
+                text = "未選取供應商"
+            elif len(selected_ids) == 1:
+                text = f"已選取供應商：{self._supplier_label(selected_ids[0])}"
+            else:
+                text = f"已選取供應商：{len(selected_ids)} 筆"
+        else:
+            if self._selected_product_id:
+                text = f"已選取產品：{self._product_label(self._selected_product_id)}"
+            else:
+                text = "未選取產品"
+        self.selection_status_label.setText(text)
 
     def _find_supplier_row(self, supplier_id: str | None) -> dict | None:
         if not supplier_id:
@@ -1358,6 +1396,121 @@ class MasterDataWidget(QWidget):
                 self,
                 "錯誤",
                 localize_popup_message(f"載入階段異動紀錄失敗：{localize_exception(exc)}"),
+            )
+
+    def _import_products_from_excel(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "匯入共用產品主檔",
+            "",
+            "Excel Files (*.xlsx)",
+        )
+        if not file_path:
+            return
+        try:
+            with get_connection() as conn:
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    Path(file_path),
+                )
+                if preview.error_count:
+                    batch_id = master_import_service.record_product_master_import_rejection(
+                        conn,
+                        preview,
+                        source_file=Path(file_path),
+                    )
+                    error_lines = list(preview.file_errors)
+                    error_lines.extend(
+                        f"第 {row.row_number} 列：{row.message}"
+                        for row in preview.rows
+                        if row.is_error
+                    )
+                    if len(error_lines) > 10:
+                        error_lines = [
+                            *error_lines[:10],
+                            f"... 尚有 {preview.error_count - 10} 項錯誤未列出",
+                        ]
+                    QMessageBox.warning(
+                        self,
+                        "匯入預覽失敗",
+                        localize_popup_message(
+                            "\n".join(
+                                [
+                                    f"批次：{batch_id}",
+                                    "未寫入 suppliers/products、事件或倉庫不合格品資料。",
+                                    "",
+                                    *error_lines,
+                                ]
+                            )
+                        ),
+                    )
+                    return
+                if not preview.has_writes:
+                    result = master_import_service.apply_product_master_import(
+                        conn,
+                        preview,
+                        source_file=Path(file_path),
+                    )
+                    QMessageBox.information(
+                        self,
+                        "匯入預覽",
+                        localize_popup_message(
+                            "共用產品與供應商主檔已一致，沒有需要匯入的資料。\n"
+                            f"批次：{result.batch_id}"
+                        ),
+                    )
+                    return
+
+                message = (
+                    f"新增產品：{preview.add_count} 筆\n"
+                    f"更新產品：{preview.update_count} 筆\n"
+                    f"新增供應商：{preview.supplier_create_count} 筆\n"
+                    f"略過：{preview.skipped_count} 筆\n\n"
+                    "本匯入只寫入 suppliers/products 共用主檔，"
+                    "不寫入訪廠缺失、正式異常或倉庫不合格品資料。\n\n"
+                    "確認匯入？"
+                )
+                confirm = QMessageBox.question(
+                    self,
+                    "確認匯入",
+                    localize_popup_message(message),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if confirm != QMessageBox.StandardButton.Yes:
+                    return
+                result = master_import_service.apply_product_master_import(
+                    conn,
+                    preview,
+                    source_file=Path(file_path),
+                )
+
+            self.refresh_data()
+            self.main_window.refresh_all_views()
+            backup_text = (
+                f"\n備份：{result.backup_path}"
+                if result.backup_path is not None
+                else ""
+            )
+            QMessageBox.information(
+                self,
+                "匯入完成",
+                localize_popup_message(
+                    f"新增產品：{result.added_count} 筆\n"
+                    f"更新產品：{result.updated_count} 筆\n"
+                    f"新增供應商：{result.supplier_created_count} 筆\n"
+                    f"略過：{result.skipped_count} 筆"
+                    f"{backup_text}\n"
+                    f"批次：{result.batch_id}"
+                ),
+            )
+        except (ValueError, master_import_service.MasterImportError) as exc:
+            QMessageBox.warning(self, "匯入失敗", localize_exception(exc))
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "錯誤",
+                localize_popup_message(f"匯入產品主檔失敗：{localize_exception(exc)}"),
             )
 
     def _delete_supplier(self):

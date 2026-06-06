@@ -38,6 +38,7 @@ ACTION_VIEW_VISIT_DETAIL = "view_visit_detail"
 ACTION_PREVIEW_ANOMALY = "preview_anomaly"
 ACTION_PREVIEW_VISIT = "preview_visit"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
+ACTION_SEND_LINE = "send_line"
 
 
 def build_event_action_menu(
@@ -63,6 +64,8 @@ def build_event_action_menu(
             _add_action("重新處理", ACTION_REOPEN_ANOMALY)
         if str(row.get("linked_visit_id") or "").strip():
             _add_action("關聯訪廠", ACTION_VIEW_LINKED_VISIT)
+        menu.addSeparator()
+        _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
         return menu, action_map
 
     if event_type == "VISIT":
@@ -70,6 +73,8 @@ def build_event_action_menu(
         _add_action("編輯訪廠", ACTION_EDIT_VISIT)
         _add_action("刪除訪廠", ACTION_DELETE_VISIT)
         _add_action("明細", ACTION_VIEW_VISIT_DETAIL)
+        menu.addSeparator()
+        _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
     return menu, action_map
 
 
@@ -86,6 +91,7 @@ def dispatch_event_action(
     on_preview_anomaly: Callable[[str], None] | None = None,
     on_preview_visit: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
+    on_send_line: Callable[[dict], None] | None = None,
 ) -> None:
     event_id = str(row.get("event_id") or "").strip()
     if not event_id:
@@ -121,6 +127,10 @@ def dispatch_event_action(
         return
     if action_key == ACTION_PREVIEW_VISIT and on_preview_visit:
         on_preview_visit(event_id)
+        return
+    if action_key == ACTION_SEND_LINE and on_send_line:
+        on_send_line(row)
+        return
 
 
 class VisitDetailDialog(QDialog):
