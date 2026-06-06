@@ -1,6 +1,6 @@
-. (Join-Path $PSScriptRoot "sqetool-hook-common.ps1")
-$hookInput = Read-SqetoolHookInput
-$text = (ConvertTo-SqetoolText $hookInput).ToLowerInvariant()
+. (Join-Path $PSScriptRoot "sqe-dailywork-hook-common.ps1")
+$hookInput = Read-SqeDailyWorkHookInput
+$text = (ConvertTo-SqeDailyWorkText $hookInput).ToLowerInvariant()
 $messages = [System.Collections.Generic.List[string]]::new()
 
 if ($text -match "ui|visual|screenshot|font|typography|cjk|qt|pyside|pyside6") {
@@ -16,9 +16,9 @@ if ($text -match "delete|remove-item|del /s|rm -rf|--apply") {
     $messages.Add("Destructive or apply-style work detected: require explicit approval, avoid direct data/*.db changes, and report rollback/verification evidence.") | Out-Null
 }
 if ($text -match "\bmcp\b|model context protocol") {
-    $messages.Add("MCP is deferred for SQETOOL phase 1; do not add MCP servers unless the user asks for a new plan.") | Out-Null
+    $messages.Add("MCP is deferred for SQE DailyWork phase 1; do not add MCP servers unless the user asks for a new plan.") | Out-Null
 }
 
 if ($messages.Count -gt 0) {
-    "SQETOOL automation reminders:`n- " + ($messages -join "`n- ") | Write-Output
+    "SQE DailyWork automation reminders:`n- " + ($messages -join "`n- ") | Write-Output
 }

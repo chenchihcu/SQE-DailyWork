@@ -1,4 +1,4 @@
-"""SQLite repository for SQETOOL v2 minimalist desktop workflow."""
+"""SQLite repository for SQE DailyWork v2 minimalist desktop workflow."""
 
 from __future__ import annotations
 

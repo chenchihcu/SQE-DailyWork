@@ -3,7 +3,7 @@ import sqlite3
 import os
 import sys
 
-# Add SQETOOL root to path so `import ncr.*` resolves (two levels up: ncr/tests -> ncr -> SQETOOL)
+# Add SQE DailyWork root to path so `import ncr.*` resolves (two levels up: ncr/tests -> ncr -> SQE DailyWork)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from ncr.db import database, crud

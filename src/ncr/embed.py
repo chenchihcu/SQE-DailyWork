@@ -1,6 +1,6 @@
 """In-process embedding controller for the warehouse nonconforming-product module.
 
-Hosts the consolidated DefectTrackerPage inside the SQETOOL main window's page stack.
+Hosts the consolidated DefectTrackerPage inside the SQE DailyWork main window's page stack.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ncr.ui.defect_form import DefectFormWidget
 from ncr.ui.defect_list import DefectListWidget
 from ncr.ui.ui_style import app_stylesheet
 
-# Host page-stack offset: warehouse defect page sits after the six SQETOOL pages.
+# Host page-stack offset: warehouse defect page sits after the six SQE DailyWork pages.
 NCR_PAGE_OFFSET = 6
 NCR_PAGE_SPECS: list[tuple[str, str, str]] = [
     ("不合格品追蹤", "倉庫不合格品追蹤", "倉庫實物不合格品管理與連續登錄"),
@@ -127,7 +127,7 @@ class NcrController(QObject):
 
     def refresh_all(self) -> None:
         self.tracker_page.refresh_all()
-        # 同步重新整理 SQETOOL 的 views（例如首頁品質概況 KPI、統計分析等）
+        # 同步重新整理 SQE DailyWork 的 views（例如首頁品質概況 KPI、統計分析等）
         refresh = getattr(self.host, "refresh_all_views", None)
         if callable(refresh):
             refresh()

@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Read-SqetoolHookInput {
+function Read-SqeDailyWorkHookInput {
     $raw = [Console]::In.ReadToEnd()
     if ([string]::IsNullOrWhiteSpace($raw)) {
         return [pscustomobject]@{ _raw = "" }
@@ -16,7 +16,7 @@ function Read-SqetoolHookInput {
     }
 }
 
-function Get-SqetoolNestedProperty {
+function Get-SqeDailyWorkNestedProperty {
     param(
         [object]$Object,
         [string]$Path
@@ -36,7 +36,7 @@ function Get-SqetoolNestedProperty {
     return $current
 }
 
-function ConvertTo-SqetoolText {
+function ConvertTo-SqeDailyWorkText {
     param([object]$Value)
 
     if ($null -eq $Value) {
@@ -52,22 +52,22 @@ function ConvertTo-SqetoolText {
     }
 }
 
-function ConvertTo-SqetoolJson {
+function ConvertTo-SqeDailyWorkJson {
     param([object]$Value)
     return ($Value | ConvertTo-Json -Depth 20 -Compress)
 }
 
-function Write-SqetoolSystemMessage {
+function Write-SqeDailyWorkSystemMessage {
     param([string]$Message)
     if ([string]::IsNullOrWhiteSpace($Message)) {
         return
     }
-    ConvertTo-SqetoolJson ([pscustomobject]@{ systemMessage = $Message }) | Write-Output
+    ConvertTo-SqeDailyWorkJson ([pscustomobject]@{ systemMessage = $Message }) | Write-Output
 }
 
-function Write-SqetoolBlock {
+function Write-SqeDailyWorkBlock {
     param([string]$Reason)
-    ConvertTo-SqetoolJson ([pscustomobject]@{
+    ConvertTo-SqeDailyWorkJson ([pscustomobject]@{
         decision = "block"
         reason = $Reason
         systemMessage = $Reason
@@ -75,19 +75,19 @@ function Write-SqetoolBlock {
     exit 0
 }
 
-function Get-SqetoolCommandText {
+function Get-SqeDailyWorkCommandText {
     param([object]$HookInput)
 
     $parts = [System.Collections.Generic.List[string]]::new()
     foreach ($path in @("tool_input.command", "tool_input.cmd", "tool_input.args", "command", "cmd")) {
-        $value = Get-SqetoolNestedProperty -Object $HookInput -Path $path
+        $value = Get-SqeDailyWorkNestedProperty -Object $HookInput -Path $path
         if ($null -ne $value) {
-            $parts.Add((ConvertTo-SqetoolText $value)) | Out-Null
+            $parts.Add((ConvertTo-SqeDailyWorkText $value)) | Out-Null
         }
     }
 
     if ($parts.Count -eq 0) {
-        $parts.Add((ConvertTo-SqetoolText $HookInput)) | Out-Null
+        $parts.Add((ConvertTo-SqeDailyWorkText $HookInput)) | Out-Null
     }
     return ($parts -join " ")
 }

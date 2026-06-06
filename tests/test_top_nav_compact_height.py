@@ -20,7 +20,7 @@ from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
 
 
-# Six SQETOOL pages followed by the warehouse nonconforming-product page.
+# Six SQE DailyWork pages followed by the warehouse nonconforming-product page.
 _EXPECTED_HOST_NAV_LABELS = [
     "首頁",
     "異常一覽表",
@@ -81,7 +81,7 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertIn(expected_title, title_labels)
 
     def test_sidebar_has_seven_nav_items(self) -> None:
-        # 6 SQETOOL pages + 1 embedded warehouse nonconforming-product page = 7.
+        # 6 SQE DailyWork pages + 1 embedded warehouse nonconforming-product page = 7.
         self.assertEqual(7, len(self.window.sidebar._buttons))
 
     def test_sidebar_groups_use_icons_not_text_labels(self) -> None:

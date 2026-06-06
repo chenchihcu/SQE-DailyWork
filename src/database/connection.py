@@ -1,4 +1,4 @@
-"""Database connection and bootstrap for SQETOOL v2 local SQLite."""
+"""Database connection and bootstrap for SQE DailyWork v2 local SQLite."""
 
 from __future__ import annotations
 

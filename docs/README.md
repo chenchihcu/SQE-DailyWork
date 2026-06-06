@@ -1,4 +1,4 @@
-# SQETOOL Documentation Index
+# SQE DailyWork Documentation Index
 
 Use this folder as the durable source of project guidance. Keep transient
 screenshots, exports, database snapshots, and one-off debugging artifacts out of

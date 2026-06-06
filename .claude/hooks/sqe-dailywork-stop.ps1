@@ -1,6 +1,6 @@
-. (Join-Path $PSScriptRoot "sqetool-hook-common.ps1")
-$hookInput = Read-SqetoolHookInput
-$transcriptPath = Get-SqetoolNestedProperty -Object $hookInput -Path "transcript_path"
+. (Join-Path $PSScriptRoot "sqe-dailywork-hook-common.ps1")
+$hookInput = Read-SqeDailyWorkHookInput
+$transcriptPath = Get-SqeDailyWorkNestedProperty -Object $hookInput -Path "transcript_path"
 
 if ([string]::IsNullOrWhiteSpace($transcriptPath) -or -not (Test-Path -LiteralPath $transcriptPath -PathType Leaf)) {
     return
@@ -22,5 +22,5 @@ foreach ($field in $required) {
 }
 
 if ($missing.Count -gt 0) {
-    Write-SqetoolSystemMessage ("SQETOOL completion format reminder: include " + ($missing -join ", ") + " unless the user requested a different format.")
+    Write-SqeDailyWorkSystemMessage ("SQE DailyWork completion format reminder: include " + ($missing -join ", ") + " unless the user requested a different format.")
 }

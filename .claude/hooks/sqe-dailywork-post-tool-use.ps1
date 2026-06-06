@@ -1,6 +1,6 @@
-. (Join-Path $PSScriptRoot "sqetool-hook-common.ps1")
-$hookInput = Read-SqetoolHookInput
-$text = (ConvertTo-SqetoolText $hookInput).ToLowerInvariant()
+. (Join-Path $PSScriptRoot "sqe-dailywork-hook-common.ps1")
+$hookInput = Read-SqeDailyWorkHookInput
+$text = (ConvertTo-SqeDailyWorkText $hookInput).ToLowerInvariant()
 $messages = [System.Collections.Generic.List[string]]::new()
 
 if ($text -match "ui[\\/]|main\.py|qt_visual_probe|theme\.py|widgets[\\/]") {
@@ -14,5 +14,5 @@ if ($text -match "docs[\\/]harness|agents\.md|\.codex[\\/]|\.claude[\\/]|harness
 }
 
 if ($messages.Count -gt 0) {
-    Write-SqetoolSystemMessage ("SQETOOL next verification reminder: " + ($messages -join " "))
+    Write-SqeDailyWorkSystemMessage ("SQE DailyWork next verification reminder: " + ($messages -join " "))
 }

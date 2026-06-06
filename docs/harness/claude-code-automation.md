@@ -1,6 +1,6 @@
-# Claude Code Automation (SQETOOL)
+# Claude Code Automation (SQE DailyWork)
 
-This document records the repo-local Claude Code automation layer for SQETOOL. It does not replace `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `.agents/rules/agents_gateway.md`, `.codex/rules/project.rules`, or the global Codex baseline.
+This document records the repo-local Claude Code automation layer for SQE DailyWork. It does not replace `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `.agents/rules/agents_gateway.md`, `.codex/rules/project.rules`, or the global Codex baseline.
 
 ## Active Layer
 
@@ -12,7 +12,7 @@ This document records the repo-local Claude Code automation layer for SQETOOL. I
 
 ## Recommended Automation Implemented
 
-- Route SQETOOL changes to the right source-of-truth files before editing.
+- Route SQE DailyWork changes to the right source-of-truth files before editing.
 - Warn or block unsafe command patterns before they run.
 - Keep PySide6 visual evidence tied to native Windows Qt through `scripts\qt_visual_probe.py`.
 - Keep data contract work tied to `README.md`, `docs/risk-ledger.md`, `src/database/repository.py`, and focused tests.
@@ -21,7 +21,7 @@ This document records the repo-local Claude Code automation layer for SQETOOL. I
 
 ## Guardrails For Not-Recommended Items
 
-- MCP is deferred in phase 1. A future read-only SQETOOL inspector MCP may be planned later, but no MCP server is configured here.
+- MCP is deferred in phase 1. A future read-only SQE DailyWork inspector MCP may be planned later, but no MCP server is configured here.
 - Full `scripts\verify.ps1` is not run automatically after every edit. Hooks only remind the agent when it is the right next gate.
 - Playwright is not accepted as visual evidence for this PySide6 desktop app. Use native Qt visual evidence instead.
 - Doc gardening must not edit files by default.
@@ -32,7 +32,7 @@ This document records the repo-local Claude Code automation layer for SQETOOL. I
 
 - Use `/hooks` to inspect loaded hook configuration.
 - Use `/agents` to confirm project subagents are visible.
-- Use `/sqetool-visual-qa` and `/sqetool-data-contract` to confirm project skills can be invoked.
+- Use `/sqe-dailywork-visual-qa` and `/sqe-dailywork-data-contract` to confirm project skills can be invoked.
 
 ## Verification
 

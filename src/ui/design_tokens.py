@@ -1,12 +1,12 @@
 """Unified design tokens — single source of truth for the merged SQE DailyWork app.
 
-Both the SQETOOL shell (``ui/theme.py`` ``TOKENS``) and the embedded NCR module
+Both the SQE DailyWork shell (``ui/theme.py`` ``TOKENS``) and the embedded NCR module
 (``ncr/ui/ui_style.py`` ``COLOR_*``) re-source their colours from ``PALETTE`` here,
 so the whole window reads as one piece of software.
 
 New unified palette (decision 2026-06-02): a fresh light-based professional scheme
 — clean neutral surfaces, a brighter primary blue, and a single deep slate-navy
-navigation rail shared by both modules. Replaces SQETOOL's older teal-blue light
+navigation rail shared by both modules. Replaces SQE DailyWork's older teal-blue light
 theme and the former standalone warehouse-tracking dark theme.
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ PALETTE: dict[str, object] = {
     "chart_grid": "#E2E9F0",
     "chart_axis": "#46566B",
 
-    # ── Hero banner gradient (SQETOOL home) ──────────────────────────────────
+    # ── Hero banner gradient (SQE DailyWork home) ──────────────────────────────────
     "hero_start": "#0E2233",
     "hero_mid": "#1B4D70",
     "hero_end": "#1F6FEB",

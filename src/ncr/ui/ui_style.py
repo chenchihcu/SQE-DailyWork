@@ -95,7 +95,7 @@ SUMMARY_VALUE_TEXT_PX = 26
 MONOSPACE_TEXT_PX = 11
 
 # Semantic color tokens — re-sourced from the unified design_tokens.PALETTE so
-# the NCR module shares one light palette with the SQETOOL shell. Constant NAMES
+# the NCR module shares one light palette with the SQE DailyWork shell. Constant NAMES
 # are unchanged, so app_stylesheet() and the badge/chart dicts below rebuild
 # automatically. See src/ui/design_tokens.py.
 from ui.design_tokens import PALETTE as _P

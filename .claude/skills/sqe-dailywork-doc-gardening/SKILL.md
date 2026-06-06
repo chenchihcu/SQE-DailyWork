@@ -1,12 +1,12 @@
 ---
-name: sqetool-doc-gardening
-description: Report-only SQETOOL documentation and harness drift check across README, AGENTS, .cursorrules, docs/harness, risk ledger, and verification scripts.
+name: sqe-dailywork-doc-gardening
+description: Report-only SQE DailyWork documentation and harness drift check across README, AGENTS, .cursorrules, docs/harness, risk ledger, and verification scripts.
 allowed-tools: Read, Grep, Glob
 ---
 
-# SQETOOL Doc Gardening
+# SQE DailyWork Doc Gardening
 
-Use this skill for SQETOOL documentation drift, harness consistency, and repo guidance checks.
+Use this skill for SQE DailyWork documentation drift, harness consistency, and repo guidance checks.
 
 ## Report-Only Default
 

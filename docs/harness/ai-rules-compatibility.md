@@ -1,4 +1,4 @@
-# AI Rules Compatibility Overview - SQETOOL
+# AI Rules Compatibility Overview - SQE DailyWork
 
 Last verified: 2026-05-25
 
@@ -49,7 +49,7 @@ This file is the repo-local compatibility register for Codex, Claude Code, Curso
 | Shared policy | `AGENTS.md` | `local-observed` | Context policy | Treat as the single repo policy source. |
 | Codex command policy | `.codex/rules/project.rules` | `local-observed` | Command approval control | Keep only allow/prompt/forbid command rules here. |
 | Claude adapter | `CLAUDE.md` | `local-observed` | Context adapter | Import `@AGENTS.md`; keep only Claude-specific notes. |
-| Claude automation | `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, `.claude/agents/` | `local-observed` | Tool and workflow control | Keep SQETOOL-specific automation here and verify through harness check. |
+| Claude automation | `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, `.claude/agents/` | `local-observed` | Tool and workflow control | Keep SQE DailyWork-specific automation here and verify through harness check. |
 | Cursor adapter | `.cursor/rules/agents_gateway.mdc` | `local-observed` | Prompt context | Always-on gateway pointing to `AGENTS.md`. |
 | Antigravity adapter | `.agents/rules/agents_gateway.md` | `local-observed` | Prompt context | Workspace gateway pointing to `AGENTS.md`; prefer New Worktree Mode. |
 | Harness check | `scripts/harness_check.ps1` | `local-observed` | Deterministic local check | Verify gateway presence, source register, claim types, and completion format. |
@@ -74,8 +74,8 @@ This file is the repo-local compatibility register for Codex, Claude Code, Curso
 | Initial source baseline is not committed. | `local-observed` | This pass did not create a broad baseline commit. | Parallel agents still lack a clean handoff point. | Create a reviewed source baseline commit after generated paths are ignored. |
 | Baseline candidate lists are not yet approved. | `local-observed` | `docs/harness/source-baseline-manifest.md` now classifies files, but no human approval has converted the list into a commit. | Automation or another AI could treat untracked source as disposable or accidentally omit governance files. | Treat the manifest as an audit register, not approval to stage. |
 | Scratch/generated state is excluded from baseline tracking. | `local-observed` | `scratch/`, runtime outputs, and local generated artifacts are ignored. | Blind staging outside the reviewed candidate list can still capture unexpected generated files. | Keep scratch ignored and do not delete without explicit approval. |
-| Native Qt visual evidence is project-critical. | `audit-inference` | SQETOOL requires Windows CJK rendering checks for visual UI claims. | A non-native or offscreen-only agent can approve broken typography/layout. | Keep `scripts/qt_visual_probe.py` as the visual-evidence control. |
-| Oversized always-on rules reduce instruction efficiency. | `audit-inference` | Long rules consume context and make high-priority instructions harder to isolate. | Optional workflow details can crowd out SQETOOL business rules. | Enforce the Instruction Size Budget in `scripts/harness_check.ps1`. |
+| Native Qt visual evidence is project-critical. | `audit-inference` | SQE DailyWork requires Windows CJK rendering checks for visual UI claims. | A non-native or offscreen-only agent can approve broken typography/layout. | Keep `scripts/qt_visual_probe.py` as the visual-evidence control. |
+| Oversized always-on rules reduce instruction efficiency. | `audit-inference` | Long rules consume context and make high-priority instructions harder to isolate. | Optional workflow details can crowd out SQE DailyWork business rules. | Enforce the Instruction Size Budget in `scripts/harness_check.ps1`. |
 
 ## Multi-AI Switching Protocol
 
@@ -99,7 +99,7 @@ This file is the repo-local compatibility register for Codex, Claude Code, Curso
 | Check | Type | Status |
 | --- | --- | --- |
 | Automation execution mode | `local-observed` | Keep `local` until the source baseline is reviewed. |
-| Automation prompt | `audit-inference` | Must inspect `docs/harness/source-baseline-manifest.md`, `.gitignore`, four gateway layers, SQETOOL Claude automation surfaces, and its own TOML. |
+| Automation prompt | `audit-inference` | Must inspect `docs/harness/source-baseline-manifest.md`, `.gitignore`, four gateway layers, SQE DailyWork Claude automation surfaces, and its own TOML. |
 | Worktree automation | `audit-inference` | Not ready until a reviewed baseline commit exists and the user approves switching execution mode. |
 
 ## Verification

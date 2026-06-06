@@ -1,10 +1,10 @@
 ---
-name: sqetool-data-contract
-description: Use for SQETOOL SQLite schema, migrations, visit/anomaly contracts, storage paths, exports, report data, PDF, Excel, and PPTX contract changes.
+name: sqe-dailywork-data-contract
+description: Use for SQE DailyWork SQLite schema, migrations, visit/anomaly contracts, storage paths, exports, report data, PDF, Excel, and PPTX contract changes.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
-# SQETOOL Data Contract
+# SQE DailyWork Data Contract
 
 Use this skill when a change touches schema, migrations, `src/database/`, `src/services/`, visit/anomaly behavior, exports, reports, or storage paths.
 

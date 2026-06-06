@@ -1,10 +1,10 @@
 ---
-name: sqetool-visual-qa
-description: Use for SQETOOL PySide6 UI, screenshots, Chinese text rendering, typography, spacing, and visual review; requires native Qt visual evidence.
+name: sqe-dailywork-visual-qa
+description: Use for SQE DailyWork PySide6 UI, screenshots, Chinese text rendering, typography, spacing, and visual review; requires native Qt visual evidence.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
-# SQETOOL Visual QA
+# SQE DailyWork Visual QA
 
 Use this skill for UI, layout, theme, screenshot, CJK text, typography, tab, widget, and visual polish tasks.
 
@@ -12,7 +12,7 @@ Use this skill for UI, layout, theme, screenshot, CJK text, typography, tab, wid
 
 - Read `AGENTS.md`, `.cursorrules`, `docs/harness/README.md`, and the target `src/ui/` file.
 - Check `src/ui/theme.py`, `src/ui/layout_constants.py`, and shared widgets before adding ad-hoc styling.
-- Preserve the seven-tab workflow and SQETOOL terminology from `README.md`.
+- Preserve the seven-tab workflow and SQE DailyWork terminology from `README.md`.
 
 ## Visual Evidence Rule
 

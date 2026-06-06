@@ -196,20 +196,20 @@ $requiredFiles = @(
     "scripts\harness_check.ps1",
     "scripts\qt_visual_probe.py",
     ".claude\settings.json",
-    ".claude\hooks\sqetool-hook-common.ps1",
-    ".claude\hooks\sqetool-session-start.ps1",
-    ".claude\hooks\sqetool-user-prompt-submit.ps1",
-    ".claude\hooks\sqetool-pre-tool-use.ps1",
-    ".claude\hooks\sqetool-post-tool-use.ps1",
-    ".claude\hooks\sqetool-stop.ps1",
-    ".claude\skills\sqetool-change-router\SKILL.md",
-    ".claude\skills\sqetool-visual-qa\SKILL.md",
-    ".claude\skills\sqetool-data-contract\SKILL.md",
-    ".claude\skills\sqetool-doc-gardening\SKILL.md",
-    ".claude\agents\sqetool-contract-reviewer.md",
-    ".claude\agents\sqetool-qt-visual-reviewer.md",
-    ".claude\agents\sqetool-test-triage.md",
-    ".claude\agents\sqetool-doc-harness-gardener.md",
+    ".claude\hooks\sqe-dailywork-hook-common.ps1",
+    ".claude\hooks\sqe-dailywork-session-start.ps1",
+    ".claude\hooks\sqe-dailywork-user-prompt-submit.ps1",
+    ".claude\hooks\sqe-dailywork-pre-tool-use.ps1",
+    ".claude\hooks\sqe-dailywork-post-tool-use.ps1",
+    ".claude\hooks\sqe-dailywork-stop.ps1",
+    ".claude\skills\sqe-dailywork-change-router\SKILL.md",
+    ".claude\skills\sqe-dailywork-visual-qa\SKILL.md",
+    ".claude\skills\sqe-dailywork-data-contract\SKILL.md",
+    ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md",
+    ".claude\agents\sqe-dailywork-contract-reviewer.md",
+    ".claude\agents\sqe-dailywork-qt-visual-reviewer.md",
+    ".claude\agents\sqe-dailywork-test-triage.md",
+    ".claude\agents\sqe-dailywork-doc-harness-gardener.md",
     "docs\harness\claude-code-automation.md",
     "docs\risk-ledger.md",
     "docs\harness\README.md",
@@ -231,10 +231,10 @@ $requiredDirectories = @(
     ".claude\hooks",
     ".claude\skills",
     ".claude\agents",
-    ".claude\skills\sqetool-change-router",
-    ".claude\skills\sqetool-visual-qa",
-    ".claude\skills\sqetool-data-contract",
-    ".claude\skills\sqetool-doc-gardening",
+    ".claude\skills\sqe-dailywork-change-router",
+    ".claude\skills\sqe-dailywork-visual-qa",
+    ".claude\skills\sqe-dailywork-data-contract",
+    ".claude\skills\sqe-dailywork-doc-gardening",
     "docs\exec-plans",
     "docs\exec-plans\active",
     "docs\exec-plans\completed"
@@ -276,37 +276,37 @@ Require-Text ".agents\rules\agents_gateway.md" "Traditional Chinese" "Antigravit
 Require-Json ".claude\settings.json"
 Require-Text ".claude\settings.json" "`"permissions`"" "Claude permissions section"
 Require-Text ".claude\settings.json" "`"hooks`"" "Claude hooks section"
-Require-Text ".claude\settings.json" "sqetool-pre-tool-use.ps1" "Claude pre-tool hook"
-Require-Text ".claude\settings.json" "sqetool-post-tool-use.ps1" "Claude post-tool hook"
-Require-Text ".claude\settings.json" "sqetool-user-prompt-submit.ps1" "Claude prompt hook"
+Require-Text ".claude\settings.json" "sqe-dailywork-pre-tool-use.ps1" "Claude pre-tool hook"
+Require-Text ".claude\settings.json" "sqe-dailywork-post-tool-use.ps1" "Claude post-tool hook"
+Require-Text ".claude\settings.json" "sqe-dailywork-user-prompt-submit.ps1" "Claude prompt hook"
 Require-Text ".claude\settings.json" "scripts/verify.ps1" "Claude verify ask rule"
 Require-Text ".claude\settings.json" "scripts/harness_check.ps1" "Claude harness allow rule"
 Require-Text ".claude\settings.json" "data/**" "Claude data deny rule"
 Require-Text ".claude\settings.json" "Outputs/**" "Claude output deny rule"
 
-Require-Text ".claude\hooks\sqetool-session-start.ps1" "SQETOOL Claude automation context" "session start context hook"
-Require-Text ".claude\hooks\sqetool-user-prompt-submit.ps1" "scripts\qt_visual_probe.py" "prompt visual reminder"
-Require-Text ".claude\hooks\sqetool-user-prompt-submit.ps1" "MCP is deferred" "prompt MCP deferred reminder"
-Require-Text ".claude\hooks\sqetool-pre-tool-use.ps1" "Write-SqetoolBlock" "pre-tool block behavior"
-Require-Text ".claude\hooks\sqetool-pre-tool-use.ps1" "--apply" "pre-tool apply guardrail"
-Require-Text ".claude\hooks\sqetool-pre-tool-use.ps1" "data/*.db" "pre-tool DB guardrail"
-Require-Text ".claude\hooks\sqetool-post-tool-use.ps1" "next verification reminder" "post-tool verification reminder"
-Require-Text ".claude\hooks\sqetool-stop.ps1" "Changes" "stop completion format check"
-Require-Text ".claude\hooks\sqetool-hook-common.ps1" "decision = `"block`"" "hook common block shape"
+Require-Text ".claude\hooks\sqe-dailywork-session-start.ps1" "SQE DailyWork Claude automation context" "session start context hook"
+Require-Text ".claude\hooks\sqe-dailywork-user-prompt-submit.ps1" "scripts\qt_visual_probe.py" "prompt visual reminder"
+Require-Text ".claude\hooks\sqe-dailywork-user-prompt-submit.ps1" "MCP is deferred" "prompt MCP deferred reminder"
+Require-Text ".claude\hooks\sqe-dailywork-pre-tool-use.ps1" "Write-SqeDailyWorkBlock" "pre-tool block behavior"
+Require-Text ".claude\hooks\sqe-dailywork-pre-tool-use.ps1" "--apply" "pre-tool apply guardrail"
+Require-Text ".claude\hooks\sqe-dailywork-pre-tool-use.ps1" "data/*.db" "pre-tool DB guardrail"
+Require-Text ".claude\hooks\sqe-dailywork-post-tool-use.ps1" "next verification reminder" "post-tool verification reminder"
+Require-Text ".claude\hooks\sqe-dailywork-stop.ps1" "Changes" "stop completion format check"
+Require-Text ".claude\hooks\sqe-dailywork-hook-common.ps1" "decision = `"block`"" "hook common block shape"
 
-Require-Text ".claude\skills\sqetool-change-router\SKILL.md" "name: sqetool-change-router" "change router skill name"
-Require-Text ".claude\skills\sqetool-change-router\SKILL.md" "Verification Selection" "change router verification section"
-Require-Text ".claude\skills\sqetool-visual-qa\SKILL.md" "name: sqetool-visual-qa" "visual skill name"
-Require-Text ".claude\skills\sqetool-visual-qa\SKILL.md" "Playwright is not visual evidence" "visual Playwright guardrail"
-Require-Text ".claude\skills\sqetool-data-contract\SKILL.md" "name: sqetool-data-contract" "data contract skill name"
-Require-Text ".claude\skills\sqetool-data-contract\SKILL.md" "database/repository.py" "data contract repository pointer"
-Require-Text ".claude\skills\sqetool-doc-gardening\SKILL.md" "name: sqetool-doc-gardening" "doc gardening skill name"
-Require-Text ".claude\skills\sqetool-doc-gardening\SKILL.md" "Report-Only Default" "doc gardening report-only rule"
+Require-Text ".claude\skills\sqe-dailywork-change-router\SKILL.md" "name: sqe-dailywork-change-router" "change router skill name"
+Require-Text ".claude\skills\sqe-dailywork-change-router\SKILL.md" "Verification Selection" "change router verification section"
+Require-Text ".claude\skills\sqe-dailywork-visual-qa\SKILL.md" "name: sqe-dailywork-visual-qa" "visual skill name"
+Require-Text ".claude\skills\sqe-dailywork-visual-qa\SKILL.md" "Playwright is not visual evidence" "visual Playwright guardrail"
+Require-Text ".claude\skills\sqe-dailywork-data-contract\SKILL.md" "name: sqe-dailywork-data-contract" "data contract skill name"
+Require-Text ".claude\skills\sqe-dailywork-data-contract\SKILL.md" "database/repository.py" "data contract repository pointer"
+Require-Text ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md" "name: sqe-dailywork-doc-gardening" "doc gardening skill name"
+Require-Text ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md" "Report-Only Default" "doc gardening report-only rule"
 
-Require-Text ".claude\agents\sqetool-contract-reviewer.md" "tools: Read, Grep, Glob" "contract reviewer read-only tools"
-Require-Text ".claude\agents\sqetool-qt-visual-reviewer.md" "scripts/qt_visual_probe.py" "visual reviewer probe pointer"
-Require-Text ".claude\agents\sqetool-test-triage.md" "tools: Read, Grep, Glob, Bash" "test triage tools"
-Require-Text ".claude\agents\sqetool-doc-harness-gardener.md" "report-only" "doc gardener report-only"
+Require-Text ".claude\agents\sqe-dailywork-contract-reviewer.md" "tools: Read, Grep, Glob" "contract reviewer read-only tools"
+Require-Text ".claude\agents\sqe-dailywork-qt-visual-reviewer.md" "scripts/qt_visual_probe.py" "visual reviewer probe pointer"
+Require-Text ".claude\agents\sqe-dailywork-test-triage.md" "tools: Read, Grep, Glob, Bash" "test triage tools"
+Require-Text ".claude\agents\sqe-dailywork-doc-harness-gardener.md" "report-only" "doc gardener report-only"
 
 Require-Text "docs\harness\claude-code-automation.md" "MCP is deferred" "Claude automation MCP deferral"
 Require-Text "docs\harness\claude-code-automation.md" "Playwright is not accepted as visual evidence" "Claude automation Playwright guardrail"

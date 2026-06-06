@@ -101,7 +101,7 @@ def migrate_ncr_data_once(
     dry_run: bool = False,
     archive: bool = True,
 ) -> dict[str, Any]:
-    """Migrate legacy NCR data into the SQETOOL main database.
+    """Migrate legacy NCR data into the SQE DailyWork main database.
 
     The source database is opened read-only. The old file is archived only after
     every source defect number is visible in the destination database.

@@ -1,12 +1,12 @@
 ---
-name: sqetool-change-router
-description: Route SQETOOL changes to the right source files and verification gate before editing PySide6 UI, SQLite data contracts, services, exports, docs, or tests.
+name: sqe-dailywork-change-router
+description: Route SQE DailyWork changes to the right source files and verification gate before editing PySide6 UI, SQLite data contracts, services, exports, docs, or tests.
 allowed-tools: Read, Grep, Glob
 ---
 
-# SQETOOL Change Router
+# SQE DailyWork Change Router
 
-Use this skill before implementing SQETOOL changes that may touch more than one layer.
+Use this skill before implementing SQE DailyWork changes that may touch more than one layer.
 
 ## Routing Rules
 

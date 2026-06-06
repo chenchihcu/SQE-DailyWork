@@ -59,13 +59,13 @@ def _has_cjk_writing_system(font_db, family: str) -> bool:
 
 
 def _default_output_path() -> Path:
-    return Path(tempfile.gettempdir()) / "sqetool_qt_visual_probe.png"
+    return Path(tempfile.gettempdir()) / "sqe_dailywork_qt_visual_probe.png"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Capture SQETOOL with a native Qt platform so CJK rendering can be "
+            "Capture SQE DailyWork with a native Qt platform so CJK rendering can be "
             "used as visual evidence."
         )
     )

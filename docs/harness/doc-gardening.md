@@ -1,6 +1,6 @@
 # Doc Gardening
 
-Doc gardening keeps SQETOOL's repo knowledge useful for agent work without turning docs into a large manual.
+Doc gardening keeps SQE DailyWork's repo knowledge useful for agent work without turning docs into a large manual.
 
 ## Weekly Report-first Check
 
@@ -25,7 +25,7 @@ Also check:
 - Source-control boundary: repo root, tracked-file baseline, `git status --short`, and `.gitignore` coverage for generated data/output/local tool state.
 - Source baseline manifest: check `source_baseline_status`, `recommended-track-list`, `recommended-ignore-list`, `needs-user-decision-list`, `do-not-track-list`, and role review results.
 - AI rules size budget: Codex `AGENTS.md` under 32 KiB default project-doc budget, Claude `CLAUDE.md` under 200 lines, Cursor rules under 500 lines, and Antigravity rules under 12,000 characters.
-- SQETOOL Claude automation: `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, `.claude/agents/`, and `docs/harness/claude-code-automation.md`.
+- SQE DailyWork Claude automation: `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, `.claude/agents/`, and `docs/harness/claude-code-automation.md`.
 - Windows command reliability: prefer `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` in verification notes when short `powershell` is not available through PATH.
 - One-writer safety: report if automation would run in a noisy checkout or before a reviewed source baseline commit exists.
 - Automation self-check: confirm the active TOML is one-project scoped, `ACTIVE`, `local`, report-only, and not a duplicate automation.

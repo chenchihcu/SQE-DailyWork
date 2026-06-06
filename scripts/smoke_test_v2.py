@@ -1,4 +1,4 @@
-"""Smoke test for SQETOOL v2 local workflow."""
+"""Smoke test for SQE DailyWork v2 local workflow."""
 
 from __future__ import annotations
 

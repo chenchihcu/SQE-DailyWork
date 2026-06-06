@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-session-start.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-session-start.ps1"
           }
         ]
       },
@@ -61,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-session-start.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-session-start.ps1"
           }
         ]
       }
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-user-prompt-submit.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-user-prompt-submit.ps1"
           }
         ]
       }
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-pre-tool-use.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-pre-tool-use.ps1"
           }
         ]
       },
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-pre-tool-use.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-pre-tool-use.ps1"
           }
         ]
       }
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-post-tool-use.ps1"
           }
         ]
       },
@@ -111,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-post-tool-use.ps1"
           }
         ]
       },
@@ -120,7 +120,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-post-tool-use.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-post-tool-use.ps1"
           }
         ]
       }
@@ -130,7 +130,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqetool-stop.ps1"
+            "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude\\hooks\\sqe-dailywork-stop.ps1"
           }
         ]
       }

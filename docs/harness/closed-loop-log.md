@@ -25,7 +25,7 @@ Destination:
 Date: 2026-05-16
 Task: Install closed-loop harness.
 Changes: Added root `AGENTS.md`, repo harness docs, exec-plan directories, a harness structure check, and a full verification entrypoint.
-Impact: SQETOOL now has a single repo-local knowledge map while preserving tool-specific gateway files as adapters.
+Impact: SQE DailyWork now has a single repo-local knowledge map while preserving tool-specific gateway files as adapters.
 Verification: Run `scripts\harness_check.ps1` and `scripts\verify.ps1`.
 Residual risk: full verification may still expose unrelated existing test/runtime debt; do not weaken the gate.
 Next action: Use weekly harness gardening to report drift, then remediate only when explicitly requested.
@@ -52,7 +52,7 @@ Fix: Add `scripts/qt_visual_probe.py`, update repo guidance, and make the harnes
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `scripts/qt_visual_probe.py`, `scripts/harness_check.ps1`, `.codex/rules/project.rules`
 
-## SQETOOL Integration Boundary Entry
+## SQE DailyWork Integration Boundary Entry
 
 Date: 2026-06-03
 Task: Retire legacy NCR shells while preserving separated workflow data lines.

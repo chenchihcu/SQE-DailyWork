@@ -425,7 +425,7 @@ class ProductImportServiceTests(DatabaseTestCase):
 
 
 class InitializeDatabaseTests(DatabaseTestCase):
-    def test_initialize_database_uses_shared_sqetool_schema(self) -> None:
+    def test_initialize_database_uses_shared_sqe_dailywork_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             original_path = database.DB_PATH
             database.DB_PATH = Path(temp_dir) / "sqe_v2.db"

@@ -47,7 +47,7 @@ _MASTER_ITEMS = [
     ("基礎資料", "基礎資料", False, "icons/master.svg"),
 ]
 
-# 倉庫不合格品 module pages, embedded in-process after the SQETOOL pages.
+# 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
 # Flat index 6 (must match ncr.embed.NCR_PAGE_SPECS order).
 _NCR_ITEMS = [
     ("不合格品追蹤", True, "icons/warehouse.svg"),

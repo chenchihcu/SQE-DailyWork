@@ -1,4 +1,4 @@
-# Risk Ledger (SQETOOL)
+# Risk Ledger (SQE DailyWork)
 
 | Scope | Risk | Guardrail | Next action (Owner=self) | Revalidation gate | Rollback | Status |
 |:---|:---|:---|:---|:---|:---|:---|

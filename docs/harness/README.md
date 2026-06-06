@@ -1,4 +1,4 @@
-# SQETOOL Harness
+# SQE DailyWork Harness
 
 This folder is the repo-local system of record for closed-loop Codex work. It keeps agent guidance short while making deeper project context discoverable and verifiable.
 
