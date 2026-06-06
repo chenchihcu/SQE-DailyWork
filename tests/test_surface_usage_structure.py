@@ -88,8 +88,8 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.assertEqual([], raised_widgets)
 
         project_root = Path(__file__).resolve().parents[1]
-        ui_files = [project_root / "ui" / "main_window.py"]
-        ui_files.extend((project_root / "ui" / "widgets").glob("*.py"))
+        ui_files = [project_root / "src" / "ui" / "main_window.py"]
+        ui_files.extend((project_root / "src" / "ui" / "widgets").glob("*.py"))
 
         for file_path in ui_files:
             content = file_path.read_text(encoding="utf-8")

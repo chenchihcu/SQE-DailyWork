@@ -54,15 +54,15 @@ and no standalone NCR main window.
 ## Runtime Architecture
 
 - UI: PySide6 desktop app in `main.py`.
-- UI shell: `ui/main_window.py`, `ui/sidebar_nav.py`, and page widgets under
-  `ui/widgets/`.
-- Shared UI tokens and QSS: `ui/theme.py`, `ui/layout_constants.py`,
-  `ui/status_colors.py`, and `ui/widgets/common_widgets.py`.
+- UI shell: `src/ui/main_window.py`, `src/ui/sidebar_nav.py`, and page widgets under
+  `src/ui/widgets/`.
+- Shared UI tokens and QSS: `src/ui/theme.py`, `src/ui/layout_constants.py`,
+  `src/ui/status_colors.py`, and `src/ui/widgets/common_widgets.py`.
 - Active DB: local SQLite `data/sqe_v2.db`.
 - Archived legacy NCR source DB: `ncr/data/defect.db.migrated`.
-- Supplier event service: `services/event_service.py`.
-- Shared master import service: `services/master_import_service.py`.
-- Warehouse nonconforming-product module: `ncr/embed.py` plus `ncr/services/`.
+- Supplier event service: `src/services/event_service.py`.
+- Shared master import service: `src/services/master_import_service.py`.
+- Warehouse nonconforming-product module: `src/ncr/embed.py` plus `src/ncr/services/`.
 
 ## Folder Structure
 
@@ -70,10 +70,10 @@ Source and runtime folders have separate responsibilities:
 
 | Folder | Responsibility |
 | --- | --- |
-| `ui/` | Main Qt shell, sidebar, theme, layout constants, and page widgets. |
-| `services/` | Supplier event, import, export, and reporting application services. |
-| `database/` | SQLite connection, repository, migration, and DB boundary code. |
-| `ncr/` | Embedded warehouse physical nonconforming-product workflow. |
+| `src/ui/` | Main Qt shell, sidebar, theme, layout constants, and page widgets. |
+| `src/services/` | Supplier event, import, export, and reporting application services. |
+| `src/database/` | SQLite connection, repository, migration, and DB boundary code. |
+| `src/ncr/` | Embedded warehouse physical nonconforming-product workflow source. |
 | `scripts/` | Verification, migration, visual probe, report, and helper entrypoints. |
 | `tests/` | Focused regression, layout, visual-structure, and workflow boundary checks. |
 | `docs/` | Architecture, UI/theme, execution-plan, risk, and harness documentation. |
@@ -118,15 +118,15 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
 
 ## Import And Migration
 
-- Legacy `data/sqe.db` migration remains handled by `database/migration.py`.
+- Legacy `data/sqe.db` migration remains handled by `src/database/migration.py`.
 - Legacy NCR `ncr/data/defect.db` was migrated once into `data/sqe_v2.db` by
-  `database/ncr_migration.py`; the old source is archived as
+  `src/database/ncr_migration.py`; the old source is archived as
   `ncr/data/defect.db.migrated`.
 - Shared product master import is implemented in
-  `services/master_import_service.py`. It writes only `suppliers/products` after
+  `src/services/master_import_service.py`. It writes only `suppliers/products` after
   preview, conflict checks, and DB backup, then records the attempt in
   `import_batches/import_batch_rows`.
-- Warehouse compatibility import services under `ncr/services/` are retained
+- Warehouse compatibility import services under `src/ncr/services/` are retained
   for warehouse-module support data and must be labeled as warehouse-scoped.
 
 Bulk ERP imports, schema migrations, and destructive cleanup require backup,
@@ -134,16 +134,16 @@ dry run, reconciliation, and focused verification.
 
 ## Outputs
 
-- Event PDF export: `services/event_pdf_exporter.py`.
-- Monthly Excel export: `services/event_service.py`.
-- Weekly PowerPoint report: `services/report_service.py` and
+- Event PDF export: `src/services/event_pdf_exporter.py`.
+- Monthly Excel export: `src/services/event_service.py`.
+- Weekly PowerPoint report: `src/services/report_service.py` and
   `scripts/generate_weekly_report.py`.
-- Warehouse nonconforming-product exports remain in `ncr/services/`.
+- Warehouse nonconforming-product exports remain in `src/ncr/services/`.
 
 ## UI Layout And Theme Contract
 
-- Main window sizing is centralized in `ui/layout_constants.py` and
-  `ui/window_sizing.py`.
+- Main window sizing is centralized in `src/ui/layout_constants.py` and
+  `src/ui/window_sizing.py`.
 - Supported minimum desktop work area is 1024 x 680. First open targets
   1360 x 860, capped to the active screen.
 - Dialog command buttons stay outside scrollable content.

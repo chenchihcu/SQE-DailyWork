@@ -16,7 +16,7 @@ from ncr.models.defect import (
 )
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[3] / "Outputs"
 
 
 def _normalize_rows(rows: Iterable) -> list[dict]:

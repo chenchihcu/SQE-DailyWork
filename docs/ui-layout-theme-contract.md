@@ -4,19 +4,19 @@
 
 | Entrypoint | Open path | File / class | Parent | Sizing policy | Overflow / scroll | Theme source | Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Main workflow shell | `main.py` | `ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `ui/theme.py`, `ui/layout_constants.py`, `ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
-| Home workbench | Sidebar `首頁` | `ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Direct KPI-only workbench with six management cards | Shared theme tokens | UI smoke + native visual probe |
-| Supplier visits and audits | Sidebar `訪廠紀錄一覽表` | `ui/widgets/defect_list_widget.py` and `ui/widgets/defect_form_widget.py` | `MainWindow` | Fills content stack, dialogs clamped | Table pagination and visit dialog body scroll | Shared theme tokens | UI smoke |
-| Supplier anomalies | Sidebar `異常一覽表` | `ui/widgets/defect_list_widget.py` / `EventListWidget` | `MainWindow` | Fills content stack | Table pagination | Shared theme tokens | UI smoke |
-| Closed supplier anomalies | Sidebar `異常已結案查詢` | `ui/widgets/defect_list_widget.py` / `EventListWidget` | `MainWindow` | Fills content stack | Table pagination | Shared theme tokens | UI smoke |
-| Warehouse nonconforming tracker | Sidebar `不合格品追蹤` | `ncr/embed.py` / embedded NCR page | `MainWindow` | Fills content stack | Embedded tab/table layout | Shared theme tokens plus `ncr/ui/ui_style.py` | Embedded smoke tests |
-| Statistics | Sidebar `異常事件統計` | `ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Functional tab-level scroll guards and chart panels sized from shared constants | Shared theme tokens | UI smoke plus native dense-chart probe |
-| Shared master lists | Sidebar `基礎資料` | `ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
-| New / edit anomaly | Anomaly buttons | `ui/widgets/defect_form_widget.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
-| New / edit visit | Visit list actions and sidebar footer action | `ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
-| Close anomaly | Event action menu | `ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
-| Visit detail | Event action menu | `ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
-| Supplier and product dialogs | Master list actions | `ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
+| Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
+| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Direct KPI-only workbench with six management cards | Shared theme tokens | UI smoke + native visual probe |
+| Supplier visits and audits | Sidebar `訪廠紀錄一覽表` | `src/ui/widgets/defect_list_widget.py` and `src/ui/widgets/defect_form_widget.py` | `MainWindow` | Fills content stack, dialogs clamped | Table pagination and visit dialog body scroll | Shared theme tokens | UI smoke |
+| Supplier anomalies | Sidebar `異常一覽表` | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` | `MainWindow` | Fills content stack | Table pagination | Shared theme tokens | UI smoke |
+| Closed supplier anomalies | Sidebar `異常已結案查詢` | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` | `MainWindow` | Fills content stack | Table pagination | Shared theme tokens | UI smoke |
+| Warehouse nonconforming tracker | Sidebar `不合格品追蹤` | `src/ncr/embed.py` / embedded NCR page | `MainWindow` | Fills content stack | Embedded tab/table layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests |
+| Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Functional tab-level scroll guards and chart panels sized from shared constants | Shared theme tokens | UI smoke plus native dense-chart probe |
+| Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
+| New / edit anomaly | Anomaly buttons | `src/ui/widgets/defect_form_widget.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| New / edit visit | Visit list actions and sidebar footer action | `src/ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| Close anomaly | Event action menu | `src/ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| Visit detail | Event action menu | `src/ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
+| Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
 
 ## Screen-Fit Rules
 

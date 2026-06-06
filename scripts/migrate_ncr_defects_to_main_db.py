@@ -9,8 +9,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC_ROOT = ROOT / "src"
+for path in (SRC_ROOT, ROOT):
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.insert(0, path_text)
 
 from database.connection import DB_PATH, PROJECT_ROOT, get_connection  # noqa: E402
 from database.ncr_migration import migrate_ncr_data_once  # noqa: E402

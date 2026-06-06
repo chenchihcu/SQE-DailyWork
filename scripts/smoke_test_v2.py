@@ -9,9 +9,11 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _path in (_PROJECT_ROOT / "src", _PROJECT_ROOT):
+    _path_text = str(_path)
+    if _path_text not in sys.path:
+        sys.path.insert(0, _path_text)
 
 from database import repository  # noqa: E402
 from database.connection import get_connection, initialize_database  # noqa: E402

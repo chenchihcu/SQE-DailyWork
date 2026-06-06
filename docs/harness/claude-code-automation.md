@@ -15,7 +15,7 @@ This document records the repo-local Claude Code automation layer for SQETOOL. I
 - Route SQETOOL changes to the right source-of-truth files before editing.
 - Warn or block unsafe command patterns before they run.
 - Keep PySide6 visual evidence tied to native Windows Qt through `scripts\qt_visual_probe.py`.
-- Keep data contract work tied to `README.md`, `docs/risk-ledger.md`, `database/repository.py`, and focused tests.
+- Keep data contract work tied to `README.md`, `docs/risk-ledger.md`, `src/database/repository.py`, and focused tests.
 - Keep doc gardening report-only unless the user explicitly asks for remediation.
 - Keep completion delivery aligned to `Changes / Impact / Verification / Residual risk / Next action`.
 

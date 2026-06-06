@@ -91,12 +91,12 @@ Write-Host "Using Python: $resolvedPython"
 
 Push-Location $repoRoot
 try {
-    $env:PYTHONPATH = $repoRoot
+    $env:PYTHONPATH = @((Join-Path $repoRoot "src"), $repoRoot) -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
 
     Write-Host ""
-    Write-Host "[1/5] python -m compileall main.py database services ui scripts run_mig.py tests"
-    & $resolvedPython -m compileall main.py database services ui scripts run_mig.py tests
+    Write-Host "[1/5] python -m compileall main.py src scripts run_mig.py tests"
+    & $resolvedPython -m compileall main.py src scripts run_mig.py tests
     if ($LASTEXITCODE -ne 0) {
         throw "compileall failed with exit code $LASTEXITCODE"
     }

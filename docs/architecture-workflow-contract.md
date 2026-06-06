@@ -30,7 +30,7 @@ shared master-data area.
 
 ## UI Entrypoint And Folder Boundaries
 
-- The app has one daily desktop shell: `main.py` with `ui/main_window.py`.
+- The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
 - The sidebar grouping expresses workflow structure, not data ownership:
   overview, supplier events, analysis/query, master data, and warehouse. Groups
   are conveyed by per-item icons and spacing (no text section headers); the
@@ -38,15 +38,16 @@ shared master-data area.
 - Sidebar page indexes and stack routing must stay stable when labels, groups,
   or visual treatment change.
 - Warehouse nonconforming-product tracking stays under the single embedded
-  `ncr/` workflow page. Do not add a second root launcher or duplicate
+  `src/ncr/` workflow page. Do not add a second root launcher or duplicate
   warehouse shell pages.
 - Supplier and warehouse sidebar badges are read-only status indicators. They
   must not create cross-line writes or merge supplier-event and warehouse
   statistics.
 - Runtime data, generated reports, and visual/debug artifacts stay in `data/`,
-  `Outputs/`, or `scratch/`; durable project guidance belongs in `docs/`.
+  `Outputs/`, `scratch/`, or the ignored root runtime `ncr/data/`; durable
+  project guidance belongs in `docs/`.
 - New source folders require a clear owner that is not already covered by
-  `ui/`, `services/`, `database/`, `ncr/`, `scripts/`, or `tests/`.
+  `src/ui/`, `src/services/`, `src/database/`, `src/ncr/`, `scripts/`, or `tests/`.
 
 ## Statistics Boundary
 

@@ -66,4 +66,4 @@ Observed: NCR had been embedded, but old standalone DB initialization tests and 
 Root cause: Prior integration removed the visible launcher path without making data-boundary, import-boundary, statistics-boundary, and verification contracts durable.
 Fix: Promote the two-line workflow contract into docs, tests, compatibility wrappers, and UI/UX verification.
 Harness update needed: yes
-Destination: `AGENTS.md`, `README.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `ncr/README.md`, focused unittest coverage
+Destination: `AGENTS.md`, `README.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `src/ncr/README.md`, focused unittest coverage

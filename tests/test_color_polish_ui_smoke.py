@@ -47,7 +47,7 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             window.close()
 
     def test_mitcorp_app_icon_asset_loads_in_qt(self) -> None:
-        logo_path = Path("ui/assets/mitcorp_logo.png")
+        logo_path = Path("src/ui/assets/mitcorp_logo.png")
 
         self.assertTrue(logo_path.is_file())
         self.assertFalse(QPixmap(str(logo_path)).isNull())

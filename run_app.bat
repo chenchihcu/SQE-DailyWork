@@ -9,7 +9,7 @@ where uv > nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo [INFO] Launch via uv run
     set UV_CACHE_DIR=%~dp0.uv-cache
-    set PYTHONPATH=%~dp0
+    set PYTHONPATH=%~dp0src;%~dp0
     uv run --no-project --with-requirements requirements.txt python main.py
     goto :after_run
 )

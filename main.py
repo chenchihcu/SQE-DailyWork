@@ -3,10 +3,12 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-# 確保能從根目錄導入專案套件（仍以專案根為執行脈絡）
-_project_root = str(Path(__file__).resolve().parent)
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+# 確保能從 src/ 導入專案套件，同時保留 repo root 作為 scripts/runtime 脈絡。
+_repo_root = Path(__file__).resolve().parent
+for _path in (_repo_root / "src", _repo_root):
+    _path_text = str(_path)
+    if _path_text not in sys.path:
+        sys.path.insert(0, _path_text)
 
 from database.connection import initialize_database
 from ui.main_window import MainWindow

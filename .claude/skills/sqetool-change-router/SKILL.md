@@ -10,9 +10,9 @@ Use this skill before implementing SQETOOL changes that may touch more than one 
 
 ## Routing Rules
 
-- UI or visible copy: read `AGENTS.md`, `README.md`, `.cursorrules`, and the relevant `ui/` widget or `ui/popup_i18n.py`.
-- Data contract, migration, visit/anomaly behavior, or storage path: read `README.md`, `docs/risk-ledger.md`, `database/repository.py`, and focused tests before changing code.
-- Service or export behavior: read the related `services/` module plus tests for PDF, Excel, PPTX, or event-service behavior.
+- UI or visible copy: read `AGENTS.md`, `README.md`, `.cursorrules`, and the relevant `src/ui/` widget or `src/ui/popup_i18n.py`.
+- Data contract, migration, visit/anomaly behavior, or storage path: read `README.md`, `docs/risk-ledger.md`, `src/database/repository.py`, and focused tests before changing code.
+- Service or export behavior: read the related `src/services/` module plus tests for PDF, Excel, PPTX, or event-service behavior.
 - Harness, Claude automation, or repo guidance: read `docs/harness/README.md`, `docs/harness/doc-gardening.md`, `scripts/harness_check.ps1`, and this repo's `AGENTS.md`.
 
 ## Verification Selection

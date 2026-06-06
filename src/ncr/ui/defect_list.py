@@ -74,7 +74,7 @@ def get_status_colors(status: str) -> tuple[str, str]:
     return fg_color, bg_color
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[3] / "Outputs"
 
 DESCRIPTION_COLUMN = LIST_FIELD_ORDER.index("defect_desc")
 STATUS_COLUMN = LIST_FIELD_ORDER.index("status")

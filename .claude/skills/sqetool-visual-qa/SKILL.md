@@ -10,8 +10,8 @@ Use this skill for UI, layout, theme, screenshot, CJK text, typography, tab, wid
 
 ## Required Context
 
-- Read `AGENTS.md`, `.cursorrules`, `docs/harness/README.md`, and the target `ui/` file.
-- Check `ui/theme.py`, `ui/layout_constants.py`, and shared widgets before adding ad-hoc styling.
+- Read `AGENTS.md`, `.cursorrules`, `docs/harness/README.md`, and the target `src/ui/` file.
+- Check `src/ui/theme.py`, `src/ui/layout_constants.py`, and shared widgets before adding ad-hoc styling.
 - Preserve the seven-tab workflow and SQETOOL terminology from `README.md`.
 
 ## Visual Evidence Rule

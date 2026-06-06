@@ -9,12 +9,14 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
 
 
 def _ensure_repo_imports() -> None:
-    repo_root_text = str(REPO_ROOT)
-    if repo_root_text not in sys.path:
-        sys.path.insert(0, repo_root_text)
+    for path in (SRC_ROOT, REPO_ROOT):
+        path_text = str(path)
+        if path_text not in sys.path:
+            sys.path.insert(0, path_text)
 
 
 def _prepare_native_qt_platform(*, allow_offscreen: bool) -> dict[str, str | bool]:

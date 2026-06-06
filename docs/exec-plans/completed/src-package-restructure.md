@@ -5,8 +5,8 @@
 Move the application source packages into a single `src/` root so the repo matches
 a formal Python project layout, **without** breaking imports, entry points, the
 live SQLite databases, or the multi-assistant governance contracts. Execution is
-**deferred**: this plan is authored now and run later as an isolated, reviewable
-step on a clean working tree.
+complete as a dedicated Phase 0 cleanup checkpoint followed by this `src/`
+restructure checkpoint.
 
 Done-state: `git mv`-based move with history preserved; `scripts/verify.ps1` and
 the full `python -m unittest discover -s tests` (279 tests) green; the app boots
@@ -15,11 +15,10 @@ governance docs updated.
 
 ## Decisions
 
-- **Defer execution** until the current KPI-overdue + sidebar-icon work *and*
-  Codex's in-flight diff are committed. Restructure on a clean tree (or a
-  dedicated worktree/branch) — one writer per checkout (AGENTS.md §8). A 100-file
-  move layered on the current noisy tree would be unreviewable and risks a Codex
-  collision.
+- **Phase 0 first, then restructure.** Cleanup was committed first as
+  `f5b5c9d chore: phase 0 cleanup before src restructure`, then the flat `src/`
+  move was executed as the second checkpoint in the same checkout with one active
+  writer.
 - **Recommended flavor: flat `src/`** (`src/database/`, `src/services/`,
   `src/ui/`, `src/ncr/`) with `pythonpath = src`. The 243 import lines across 102
   files stay unchanged (`from ui...`, `from database...` still resolve). Lowest
@@ -32,9 +31,9 @@ governance docs updated.
   moved module that derives a repo-root path from `Path(__file__)` must be
   repointed so these paths are unchanged.
 
-## Critical risk — data-path landmine (must fix during the move)
+## Critical risk — data-path landmine (fixed during the move)
 
-`src/.../database/connection.py` currently does:
+Before the move, `database/connection.py` did:
 
 ```python
 PROJECT_ROOT = Path(__file__).resolve().parent.parent   # == repo root today
@@ -54,22 +53,23 @@ audited and fixed. Known sites (from scan):
 Modules that stay at root (`main.py`, `run_mig.py`, `scripts/*`, `tests/*`) keep
 their anchors but must add `src` to `sys.path`.
 
-## Verification (run after execution)
+## Verification (completed)
 
-1. `git status` clean before starting; commit the move as its own commit.
-2. `python -m py_compile` across `src/` (all modules).
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1`.
-4. Full suite: `python -m unittest discover -s tests` → 279 OK.
-5. **DB-path guard:** launch `python scripts/qt_visual_probe.py --target main`
-   (native), confirm the app boots, and assert `<root>/data/sqe_v2.db` is the file
-   actually opened (mtime/row counts unchanged) and that **no** `src/data/` or
-   `src/ncr/data/` DB was created.
-6. `run_app.bat` still launches the app.
+1. `git diff --check` passed.
+2. `python -m compileall main.py src scripts run_mig.py tests` passed.
+3. `scripts/verify.ps1` passed; full unittest discovery ran 279 tests in the
+   verification gate.
+4. `python scripts/qt_visual_probe.py` passed natively on the Windows Qt platform,
+   with `Microsoft JhengHei UI` selected and `visual_trustworthy: true`.
+5. **DB-path guard:** `data/sqe_v2.db` remains under the repo root; no `src/data/`
+   or `src/ncr/data/defect.db` was created; ignored archived NCR runtime data
+   remains under root `ncr/data/`.
+6. Root `..\scripts\verify_all.ps1` was run after the completed move.
 
-## Remaining work (the mechanical procedure — flat `src/`)
+## Completed procedure — flat `src/`
 
-1. **Preconditions:** land current work; `git status --short` clean; create a
-   branch/worktree.
+1. **Preconditions:** Phase 0 cleanup landed first; root backup was created before
+   moving source folders.
 2. **Move (history-preserving):** `mkdir src` then
    `git mv database services ui ncr src/`.
 3. **Fix path anchors** (the landmine): in each moved module that computes a
@@ -92,7 +92,7 @@ their anchors but must add `src` to `sys.path`.
    → source folders now under `src/`), `docs/harness/source-baseline-manifest.md`,
    `.codex/rules/project.rules`, `.cursor/rules/agents_gateway.mdc`, `CLAUDE.md`,
    `README.md`.
-7. **Verify** per the Verification section; only then move this plan to
+7. **Verify** per the completed Verification section; this plan was then moved to
    `docs/exec-plans/completed/`.
 
 ### Namespaced `src/sqetool/` variant (alternative, higher risk)
@@ -106,4 +106,11 @@ Same as above, plus: `git mv` packages under `src/sqetool/`, add
 ## Progress
 
 - 2026-06-06: Plan authored. Import surface measured (243 lines / 102 files),
-  data-path landmine identified. **Execution not started** (deferred by decision).
+  data-path landmine identified, and execution was initially deferred by decision.
+- 2026-06-06: Phase 0 cleanup completed and committed as `f5b5c9d`; standalone
+  NCR residue removed, embedded NCR source kept, stale governance baseline
+  refreshed, and Phase 0 gates passed.
+- 2026-06-06: Flat `src/` restructure completed. `database/`, `services/`, `ui/`,
+  and embedded `ncr/` source now live under `src/`; root entrypoints and scripts
+  add `src` to `PYTHONPATH`; DB anchors still resolve to root `data/sqe_v2.db`;
+  docs and harness references were synchronized.

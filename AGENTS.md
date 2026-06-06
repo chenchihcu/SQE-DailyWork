@@ -21,16 +21,16 @@ This file defines `SQETOOL` repo-local instructions. It serves as the single sou
 - Keep the app a single-user local PySide6 + SQLite Supplier Quality Engineering desktop tool.
 - Preserve the workflow contracts in `README.md`: supplier event create/close, visit or audit create/complete, warehouse nonconforming-product records, separated statistics, shared master lists, imports, exports, and report generation.
 - Preserve v2 data contracts and existing storage paths unless the user explicitly requests a contract change.
-- Keep SQETOOL terminology aligned across services, dialogs, tables, `ui/popup_i18n.py`, and `README.md`.
+- Keep SQETOOL terminology aligned across services, dialogs, tables, `src/ui/popup_i18n.py`, and `README.md`.
 - Keep `docs/architecture-workflow-contract.md` synchronized when changing workflow tables, import behavior, statistics, or entrypoint routing.
 - Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
 
 ## 1. Core Architectural Laws (The Atomic Path)
 Every core design change must be reflected across the entire stack. Never leave "ghost" fields or orphaned code.
-1. **Data layer**: `database/` (connection, repository, migration).
-2. **Service layer**: `services/` (business rules, Excel export).
-3. **Desktop UI**: `ui/` — `main_window.py` routing, `ui/widgets/` pages, `ui/theme.py` (QSS), **`ui/layout_constants.py`** (single source of layout numbers: 960 / 24 / 16).
-4. **User-visible copy**: Prefer `ui/popup_i18n.py` for service messages; keep terminology consistent across dialogs and tables.
+1. **Data layer**: `src/database/` (connection, repository, migration).
+2. **Service layer**: `src/services/` (business rules, Excel export).
+3. **Desktop UI**: `src/ui/` — `main_window.py` routing, `src/ui/widgets/` pages, `src/ui/theme.py` (QSS), **`src/ui/layout_constants.py`** (single source of layout numbers: 960 / 24 / 16).
+4. **User-visible copy**: Prefer `src/ui/popup_i18n.py` for service messages; keep terminology consistent across dialogs and tables.
 
 ## 2. Business Process Rules
 - **Two workflow data lines**: Supplier event management and warehouse physical nonconforming-product management are different sources and must not be merged in code, UI copy, reports, or statistics.
@@ -45,8 +45,8 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
 
 ## 3. UI/UX & Styling Standards (Slate + Electric Blue)
-- **Terminology**: Keep labels and status terms consistent with existing dialogs and `ui/popup_i18n.py` patterns.
-- **Grid Layout** (implemented in `ui/layout_constants.py`):
+- **Terminology**: Keep labels and status terms consistent with existing dialogs and `src/ui/popup_i18n.py` patterns.
+- **Grid Layout** (implemented in `src/ui/layout_constants.py`):
   - Standard form area max width: `960px` (dialog `setMaximumWidth`).
   - Panel padding: `24px`.
   - 2-column rhythm: `24px` gutter, `16px` row-gap where `QGridLayout` / `QFormLayout` applies.
@@ -57,7 +57,7 @@ Every core design change must be reflected across the entire stack. Never leave 
 ## 4. Coding & Refactoring Standards
 - **Desktop QSS**: Prefer QSS roles (`role`, `variant`) and theme tokens over ad-hoc per-widget `setStyleSheet`, except where already established (e.g. tech-transfer cards).
 - **Rename before Delete**: When removing fields, rename them first (e.g., `status` -> `status_DELETING`) to let the compiler highlight all references.
-- **Grep Search**: After changes, verify application directories (`database/`, `services/`, `ui/`) are clean of old terms.
+- **Grep Search**: After changes, verify application directories (`src/database/`, `src/services/`, `src/ui/`) are clean of old terms.
 
 ## 5. AI Verification Guardrails (Evidence-First Protocol)
 To ensure system stability and avoid "suspicion-based" errors, the following rules are mandatory:

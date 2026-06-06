@@ -65,8 +65,8 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         self.assertIn("font-size: 13px;", tab_block)
 
     def test_kpi_widgets_have_no_inline_font_size_override(self) -> None:
-        home_widget = Path("ui/widgets/home_widget.py").read_text(encoding="utf-8")
-        stats_widget = Path("ui/widgets/stats_view_widget.py").read_text(encoding="utf-8")
+        home_widget = Path("src/ui/widgets/home_widget.py").read_text(encoding="utf-8")
+        stats_widget = Path("src/ui/widgets/stats_view_widget.py").read_text(encoding="utf-8")
         self.assertNotIn("font-size", home_widget)
         self.assertNotIn("font-size", stats_widget)
 
@@ -115,7 +115,7 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         self.assertIn(f'background: {TOKENS["text_disabled"]};', checked_disabled_block)
         self.assertIn("image: url(", checked_disabled_block)
 
-        self.assertTrue(Path("ui/assets/checkbox_tick.svg").is_file())
+        self.assertTrue(Path("src/ui/assets/checkbox_tick.svg").is_file())
 
 
 if __name__ == "__main__":

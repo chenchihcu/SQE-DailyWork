@@ -6,14 +6,14 @@ allowed-tools: Read, Grep, Glob, Bash
 
 # SQETOOL Data Contract
 
-Use this skill when a change touches schema, migrations, `database/`, `services/`, visit/anomaly behavior, exports, reports, or storage paths.
+Use this skill when a change touches schema, migrations, `src/database/`, `src/services/`, visit/anomaly behavior, exports, reports, or storage paths.
 
 ## Source Of Truth
 
 - `README.md` defines product positioning, workflow tabs, outputs, and the v2 database contract.
 - `docs/risk-ledger.md` records active data/workflow risks.
-- `database/repository.py` is the durable write boundary.
-- `services/event_service.py`, `services/event_pdf_exporter.py`, and `services/report_service.py` define user-facing exports.
+- `src/database/repository.py` is the durable write boundary.
+- `src/services/event_service.py`, `src/services/event_pdf_exporter.py`, and `src/services/report_service.py` define user-facing exports.
 
 ## Contract Guardrails
 
