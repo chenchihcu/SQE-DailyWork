@@ -1,0 +1,14 @@
+{
+  "name": "sque-dailywork-genspark",
+  "version": "1.0.0",
+  "description": "SQE DailyWork with Genspark AI Integration",
+  "type": "module",
+  "scripts": {
+    "genspark": "genspark",
+    "query": "node src/genspark_integration.js"
+  },
+  "dependencies": {
+    "@genspark/cli": "latest"
+  },
+  "devDependencies": {}
+}
