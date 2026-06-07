@@ -7,7 +7,6 @@ import os
 import json
 import subprocess
 from typing import Optional, Dict, Any
-from pathlib import Path
 
 
 class GensparkClient:
@@ -26,100 +25,82 @@ class GensparkClient:
                 "API Key 未設定。請設置 GENSPARK_API_KEY 環境變數或在初始化時提供"
             )
     
+    def _run_genspark(
+        self, cmd: list[str], *, timeout: int
+    ) -> subprocess.CompletedProcess:
+        """執行 Genspark CLI 子程序（共用：擷取輸出、注入 API 金鑰、逾時）。"""
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={**os.environ, "GENSPARK_API_KEY": self.api_key},
+        )
+
     def query_with_cli(self, query: str, **kwargs) -> Dict[str, Any]:
         """
         使用 Genspark CLI 進行查詢
-        
+
         Args:
             query: 查詢文本
             **kwargs: 其他選項
-            
+
         Returns:
-            API 回應
+            API 回應（成功時固定含 success=True 與 data）
         """
         try:
-            # 使用 Genspark CLI 進行查詢
-            cmd = ["genspark", "search", query]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env={**os.environ, "GENSPARK_API_KEY": self.api_key}
-            )
-            
+            result = self._run_genspark(["genspark", "search", query], timeout=30)
             if result.returncode != 0:
                 return {
                     "success": False,
                     "error": result.stderr,
-                    "message": f"Genspark CLI 錯誤: {result.stderr}"
+                    "message": f"Genspark CLI 錯誤: {result.stderr}",
                 }
-            
-            # 解析 CLI 輸出
             try:
-                response = json.loads(result.stdout)
+                data = json.loads(result.stdout)
             except json.JSONDecodeError:
-                response = {"success": True, "data": result.stdout}
-            
-            return response
-            
+                data = result.stdout
+            return {"success": True, "data": data}
         except subprocess.TimeoutExpired:
             return {
                 "success": False,
                 "error": "查詢超時",
-                "message": "Genspark API 請求超時"
+                "message": "Genspark API 請求超時",
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "message": f"查詢失敗: {str(e)}"
+                "message": f"查詢失敗: {str(e)}",
             }
-    
+
     def query_ai_model(self, prompt: str, model: str = "auto") -> Dict[str, Any]:
         """
         查詢 Genspark AI 模型
-        
+
         Args:
             prompt: 提示文本
             model: 模型名稱 (預設: auto)
-            
+
         Returns:
             AI 回應
         """
         try:
-            cmd = [
-                "genspark",
-                "chat",
-                "--prompt", prompt,
-                "--model", model
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+            result = self._run_genspark(
+                ["genspark", "chat", "--prompt", prompt, "--model", model],
                 timeout=60,
-                env={**os.environ, "GENSPARK_API_KEY": self.api_key}
             )
-            
             if result.returncode != 0:
-                return {
-                    "success": False,
-                    "error": result.stderr
-                }
-            
-            return {
-                "success": True,
-                "response": result.stdout
-            }
-            
-        except Exception as e:
+                return {"success": False, "error": result.stderr}
+            return {"success": True, "response": result.stdout}
+        except subprocess.TimeoutExpired:
             return {
                 "success": False,
-                "error": str(e)
+                "error": "查詢超時",
+                "message": "Genspark API 請求超時",
             }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 # 使用範例

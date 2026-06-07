@@ -3,13 +3,15 @@ Genspark AI 集成 - PySide6 UI 元件
 在 QApplication 中使用 Genspark API
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, 
-    QTextEdit, QLabel, QComboBox, QSpinBox
-)
-from PySide6.QtCore import Qt, QThread, Signal
-from pathlib import Path
+import json
 import sys
+from pathlib import Path
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+    QTextEdit, QLabel, QComboBox
+)
+from PySide6.QtCore import QThread, Signal
 
 # 確保能導入 genspark_client
 _repo_root = Path(__file__).resolve().parent.parent
@@ -20,17 +22,21 @@ from genspark_client import GensparkClient
 
 
 class GensparkWorker(QThread):
-    """背景執行緒 - 處理 Genspark API 請求"""
-    
-    finished = Signal(dict)
+    """背景執行緒 - 處理 Genspark API 請求。
+
+    注意：自訂訊號命名為 result_ready，避免覆寫 QThread 內建的 finished
+    訊號（內建 finished 仍可用於 deleteLater 等生命週期清理）。
+    """
+
+    result_ready = Signal(dict)
     error = Signal(str)
-    
+
     def __init__(self, client: GensparkClient, query_type: str, query_text: str):
         super().__init__()
         self.client = client
         self.query_type = query_type
         self.query_text = query_text
-    
+
     def run(self):
         try:
             if self.query_type == "search":
@@ -39,8 +45,8 @@ class GensparkWorker(QThread):
                 result = self.client.query_ai_model(self.query_text)
             else:
                 result = {"success": False, "error": "未知的查詢類型"}
-            
-            self.finished.emit(result)
+
+            self.result_ready.emit(result)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -122,7 +128,11 @@ class GensparkWidget(QWidget):
         if self.client is None:
             self.output_text.setText(f"❌ 錯誤: {self.error_message}")
             return
-        
+
+        # 防重入：上一筆查詢仍在執行時忽略（避免覆蓋仍在執行的 worker 參照而 crash）。
+        if self.worker is not None and self.worker.isRunning():
+            return
+
         query_text = self.input_text.text().strip()
         if not query_text:
             self.output_text.setText("請輸入查詢內容")
@@ -137,14 +147,13 @@ class GensparkWidget(QWidget):
         
         # 在背景執行緒中執行查詢
         self.worker = GensparkWorker(self.client, query_type, query_text)
-        self.worker.finished.connect(self.on_result)
+        self.worker.result_ready.connect(self.on_result)
         self.worker.error.connect(self.on_error)
+        self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
     
     def on_result(self, result: dict):
         """處理查詢結果"""
-        import json
-        
         self.submit_btn.setEnabled(True)
         
         if result.get("success", False):
@@ -160,6 +169,12 @@ class GensparkWidget(QWidget):
         self.submit_btn.setEnabled(True)
         self.output_text.setText(f"❌ 錯誤: {error}")
         self.update_status("❌ 失敗")
+
+    def _on_worker_finished(self):
+        """執行緒結束後排程釋放 worker 並清空參照，避免重入時覆蓋仍在執行的執行緒。"""
+        if self.worker is not None:
+            self.worker.deleteLater()
+            self.worker = None
     
     def clear_output(self):
         """清除輸出"""
