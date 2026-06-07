@@ -33,14 +33,13 @@ _OVERVIEW_ITEMS = [
     ("首頁", "首頁", False, "icons/home.svg"),
 ]
 
+# 事件管理：單一入口，內含 scope 分頁（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）。
 _EVENT_ITEMS = [
-    ("異常一覽表", "異常一覽表", True, "icons/anomaly.svg"),   # badge_enabled=True
-    ("訪廠紀錄一覽表", "訪廠紀錄一覽表", False, "icons/visit.svg"),
+    ("事件管理", "事件管理", True, "icons/anomaly.svg"),   # badge_enabled=True
 ]
 
 _INSIGHT_ITEMS = [
     ("異常事件統計", "異常事件統計", False, "icons/stats.svg"),
-    ("異常已結案查詢", "異常已結案查詢", False, "icons/closed.svg"),
 ]
 
 _MASTER_ITEMS = [
@@ -48,7 +47,7 @@ _MASTER_ITEMS = [
 ]
 
 # 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
-# Flat index 6 (must match ncr.embed.NCR_PAGE_SPECS order).
+# Flat index 4 (must match ncr.embed.NCR_PAGE_OFFSET / NCR_PAGE_SPECS order).
 _NCR_ITEMS = [
     ("不合格品追蹤", True, "icons/warehouse.svg"),
 ]
@@ -163,12 +162,10 @@ class SidebarNav(QFrame):
 
     索引對應：
         0 = 首頁
-        1 = 異常一覽表
-        2 = 訪廠紀錄一覽表
-        3 = 異常事件統計
-        4 = 異常已結案查詢
-        5 = 基礎資料
-        6 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
+        1 = 事件管理（內含單獨異常、訪廠發現異常、訪廠紀錄、已結案 scope 分頁）
+        2 = 異常事件統計
+        3 = 基礎資料
+        4 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
 
     導覽項目放在可捲動區域內，區分事件管理與倉庫不合格品實物管理。
     """

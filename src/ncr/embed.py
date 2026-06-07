@@ -14,8 +14,10 @@ from ncr.ui.defect_form import DefectFormWidget
 from ncr.ui.defect_list import DefectListWidget
 from ncr.ui.ui_style import app_stylesheet
 
-# Host page-stack offset: warehouse defect page sits after the six SQE DailyWork pages.
-NCR_PAGE_OFFSET = 6
+# Host page-stack offset: warehouse defect page sits after the four SQE DailyWork
+# pages (首頁 / 事件管理 / 異常事件統計 / 基礎資料). The consolidated event page
+# merged the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries.
+NCR_PAGE_OFFSET = 4
 NCR_PAGE_SPECS: list[tuple[str, str, str]] = [
     ("不合格品追蹤", "倉庫不合格品追蹤", "倉庫實物不合格品管理與連續登錄"),
 ]
@@ -154,5 +156,5 @@ class NcrController(QObject):
     def close(self) -> None:
         try:
             self.conn.close()
-        except Exception:
+        except sqlite3.Error:
             pass

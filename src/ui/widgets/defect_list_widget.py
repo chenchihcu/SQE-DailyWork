@@ -47,10 +47,13 @@ from ui.widgets.event_actions import (
 )
 from ui.widgets.pagination_bar import PaginationBar
 
+# Consolidated event-management page: one widget, scope tabs cover every supplier
+# event view (including 已結案查詢). Order = most-used first; default = 單獨異常.
 EVENT_QUERY_SCOPE_TABS = (
-    ("訪廠紀錄", event_service.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
-    ("訪廠發現異常", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
     ("單獨異常", event_service.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
+    ("訪廠發現異常", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
+    ("訪廠紀錄", event_service.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
+    ("已結案", event_service.EVENT_SCOPE_CLOSED_ONLY, "ANOMALY"),
 )
 
 _SORTABLE_COLS: dict[int, str] = {
@@ -82,11 +85,16 @@ class EventListWidget(QWidget):
             else:
                 self._filter_event_type = self._event_type_for_scope(self.fixed_scope)
         else:
-            self._filter_event_type = "VISIT" if self.mode == "query" else "ALL"
             if self.mode == "query":
+                # Consolidated event page defaults to the first scope tab (單獨異常),
+                # matching the anomaly sidebar badge count.
                 self._filter_event_scope = EVENT_QUERY_SCOPE_TABS[0][1]
+                self._filter_event_type = self._event_type_for_scope(
+                    self._filter_event_scope
+                )
             else:
                 self._filter_event_scope = None
+                self._filter_event_type = "ALL"
         self._filter_status = fixed_status if fixed_status else "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm: str | None = None
@@ -391,6 +399,12 @@ class EventListWidget(QWidget):
             self._combo_set_current_data(self.status_combo, self._filter_status)
         finally:
             self.status_combo.blockSignals(False)
+        # 已結案分頁固定狀態為已結案：鎖定狀態下拉，避免相互矛盾的篩選。
+        if not self.fixed_status:
+            is_closed_scope = (
+                self._filter_event_scope == event_service.EVENT_SCOPE_CLOSED_ONLY
+            )
+            self.status_combo.setEnabled(not is_closed_scope)
         if self.supplier_filter_input is not None:
             self.supplier_filter_input.setText(self._filter_supplier)
         if self.all_months_checkbox is not None and self.month_input is not None:
@@ -423,6 +437,13 @@ class EventListWidget(QWidget):
         self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
+        if scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+            # 已結案分頁：狀態固定為已結案、停用狀態下拉。
+            self._filter_status = "已結案"
+        elif self._filter_status == "已結案":
+            # 離開已結案分頁時，已結案狀態不再適用於進行中分頁。
+            self._filter_status = "ALL"
+        self._sync_filter_widgets_from_state()
         self._sync_source_tag()
         self.refresh_data()
 

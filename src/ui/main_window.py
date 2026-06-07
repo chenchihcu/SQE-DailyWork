@@ -38,23 +38,24 @@ from ui.widgets.master_data_widget import MasterDataWidget
 from ui.widgets.stats_view_widget import StatsViewWidget
 
 HOME_PAGE_INDEX = 0
-ANOMALY_PAGE_INDEX = 1
-VISIT_PAGE_INDEX = 2
-STATS_PAGE_INDEX = 3
-CLOSED_PAGE_INDEX = 4
-MASTER_PAGE_INDEX = 5
+EVENT_PAGE_INDEX = 1
+STATS_PAGE_INDEX = 2
+MASTER_PAGE_INDEX = 3
 
-# Legacy index aliases kept for external callers
-VISIT_ANOMALY_PAGE_INDEX = ANOMALY_PAGE_INDEX
-STANDALONE_ANOMALY_PAGE_INDEX = ANOMALY_PAGE_INDEX
+# Legacy index aliases kept for external callers. The consolidated event-management
+# page (index 1) absorbed the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 pages,
+# which are now scope tabs inside that single page.
+ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
+VISIT_PAGE_INDEX = EVENT_PAGE_INDEX
+CLOSED_PAGE_INDEX = EVENT_PAGE_INDEX
+VISIT_ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
+STANDALONE_ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
 
 _PAGE_TITLES = {
-    HOME_PAGE_INDEX:    ("首頁",       "Mitcorp SQE Tool"),
-    ANOMALY_PAGE_INDEX: ("異常一覽表", "異常事件追蹤與改善閉環"),
-    VISIT_PAGE_INDEX:   ("訪廠紀錄一覽表", "廠商訪視與現場缺失記錄"),
-    STATS_PAGE_INDEX:   ("異常事件統計", "供應商事件統計與倉庫不合格品實物統計"),
-    CLOSED_PAGE_INDEX:  ("異常已結案查詢", "歷史結案事件查詢"),
-    MASTER_PAGE_INDEX:  ("基礎資料",   "供應商與品名主檔管理"),
+    HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
+    EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
+    STATS_PAGE_INDEX: ("異常事件統計", "供應商事件統計與倉庫不合格品實物統計"),
+    MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
 }
 
 # Embedded warehouse nonconforming-product page occupies stack index 6.
@@ -126,32 +127,16 @@ class MainWindow(QMainWindow):
         self.stack.setObjectName("PageStack")
 
         self.home_widget = HomeWidget(self)
-        self.standalone_anomaly_widget = EventListWidget(
-            self, mode="query", fixed_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY
-        )
-        self.visit_widget = EventListWidget(
-            self, mode="query", fixed_scope=event_service.EVENT_SCOPE_VISIT_ONLY
-        )
+        # Consolidated event-management page: a single EventListWidget whose scope
+        # tabs cover 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 (see EVENT_QUERY_SCOPE_TABS).
+        self.events_widget = EventListWidget(self, mode="query", fixed_scope=None)
         self.stats_widget = StatsViewWidget(self)
-        self.closed_event_widget = EventListWidget(
-            self,
-            mode="query",
-            fixed_scope=event_service.EVENT_SCOPE_CLOSED_ONLY,
-            fixed_status="已結案",
-        )
         self.master_widget = MasterDataWidget(self)
 
-        # visit_anomaly_widget kept for compatibility with open_event_query_with_filters
-        self.visit_anomaly_widget = EventListWidget(
-            self, mode="query", fixed_scope=event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY
-        )
-
-        self.stack.insertWidget(HOME_PAGE_INDEX,    self.home_widget)
-        self.stack.insertWidget(ANOMALY_PAGE_INDEX, self.standalone_anomaly_widget)
-        self.stack.insertWidget(VISIT_PAGE_INDEX,   self.visit_widget)
-        self.stack.insertWidget(STATS_PAGE_INDEX,   self.stats_widget)
-        self.stack.insertWidget(CLOSED_PAGE_INDEX,  self.closed_event_widget)
-        self.stack.insertWidget(MASTER_PAGE_INDEX,  self.master_widget)
+        self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
+        self.stack.insertWidget(EVENT_PAGE_INDEX, self.events_widget)
+        self.stack.insertWidget(STATS_PAGE_INDEX, self.stats_widget)
+        self.stack.insertWidget(MASTER_PAGE_INDEX, self.master_widget)
 
         # ── 嵌入倉庫不合格品實物管理模組頁面（索引 6）──
         # NCR 資料庫問題不可拖垮主程式；失敗時以 placeholder 佔位並保持索引對齊。
@@ -163,10 +148,13 @@ class MainWindow(QMainWindow):
             self.ncr = None
             self._insert_ncr_placeholders(str(exc))
 
-        # Compatibility aliases used by tests / older callers
-        # events_widget points to the anomaly list at index 1 (primary event management page)
-        self.events_widget = self.standalone_anomaly_widget
-        self.entry_widget = self.visit_widget
+        # Compatibility aliases used by tests / older callers. Every former event
+        # entry now resolves to the single consolidated event-management page.
+        self.entry_widget = self.events_widget
+        self.standalone_anomaly_widget = self.events_widget
+        self.visit_widget = self.events_widget
+        self.closed_event_widget = self.events_widget
+        self.visit_anomaly_widget = self.events_widget
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -237,28 +225,13 @@ class MainWindow(QMainWindow):
         event_scope: str | None = None,
         overdue_only: bool = False,
     ) -> None:
-        target_index = ANOMALY_PAGE_INDEX
-        target_widget = self.standalone_anomaly_widget
-
-        if event_scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
-            target_index = CLOSED_PAGE_INDEX
-            target_widget = self.closed_event_widget
-        elif event_scope == event_service.EVENT_SCOPE_VISIT_ONLY:
-            target_index = VISIT_PAGE_INDEX
-            target_widget = self.visit_widget
-        elif event_scope in (
-            event_service.EVENT_SCOPE_ANOMALY_ONLY,
-            event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-        ):
-            target_index = ANOMALY_PAGE_INDEX
-            target_widget = self.standalone_anomaly_widget
-        else:
-            if event_type == "VISIT":
-                target_index = VISIT_PAGE_INDEX
-                target_widget = self.visit_widget
-
-        self._switch_primary_page(target_index)
-        target_widget.apply_quick_filters(
+        # Single consolidated event page: switch then let the widget activate the
+        # matching scope tab. Routing the scope through apply_quick_filters makes
+        # every KPI / stats drill-down land on the correct scope (this also fixes
+        # the former 訪廠發現異常 KPI mismatch, where the scope was dropped by a
+        # fixed-scope page).
+        self._switch_primary_page(EVENT_PAGE_INDEX)
+        self.events_widget.apply_quick_filters(
             event_type=event_type,
             supplier_keyword=supplier_keyword,
             yyyymm=yyyymm,
@@ -315,10 +288,7 @@ class MainWindow(QMainWindow):
 
     def refresh_all_views(self):
         self.home_widget.refresh_data()
-        self.visit_widget.refresh_data()
-        self.visit_anomaly_widget.refresh_data()
-        self.standalone_anomaly_widget.refresh_data()
-        self.closed_event_widget.refresh_data()
+        self.events_widget.refresh_data()
         self.stats_widget.refresh_data()
         self.master_widget.refresh_data()
         self._refresh_sidebar_badge()
@@ -329,7 +299,7 @@ class MainWindow(QMainWindow):
             count = int(summary.get("open_count", 0))
         except Exception:
             count = 0
-        self.sidebar.set_badge(ANOMALY_PAGE_INDEX, count)
+        self.sidebar.set_badge(EVENT_PAGE_INDEX, count)
         try:
             with get_connection() as conn:
                 warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
