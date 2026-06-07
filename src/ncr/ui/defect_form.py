@@ -24,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from ncr.db import crud
+from ncr.ui.supplier_combo_utils import (
+    SUPPLIER_CATEGORY_FORMAL,
+    SUPPLIER_CATEGORY_OUTSOURCE,
+    apply_supplier_exclusion_lock,
+    load_supplier_names_by_category,
+)
 from ncr.models.defect import (
     CATEGORY_OPTIONS,
     DISPOSITION_OPTIONS,
@@ -32,9 +38,7 @@ from ncr.models.defect import (
     STATUS_OPTIONS,
 )
 from ncr.models.labels import (
-    HINT_OUTSOURCE_LOCKED,
     HINT_SAVE_SHORTCUT,
-    HINT_SUPPLIER_LOCKED,
     LABEL_CATEGORY,
     LABEL_DEFECT_DESC,
     LABEL_DEFECT_NO,
@@ -422,27 +426,15 @@ class DefectFieldsWidget(QWidget):
         )
         current_outsource_text = self.outsource_supplier_combo.currentText().strip()
 
-        supplier_cursor = self.conn.execute(
-            """
-            SELECT name
-            FROM supplier_records
-            WHERE category = '正式供應商'
-            ORDER BY name COLLATE NOCASE
-            """
-        )
         supplier_options = ["", "N/A"]
-        supplier_options.extend(row["name"] for row in supplier_cursor.fetchall())
-
-        outsource_cursor = self.conn.execute(
-            """
-            SELECT name
-            FROM supplier_records
-            WHERE category = '委外供應商'
-            ORDER BY name COLLATE NOCASE
-            """
+        supplier_options.extend(
+            load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_FORMAL)
         )
+
         outsource_options = ["", "N/A"]
-        outsource_options.extend(row["name"] for row in outsource_cursor.fetchall())
+        outsource_options.extend(
+            load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_OUTSOURCE)
+        )
 
         self.supplier_combo.blockSignals(True)
         self.supplier_combo.clear()
@@ -552,15 +544,18 @@ class DefectFieldsWidget(QWidget):
             str(outsource_supplier_name).strip() and str(outsource_supplier_name).strip() != "N/A"):
             outsource_supplier_name = "N/A"
 
-        self.supplier_combo.blockSignals(True)
-        self.outsource_supplier_combo.blockSignals(True)
+        # refresh_supplier_options 內部會自行解除 blockSignals，無法依賴外層封鎖跨越此呼叫。
+        # 它已在封鎖狀態下載入並設定供應商；之後僅需在「設定委外索引」這段重新封鎖，
+        # 避免觸發互斥處理器把剛載入的供應商覆寫為 N/A，也避免載入即被標記為 dirty。
         self.refresh_supplier_options(supplier_name)
-        target_outsource_index = self.outsource_supplier_combo.findText(
-            str(outsource_supplier_name)
-        )
-        self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
-        self.supplier_combo.blockSignals(False)
-        self.outsource_supplier_combo.blockSignals(False)
+        self.outsource_supplier_combo.blockSignals(True)
+        try:
+            target_outsource_index = self.outsource_supplier_combo.findText(
+                str(outsource_supplier_name)
+            )
+            self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
+        finally:
+            self.outsource_supplier_combo.blockSignals(False)
         self.defect_desc_input.setPlainText(record.get("defect_desc", ""))
         self.status_combo.setCurrentText(record.get("status", STATUS_OPTIONS[0]))
         disposition = record.get("disposition", "")
@@ -625,20 +620,12 @@ class DefectFieldsWidget(QWidget):
             t = combo.currentText().strip()
             return bool(t) and t != "N/A"
 
-        supplier_filled = is_really_filled(self.supplier_combo)
-        outsource_filled = is_really_filled(self.outsource_supplier_combo)
-
-        self.supplier_combo.setEnabled(not outsource_filled)
-        self.outsource_supplier_combo.setEnabled(not supplier_filled)
-
-        if supplier_filled:
-            self.supplier_hint_label.setText(HINT_SUPPLIER_LOCKED)
-            self.supplier_hint_label.show()
-        elif outsource_filled:
-            self.supplier_hint_label.setText(HINT_OUTSOURCE_LOCKED)
-            self.supplier_hint_label.show()
-        else:
-            self.supplier_hint_label.hide()
+        apply_supplier_exclusion_lock(
+            supplier_combo=self.supplier_combo,
+            outsource_combo=self.outsource_supplier_combo,
+            hint_label=self.supplier_hint_label,
+            is_filled=is_really_filled,
+        )
 
     def resolve_product_name_by_item_no(self, item_no: str) -> str:
         normalized_item_no = item_no.strip()

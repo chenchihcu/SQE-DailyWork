@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from PySide6.QtCharts import (
@@ -61,6 +62,8 @@ from ui.widgets.common_widgets import (
     KpiCard, 
     apply_clickable_affordance
 )
+
+logger = logging.getLogger(__name__)
 
 SUPPLIER_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
@@ -422,7 +425,10 @@ class StatsViewWidget(QWidget):
             trend_data = event_service.get_anomaly_trend(months=6)
             try:
                 resp_stats = event_service.get_responsible_person_stats(yyyymm)
-            except (AttributeError, Exception):
+            except Exception:
+                logger.exception(
+                    "get_responsible_person_stats failed for %s", yyyymm
+                )
                 resp_stats = []
                 
             self._refresh_decision_summary(summary, trend_data)

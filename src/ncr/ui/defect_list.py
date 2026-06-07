@@ -24,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from ncr.db import crud
+from ncr.ui.supplier_combo_utils import (
+    SUPPLIER_CATEGORY_FORMAL,
+    SUPPLIER_CATEGORY_OUTSOURCE,
+    apply_supplier_exclusion_lock,
+    load_supplier_names_by_category,
+)
 from ncr.models.defect import LIST_FIELD_ORDER, LIST_HEADERS, STATUS_OPTIONS
 from ncr.models.labels import (
     HEADER_EVENT_MONTH,
@@ -32,8 +38,6 @@ from ncr.models.labels import (
     HINT_CLOSED_CASES_SCOPE,
     HINT_CLOSED_CASES_MONTH_SCOPE,
     HINT_RESET_FILTER,
-    HINT_SUPPLIER_LOCKED,
-    HINT_OUTSOURCE_LOCKED,
     LABEL_DATA_COUNT,
     LABEL_OPEN_COUNT,
     LABEL_CLOSED_COUNT,
@@ -562,10 +566,7 @@ class DefectListWidget(QWidget):
         """從資料庫獲取現有的供應商清單並更新篩選選單。"""
         # 更新供應商選單
         curr_supplier = self.supplier_combo.currentText()
-        cursor = self.conn.execute(
-            "SELECT name FROM supplier_records WHERE category = '正式供應商' ORDER BY name COLLATE NOCASE"
-        )
-        suppliers = [row[0] for row in cursor.fetchall()]
+        suppliers = load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_FORMAL)
         self.supplier_combo.blockSignals(True)
         self.supplier_combo.clear()
         self.supplier_combo.addItem("")
@@ -575,10 +576,9 @@ class DefectListWidget(QWidget):
 
         # 更新委外供應商選單
         curr_outsource = self.outsource_supplier_combo.currentText()
-        cursor = self.conn.execute(
-            "SELECT name FROM supplier_records WHERE category = '委外供應商' ORDER BY name COLLATE NOCASE"
+        outsources = load_supplier_names_by_category(
+            self.conn, SUPPLIER_CATEGORY_OUTSOURCE
         )
-        outsources = [row[0] for row in cursor.fetchall()]
         self.outsource_supplier_combo.blockSignals(True)
         self.outsource_supplier_combo.clear()
         self.outsource_supplier_combo.addItem("")
@@ -588,24 +588,15 @@ class DefectListWidget(QWidget):
         self._sync_filter_lock_state()
 
     def _sync_filter_lock_state(self) -> None:
-        supplier_selected = (
-            self.supplier_combo.currentIndex() > 0
-            and bool(self.supplier_combo.currentText().strip())
+        def is_selected(combo: QComboBox) -> bool:
+            return combo.currentIndex() > 0 and bool(combo.currentText().strip())
+
+        apply_supplier_exclusion_lock(
+            supplier_combo=self.supplier_combo,
+            outsource_combo=self.outsource_supplier_combo,
+            hint_label=self.filter_notice,
+            is_filled=is_selected,
         )
-        outsource_selected = (
-            self.outsource_supplier_combo.currentIndex() > 0
-            and bool(self.outsource_supplier_combo.currentText().strip())
-        )
-        self.supplier_combo.setEnabled(not outsource_selected)
-        self.outsource_supplier_combo.setEnabled(not supplier_selected)
-        if supplier_selected:
-            self.filter_notice.setText(HINT_SUPPLIER_LOCKED)
-            self.filter_notice.show()
-        elif outsource_selected:
-            self.filter_notice.setText(HINT_OUTSOURCE_LOCKED)
-            self.filter_notice.show()
-        else:
-            self.filter_notice.hide()
 
     def _handle_supplier_selection(self, index: int) -> None:
         """若選擇了供應商，則停用委外供應商欄位並顯示提示。"""
