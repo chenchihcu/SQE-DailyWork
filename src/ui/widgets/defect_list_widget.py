@@ -214,15 +214,12 @@ class EventListWidget(QWidget):
             actions_row.addWidget(helper)
             actions_row.addStretch(1)
 
-        # Shared right-aligned new-event actions (deduplicated across modes)
-        btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
-        if btn_new_visit:
-            actions_row.addWidget(btn_new_visit)
-        if btn_new_anomaly:
-            actions_row.addWidget(btn_new_anomaly)
         control_outer.addLayout(actions_row)
 
-        # Row 2: pagination + secondary actions (export, etc.) — consistent across modes
+        # Row 2: pagination + new-event actions + secondary actions (export).
+        # The consolidated event page carries both 新增訪廠 and 新增異常; placing
+        # them on the toolbar row (not the filter row) keeps the filter row within
+        # the 1024-wide minimum without overlapping controls.
         toolbar_row = QHBoxLayout()
         toolbar_row.setSpacing(8)
 
@@ -238,6 +235,13 @@ class EventListWidget(QWidget):
             default_page_size=self._page_size,
         )
         toolbar_row.addWidget(self.pagination, 1)
+
+        # Shared new-event actions (deduplicated across modes).
+        btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
+        if btn_new_visit:
+            toolbar_row.addWidget(btn_new_visit)
+        if btn_new_anomaly:
+            toolbar_row.addWidget(btn_new_anomaly)
 
         if self.mode == "query":
             self.export_pdf_button = QPushButton("輸出PDF")

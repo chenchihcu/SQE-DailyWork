@@ -35,9 +35,9 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 6 SQE DailyWork pages + 1 warehouse nonconforming-product page.
-        self.assertEqual(6 + NCR_PAGE_COUNT, self.window.stack.count())
-        self.assertEqual(6 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
+        # 4 SQE DailyWork pages + 1 warehouse nonconforming-product page.
+        self.assertEqual(4 + NCR_PAGE_COUNT, self.window.stack.count())
+        self.assertEqual(4 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:
