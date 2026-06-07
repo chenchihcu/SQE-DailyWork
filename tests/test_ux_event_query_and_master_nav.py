@@ -31,30 +31,6 @@ class _MainNavTests(unittest.TestCase):
         self.window.close()
         self.app.processEvents()
 
-    def test_return_from_master_restores_previous_primary_page(self) -> None:
-        from ui.main_window import STATS_PAGE_INDEX
-        self.window._switch_primary_page(STATS_PAGE_INDEX)
-        self.assertEqual(STATS_PAGE_INDEX, self.window.stack.currentIndex())
-        self.window._open_master_data()
-        self.app.processEvents()
-        self.assertIs(self.window.stack.currentWidget(), self.window.master_widget)
-        self.window.return_from_master()
-        self.app.processEvents()
-        self.assertEqual(STATS_PAGE_INDEX, self.window.stack.currentIndex())
-        self.assertIs(self.window.stack.currentWidget(), self.window.stats_widget)
-
-    def test_return_from_master_restores_event_management_page(self) -> None:
-        self.window._switch_primary_page(1)
-        self.assertEqual(1, self.window.stack.currentIndex())
-        self.assertIs(self.window.stack.currentWidget(), self.window.events_widget)
-        self.window._open_master_data()
-        self.app.processEvents()
-        self.assertIs(self.window.stack.currentWidget(), self.window.master_widget)
-        self.window.return_from_master()
-        self.app.processEvents()
-        self.assertEqual(1, self.window.stack.currentIndex())
-        self.assertIs(self.window.stack.currentWidget(), self.window.events_widget)
-
 
 class _EventQueryFilterTests(unittest.TestCase):
     @classmethod

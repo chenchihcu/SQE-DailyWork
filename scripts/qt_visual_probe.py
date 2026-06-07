@@ -87,9 +87,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--target",
-        choices=("main", "form-density", "stats-stress"),
+        choices=("main", "form-density", "stats-stress", "ncr-stats"),
         default="main",
-        help="Capture the main shell, dense forms, or statistics visual stress surfaces.",
+        help="Capture the main shell, dense forms, statistics visual stress surfaces, or NCR stats 2x2 grid.",
     )
     return parser.parse_args()
 
@@ -320,6 +320,62 @@ def _capture_stats_stress(output: Path, app: "QApplication") -> list[str]:
     return screenshots
 
 
+def _capture_ncr_stats(output: Path, app: "QApplication") -> list[str]:
+    """NcrStatsWidget 2x2 視覺拓撲中 (mock 資料)，用於確認二欄二列網格修正效果。"""
+    from unittest.mock import patch
+
+    _MOCK_SUPPLIERS = [
+        {"supplier_name": f"供應商-{i:02d}", "case_count": 10 - i, "total_qty": (10 - i) * 3}
+        for i in range(5)
+    ]
+    _MOCK_PRODUCTS = [
+        {"product_name": f"產品-{i:02d}", "case_count": 8 - i, "total_qty": (8 - i) * 2}
+        for i in range(5)
+    ]
+    _MOCK_SCRAP_REWORK = [
+        {"disposition": "報廢", "case_count": 8, "total_qty": 24},
+        {"disposition": "重工", "case_count": 15, "total_qty": 45},
+    ]
+    _MOCK_RETURN_SLIPS = [
+        {"return_slip_type": "廠內退料", "case_count": 20, "total_qty": 60},
+        {"return_slip_type": "託外退料", "case_count": 12, "total_qty": 36},
+    ]
+
+    from ui.widgets.ncr_stats_widget import NcrStatsWidget
+
+    screenshots: list[str] = []
+    with (
+        patch(
+            "ncr.services.stats_service.get_top_suppliers_stats_filtered",
+            return_value=_MOCK_SUPPLIERS,
+        ),
+        patch(
+            "ncr.services.stats_service.get_top_products_stats_filtered",
+            return_value=_MOCK_PRODUCTS,
+        ),
+        patch(
+            "ncr.services.stats_service.get_scrap_rework_ratio_filtered",
+            return_value=_MOCK_SCRAP_REWORK,
+        ),
+        patch(
+            "ncr.services.stats_service.get_return_slip_ratio_filtered",
+            return_value=_MOCK_RETURN_SLIPS,
+        ),
+    ):
+        widget = NcrStatsWidget(lazy_load=False)
+        widget.resize(1024, 700)
+        widget.show()
+        app.processEvents()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        target = _target_output_path(output, "ncr-stats")
+        widget.grab().save(str(target))
+        screenshots.append(str(target))
+        widget.close()
+        app.processEvents()
+
+    return screenshots
+
+
 def main() -> int:
     args = parse_args()
     _ensure_repo_imports()
@@ -348,6 +404,8 @@ def main() -> int:
             screenshots = _capture_stats_stress(args.output, app)
         elif args.target == "form-density":
             screenshots = _capture_form_density(args.output, app)
+        elif args.target == "ncr-stats":
+            screenshots = _capture_ncr_stats(args.output, app)
         else:
             screenshots = _capture_main_window(args.output, app)
         screenshot_path = screenshots[0] if screenshots else None

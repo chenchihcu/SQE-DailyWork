@@ -19,19 +19,15 @@ from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
 
 
-# Four SQE DailyWork pages followed by the warehouse nonconforming-product page.
-# The former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are now scope
-# tabs inside the consolidated 事件管理 page.
-_EXPECTED_HOST_NAV_LABELS = [
+# Six sidebar nav labels: 首頁, 事件管理, 異常事件統計, 不合格品追蹤, 不合格品統計分析, 基礎資料.
+_EXPECTED_NAV_LABELS = [
     "首頁",
     "事件管理",
     "異常事件統計",
+    "不合格品追蹤",
+    "不合格品統計分析",
     "基礎資料",
 ]
-_EXPECTED_NCR_NAV_LABELS = [
-    "不合格品追蹤",
-]
-_EXPECTED_NAV_LABELS = _EXPECTED_HOST_NAV_LABELS + _EXPECTED_NCR_NAV_LABELS
 
 
 class MainWorkflowTabTests(unittest.TestCase):
@@ -77,9 +73,9 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_five_nav_items(self) -> None:
-        # 4 SQE DailyWork pages + 1 embedded warehouse nonconforming-product page = 5.
-        self.assertEqual(5, len(self.window.sidebar._buttons))
+    def test_sidebar_has_six_nav_items(self) -> None:
+        # 6 sidebar nav buttons.
+        self.assertEqual(6, len(self.window.sidebar._buttons))
 
     def test_sidebar_groups_use_icons_not_text_labels(self) -> None:
         # 分組改以「圖示 + 間距」呈現工作流程結構，不再使用分組標題文字或分隔線。
@@ -94,7 +90,7 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertFalse(icon_label.pixmap().isNull())
 
     def test_sidebar_warehouse_badge_is_available(self) -> None:
-        warehouse_button = self.window.sidebar._buttons[-1]
+        warehouse_button = self.window.sidebar._buttons[NCR_PAGE_INDEX]
         self.window.sidebar.set_badge(NCR_PAGE_INDEX, 12)
         self.app.processEvents()
         badges = warehouse_button.findChildren(QLabel, "NavBadge")

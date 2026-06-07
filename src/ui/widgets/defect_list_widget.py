@@ -66,7 +66,7 @@ _SORTABLE_COLS: dict[int, str] = {
 
 
 class EventListWidget(QWidget):
-    def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None):
+    def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None, lazy_load: bool = False):
         super().__init__()
         self.main_window = main_window
         self.mode = "entry" if mode == "entry" else "query"
@@ -110,7 +110,9 @@ class EventListWidget(QWidget):
         self._selected_event_row: dict | None = None
         self._event_actions = EventActionsController(self, main_window)
         self._setup_ui()
-        self.refresh_data()
+        self._has_loaded = False
+        if not lazy_load:
+            self.refresh_data()
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -591,6 +593,7 @@ class EventListWidget(QWidget):
         self.refresh_data()
 
     def refresh_data(self):
+        self._has_loaded = True
         filters = {
             "event_type": self._filter_event_type,
             "status": self._filter_status,

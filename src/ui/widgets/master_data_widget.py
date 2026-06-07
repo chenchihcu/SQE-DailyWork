@@ -602,7 +602,7 @@ class ProductStageLogDialog(QDialog):
 
 
 class MasterDataWidget(QWidget):
-    def __init__(self, main_window):
+    def __init__(self, main_window, *, lazy_load: bool = False):
         super().__init__()
         self.main_window = main_window
         self._supplier_rows: list[dict] = []
@@ -617,7 +617,9 @@ class MasterDataWidget(QWidget):
         self._product_page = 1
         self._product_page_size = 13
         self._setup_ui()
-        self.refresh_data()
+        self._has_loaded = False
+        if not lazy_load:
+            self.refresh_data()
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -629,19 +631,6 @@ class MasterDataWidget(QWidget):
         tabs_layout = QVBoxLayout(tabs_panel)
         tabs_layout.setContentsMargins(*PANEL_MARGINS)
         tabs_layout.setSpacing(8)
-
-        master_header = QHBoxLayout()
-        master_header.setSpacing(TOOLBAR_ITEM_SPACING)
-        title_master = QLabel("基礎資料")
-        title_master.setProperty("role", "sectionTitle")
-        self.btn_return = QPushButton("返回上一頁")
-        self.btn_return.setProperty("variant", "secondary")
-        apply_clickable_affordance(self.btn_return, tooltip="返回進入基礎資料前的頁面")
-        self.btn_return.clicked.connect(self.main_window.return_from_master)
-        master_header.addWidget(title_master)
-        master_header.addStretch(1)
-        master_header.addWidget(self.btn_return)
-        tabs_layout.addLayout(master_header)
 
         self.inline_toolbar = QFrame()
         self.inline_toolbar.setObjectName("MasterInlineToolbar")
@@ -991,6 +980,7 @@ class MasterDataWidget(QWidget):
             return
 
     def refresh_data(self):
+        self._has_loaded = True
         self._supplier_rows = event_service.list_suppliers(include_inactive=True)
         self._product_rows = event_service.list_products(include_inactive=True)
         self._render_supplier_table()

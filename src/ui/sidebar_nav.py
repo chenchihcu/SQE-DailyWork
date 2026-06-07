@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -42,17 +43,21 @@ _INSIGHT_ITEMS = [
     ("異常事件統計", "異常事件統計", False, "icons/stats.svg"),
 ]
 
-_MASTER_ITEMS = [
-    ("基礎資料", "基礎資料", False, "icons/master.svg"),
-]
-
 # 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
-# Flat index 4 (must match ncr.embed.NCR_PAGE_OFFSET / NCR_PAGE_SPECS order).
 _NCR_ITEMS = [
     ("不合格品追蹤", True, "icons/warehouse.svg"),
 ]
 
+_NCR_STATS_ITEMS = [
+    ("不合格品統計分析", "不合格品統計分析", False, "icons/stats.svg"),
+]
 
+_MASTER_ITEMS = [
+    ("基礎資料", "基礎資料", False, "icons/master.svg"),
+]
+
+
+@lru_cache(maxsize=32)
 def _render_tinted_nav_icon(
     asset_name: str, color: str, size: int = _NAV_ICON_SIZE
 ) -> QPixmap:
@@ -223,23 +228,25 @@ class SidebarNav(QFrame):
         for idx, (label, _name, badge, icon) in enumerate(_INSIGHT_ITEMS):
             nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
 
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
+        # To keep "不合格品追蹤" at its original position and separated from "異常事件統計",
+        # we add a spacing equivalent to the removed "基礎資料" item height + gap.
+        nav_layout.addSpacing(SIDEBAR_NAV_ITEM_HEIGHT + _NAV_GROUP_GAP * 2)
 
-        offset += len(_INSIGHT_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
-
-        # ── 倉庫不合格品實物管理（嵌入式，索引 6）────────────────
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        ncr_offset = (
-            len(_OVERVIEW_ITEMS)
-            + len(_EVENT_ITEMS)
-            + len(_INSIGHT_ITEMS)
-            + len(_MASTER_ITEMS)
-        )
+        ncr_offset = offset + len(_INSIGHT_ITEMS)
         for idx, (label, badge, icon) in enumerate(_NCR_ITEMS):
             nav_layout.addWidget(self._make_nav_btn(label, ncr_offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        ncr_stats_offset = ncr_offset + len(_NCR_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_NCR_STATS_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, ncr_stats_offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        master_offset = ncr_stats_offset + len(_NCR_STATS_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, master_offset + idx, badge_enabled=badge, icon=icon))
 
         nav_layout.addStretch(1)
 

@@ -91,11 +91,13 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
         "legacy_counts": {},
         "errors": [],
     }
-    with sqlite3.connect(v2_path) as v2_conn:
+    v2_conn = sqlite3.connect(v2_path)
+    try:
         v2_conn.row_factory = sqlite3.Row
         create_schema(v2_conn)
         report["counts_before"] = count_rows(v2_conn)
         if get_migration_meta(v2_conn, "legacy_migrated") == "1":
+            v2_conn.commit()
             return report
 
         # 無 legacy 檔時視為沒有需要匯入的來源；標記完成以免每次啟動重試。
@@ -103,6 +105,7 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
         if not legacy_path.exists():
             upsert_migration_meta(v2_conn, "legacy_migrated", "1")
             report["counts_after"] = count_rows(v2_conn)
+            v2_conn.commit()
             return report
 
         if (
@@ -113,6 +116,7 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
         ):
             upsert_migration_meta(v2_conn, "legacy_migrated", "1")
             report["counts_after"] = count_rows(v2_conn)
+            v2_conn.commit()
             return report
 
         timestamp = datetime.now().strftime("%Y%m%d")
@@ -121,16 +125,25 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
             shutil.copy2(legacy_path, backup_path)
         report["backup_path"] = str(backup_path)
 
-        with sqlite3.connect(legacy_path) as legacy_conn:
+        legacy_conn = sqlite3.connect(legacy_path)
+        try:
             legacy_conn.row_factory = sqlite3.Row
             _migrate_suppliers(legacy_conn, v2_conn, report)
             _migrate_anomalies(legacy_conn, v2_conn, report)
             _migrate_visits(legacy_conn, v2_conn, report)
+        finally:
+            legacy_conn.close()
 
         rebuild_all_monthly_cache(v2_conn)
         upsert_migration_meta(v2_conn, "legacy_migrated", "1")
         report["counts_after"] = count_rows(v2_conn)
         report["migrated"] = True
+        v2_conn.commit()
+    except Exception:
+        v2_conn.rollback()
+        raise
+    finally:
+        v2_conn.close()
     return report
 
 

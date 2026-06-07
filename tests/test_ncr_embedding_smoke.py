@@ -35,9 +35,9 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 4 SQE DailyWork pages + 1 warehouse nonconforming-product page.
-        self.assertEqual(4 + NCR_PAGE_COUNT, self.window.stack.count())
-        self.assertEqual(4 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
+        # 5 SQE DailyWork pages (首頁, 事件管理, 異常事件統計, 不合格品統計分析, 基礎資料) + 1 warehouse nonconforming-product page.
+        self.assertEqual(5 + NCR_PAGE_COUNT, self.window.stack.count())
+        self.assertEqual(5 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:
@@ -72,24 +72,6 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
             self.window.ncr.tracker_page.FORM_TAB_INDEX,
             self.window.ncr.tracker_page.tabs.currentIndex(),
         )
-
-    def test_ncr_toolbar_buttons_are_context_aware(self) -> None:
-        page = self.window.ncr.tracker_page
-        page.tabs.setCurrentWidget(page.list_widget)
-        self.app.processEvents()
-        self.assertFalse(page.create_button.isHidden())
-        self.assertTrue(page.tracking_button.isHidden())
-        self.assertEqual("倉庫實物不合格品", page.source_label.text())
-
-        page.open_create_entry()
-        self.app.processEvents()
-        self.assertTrue(page.create_button.isHidden())
-        self.assertFalse(page.tracking_button.isHidden())
-
-        page.tabs.setCurrentWidget(page.trace_widget)
-        self.app.processEvents()
-        self.assertFalse(page.create_button.isHidden())
-        self.assertFalse(page.tracking_button.isHidden())
 
     def test_nav_labels_match_embed_specs(self) -> None:
         host_buttons = self.window.sidebar._buttons

@@ -77,7 +77,7 @@ CHART_OVERDUE_COLOR = QColor(CHART_OVERDUE_PALETTE.chart)
 
 
 class StatsViewWidget(QWidget):
-    def __init__(self, main_window=None):
+    def __init__(self, main_window=None, *, lazy_load: bool = False):
         super().__init__()
         self.setObjectName("StatsView")
         self.main_window = main_window
@@ -98,7 +98,9 @@ class StatsViewWidget(QWidget):
         self._summary_buttons: dict[str, QPushButton] = {}
         self._decision_summary_context: dict[str, str | None] = {}
         self._setup_ui()
-        self.refresh_data()
+        self._has_loaded = False
+        if not lazy_load:
+            self.refresh_data()
         self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _setup_ui(self):
@@ -412,6 +414,7 @@ class StatsViewWidget(QWidget):
         self.refresh_data()
 
     def refresh_data(self):
+        self._has_loaded = True
         try:
             yyyymm = self._month_key()
             summary = event_service.get_monthly_stats(yyyymm)
