@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import sqlite3
 from datetime import date, datetime
 from typing import Any
@@ -22,16 +21,13 @@ from ncr.models.labels import (
     LABEL_RESPONSIBILITY,
     LABEL_RETURN_SLIP_TYPE,
     LABEL_STATUS,
-    LABEL_WORK_ORDER_NO,
     VALIDATION_DUPLICATE_RECORD,
     VALIDATION_EVENT_DATE_FORMAT,
     VALIDATION_EVENT_DATE_FUTURE,
-    VALIDATION_INTERNAL_WORK_ORDER_FORMAT,
     VALIDATION_OPTION_INVALID,
     VALIDATION_QTY_INTEGER,
     VALIDATION_QTY_POSITIVE,
     VALIDATION_REQUIRED,
-    VALIDATION_WORK_ORDER_FORMAT,
 )
 from ncr.services import product_service, supplier_service
 
@@ -42,30 +38,6 @@ def _to_event_date(value: Any) -> str:
     if isinstance(value, date):
         return value.isoformat()
     return str(value).strip()
-
-
-def is_valid_work_order_format(wo: str, is_outsource: bool) -> bool:
-    if len(wo) != 14:
-        return False
-    match = re.match(r"^(\d{4})-(\d{6})(\d{3})$", wo)
-    if not match:
-        return False
-    prefix = match.group(1)
-    yymmdd = match.group(2)
-    if is_outsource:
-        if prefix not in ("5102", "5104", "5202"):
-            return False
-    else:
-        if prefix not in ("5101", "5103", "5201"):
-            return False
-    yy = int(yymmdd[0:2])
-    mm = int(yymmdd[2:4])
-    dd = int(yymmdd[4:6])
-    try:
-        date(2000 + yy, mm, dd)
-    except ValueError:
-        return False
-    return True
 
 
 def validate_defect_data(
@@ -95,12 +67,7 @@ def validate_defect_data(
 
     if not return_slip_type:
         raise ValueError(VALIDATION_REQUIRED.format(LABEL_RETURN_SLIP_TYPE))
-    if not work_order_no:
-        raise ValueError(VALIDATION_REQUIRED.format(LABEL_WORK_ORDER_NO))
-    if not is_valid_work_order_format(work_order_no, is_outsource=True):
-        raise ValueError(VALIDATION_WORK_ORDER_FORMAT)
-    if internal_work_order_no and not is_valid_work_order_format(internal_work_order_no, is_outsource=False):
-        raise ValueError(VALIDATION_INTERNAL_WORK_ORDER_FORMAT)
+    # 委外製令 / 廠內製令 are optional free-text fields: blank or any value is accepted.
     if not item_no:
         raise ValueError(VALIDATION_REQUIRED.format(LABEL_ITEM_NO))
     if not defect_desc:

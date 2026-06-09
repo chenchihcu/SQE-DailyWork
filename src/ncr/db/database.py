@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS defect_records (
             AND date(event_date) IS NOT NULL
         ),
     return_slip_type TEXT NOT NULL DEFAULT '',
-    work_order_no TEXT NOT NULL CHECK(TRIM(work_order_no) <> ''),
+    work_order_no TEXT NOT NULL DEFAULT '',
     internal_work_order_no TEXT NOT NULL DEFAULT '',
     transfer_slip_no TEXT NOT NULL DEFAULT '',
     item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),

@@ -319,11 +319,9 @@ class DefectFieldsWidget(QWidget):
         )
         qty_label.setToolTip("必填欄位")
         self.qty_spin.setToolTip("必填欄位")
-        work_order_label = self._add_compact_field(
+        self._add_compact_field(
             form_grid, 1, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=2
         )
-        work_order_label.setToolTip("必填欄位")
-        self.work_order_input.setToolTip("必填欄位")
         self._add_compact_field(
             form_grid, 1, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=4
         )
