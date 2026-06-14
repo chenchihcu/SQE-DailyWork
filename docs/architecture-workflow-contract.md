@@ -32,11 +32,15 @@ shared master-data area.
 
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
 - The sidebar grouping expresses workflow structure, not data ownership:
-  overview, supplier events, analysis/query, master data, and warehouse. Groups
-  are conveyed by per-item icons and spacing (no text section headers); the
-  logical groups, item order, and page indexes stay stable.
-- Sidebar page indexes and stack routing must stay stable when labels, groups,
-  or visual treatment change.
+  overview (首頁), supplier events (事件管理), analysis (異常事件統計), master data
+  (基礎資料), and warehouse (不合格品追蹤) — one item per group. Groups are
+  conveyed by per-item icons and spacing (no text section headers). The supplier
+  event views (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) are scope tabs inside
+  the single 事件管理 page, not separate sidebar entries.
+- Sidebar page indexes and stack routing are `0 首頁 / 1 事件管理 / 2 異常事件統計
+  / 3 基礎資料 / 4 不合格品追蹤` (NCR offset 4). When indexes change, update the
+  index constants, legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`),
+  `ncr.embed.NCR_PAGE_OFFSET`, and the affected tests in the same change.
 - Warehouse nonconforming-product tracking stays under the single embedded
   `src/ncr/` workflow page. Do not add an outer launcher layer or duplicate
   warehouse shell pages.

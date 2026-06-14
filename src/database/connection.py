@@ -23,12 +23,27 @@ def _backup_database_file(path: Path, *, reason: str) -> Path:
     return backup_path
 
 
+class ClosingConnection(sqlite3.Connection):
+    """A sqlite3.Connection subclass that guarantees close() is called upon exiting context."""
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Let the base class handle commit / rollback first.
+        result = super().__exit__(exc_type, exc_val, exc_tb)
+        # Always close the connection when leaving the with-block.
+        try:
+            self.close()
+        except Exception:  # pragma: no cover
+            pass
+        return result
+
+
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     """Create SQLite connection with row mapping and foreign key support."""
     target = db_path or DB_PATH
-    conn = sqlite3.connect(target)
+    conn = sqlite3.connect(target, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

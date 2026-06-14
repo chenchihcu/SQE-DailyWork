@@ -178,7 +178,26 @@ def _supplier_by_name(conn: sqlite3.Connection, supplier_name: str) -> sqlite3.R
     ).fetchone()
 
 
-def _product_by_code(conn: sqlite3.Connection, product_code: str) -> sqlite3.Row | None:
+def _product_by_code(
+    conn: sqlite3.Connection, product_code: str, supplier_id: str | None = None
+) -> sqlite3.Row | None:
+    if supplier_id:
+        return conn.execute(
+            """
+            SELECT
+                p.id,
+                p.product_code,
+                p.product_name,
+                p.product_stage,
+                p.supplier_id,
+                s.supplier_name
+            FROM products p
+            LEFT JOIN suppliers s ON s.id = p.supplier_id
+            WHERE p.product_code = ? AND p.supplier_id = ? AND p.is_active = 1
+            LIMIT 1
+            """,
+            (product_code, supplier_id),
+        ).fetchone()
     return conn.execute(
         """
         SELECT
@@ -315,7 +334,8 @@ def preview_product_master_import(
             )
             continue
 
-        existing = _product_by_code(conn, product_code)
+        supplier_id_for_lookup = str(supplier["id"]) if supplier is not None else None
+        existing = _product_by_code(conn, product_code, supplier_id=supplier_id_for_lookup)
         will_create_supplier = supplier is None
         if existing is None:
             preview_rows.append(
@@ -603,7 +623,7 @@ def apply_product_master_import(
                 added_count += 1
                 continue
 
-            existing = _product_by_code(conn, row.product_code)
+            existing = _product_by_code(conn, row.product_code, supplier_id=supplier_id)
             if existing is None:
                 raise sqlite3.IntegrityError(f"Product disappeared: {row.product_code}")
             conn.execute(

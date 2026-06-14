@@ -24,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from ncr.db import crud
+from ncr.ui.supplier_combo_utils import (
+    SUPPLIER_CATEGORY_FORMAL,
+    SUPPLIER_CATEGORY_OUTSOURCE,
+    apply_supplier_exclusion_lock,
+    load_supplier_names_by_category,
+)
 from ncr.models.defect import LIST_FIELD_ORDER, LIST_HEADERS, STATUS_OPTIONS
 from ncr.models.labels import (
     HEADER_EVENT_MONTH,
@@ -32,8 +38,6 @@ from ncr.models.labels import (
     HINT_CLOSED_CASES_SCOPE,
     HINT_CLOSED_CASES_MONTH_SCOPE,
     HINT_RESET_FILTER,
-    HINT_SUPPLIER_LOCKED,
-    HINT_OUTSOURCE_LOCKED,
     LABEL_DATA_COUNT,
     LABEL_OPEN_COUNT,
     LABEL_CLOSED_COUNT,
@@ -123,11 +127,12 @@ class DefectListWidget(QWidget):
 
         # Unified Search & Results Card
         main_card, main_layout = create_section_card("")
-        main_layout.setContentsMargins(22, 20, 22, 20)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(16, 12, 16, 12)
+        main_layout.setSpacing(8)
 
         # Filters Section
         filter_grid = create_form_grid(field_count=3)
+        filter_grid.setVerticalSpacing(8)
 
         self.month_edit = QDateEdit()
         self.month_edit.setDisplayFormat("yyyy-MM")
@@ -137,7 +142,6 @@ class DefectListWidget(QWidget):
         self.month_filter_checkbox = QCheckBox("套用月份")
         self.month_filter_checkbox.setChecked(self.workflow == "combined")
 
-        self.work_order_input = QLineEdit()
         self.item_no_input = QLineEdit()
         self.supplier_combo = QComboBox()
         self.supplier_combo.setEditable(False)
@@ -152,7 +156,6 @@ class DefectListWidget(QWidget):
         apply_form_inputs(
             [
                 self.month_edit,
-                self.work_order_input,
                 self.item_no_input,
                 self.supplier_combo,
                 self.outsource_supplier_combo,
@@ -160,63 +163,80 @@ class DefectListWidget(QWidget):
             ]
         )
 
+        # Row 0: Month (0, 1), Item No (2, 3), Status (4, 5)
         self.month_label = add_labeled_field(
-            filter_grid, 0, HEADER_EVENT_MONTH, self.month_edit, field_minimum_width=180
+            filter_grid, 0, HEADER_EVENT_MONTH, self.month_edit, field_minimum_width=120, field_maximum_width=200
+        )
+        add_labeled_field(
+            filter_grid,
+            0,
+            LABEL_ITEM_NO,
+            self.item_no_input,
+            column_offset=2,
+            field_minimum_width=150,
+            field_maximum_width=250,
         )
         self.status_label = add_labeled_field(
             filter_grid,
             0,
             LABEL_STATUS,
             self.status_combo,
-            column_offset=2,
-            field_minimum_width=180,
+            column_offset=4,
+            field_minimum_width=120,
+            field_maximum_width=200,
         )
         if self.workflow != "combined":
             self.status_label.hide()
-        add_labeled_field(
-            filter_grid,
-            0,
-            LABEL_WORK_ORDER_NO,
-            self.work_order_input,
-            column_offset=4,
-            field_minimum_width=180,
-        )
-        add_labeled_field(
-            filter_grid,
-            1,
-            LABEL_ITEM_NO,
-            self.item_no_input,
-            column_offset=0,
-            field_minimum_width=180,
-        )
+
+        # Row 1: Supplier (0, 1), Outsource Supplier (2, 3), Buttons Layout (4, 5)
         add_labeled_field(
             filter_grid,
             1,
             LABEL_SUPPLIER_NAME,
             self.supplier_combo,
-            column_offset=2,
+            column_offset=0,
             field_minimum_width=180,
+            field_maximum_width=250,
         )
         add_labeled_field(
             filter_grid,
             1,
             LABEL_OUTSOURCE_SUPPLIER_NAME,
             self.outsource_supplier_combo,
-            column_offset=4,
+            column_offset=2,
             field_minimum_width=180,
+            field_maximum_width=250,
         )
+
+        # 4. Action Buttons (Search & Reset on row 1)
+        self.reset_button = QPushButton("重置")
+        self.search_button = QPushButton("查詢")
+        for btn, role, icon in [
+            (self.reset_button, "reset", "reset"),
+            (self.search_button, "primary", "search"),
+        ]:
+            btn.setMinimumWidth(90)
+            btn.setMaximumWidth(110)
+            set_button_role(btn, role)
+            apply_button_icon(btn, icon)
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.reset_button)
+        button_layout.addWidget(self.search_button)
+
+        filter_grid.addLayout(button_layout, 1, 4, 1, 2)
+
         main_layout.addLayout(filter_grid)
 
         # Summary and actions are split so status text cannot force all buttons
         # off-screen on smaller displays.
-        control_toolbar = QHBoxLayout()
-        control_toolbar.setContentsMargins(0, 0, 0, 0)
-        control_toolbar.setSpacing(12)
-        control_toolbar.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        action_toolbar = QHBoxLayout()
-        action_toolbar.setContentsMargins(0, 0, 0, 0)
-        action_toolbar.setSpacing(12)
-        action_toolbar.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(12)
+        action_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         # 1. Stats Summary
         self.total_count_label = make_hint_label(LABEL_DATA_COUNT.format(0))
@@ -224,44 +244,40 @@ class DefectListWidget(QWidget):
         self.closed_count_label = make_hint_label(LABEL_CLOSED_COUNT.format(0))
         for lbl in (self.total_count_label, self.open_count_label, self.closed_count_label):
             lbl.setWordWrap(False)
-            control_toolbar.addWidget(lbl)
+            action_row.addWidget(lbl)
 
         # 2. Context Notices
         self.month_scope_notice = make_notice_label("", role="compactNotice")
         self.filter_notice = make_notice_label("", role="compactNotice")
         self.month_scope_notice.setWordWrap(False)
         self.filter_notice.setWordWrap(False)
-        control_toolbar.addWidget(self.month_scope_notice)
-        control_toolbar.addWidget(self.filter_notice)
+        action_row.addWidget(self.month_scope_notice)
+        action_row.addWidget(self.filter_notice)
 
         # 3. Reset Hint
         hint_label = make_hint_label(HINT_RESET_FILTER)
         hint_label.setWordWrap(False)
         if self.workflow == "trace":
-            action_toolbar.addWidget(self.month_filter_checkbox)
+            action_row.addWidget(self.month_filter_checkbox)
             self.month_filter_checkbox.stateChanged.connect(self.refresh_data)
         else:
             self.month_filter_checkbox.hide()
-        control_toolbar.addWidget(hint_label)
+        action_row.addWidget(hint_label)
 
-        action_toolbar.addStretch(1)
+        action_row.addStretch(1)
 
-        # 4. Action Buttons
+        # 4. Action Buttons (Export & Delete on row 2)
         self.export_button = QPushButton("匯出 Excel")
         self.delete_button = QPushButton("刪除選取")
-        self.reset_button = QPushButton("重置")
-        self.search_button = QPushButton("查詢")
 
         for btn, role, icon in [
             (self.export_button, "secondary", "export"),
             (self.delete_button, "danger", "delete"),
-            (self.reset_button, "reset", "reset"),
-            (self.search_button, "primary", "search"),
         ]:
             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
             set_button_role(btn, role)
             apply_button_icon(btn, icon)
-            action_toolbar.addWidget(btn)
+            action_row.addWidget(btn)
 
         self.search_button.clicked.connect(self.refresh_data)
         self.reset_button.clicked.connect(self.reset_filters)
@@ -272,8 +288,7 @@ class DefectListWidget(QWidget):
         self.supplier_combo.currentIndexChanged.connect(self._handle_supplier_selection)
         self.outsource_supplier_combo.currentIndexChanged.connect(self._handle_outsource_selection)
 
-        main_layout.addLayout(control_toolbar)
-        main_layout.addLayout(action_toolbar)
+        main_layout.addLayout(action_row)
 
         self.result_notice = make_notice_label("", role="warningHint")
         main_layout.addWidget(self.result_notice)
@@ -289,6 +304,7 @@ class DefectListWidget(QWidget):
         self.open_table.cellDoubleClicked.connect(self.open_edit_dialog)
         self.open_table.setToolTip("雙擊任一列以開啟編輯視窗")
         self._setup_table_headers(self.open_table)
+        self.open_table.setMinimumHeight(370)
 
         self.closed_table = QTableWidget(0, len(LIST_HEADERS))
         self.closed_table.setHorizontalHeaderLabels(LIST_HEADERS)
@@ -297,6 +313,7 @@ class DefectListWidget(QWidget):
         self.closed_table.cellDoubleClicked.connect(self.open_edit_dialog)
         self.closed_table.setToolTip("雙擊任一列以開啟編輯視窗")
         self._setup_table_headers(self.closed_table)
+        self.closed_table.setMinimumHeight(370)
 
         self.tabs.addTab(self.open_table, "未結案")
         self.tabs.addTab(self.closed_table, "已結案")
@@ -361,8 +378,6 @@ class DefectListWidget(QWidget):
         }
         if not self._uses_month_filter():
             filters.pop("month", None)
-        if self.work_order_input.text().strip():
-            filters["work_order_no"] = self.work_order_input.text().strip()
         if self.item_no_input.text().strip():
             filters["item_no"] = self.item_no_input.text().strip()
         if self.supplier_combo.currentText().strip():
@@ -551,10 +566,7 @@ class DefectListWidget(QWidget):
         """從資料庫獲取現有的供應商清單並更新篩選選單。"""
         # 更新供應商選單
         curr_supplier = self.supplier_combo.currentText()
-        cursor = self.conn.execute(
-            "SELECT name FROM supplier_records WHERE category = '正式供應商' ORDER BY name COLLATE NOCASE"
-        )
-        suppliers = [row[0] for row in cursor.fetchall()]
+        suppliers = load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_FORMAL)
         self.supplier_combo.blockSignals(True)
         self.supplier_combo.clear()
         self.supplier_combo.addItem("")
@@ -564,10 +576,9 @@ class DefectListWidget(QWidget):
 
         # 更新委外供應商選單
         curr_outsource = self.outsource_supplier_combo.currentText()
-        cursor = self.conn.execute(
-            "SELECT name FROM supplier_records WHERE category = '委外供應商' ORDER BY name COLLATE NOCASE"
+        outsources = load_supplier_names_by_category(
+            self.conn, SUPPLIER_CATEGORY_OUTSOURCE
         )
-        outsources = [row[0] for row in cursor.fetchall()]
         self.outsource_supplier_combo.blockSignals(True)
         self.outsource_supplier_combo.clear()
         self.outsource_supplier_combo.addItem("")
@@ -577,24 +588,15 @@ class DefectListWidget(QWidget):
         self._sync_filter_lock_state()
 
     def _sync_filter_lock_state(self) -> None:
-        supplier_selected = (
-            self.supplier_combo.currentIndex() > 0
-            and bool(self.supplier_combo.currentText().strip())
+        def is_selected(combo: QComboBox) -> bool:
+            return combo.currentIndex() > 0 and bool(combo.currentText().strip())
+
+        apply_supplier_exclusion_lock(
+            supplier_combo=self.supplier_combo,
+            outsource_combo=self.outsource_supplier_combo,
+            hint_label=self.filter_notice,
+            is_filled=is_selected,
         )
-        outsource_selected = (
-            self.outsource_supplier_combo.currentIndex() > 0
-            and bool(self.outsource_supplier_combo.currentText().strip())
-        )
-        self.supplier_combo.setEnabled(not outsource_selected)
-        self.outsource_supplier_combo.setEnabled(not supplier_selected)
-        if supplier_selected:
-            self.filter_notice.setText(HINT_SUPPLIER_LOCKED)
-            self.filter_notice.show()
-        elif outsource_selected:
-            self.filter_notice.setText(HINT_OUTSOURCE_LOCKED)
-            self.filter_notice.show()
-        else:
-            self.filter_notice.hide()
 
     def _handle_supplier_selection(self, index: int) -> None:
         """若選擇了供應商，則停用委外供應商欄位並顯示提示。"""
@@ -616,7 +618,6 @@ class DefectListWidget(QWidget):
     def reset_filters(self) -> None:
         self.month_edit.setDate(QDate.currentDate())
         self.month_filter_checkbox.setChecked(self.workflow == "combined")
-        self.work_order_input.clear()
         self.item_no_input.clear()
         self.supplier_combo.setCurrentIndex(0)
         self.outsource_supplier_combo.setCurrentIndex(0)

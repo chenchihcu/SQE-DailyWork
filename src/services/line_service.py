@@ -12,9 +12,12 @@ button. Therefore, we convert the report to an image for clipboard use.
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def copy_image_to_clipboard(image: "QImage") -> bool:
@@ -28,6 +31,7 @@ def copy_image_to_clipboard(image: "QImage") -> bool:
         clipboard.setImage(image)
         return True
     except Exception:
+        logger.exception("複製圖片到剪貼簿失敗")
         return False
 
 
@@ -45,6 +49,7 @@ def focus_line_window() -> bool:
             return True
         return False
     except Exception:
+        logger.exception("切換至 LINE 視窗失敗")
         return False
 
 
@@ -67,10 +72,9 @@ def launch_line_desktop() -> bool:
                 subprocess.Popen([str(path)])
                 return True
 
-        # 嘗試利用 start 命令啟動
-        subprocess.Popen(["start", "line"], shell=True)
-        return True
+        return False
     except Exception:
+        logger.exception("啟動 LINE 桌面版失敗")
         return False
 
 

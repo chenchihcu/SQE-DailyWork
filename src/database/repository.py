@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, TypedDict
 
 from database.product_stage import (
@@ -83,7 +83,7 @@ def _today_iso() -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now().replace(microsecond=0).isoformat(sep=" ")
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(sep=" ")
 
 
 def _gen_id() -> str:
@@ -258,6 +258,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             department TEXT NOT NULL DEFAULT '',
             phone TEXT NOT NULL DEFAULT '',
             contact_email TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '正式供應商',
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -482,7 +483,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
                     AND date(event_date) IS NOT NULL
                 ),
             return_slip_type TEXT NOT NULL DEFAULT '',
-            work_order_no TEXT NOT NULL CHECK(TRIM(work_order_no) <> ''),
+            work_order_no TEXT NOT NULL DEFAULT '',
             internal_work_order_no TEXT NOT NULL DEFAULT '',
             transfer_slip_no TEXT NOT NULL DEFAULT '',
             item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),
@@ -499,12 +500,19 @@ def create_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE UNIQUE INDEX IF NOT EXISTS uniq_defect_records_business_key
             ON defect_records(event_date, work_order_no, internal_work_order_no, transfer_slip_no, item_no, defect_desc);
+        CREATE INDEX IF NOT EXISTS idx_defect_records_status
+            ON defect_records(status);
+        CREATE INDEX IF NOT EXISTS idx_defect_records_event_date
+            ON defect_records(event_date);
 
         CREATE TABLE IF NOT EXISTS ui_settings (
             setting_key TEXT PRIMARY KEY,
             setting_value TEXT NOT NULL
         );
         """
+    )
+    _ensure_column(
+        conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
     )
     _remove_products_spec_desc_column_if_present(conn)
 
@@ -553,21 +561,23 @@ def create_schema(conn: sqlite3.Connection) -> None:
         END;
 
         -- 共享供應商主檔 VIEW 與 INSTEAD OF Triggers
-        CREATE VIEW IF NOT EXISTS supplier_records AS
+        DROP VIEW IF EXISTS supplier_records;
+        CREATE VIEW supplier_records AS
         SELECT
             id,
             supplier_name AS name,
-            '正式供應商' AS category,
+            category,
             created_at
         FROM suppliers;
 
         CREATE TRIGGER IF NOT EXISTS trg_supplier_records_insert
         INSTEAD OF INSERT ON supplier_records
         BEGIN
-            INSERT INTO suppliers (id, supplier_name, created_at, updated_at, is_active)
+            INSERT INTO suppliers (id, supplier_name, category, created_at, updated_at, is_active)
             VALUES (
                 COALESCE(NEW.id, hex(randomblob(16))),
                 NEW.name,
+                COALESCE(NEW.category, '正式供應商'),
                 COALESCE(NEW.created_at, datetime('now', 'localtime')),
                 datetime('now', 'localtime'),
                 1
@@ -580,6 +590,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         BEGIN
             UPDATE suppliers
             SET supplier_name = NEW.name,
+                category = COALESCE(NEW.category, category),
                 updated_at = datetime('now', 'localtime')
             WHERE id = OLD.id;
         END;
@@ -641,6 +652,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_index(conn, "idx_visits_product", "visits", "product_id")
     _ensure_product_indexes(conn)
     _normalize_event_status_tables(conn)
+    _normalize_defect_records_optional_work_order(conn)
     _ensure_index(conn, "idx_anomalies_date", "anomalies", "anomaly_date")
     _ensure_index(conn, "idx_anomalies_supplier", "anomalies", "supplier_id")
     _ensure_index(conn, "idx_anomalies_status", "anomalies", "status")
@@ -3608,12 +3620,15 @@ def delete_visit(conn: sqlite3.Connection, visit_id: str) -> None:
     if existing is None:
         raise ValueError("Visit not found")
 
-    referenced = conn.execute(
-        "SELECT COUNT(*) AS c FROM anomalies WHERE visit_id = ?",
+    # 若已有異常關聯此訪廠，禁止刪除
+    anomaly_refs = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM anomalies WHERE visit_id = ?",
         (visit_key,),
     ).fetchone()
-    if referenced is not None and _as_int(referenced["c"], 0) > 0:
-        raise ValueError("Visit is referenced by anomalies")
+    if anomaly_refs and int(anomaly_refs["cnt"]) > 0:
+        raise ValueError(
+            f"Visit is referenced by {anomaly_refs['cnt']} anomaly/anomalies"
+        )
 
     conn.execute("DELETE FROM visit_defect_notes WHERE visit_id = ?", (visit_key,))
     conn.execute("DELETE FROM visit_product_sections WHERE visit_id = ?", (visit_key,))
@@ -5409,6 +5424,91 @@ def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
             _rebuild_visits_with_zh_status(conn)
         if needs_anomaly_rebuild:
             _rebuild_anomalies_with_zh_status(conn)
+        conn.execute("COMMIT")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        if fk_enabled:
+            conn.execute("PRAGMA foreign_keys=ON")
+
+
+def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> None:
+    """Drop the legacy ``CHECK(TRIM(work_order_no) <> '')`` so 委外製令 is optional.
+
+    SQLite cannot drop a CHECK constraint via ALTER, so rebuild the table when the
+    old constraint is still present. Idempotent: returns early once the constraint
+    is gone. ``defect_records`` has no triggers in sqe_v2.db; its only dependent
+    object is the ``uniq_defect_records_business_key`` index, recreated afterwards.
+    """
+    table_sql = _table_sql(conn, "defect_records")
+    if not table_sql or "CHECK(TRIM(work_order_no)" not in table_sql:
+        return
+
+    conn.commit()
+    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
+    if fk_enabled:
+        conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DROP TABLE IF EXISTS defect_records__new")
+        conn.execute(
+            """
+            CREATE TABLE defect_records__new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                defect_no TEXT NOT NULL UNIQUE CHECK(TRIM(defect_no) <> ''),
+                event_date TEXT NOT NULL
+                    CHECK(
+                        event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                        AND date(event_date) IS NOT NULL
+                    ),
+                return_slip_type TEXT NOT NULL DEFAULT '',
+                work_order_no TEXT NOT NULL DEFAULT '',
+                internal_work_order_no TEXT NOT NULL DEFAULT '',
+                transfer_slip_no TEXT NOT NULL DEFAULT '',
+                item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),
+                product_name TEXT NOT NULL DEFAULT '',
+                qty INTEGER NOT NULL CHECK(qty > 0),
+                category TEXT NOT NULL DEFAULT '',
+                supplier_name TEXT NOT NULL DEFAULT '',
+                outsource_supplier_name TEXT NOT NULL DEFAULT '',
+                defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
+                status TEXT NOT NULL DEFAULT '',
+                disposition TEXT NOT NULL DEFAULT '',
+                responsibility TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL CHECK(TRIM(created_at) <> '')
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO defect_records__new(
+                id, defect_no, event_date, return_slip_type, work_order_no,
+                internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
+                category, supplier_name, outsource_supplier_name, defect_desc, status,
+                disposition, responsibility, created_at
+            )
+            SELECT
+                id, defect_no, event_date, return_slip_type, work_order_no,
+                internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
+                category, supplier_name, outsource_supplier_name, defect_desc, status,
+                disposition, responsibility, created_at
+            FROM defect_records
+            """
+        )
+        conn.execute("DROP TABLE defect_records")
+        conn.execute("ALTER TABLE defect_records__new RENAME TO defect_records")
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uniq_defect_records_business_key
+                ON defect_records(
+                    event_date, work_order_no, internal_work_order_no,
+                    transfer_slip_no, item_no, defect_desc
+                )
+            """
+        )
         conn.execute("COMMIT")
     except Exception:
         if conn.in_transaction:

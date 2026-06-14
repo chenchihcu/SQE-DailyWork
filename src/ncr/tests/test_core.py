@@ -584,54 +584,45 @@ class DefectServiceTests(DatabaseTestCase):
                         self.sample_payload(disposition=removed_option)
                     )
 
-    def test_validate_defect_data_enforces_work_order_rules(self) -> None:
-        for valid_wo in ("5102-260414001", "5104-260414001", "5202-260414001"):
-            with self.subTest(valid_wo=valid_wo):
-                normalized = defect_service.validate_defect_data(
-                    self.sample_payload(work_order_no=valid_wo)
-                )
-                self.assertEqual(normalized["work_order_no"], valid_wo)
-
-        with self.assertRaisesRegex(ValueError, "委外製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(work_order_no="5101-260414001")
-            )
-
-        with self.assertRaisesRegex(ValueError, "委外製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(work_order_no="5102-26041401")
-            )
-        with self.assertRaisesRegex(ValueError, "委外製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(work_order_no="5102-2604140001")
-            )
-
-        with self.assertRaisesRegex(ValueError, "委外製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(work_order_no="5102-260230001")
-            )
-
+    def test_validate_defect_data_allows_optional_freeform_work_orders(self) -> None:
+        # 委外製令 / 廠內製令 are optional free-text fields: blank or any value saves.
         normalized = defect_service.validate_defect_data(
-            self.sample_payload(internal_work_order_no="")
+            self.sample_payload(work_order_no="", internal_work_order_no="")
         )
+        self.assertEqual(normalized["work_order_no"], "")
         self.assertEqual(normalized["internal_work_order_no"], "")
 
-        for valid_int_wo in ("5101-260414001", "5103-260414001", "5201-260414001"):
-            with self.subTest(valid_int_wo=valid_int_wo):
-                normalized = defect_service.validate_defect_data(
-                    self.sample_payload(internal_work_order_no=valid_int_wo)
-                )
-                self.assertEqual(normalized["internal_work_order_no"], valid_int_wo)
-
-        with self.assertRaisesRegex(ValueError, "廠內製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(internal_work_order_no="5102-260414001")
+        normalized = defect_service.validate_defect_data(
+            self.sample_payload(
+                work_order_no="ABC-123",
+                internal_work_order_no="任意文字",
             )
+        )
+        self.assertEqual(normalized["work_order_no"], "ABC-123")
+        self.assertEqual(normalized["internal_work_order_no"], "任意文字")
 
-        with self.assertRaisesRegex(ValueError, "廠內製令格式不符"):
-            defect_service.validate_defect_data(
-                self.sample_payload(internal_work_order_no="5101-261301001")
+        # Previously-valid formatted values still pass; values are trimmed.
+        normalized = defect_service.validate_defect_data(
+            self.sample_payload(work_order_no="  5102-260414001  ")
+        )
+        self.assertEqual(normalized["work_order_no"], "5102-260414001")
+
+    def test_create_defect_allows_blank_work_order(self) -> None:
+        conn = self.create_memory_connection()
+        try:
+            defect_no = defect_service.create_defect(
+                conn, self.sample_payload(work_order_no="", internal_work_order_no="")
             )
+            row = conn.execute(
+                "SELECT work_order_no, internal_work_order_no "
+                "FROM defect_records WHERE defect_no = ?",
+                (defect_no,),
+            ).fetchone()
+            assert row is not None
+            self.assertEqual(row["work_order_no"], "")
+            self.assertEqual(row["internal_work_order_no"], "")
+        finally:
+            conn.close()
 
     def test_create_defect_blocks_duplicate_business_key(self) -> None:
         conn = self.create_memory_connection()
@@ -984,6 +975,136 @@ class ExportServiceTests(DatabaseTestCase):
             self.assertEqual(workbook["統計"]["A1"].value, "產品統計")
             self.assertEqual(workbook["統計"]["B2"].value, "處置方式")
             self.assertEqual(workbook["統計"]["D3"].value, "2026-04")
+
+
+class DefectRecordsWorkOrderMigrationTests(unittest.TestCase):
+    """Existing DBs with the legacy work_order_no CHECK must be rebuilt as optional."""
+
+    LEGACY_DEFECT_RECORDS_DDL = """
+        CREATE TABLE defect_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            defect_no TEXT NOT NULL UNIQUE CHECK(TRIM(defect_no) <> ''),
+            event_date TEXT NOT NULL
+                CHECK(
+                    event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    AND date(event_date) IS NOT NULL
+                ),
+            return_slip_type TEXT NOT NULL DEFAULT '',
+            work_order_no TEXT NOT NULL CHECK(TRIM(work_order_no) <> ''),
+            internal_work_order_no TEXT NOT NULL DEFAULT '',
+            transfer_slip_no TEXT NOT NULL DEFAULT '',
+            item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),
+            product_name TEXT NOT NULL DEFAULT '',
+            qty INTEGER NOT NULL CHECK(qty > 0),
+            category TEXT NOT NULL DEFAULT '',
+            supplier_name TEXT NOT NULL DEFAULT '',
+            outsource_supplier_name TEXT NOT NULL DEFAULT '',
+            defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
+            status TEXT NOT NULL DEFAULT '',
+            disposition TEXT NOT NULL DEFAULT '',
+            responsibility TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL CHECK(TRIM(created_at) <> '')
+        )
+    """
+
+    def _legacy_connection(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(self.LEGACY_DEFECT_RECORDS_DDL)
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX uniq_defect_records_business_key
+                ON defect_records(
+                    event_date, work_order_no, internal_work_order_no,
+                    transfer_slip_no, item_no, defect_desc
+                )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO defect_records
+                (defect_no, event_date, work_order_no, item_no, qty, defect_desc, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "NCR-10001",
+                "2026-04-14",
+                "5102-260414001",
+                "ITEM-1001",
+                5,
+                "Scratch",
+                "2026-04-14T09:00:00",
+            ),
+        )
+        conn.commit()
+        return conn
+
+    def test_normalizer_drops_check_and_preserves_rows(self) -> None:
+        from database import repository
+
+        conn = self._legacy_connection()
+        try:
+            # Legacy schema rejects a blank work order.
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    """
+                    INSERT INTO defect_records
+                        (defect_no, event_date, work_order_no, item_no, qty, defect_desc, created_at)
+                    VALUES ('NCR-10002', '2026-04-14', '', 'ITEM-1002', 1, 'Dent', '2026-04-14T10:00:00')
+                    """
+                )
+
+            repository._normalize_defect_records_optional_work_order(conn)
+
+            table_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='defect_records'"
+            ).fetchone()[0]
+            self.assertNotIn("CHECK(TRIM(work_order_no)", table_sql)
+
+            # Original row preserved.
+            preserved = conn.execute(
+                "SELECT work_order_no FROM defect_records WHERE defect_no = 'NCR-10001'"
+            ).fetchone()
+            self.assertEqual(preserved["work_order_no"], "5102-260414001")
+
+            # The unique business-key index survives the rebuild.
+            index_row = conn.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type='index' AND name='uniq_defect_records_business_key'"
+            ).fetchone()
+            self.assertIsNotNone(index_row)
+
+            # A blank work order now inserts successfully.
+            conn.execute(
+                """
+                INSERT INTO defect_records
+                    (defect_no, event_date, work_order_no, item_no, qty, defect_desc, created_at)
+                VALUES ('NCR-10002', '2026-04-14', '', 'ITEM-1002', 1, 'Dent', '2026-04-14T10:00:00')
+                """
+            )
+            conn.commit()
+            count = conn.execute("SELECT COUNT(*) FROM defect_records").fetchone()[0]
+            self.assertEqual(int(count), 2)
+        finally:
+            conn.close()
+
+    def test_normalizer_is_idempotent(self) -> None:
+        from database import repository
+
+        conn = self._legacy_connection()
+        try:
+            repository._normalize_defect_records_optional_work_order(conn)
+            sql_after_first = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='defect_records'"
+            ).fetchone()[0]
+            # Second run must be a safe no-op (constraint already gone).
+            repository._normalize_defect_records_optional_work_order(conn)
+            sql_after_second = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='defect_records'"
+            ).fetchone()[0]
+            self.assertEqual(sql_after_first, sql_after_second)
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

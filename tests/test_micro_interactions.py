@@ -32,6 +32,12 @@ class MicroInteractionTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def _drain_events(self) -> None:
         self.app.processEvents()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

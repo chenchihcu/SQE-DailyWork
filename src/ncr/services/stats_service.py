@@ -210,6 +210,43 @@ def get_top_suppliers_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(cursor.fetchall())
 
 
+def get_top_suppliers_stats_filtered(
+    conn: sqlite3.Connection, yyyymm: str | None = None
+) -> list[sqlite3.Row]:
+    if yyyymm and yyyymm != "ALL":
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        cursor = conn.execute(
+            """
+            SELECT
+                supplier_name,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE supplier_name IS NOT NULL AND supplier_name <> '' AND supplier_name <> 'N/A'
+              AND SUBSTR(event_date, 1, 7) = ?
+            GROUP BY supplier_name
+            ORDER BY total_qty DESC
+            LIMIT 5
+            """,
+            (formatted_month,),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            SELECT
+                supplier_name,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE supplier_name IS NOT NULL AND supplier_name <> '' AND supplier_name <> 'N/A'
+            GROUP BY supplier_name
+            ORDER BY total_qty DESC
+            LIMIT 5
+            """
+        )
+    return list(cursor.fetchall())
+
+
 def get_top_products_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     cursor = conn.execute(
         """
@@ -225,6 +262,114 @@ def get_top_products_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         """
     )
     return list(cursor.fetchall())
+
+
+def get_top_products_stats_filtered(
+    conn: sqlite3.Connection, yyyymm: str | None = None
+) -> list[sqlite3.Row]:
+    if yyyymm and yyyymm != "ALL":
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        cursor = conn.execute(
+            """
+            SELECT
+                product_name,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE product_name IS NOT NULL AND product_name <> '' AND product_name <> 'N/A'
+              AND SUBSTR(event_date, 1, 7) = ?
+            GROUP BY product_name
+            ORDER BY total_qty DESC
+            LIMIT 5
+            """,
+            (formatted_month,),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            SELECT
+                product_name,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE product_name IS NOT NULL AND product_name <> '' AND product_name <> 'N/A'
+            GROUP BY product_name
+            ORDER BY total_qty DESC
+            LIMIT 5
+            """
+        )
+    return list(cursor.fetchall())
+
+
+def get_scrap_rework_ratio_filtered(
+    conn: sqlite3.Connection, yyyymm: str | None = None
+) -> list[sqlite3.Row]:
+    if yyyymm and yyyymm != "ALL":
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        cursor = conn.execute(
+            """
+            SELECT
+                disposition,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE disposition IN ('報廢', '重工')
+              AND SUBSTR(event_date, 1, 7) = ?
+            GROUP BY disposition
+            ORDER BY total_qty DESC
+            """,
+            (formatted_month,),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            SELECT
+                disposition,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE disposition IN ('報廢', '重工')
+            GROUP BY disposition
+            ORDER BY total_qty DESC
+            """
+        )
+    return list(cursor.fetchall())
+
+
+def get_return_slip_ratio_filtered(
+    conn: sqlite3.Connection, yyyymm: str | None = None
+) -> list[sqlite3.Row]:
+    if yyyymm and yyyymm != "ALL":
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        cursor = conn.execute(
+            """
+            SELECT
+                return_slip_type,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE return_slip_type IN ('廠內退料', '託外退料')
+              AND SUBSTR(event_date, 1, 7) = ?
+            GROUP BY return_slip_type
+            ORDER BY total_qty DESC
+            """,
+            (formatted_month,),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            SELECT
+                return_slip_type,
+                COUNT(*) AS case_count,
+                SUM(qty) AS total_qty
+            FROM defect_records
+            WHERE return_slip_type IN ('廠內退料', '託外退料')
+            GROUP BY return_slip_type
+            ORDER BY total_qty DESC
+            """
+        )
+    return list(cursor.fetchall())
+
 
 
 def get_trend_stats(conn: sqlite3.Connection, months: int = 6) -> list[sqlite3.Row]:

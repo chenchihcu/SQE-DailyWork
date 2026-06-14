@@ -16,6 +16,12 @@ class MasterDataStageChangeFlowTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def _suppliers(self) -> list[dict]:
         return [
             {"id": "sup-1", "supplier_name": "供應商A", "is_active": True},

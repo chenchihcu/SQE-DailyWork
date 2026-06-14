@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QDate, Qt
+
+logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -47,10 +51,13 @@ from ui.widgets.event_actions import (
 )
 from ui.widgets.pagination_bar import PaginationBar
 
+# Consolidated event-management page: one widget, scope tabs cover every supplier
+# event view (including 已結案查詢). Order = most-used first; default = 單獨異常.
 EVENT_QUERY_SCOPE_TABS = (
-    ("訪廠紀錄", event_service.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
-    ("訪廠發現異常", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
     ("單獨異常", event_service.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
+    ("訪廠發現異常", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
+    ("訪廠紀錄", event_service.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
+    ("已結案", event_service.EVENT_SCOPE_CLOSED_ONLY, "ANOMALY"),
 )
 
 _SORTABLE_COLS: dict[int, str] = {
@@ -63,7 +70,7 @@ _SORTABLE_COLS: dict[int, str] = {
 
 
 class EventListWidget(QWidget):
-    def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None):
+    def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None, lazy_load: bool = False):
         super().__init__()
         self.main_window = main_window
         self.mode = "entry" if mode == "entry" else "query"
@@ -82,11 +89,16 @@ class EventListWidget(QWidget):
             else:
                 self._filter_event_type = self._event_type_for_scope(self.fixed_scope)
         else:
-            self._filter_event_type = "VISIT" if self.mode == "query" else "ALL"
             if self.mode == "query":
+                # Consolidated event page defaults to the first scope tab (單獨異常),
+                # matching the anomaly sidebar badge count.
                 self._filter_event_scope = EVENT_QUERY_SCOPE_TABS[0][1]
+                self._filter_event_type = self._event_type_for_scope(
+                    self._filter_event_scope
+                )
             else:
                 self._filter_event_scope = None
+                self._filter_event_type = "ALL"
         self._filter_status = fixed_status if fixed_status else "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm: str | None = None
@@ -102,7 +114,9 @@ class EventListWidget(QWidget):
         self._selected_event_row: dict | None = None
         self._event_actions = EventActionsController(self, main_window)
         self._setup_ui()
-        self.refresh_data()
+        self._has_loaded = False
+        if not lazy_load:
+            self.refresh_data()
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -206,15 +220,12 @@ class EventListWidget(QWidget):
             actions_row.addWidget(helper)
             actions_row.addStretch(1)
 
-        # Shared right-aligned new-event actions (deduplicated across modes)
-        btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
-        if btn_new_visit:
-            actions_row.addWidget(btn_new_visit)
-        if btn_new_anomaly:
-            actions_row.addWidget(btn_new_anomaly)
         control_outer.addLayout(actions_row)
 
-        # Row 2: pagination + secondary actions (export, etc.) — consistent across modes
+        # Row 2: pagination + new-event actions + secondary actions (export).
+        # The consolidated event page carries both 新增訪廠 and 新增異常; placing
+        # them on the toolbar row (not the filter row) keeps the filter row within
+        # the 1024-wide minimum without overlapping controls.
         toolbar_row = QHBoxLayout()
         toolbar_row.setSpacing(8)
 
@@ -230,6 +241,13 @@ class EventListWidget(QWidget):
             default_page_size=self._page_size,
         )
         toolbar_row.addWidget(self.pagination, 1)
+
+        # Shared new-event actions (deduplicated across modes).
+        btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
+        if btn_new_visit:
+            toolbar_row.addWidget(btn_new_visit)
+        if btn_new_anomaly:
+            toolbar_row.addWidget(btn_new_anomaly)
 
         if self.mode == "query":
             self.export_pdf_button = QPushButton("輸出PDF")
@@ -391,6 +409,12 @@ class EventListWidget(QWidget):
             self._combo_set_current_data(self.status_combo, self._filter_status)
         finally:
             self.status_combo.blockSignals(False)
+        # 已結案分頁固定狀態為已結案：鎖定狀態下拉，避免相互矛盾的篩選。
+        if not self.fixed_status:
+            is_closed_scope = (
+                self._filter_event_scope == event_service.EVENT_SCOPE_CLOSED_ONLY
+            )
+            self.status_combo.setEnabled(not is_closed_scope)
         if self.supplier_filter_input is not None:
             self.supplier_filter_input.setText(self._filter_supplier)
         if self.all_months_checkbox is not None and self.month_input is not None:
@@ -423,6 +447,13 @@ class EventListWidget(QWidget):
         self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
+        if scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+            # 已結案分頁：狀態固定為已結案、停用狀態下拉。
+            self._filter_status = "已結案"
+        elif self._filter_status == "已結案":
+            # 離開已結案分頁時，已結案狀態不再適用於進行中分頁。
+            self._filter_status = "ALL"
+        self._sync_filter_widgets_from_state()
         self._sync_source_tag()
         self.refresh_data()
 
@@ -566,6 +597,7 @@ class EventListWidget(QWidget):
         self.refresh_data()
 
     def refresh_data(self):
+        self._has_loaded = True
         filters = {
             "event_type": self._filter_event_type,
             "status": self._filter_status,
@@ -681,6 +713,7 @@ class EventListWidget(QWidget):
         try:
             default_name = event_service.default_event_pdf_filename(row)
         except Exception:
+            logger.exception("取得預設 PDF 檔名失敗")
             default_name = "SQE_事件單.pdf"
         target, _ = QFileDialog.getSaveFileName(
             self,

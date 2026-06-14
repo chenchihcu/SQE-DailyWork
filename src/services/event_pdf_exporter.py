@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from datetime import datetime
 from html import escape
 from os import environ
 from pathlib import Path
 
-from PySide6.QtCore import QMarginsF
-from PySide6.QtGui import (
-    QFont,
-    QFontDatabase,
-    QImageReader,
-    QPageLayout,
-    QPageSize,
-    QTextDocument,
-)
-from PySide6.QtPrintSupport import QPrinter
+logger = logging.getLogger(__name__)
+
+from PySide6.QtGui import QFont, QFontDatabase, QTextDocument
 
 from services import attachment_manager
 
@@ -206,6 +200,7 @@ def export_event_pdf(
             raise RuntimeError("PDF 檔案未產生")
         return True, f"已匯出至：{output}"
     except Exception as exc:
+        logger.exception("PDF 匯出失敗")
         return False, f"匯出失敗：{exc}"
 
 
@@ -217,20 +212,12 @@ def _event_type(row: dict) -> str:
 
 
 def _write_html_pdf(html: str, output: Path) -> None:
-    font_family = _preferred_pdf_font_family()
-    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-    printer.setOutputFileName(str(output))
-    printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-    printer.setPageMargins(
-        QMarginsF(12, 12, 12, 12),
-        QPageLayout.Unit.Millimeter,
-    )
+    from xhtml2pdf import pisa
 
-    document = QTextDocument()
-    document.setDefaultFont(QFont(font_family, 10))
-    document.setHtml(html)
-    document.print_(printer)
+    with open(output, "wb") as f:
+        status = pisa.CreatePDF(html, dest=f)
+    if status.err:
+        raise RuntimeError(f"PDF 轉換失敗: {status.err}")
 
 
 def _preferred_pdf_font_family() -> str:
@@ -1033,15 +1020,13 @@ def _wide_row(label: str, value_html: str) -> str:
 
 
 def _image_pixel_size(path: Path) -> tuple[int, int] | None:
-    reader = QImageReader(str(path))
-    size = reader.size()
-    if not size.isValid():
+    try:
+        from PIL import Image
+        with Image.open(path) as img:
+            return img.size
+    except Exception:
+        logger.exception("讀取圖片尺寸失敗 %s", path)
         return None
-    width = size.width()
-    height = size.height()
-    if width <= 0 or height <= 0:
-        return None
-    return width, height
 
 
 def _attachment_display_size(path: Path) -> tuple[int, int]:
@@ -1455,6 +1440,7 @@ def export_brief_event_pdf(
             raise RuntimeError("精簡版 PDF 檔案未產生")
         return True, f"已匯出精簡版至：{output}"
     except Exception as exc:
+        logger.exception("精簡版 PDF 匯出失敗")
         return False, f"匯出精簡版失敗：{exc}"
 
 
@@ -1511,4 +1497,5 @@ def render_brief_event_to_image(
 
         return image
     except Exception:
+        logger.exception("渲染精簡報告圖片失敗")
         return None

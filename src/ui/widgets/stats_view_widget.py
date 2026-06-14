@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from PySide6.QtCharts import (
@@ -62,6 +63,8 @@ from ui.widgets.common_widgets import (
     apply_clickable_affordance
 )
 
+logger = logging.getLogger(__name__)
+
 SUPPLIER_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
 CHART_AXIS_TITLE_POINT_SIZE = 11
@@ -77,7 +80,7 @@ CHART_OVERDUE_COLOR = QColor(CHART_OVERDUE_PALETTE.chart)
 
 
 class StatsViewWidget(QWidget):
-    def __init__(self, main_window=None):
+    def __init__(self, main_window=None, *, lazy_load: bool = False):
         super().__init__()
         self.setObjectName("StatsView")
         self.main_window = main_window
@@ -98,7 +101,9 @@ class StatsViewWidget(QWidget):
         self._summary_buttons: dict[str, QPushButton] = {}
         self._decision_summary_context: dict[str, str | None] = {}
         self._setup_ui()
-        self.refresh_data()
+        self._has_loaded = False
+        if not lazy_load:
+            self.refresh_data()
         self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _setup_ui(self):
@@ -412,6 +417,7 @@ class StatsViewWidget(QWidget):
         self.refresh_data()
 
     def refresh_data(self):
+        self._has_loaded = True
         try:
             yyyymm = self._month_key()
             summary = event_service.get_monthly_stats(yyyymm)
@@ -419,7 +425,10 @@ class StatsViewWidget(QWidget):
             trend_data = event_service.get_anomaly_trend(months=6)
             try:
                 resp_stats = event_service.get_responsible_person_stats(yyyymm)
-            except (AttributeError, Exception):
+            except Exception:
+                logger.exception(
+                    "get_responsible_person_stats failed for %s", yyyymm
+                )
                 resp_stats = []
                 
             self._refresh_decision_summary(summary, trend_data)
@@ -430,6 +439,7 @@ class StatsViewWidget(QWidget):
             )
             self._refresh_defect_charts()
         except Exception as exc:
+            logger.exception("重新整理統計視圖失敗")
             self._refresh_decision_summary({}, [])
             self._render_charts([], [], error_message=localize_exception(exc))
 
@@ -533,6 +543,7 @@ class StatsViewWidget(QWidget):
                 warehouse_text = f"倉庫待處理：{open_count} 件"
                 warehouse_enabled = True
         except Exception:
+            logger.exception("讀取倉庫摘要失敗")
             warehouse_enabled = False
         self._set_summary_button(
             "warehouse",
@@ -851,7 +862,11 @@ class StatsViewWidget(QWidget):
 
     def _on_chart_bar_hovered(self, status: bool, index: int, bar_set: QBarSet):
         """相容性方法，供測試與現有邏輯使用"""
-        self._on_supplier_bar_hovered(status, index, self._last_supplier_data)
+        data = self._last_supplier_data
+        if not isinstance(data, list):
+            QToolTip.hideText()
+            return
+        self._on_supplier_bar_hovered(status, index, data)
 
     def _on_chart_bar_clicked(self, index: int, bar_set: QBarSet):
         """點擊圖表跳轉至異常列表"""
@@ -1191,6 +1206,7 @@ class StatsViewWidget(QWidget):
                 product_rows = ncr_stats_service.get_top_products_stats(conn)
                 supplier_rows = ncr_stats_service.get_supplier_disposition_stats(conn)
         except Exception as exc:
+            logger.exception("載入倉庫不合格品統計數據失敗")
             err_lbl = QLabel(f"無法載入倉庫不合格品統計數據：{exc}")
             self.defect_grid.addWidget(err_lbl, 0, 0)
             return

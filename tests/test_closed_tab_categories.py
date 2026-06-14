@@ -23,6 +23,12 @@ class ClosedTabCategoriesTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._list_events_patch = patch(
             "ui.widgets.defect_list_widget.event_service.list_events",
@@ -68,10 +74,11 @@ class ClosedTabCategoriesTests(unittest.TestCase):
         self.assertIn("訪廠紀錄", labels)
         self.assertIn("訪廠發現異常", labels)
         self.assertIn("單獨異常", labels)
-        self.assertEqual(3, len(labels))
-        
-        # Verify default selected scope is VISIT_ONLY
-        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, widget._filter_event_scope)
+        self.assertIn("已結案", labels)
+        self.assertEqual(4, len(labels))
+
+        # Default selected scope is ANOMALY_ONLY (matches the anomaly sidebar badge).
+        self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, widget._filter_event_scope)
         
         widget.close()
 

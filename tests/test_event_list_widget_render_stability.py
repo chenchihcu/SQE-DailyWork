@@ -35,6 +35,12 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._list_events_patch = patch(
             "ui.widgets.defect_list_widget.event_service.list_events",
@@ -142,11 +148,11 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             for index in range(self.widget.event_scope_tab_bar.count())
         ]
         self.assertEqual(
-            ["訪廠紀錄", "訪廠發現異常", "單獨異常"],
+            ["單獨異常", "訪廠發現異常", "訪廠紀錄", "已結案"],
             labels,
         )
         self.assertEqual(
-            event_service.EVENT_SCOPE_VISIT_ONLY,
+            event_service.EVENT_SCOPE_ANOMALY_ONLY,
             self.widget.event_scope_tab_bar.tabData(0),
         )
         self.assertIsNotNone(self.widget.export_pdf_button)
@@ -156,7 +162,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertIn("請先選取", self.widget.export_pdf_button.toolTip())
         self.assertIsNotNone(self.widget.source_tag_label)
         assert self.widget.source_tag_label is not None
-        self.assertEqual("供應商事件 / 訪廠紀錄", self.widget.source_tag_label.text())
+        self.assertEqual("供應商事件 / 單獨異常", self.widget.source_tag_label.text())
 
     def test_switching_query_scope_tab_refreshes_with_scope(self) -> None:
         self._list_events.reset_mock()
@@ -214,7 +220,8 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self._list_events.assert_called_once()
         filters = self._list_events.call_args.args[0]
         self.assertEqual(2, self.widget.event_scope_tab_bar.currentIndex())
-        self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, filters["event_scope"])
+        # Tab index 2 is now 訪廠紀錄 (VISIT_ONLY); reset keeps the current scope.
+        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, filters["event_scope"])
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("", filters["supplier"])
 

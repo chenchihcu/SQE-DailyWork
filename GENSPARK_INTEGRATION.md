@@ -141,23 +141,37 @@ print(response['response'])
 ## ⚙️ 高級配置
 
 ### 自訂超時時間
-編輯 `src/genspark_client.py` 中的超時參數：
+所有 CLI 子程序都集中在 `src/genspark_client.py` 的 `_run_genspark()`
+helper 執行；逾時由各查詢方法呼叫時帶入（搜尋 `query_with_cli` 為 30 秒、
+AI 對話 `query_ai_model` 為 60 秒）。調整對應方法傳給 `_run_genspark(...)`
+的 `timeout` 秒數即可：
+
 ```python
-result = subprocess.run(
-    cmd,
-    timeout=60  # 秒
-)
+def _run_genspark(self, cmd, *, timeout):
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,  # 秒，由各查詢方法帶入
+        env={**os.environ, "GENSPARK_API_KEY": self.api_key},
+    )
 ```
 
 ### 加入代理設置
+子程序環境變數統一在 `_run_genspark()` 內組裝，於該處加入代理設定即可
+套用到所有查詢：
+
 ```python
-env = {
-    **os.environ,
-    "GENSPARK_API_KEY": self.api_key,
-    "HTTP_PROXY": "http://proxy.example.com:8080",
-    "HTTPS_PROXY": "http://proxy.example.com:8080"
-}
-result = subprocess.run(cmd, env=env)
+def _run_genspark(self, cmd, *, timeout):
+    env = {
+        **os.environ,
+        "GENSPARK_API_KEY": self.api_key,
+        "HTTP_PROXY": "http://proxy.example.com:8080",
+        "HTTPS_PROXY": "http://proxy.example.com:8080",
+    }
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, env=env
+    )
 ```
 
 ## 🔧 故障排除
@@ -193,12 +207,21 @@ npm install -g @genspark/cli
 **參數：**
 - `query` (str): 搜尋文本
 
-**返回值：**
+**返回值：** 成功時固定回傳 `success=True` 與 `data`；`data` 為 CLI 輸出
+解析後的 JSON,無法解析時則為原始輸出字串。
+
 ```python
+# 成功
 {
-    "success": bool,
-    "data": list,  # 搜尋結果
-    "error": str   # 錯誤信息（如果失敗）
+    "success": True,
+    "data": list | dict | str,  # 解析後 JSON,否則為原始輸出字串
+}
+
+# 失敗（CLI 非零退出 / 逾時 / 例外）
+{
+    "success": False,
+    "error": str,    # 錯誤摘要
+    "message": str,  # 人類可讀說明
 }
 ```
 
@@ -211,10 +234,17 @@ npm install -g @genspark/cli
 
 **返回值：**
 ```python
+# 成功
 {
-    "success": bool,
-    "response": str,  # AI 回應
-    "error": str      # 錯誤信息（如果失敗）
+    "success": True,
+    "response": str,  # AI 回應（CLI 原始輸出）
+}
+
+# 失敗
+{
+    "success": False,
+    "error": str,    # 錯誤摘要
+    "message": str,  # 逾時等情況附帶的人類可讀說明（非必有）
 }
 ```
 

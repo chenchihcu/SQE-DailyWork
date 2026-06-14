@@ -18,6 +18,12 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row

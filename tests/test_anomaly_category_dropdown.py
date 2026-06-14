@@ -15,6 +15,12 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls._app is not None:
+            cls._app.quit()
+
     def setUp(self) -> None:
         self._pandas_patch = patch.dict(sys.modules, {"pandas": ModuleType("pandas")})
         self._pandas_patch.start()
@@ -60,6 +66,11 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             patch.object(self.widget_module.QMessageBox, "information"),
             patch.object(self.widget_module.QMessageBox, "warning"),
             patch.object(self.widget_module.QMessageBox, "critical"),
+            patch.object(
+                self.widget_module.QMessageBox,
+                "question",
+                return_value=self.widget_module.QMessageBox.StandardButton.Yes,
+            ),
         ]
         for p in self._patches:
             p.start()

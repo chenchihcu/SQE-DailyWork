@@ -28,11 +28,16 @@ no separate launcher window, and no standalone NCR main window.
 
 ## UI Workbench
 
-- Home shows operational KPI and quick entries only; hero/cover content,
-  feature tours, project-structure copy, and recent-event tables are retired.
-- Sidebar is workflow-first; the workflow groups (overview, supplier events,
-  analysis/query, master data, warehouse) are conveyed by per-item icons and
-  spacing rather than text section headers; page indexes stay stable.
+- Home is a daily cockpit: six operational KPI cards plus one read-only backlog
+  (待辦) list (open/overdue anomalies, overdue first, with a warehouse pending
+  shortcut). Hero/cover content, feature tours, project-structure copy, and
+  quick-entry write panels stay retired; the backlog list only reads existing
+  services and routes through existing navigation.
+- Sidebar is workflow-first with one item per group (首頁 / 事件管理 /
+  異常事件統計 / 基礎資料 / 不合格品追蹤), conveyed by per-item icons and spacing
+  rather than text section headers. The former 異常一覽表 / 訪廠紀錄一覽表 /
+  異常已結案查詢 entries are now scope tabs (單獨異常 / 訪廠發現異常 / 訪廠紀錄 /
+  已結案) inside the single 事件管理 page.
 - Supplier event and warehouse nonconforming-product pending work both surface
   as sidebar badges.
 - `登錄訪廠紀錄` and `登錄訪廠缺失` use the visit form.

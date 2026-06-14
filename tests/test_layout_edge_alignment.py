@@ -18,6 +18,12 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self.window = MainWindow()
         self.window.show()
@@ -114,12 +120,12 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         self.assertEqual(1, len(self._top_level_subpanels(page)))
 
     def test_event_management_filter_row_keeps_actions_without_overlap_at_min_width(self) -> None:
-        """事件管理篩選列：查詢與新增按鈕同列不重疊。"""
+        """事件管理篩選列：篩選控制項同列不重疊（新增按鈕已移至工具列列）。"""
         self.window.resize(1100, 740)
-        self.window.stack.setCurrentWidget(self.window.visit_widget)
+        self.window.stack.setCurrentWidget(self.window.events_widget)
         self.app.processEvents()
 
-        page = self.window.visit_widget
+        page = self.window.events_widget
         control_panel = self._top_level_subpanels(page)[0]
         controls = [
             self._find_label(page, "供應商"),
@@ -128,7 +134,6 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
             page.status_combo,
             self._find_button(page, "查詢"),
             self._find_button(page, "清除條件"),
-            self._find_button(page, "新增訪廠"),
         ]
 
         rects = [widget.geometry() for widget in controls]
@@ -141,6 +146,10 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
 
         center_ys = [rect.center().y() for rect in rects]
         self.assertLessEqual(max(center_ys) - min(center_ys), 2)
+
+        # New-event actions remain available on the consolidated page (toolbar row).
+        self.assertIsNotNone(self._find_button(page, "新增訪廠"))
+        self.assertIsNotNone(self._find_button(page, "新增異常"))
 
     def test_event_management_keeps_pagination_control_contract(self) -> None:
         """事件管理保留既有分頁列尺寸。"""

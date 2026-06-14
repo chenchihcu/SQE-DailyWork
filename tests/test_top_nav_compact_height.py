@@ -9,30 +9,25 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from ui.main_window import (
     HOME_PAGE_INDEX,
-    ANOMALY_PAGE_INDEX,
-    VISIT_PAGE_INDEX,
+    EVENT_PAGE_INDEX,
     STATS_PAGE_INDEX,
-    CLOSED_PAGE_INDEX,
     MASTER_PAGE_INDEX,
+    NCR_PAGE_INDEX,
     MainWindow,
 )
 from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
 
 
-# Six SQE DailyWork pages followed by the warehouse nonconforming-product page.
-_EXPECTED_HOST_NAV_LABELS = [
+# Six sidebar nav labels: 首頁, 事件管理, 異常事件統計, 不合格品追蹤, 不合格品統計分析, 基礎資料.
+_EXPECTED_NAV_LABELS = [
     "首頁",
-    "異常一覽表",
-    "訪廠紀錄一覽表",
+    "事件管理",
     "異常事件統計",
-    "異常已結案查詢",
+    "不合格品追蹤",
+    "不合格品統計分析",
     "基礎資料",
 ]
-_EXPECTED_NCR_NAV_LABELS = [
-    "不合格品追蹤",
-]
-_EXPECTED_NAV_LABELS = _EXPECTED_HOST_NAV_LABELS + _EXPECTED_NCR_NAV_LABELS
 
 
 class MainWorkflowTabTests(unittest.TestCase):
@@ -41,6 +36,12 @@ class MainWorkflowTabTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
+
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
 
     def setUp(self) -> None:
         self.window = MainWindow()
@@ -65,10 +66,8 @@ class MainWorkflowTabTests(unittest.TestCase):
 
     def test_switching_pages_updates_header_titles_with_new_labels(self) -> None:
         expected_titles = {
-            ANOMALY_PAGE_INDEX: "異常一覽表",
-            VISIT_PAGE_INDEX: "訪廠紀錄一覽表",
+            EVENT_PAGE_INDEX: "事件管理",
             STATS_PAGE_INDEX: "異常事件統計",
-            CLOSED_PAGE_INDEX: "異常已結案查詢",
             MASTER_PAGE_INDEX: "基礎資料",
         }
         for page_index, expected_title in expected_titles.items():
@@ -80,9 +79,9 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_seven_nav_items(self) -> None:
-        # 6 SQE DailyWork pages + 1 embedded warehouse nonconforming-product page = 7.
-        self.assertEqual(7, len(self.window.sidebar._buttons))
+    def test_sidebar_has_six_nav_items(self) -> None:
+        # 6 sidebar nav buttons.
+        self.assertEqual(6, len(self.window.sidebar._buttons))
 
     def test_sidebar_groups_use_icons_not_text_labels(self) -> None:
         # 分組改以「圖示 + 間距」呈現工作流程結構，不再使用分組標題文字或分隔線。
@@ -97,8 +96,8 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertFalse(icon_label.pixmap().isNull())
 
     def test_sidebar_warehouse_badge_is_available(self) -> None:
-        warehouse_button = self.window.sidebar._buttons[-1]
-        self.window.sidebar.set_badge(6, 12)
+        warehouse_button = self.window.sidebar._buttons[NCR_PAGE_INDEX]
+        self.window.sidebar.set_badge(NCR_PAGE_INDEX, 12)
         self.app.processEvents()
         badges = warehouse_button.findChildren(QLabel, "NavBadge")
         self.assertEqual(1, len(badges))
@@ -131,11 +130,11 @@ class MainWorkflowTabTests(unittest.TestCase):
         self.assertGreater(sidebar.width(), 0)
 
     def test_switch_primary_page_updates_sidebar_active_state(self) -> None:
-        self.window._switch_primary_page(ANOMALY_PAGE_INDEX)
+        self.window._switch_primary_page(EVENT_PAGE_INDEX)
         self.app.processEvents()
-        self.assertEqual(ANOMALY_PAGE_INDEX, self.window.stack.currentIndex())
+        self.assertEqual(EVENT_PAGE_INDEX, self.window.stack.currentIndex())
         self.assertIs(self.window.stack.currentWidget(), self.window.events_widget)
-        active_btn = self.window.sidebar._buttons[ANOMALY_PAGE_INDEX]
+        active_btn = self.window.sidebar._buttons[EVENT_PAGE_INDEX]
         self.assertEqual("true", active_btn.property("nav_active"))
 
 

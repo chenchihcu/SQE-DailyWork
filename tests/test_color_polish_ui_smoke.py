@@ -26,6 +26,12 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def test_main_window_exposes_color_polish_surfaces(self) -> None:
         from ui.sidebar_nav import SidebarNav
         window = MainWindow()
@@ -33,7 +39,7 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             # Sidebar navigation replaces old QTabWidget
             self.assertIsNotNone(window.sidebar)
             self.assertIsInstance(window.sidebar, SidebarNav)
-            self.assertEqual(7, len(window.sidebar._buttons))
+            self.assertEqual(6, len(window.sidebar._buttons))
             self.assertIsNotNone(window.findChild(QFrame, "HomeKpiPanel"))
             self.assertIsNone(window.findChild(QFrame, "HomeQuickActionPanel"))
             self.assertIsNotNone(window.findChild(QFrame, "MasterInlineToolbar"))

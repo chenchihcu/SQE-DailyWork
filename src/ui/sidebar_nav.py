@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -33,27 +34,30 @@ _OVERVIEW_ITEMS = [
     ("首頁", "首頁", False, "icons/home.svg"),
 ]
 
+# 事件管理：單一入口，內含 scope 分頁（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）。
 _EVENT_ITEMS = [
-    ("異常一覽表", "異常一覽表", True, "icons/anomaly.svg"),   # badge_enabled=True
-    ("訪廠紀錄一覽表", "訪廠紀錄一覽表", False, "icons/visit.svg"),
+    ("事件管理", "事件管理", True, "icons/anomaly.svg"),   # badge_enabled=True
 ]
 
 _INSIGHT_ITEMS = [
     ("異常事件統計", "異常事件統計", False, "icons/stats.svg"),
-    ("異常已結案查詢", "異常已結案查詢", False, "icons/closed.svg"),
+]
+
+# 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
+_NCR_ITEMS = [
+    ("不合格品追蹤", True, "icons/warehouse.svg"),
+]
+
+_NCR_STATS_ITEMS = [
+    ("不合格品統計分析", "不合格品統計分析", False, "icons/stats.svg"),
 ]
 
 _MASTER_ITEMS = [
     ("基礎資料", "基礎資料", False, "icons/master.svg"),
 ]
 
-# 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
-# Flat index 6 (must match ncr.embed.NCR_PAGE_SPECS order).
-_NCR_ITEMS = [
-    ("不合格品追蹤", True, "icons/warehouse.svg"),
-]
 
-
+@lru_cache(maxsize=32)
 def _render_tinted_nav_icon(
     asset_name: str, color: str, size: int = _NAV_ICON_SIZE
 ) -> QPixmap:
@@ -163,12 +167,10 @@ class SidebarNav(QFrame):
 
     索引對應：
         0 = 首頁
-        1 = 異常一覽表
-        2 = 訪廠紀錄一覽表
-        3 = 異常事件統計
-        4 = 異常已結案查詢
-        5 = 基礎資料
-        6 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
+        1 = 事件管理（內含單獨異常、訪廠發現異常、訪廠紀錄、已結案 scope 分頁）
+        2 = 異常事件統計
+        3 = 基礎資料
+        4 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
 
     導覽項目放在可捲動區域內，區分事件管理與倉庫不合格品實物管理。
     """
@@ -226,23 +228,25 @@ class SidebarNav(QFrame):
         for idx, (label, _name, badge, icon) in enumerate(_INSIGHT_ITEMS):
             nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
 
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
+        # To keep "不合格品追蹤" at its original position and separated from "異常事件統計",
+        # we add a spacing equivalent to the removed "基礎資料" item height + gap.
+        nav_layout.addSpacing(SIDEBAR_NAV_ITEM_HEIGHT + _NAV_GROUP_GAP * 2)
 
-        offset += len(_INSIGHT_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
-
-        # ── 倉庫不合格品實物管理（嵌入式，索引 6）────────────────
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        ncr_offset = (
-            len(_OVERVIEW_ITEMS)
-            + len(_EVENT_ITEMS)
-            + len(_INSIGHT_ITEMS)
-            + len(_MASTER_ITEMS)
-        )
+        ncr_offset = offset + len(_INSIGHT_ITEMS)
         for idx, (label, badge, icon) in enumerate(_NCR_ITEMS):
             nav_layout.addWidget(self._make_nav_btn(label, ncr_offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        ncr_stats_offset = ncr_offset + len(_NCR_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_NCR_STATS_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, ncr_stats_offset + idx, badge_enabled=badge, icon=icon))
+
+        nav_layout.addSpacing(_NAV_GROUP_GAP)
+
+        master_offset = ncr_stats_offset + len(_NCR_STATS_ITEMS)
+        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
+            nav_layout.addWidget(self._make_nav_btn(label, master_offset + idx, badge_enabled=badge, icon=icon))
 
         nav_layout.addStretch(1)
 

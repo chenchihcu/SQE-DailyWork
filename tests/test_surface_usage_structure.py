@@ -19,6 +19,12 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self.window = MainWindow()
         self.window.show()
@@ -51,9 +57,11 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         frames = home.findChildren(QFrame)
         panels = [f for f in frames if f.property("role") == "panel"]
 
-        # Workbench home keeps only the KPI management panel.
-        self.assertEqual(1, len(panels))
-        self.assertEqual("HomeKpiPanel", panels[0].objectName())
+        # Daily cockpit: KPI management panel + one read-only backlog panel.
+        panel_names = {p.objectName() for p in panels}
+        self.assertEqual(2, len(panels))
+        self.assertIn("HomeKpiPanel", panel_names)
+        self.assertIn("HomeBacklogPanel", panel_names)
 
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]

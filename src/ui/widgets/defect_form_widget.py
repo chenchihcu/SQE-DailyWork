@@ -936,6 +936,10 @@ class NewAnomalyDialog(QDialog):
         if self._read_only:
             self._apply_read_only()
 
+        self._dirty = False
+        if not self._read_only:
+            self._connect_dirty_signals()
+
     def _setup_ui(self):
         # 1. 初始化所有控制項 (保持不變)
         self.date_edit = QDateEdit()
@@ -1184,12 +1188,10 @@ class NewAnomalyDialog(QDialog):
         self._update_ref_group_visibility()
 
     def _update_outsource_row_visibility(self) -> None:
-        """委外工單列只在委外階段或已有值時顯示；委外階段未啟用前維持顯示。"""
+        """委外工單列只在委外階段或已有值時顯示。"""
         stage = self.product_stage_combo.currentText()
-        is_outsource_stage_known = "委外" in PRODUCT_STAGE_OPTIONS
         show = (
-            not is_outsource_stage_known
-            or stage == "委外"
+            stage == "委外"
             or bool(self.outsource_work_order_input.text().strip())
         )
         self._lbl_order.setVisible(show)
@@ -1244,6 +1246,47 @@ class NewAnomalyDialog(QDialog):
         cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
         if cancel_btn:
             cancel_btn.setVisible(False)
+
+    def _mark_dirty(self) -> None:
+        self._dirty = True
+
+    def _confirm_discard(self) -> bool:
+        """Override in tests to skip the modal confirmation."""
+        return QMessageBox.question(
+            self,
+            "未儲存變更",
+            "有未儲存的變更，確定要放棄嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+
+    def closeEvent(self, event):
+        if self._dirty and not self._confirm_discard():
+            event.ignore()
+            return
+        event.accept()
+
+    def _connect_dirty_signals(self) -> None:
+        self.date_edit.dateChanged.connect(self._mark_dirty)
+        self.supplier_combo.currentIndexChanged.connect(self._mark_dirty)
+        self.product_combo.currentIndexChanged.connect(self._mark_dirty)
+        self.product_stage_combo.currentTextChanged.connect(self._mark_dirty)
+        self.outsource_work_order_input.textChanged.connect(self._mark_dirty)
+        self.batch_qty_input.textChanged.connect(self._mark_dirty)
+        self.responsible_person_input.textChanged.connect(self._mark_dirty)
+        self.due_date_check.toggled.connect(self._mark_dirty)
+        self.due_date_edit.dateChanged.connect(self._mark_dirty)
+        self.is_tech_transfer_check.toggled.connect(self._mark_dirty)
+        self.category_input.currentTextChanged.connect(self._mark_dirty)
+        self.problem_input.textChanged.connect(self._mark_dirty)
+        self.pending_items_input.textChanged.connect(self._mark_dirty)
+        self.rc_supplier_inv_combo.currentTextChanged.connect(self._mark_dirty)
+        self.rc_supplier_wip_combo.currentTextChanged.connect(self._mark_dirty)
+        self.rc_in_transit_combo.currentTextChanged.connect(self._mark_dirty)
+        self.rc_internal_inv_combo.currentTextChanged.connect(self._mark_dirty)
+        self.sync_visit_check.toggled.connect(self._mark_dirty)
+        self.attachment_editor.add_button.clicked.connect(self._mark_dirty)
+        self.attachment_editor.remove_button.clicked.connect(self._mark_dirty)
 
     def _on_date_changed(self, _date: QDate | None = None) -> None:
         self._update_anomaly_no_preview()
@@ -1728,10 +1771,12 @@ class NewAnomalyDialog(QDialog):
                     "成功",
                     localize_popup_message(f"已建立異常單：{result['anomaly_no']}\n{visit_text}"),
                 )
+            self._dirty = False
             self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("建立異常失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1777,6 +1822,10 @@ class NewVisitDialog(QDialog):
             self.visit_defect_table.setFocus()
         if self._read_only:
             self._apply_read_only()
+
+        self._dirty = False
+        if not self._read_only:
+            self._connect_dirty_signals()
 
     def _setup_ui(self):
         # 1. 控制項初始化
@@ -1905,14 +1954,14 @@ class NewVisitDialog(QDialog):
             "僅將訪廠/稽核缺失轉成供應商異常事件，不寫入倉庫不合格品追蹤。"
         )
         visit_defect_buttons = QHBoxLayout()
-        btn_add_visit_defect = QPushButton("新增缺失")
-        btn_add_visit_defect.setProperty("variant", "secondary")
-        btn_add_visit_defect.clicked.connect(self.visit_defect_table.add_empty_note)
-        btn_remove_visit_defect = QPushButton("刪除缺失")
-        btn_remove_visit_defect.setProperty("tone", "warning")
-        btn_remove_visit_defect.clicked.connect(self.visit_defect_table.remove_selected_note)
-        visit_defect_buttons.addWidget(btn_add_visit_defect)
-        visit_defect_buttons.addWidget(btn_remove_visit_defect)
+        self._btn_add_visit_defect = QPushButton("新增缺失")
+        self._btn_add_visit_defect.setProperty("variant", "secondary")
+        self._btn_add_visit_defect.clicked.connect(self.visit_defect_table.add_empty_note)
+        self._btn_remove_visit_defect = QPushButton("刪除缺失")
+        self._btn_remove_visit_defect.setProperty("tone", "warning")
+        self._btn_remove_visit_defect.clicked.connect(self.visit_defect_table.remove_selected_note)
+        visit_defect_buttons.addWidget(self._btn_add_visit_defect)
+        visit_defect_buttons.addWidget(self._btn_remove_visit_defect)
         visit_defect_buttons.addStretch(1)
         visit_defect_layout.addWidget(self.visit_defect_table)
         visit_defect_layout.addLayout(visit_defect_buttons)
@@ -1922,14 +1971,14 @@ class NewVisitDialog(QDialog):
         primary_defect_layout = QVBoxLayout(primary_defect_group)
         self.primary_defect_table = DefectNoteTable()
         primary_defect_buttons = QHBoxLayout()
-        btn_add_primary_defect = QPushButton("新增缺失")
-        btn_add_primary_defect.setProperty("variant", "secondary")
-        btn_add_primary_defect.clicked.connect(self.primary_defect_table.add_empty_note)
-        btn_remove_primary_defect = QPushButton("刪除缺失")
-        btn_remove_primary_defect.setProperty("tone", "warning")
-        btn_remove_primary_defect.clicked.connect(self.primary_defect_table.remove_selected_note)
-        primary_defect_buttons.addWidget(btn_add_primary_defect)
-        primary_defect_buttons.addWidget(btn_remove_primary_defect)
+        self._btn_add_primary_defect = QPushButton("新增缺失")
+        self._btn_add_primary_defect.setProperty("variant", "secondary")
+        self._btn_add_primary_defect.clicked.connect(self.primary_defect_table.add_empty_note)
+        self._btn_remove_primary_defect = QPushButton("刪除缺失")
+        self._btn_remove_primary_defect.setProperty("tone", "warning")
+        self._btn_remove_primary_defect.clicked.connect(self.primary_defect_table.remove_selected_note)
+        primary_defect_buttons.addWidget(self._btn_add_primary_defect)
+        primary_defect_buttons.addWidget(self._btn_remove_primary_defect)
         primary_defect_buttons.addStretch(1)
         primary_defect_layout.addWidget(self.primary_defect_table)
         primary_defect_layout.addLayout(primary_defect_buttons)
@@ -1937,14 +1986,14 @@ class NewVisitDialog(QDialog):
         extra_header = QHBoxLayout()
         extra_header.addWidget(QLabel("其他產品區段"))
         extra_header.addStretch(1)
-        btn_add_section = QPushButton("新增產品區段")
-        btn_add_section.setProperty("variant", "secondary")
-        btn_add_section.clicked.connect(self._add_extra_product_section)
-        btn_remove_section = QPushButton("刪除最後區段")
-        btn_remove_section.setProperty("tone", "warning")
-        btn_remove_section.clicked.connect(self._remove_last_extra_product_section)
-        extra_header.addWidget(btn_add_section)
-        extra_header.addWidget(btn_remove_section)
+        self._btn_add_section = QPushButton("新增產品區段")
+        self._btn_add_section.setProperty("variant", "secondary")
+        self._btn_add_section.clicked.connect(self._add_extra_product_section)
+        self._btn_remove_section = QPushButton("刪除最後區段")
+        self._btn_remove_section.setProperty("tone", "warning")
+        self._btn_remove_section.clicked.connect(self._remove_last_extra_product_section)
+        extra_header.addWidget(self._btn_add_section)
+        extra_header.addWidget(self._btn_remove_section)
         self.extra_sections_container = QWidget()
         self.extra_sections_layout = QVBoxLayout(self.extra_sections_container)
         self.extra_sections_layout.setContentsMargins(0, 0, 0, 0)
@@ -2001,6 +2050,46 @@ class NewVisitDialog(QDialog):
         cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
         if cancel_btn:
             cancel_btn.setVisible(False)
+
+    def _mark_dirty(self) -> None:
+        self._dirty = True
+
+    def _confirm_discard(self) -> bool:
+        """Override in tests to skip the modal confirmation."""
+        return QMessageBox.question(
+            self,
+            "未儲存變更",
+            "有未儲存的變更，確定要放棄嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+
+    def closeEvent(self, event):
+        if self._dirty and not self._confirm_discard():
+            event.ignore()
+            return
+        event.accept()
+
+    def _connect_dirty_signals(self) -> None:
+        self.date_edit.dateChanged.connect(self._mark_dirty)
+        self.supplier_combo.currentIndexChanged.connect(self._mark_dirty)
+        self.product_combo.currentIndexChanged.connect(self._mark_dirty)
+        self.product_stage_combo.currentTextChanged.connect(self._mark_dirty)
+        self.visitor_input.textChanged.connect(self._mark_dirty)
+        self.summary_input.textChanged.connect(self._mark_dirty)
+        self.work_order_input.textChanged.connect(self._mark_dirty)
+        self.time_slot_input.textChanged.connect(self._mark_dirty)
+        self.qty_input.textChanged.connect(self._mark_dirty)
+        self.tech_transfer_check.toggled.connect(self._mark_dirty)
+        self.confirm_supplier_anomaly_check.toggled.connect(self._mark_dirty)
+        self._btn_add_visit_defect.clicked.connect(self._mark_dirty)
+        self._btn_remove_visit_defect.clicked.connect(self._mark_dirty)
+        self._btn_add_primary_defect.clicked.connect(self._mark_dirty)
+        self._btn_remove_primary_defect.clicked.connect(self._mark_dirty)
+        self._btn_add_section.clicked.connect(self._mark_dirty)
+        self._btn_remove_section.clicked.connect(self._mark_dirty)
+        self.visit_defect_table.itemChanged.connect(self._mark_dirty)
+        self.primary_defect_table.itemChanged.connect(self._mark_dirty)
 
     def _add_extra_product_section(self, data: dict | None = None) -> ProductSectionEditor:
         editor = ProductSectionEditor(f"產品區段 {len(self._extra_section_editors) + 2}", self)
@@ -2400,10 +2489,12 @@ class NewVisitDialog(QDialog):
                     )
                 else:
                     QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已完成"))
+            self._dirty = False
             self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("建立訪廠失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -2487,6 +2578,9 @@ class CloseAnomalyDialog(QDialog):
         self.attachment_editor.load_existing_attachments(self.anomaly_id)
         self._update_validation()
 
+        self._dirty = False
+        self._connect_dirty_signals()
+
     def _setup_ui(self):
         # 1. 控制項初始化
         self.problem_view = QTextEdit()
@@ -2562,6 +2656,33 @@ class CloseAnomalyDialog(QDialog):
         self.closer_input.textChanged.connect(self._update_validation)
 
 
+    def _mark_dirty(self) -> None:
+        self._dirty = True
+
+    def _confirm_discard(self) -> bool:
+        """Override in tests to skip the modal confirmation."""
+        return QMessageBox.question(
+            self,
+            "未儲存變更",
+            "有未儲存的變更，確定要放棄嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+
+    def closeEvent(self, event):
+        if self._dirty and not self._confirm_discard():
+            event.ignore()
+            return
+        event.accept()
+
+    def _connect_dirty_signals(self) -> None:
+        self.improvement_input.textChanged.connect(self._mark_dirty)
+        self.closer_input.textChanged.connect(self._mark_dirty)
+        self.root_cause_combo.currentTextChanged.connect(self._mark_dirty)
+        self.attachment_editor.add_button.clicked.connect(self._mark_dirty)
+        self.attachment_editor.remove_button.clicked.connect(self._mark_dirty)
+
+
     def _update_validation(self) -> None:
         text = self.improvement_input.toPlainText()
         length = len(text)
@@ -2591,10 +2712,12 @@ class CloseAnomalyDialog(QDialog):
             )
             self.attachment_editor.save_to_anomaly(self.anomaly_id)
             QMessageBox.information(self, "成功", localize_popup_message("異常已結案"))
+            self._dirty = False
             self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("結案失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",

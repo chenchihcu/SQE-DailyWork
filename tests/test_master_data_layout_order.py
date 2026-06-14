@@ -25,6 +25,12 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._list_suppliers_patch = patch(
             "ui.widgets.master_data_widget.event_service.list_suppliers",
@@ -60,11 +66,9 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
         self.assertIsNotNone(tabs_panel)
         assert tabs_panel is not None
         tabs_layout = tabs_panel.layout()
-        self.assertIsInstance(tabs_layout, QVBoxLayout)
-        assert tabs_layout is not None
-        self.assertEqual(3, tabs_layout.count())
-        self.assertIs(self.widget.inline_toolbar, tabs_layout.itemAt(1).widget())
-        self.assertIs(tabs, tabs_layout.itemAt(2).widget())
+        self.assertEqual(2, tabs_layout.count())
+        self.assertIs(self.widget.inline_toolbar, tabs_layout.itemAt(0).widget())
+        self.assertIs(tabs, tabs_layout.itemAt(1).widget())
 
         for idx, expected_table in (
             (0, self.widget.supplier_table),
