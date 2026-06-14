@@ -3,14 +3,9 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QDialog,
-    QDialogButtonBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollBar,
     QSizePolicy,
@@ -24,8 +19,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPainter, QPen, QColor, QBrush
 
 from ui.layout_constants import (
-    CARD_INNER_MARGINS,
-    DIALOG_OUTER_MARGINS,
     GRID_GUTTER,
     PANEL_MARGINS,
     ROW_GAP,
@@ -33,7 +26,6 @@ from ui.layout_constants import (
 )
 from ui.status_colors import get_status_palette, get_status_tone
 from ui.theme import TOKENS
-from ui.window_sizing import fit_dialog_to_available_screen
 
 EMPTY_DISPLAY = "—"
 
@@ -290,105 +282,6 @@ class EmptyStateWidget(QFrame):
         self._title_label.setText(title)
         self._hint_label.setText(hint)
         self._hint_label.setVisible(bool(hint))
-
-
-class LoadingStateWidget(QFrame):
-    """Lightweight loading placeholder (text-only; no spinner asset required)."""
-
-    def __init__(self, text: str = "載入中…", parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setProperty("role", "emptyState")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 32, 24, 32)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self._label = QLabel(text)
-        self._label.setProperty("role", "title")
-        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._label)
-
-    def set_text(self, text: str) -> None:
-        self._label.setText(text)
-
-
-class _DeleteConfirmTextDialog(QDialog):
-    """Two-step destructive-action confirmation requiring exact text input."""
-
-    def __init__(
-        self,
-        parent: QWidget | None,
-        title: str,
-        body: str,
-        require_text: str,
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setModal(True)
-        self._require_text = require_text
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        layout.setSpacing(12)
-
-        msg_label = QLabel(body)
-        msg_label.setWordWrap(True)
-        layout.addWidget(msg_label)
-
-        hint_label = QLabel(f"請輸入「{require_text}」以確認:")
-        layout.addWidget(hint_label)
-
-        self._input = QLineEdit()
-        self._input.textChanged.connect(self._on_text_changed)
-        layout.addWidget(self._input)
-
-        self._buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        if ok_btn is not None:
-            ok_btn.setText("刪除")
-            ok_btn.setEnabled(False)
-            ok_btn.setProperty("variant", "danger")
-        cancel_btn = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
-        if cancel_btn is not None:
-            cancel_btn.setText("取消")
-        self._buttons.accepted.connect(self.accept)
-        self._buttons.rejected.connect(self.reject)
-        layout.addWidget(self._buttons)
-        fit_dialog_to_available_screen(self, preferred_width=440)
-
-    def _on_text_changed(self, text: str) -> None:
-        ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        if ok_btn is not None:
-            ok_btn.setEnabled(text.strip() == self._require_text)
-
-
-def confirm_destructive(
-    parent: QWidget | None,
-    title: str,
-    body: str,
-    *,
-    require_text: str | None = None,
-) -> bool:
-    """Unified destructive-action confirmation.
-
-    - If require_text is None: single-step Yes/No QMessageBox.
-    - If require_text is provided: two-step confirmation requiring exact text input.
-
-    Returns True if the user confirmed.
-    """
-    if require_text is None:
-        result = QMessageBox.question(
-            parent,
-            title,
-            body,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        return result == QMessageBox.StandardButton.Yes
-
-    dialog = _DeleteConfirmTextDialog(parent, title, body, require_text)
-    return bool(dialog.exec())
 
 
 class BrandDivider(QWidget):

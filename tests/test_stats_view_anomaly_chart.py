@@ -55,6 +55,12 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._widgets: list[StatsViewWidget] = []
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from PySide6.QtCore import QDate, QMargins, Qt
+
+logger = logging.getLogger(__name__)
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtCharts import (
     QChart,
@@ -235,6 +238,7 @@ class NcrStatsWidget(QWidget):
                 scrap_rework = ncr_stats_service.get_scrap_rework_ratio_filtered(conn, yyyymm)
                 return_slips = ncr_stats_service.get_return_slip_ratio_filtered(conn, yyyymm)
         except Exception as exc:
+            logger.exception("載入 NCR 統計數據失敗")
             err_lbl = QLabel(f"無法載入統計數據：{exc}")
             err_lbl.setStyleSheet("color: red; font-weight: bold;")
             self.grid_layout.addWidget(err_lbl, 0, 0)
@@ -388,6 +392,7 @@ class NcrStatsWidget(QWidget):
         try:
             self._build_insights_text(top_suppliers, top_products, scrap_rework, return_slips, insights)
         except Exception:
+            logger.exception("產生管理建議文字失敗")
             insights = ["⚠️ <b>建議產生時發生錯誤，請確認資料格式。</b>"]
         if insights:
             self.insight_label.setText("<br>".join(insights))

@@ -13,6 +13,12 @@ class EventPreviewTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def test_anomaly_menu_contains_preview(self):
         row = {"event_type": "ANOMALY", "status": "待處理", "linked_visit_id": ""}
         menu, action_map = build_event_action_menu(None, row)

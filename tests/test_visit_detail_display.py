@@ -31,6 +31,12 @@ class VisitDetailDisplayTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._original_list_events = defect_list_widget.event_service.list_events
         defect_list_widget.event_service.list_events = lambda _filters=None: []

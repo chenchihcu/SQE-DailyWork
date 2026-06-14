@@ -63,12 +63,8 @@ function Resolve-PythonExe {
         throw "Python override path is invalid or missing required dependencies (PySide6, pandas, openpyxl): $Override"
     }
 
-    $userProfilePath = Get-UserProfilePath
     $candidates = [System.Collections.Generic.List[string]]::new()
     Add-UniqueCandidate -List $candidates -Value (Join-Path $RepoRoot ".venv\Scripts\python.exe")
-    Add-UniqueCandidate -List $candidates -Value (Join-Path $RepoRoot ".uv-python\Scripts\python.exe")
-    Add-UniqueCandidate -List $candidates -Value (Join-Path $userProfilePath ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe")
-    Add-UniqueCandidate -List $candidates -Value (Join-Path $userProfilePath "AppData\Local\Python\bin\python.exe")
 
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
     if ($null -ne $pythonCmd) {

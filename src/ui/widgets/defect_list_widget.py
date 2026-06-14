@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QDate, Qt
+
+logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -709,6 +713,7 @@ class EventListWidget(QWidget):
         try:
             default_name = event_service.default_event_pdf_filename(row)
         except Exception:
+            logger.exception("取得預設 PDF 檔名失敗")
             default_name = "SQE_事件單.pdf"
         target, _ = QFileDialog.getSaveFileName(
             self,

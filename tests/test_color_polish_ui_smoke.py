@@ -26,6 +26,12 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def test_main_window_exposes_color_polish_surfaces(self) -> None:
         from ui.sidebar_nav import SidebarNav
         window = MainWindow()

@@ -19,6 +19,12 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self.widgets: list[NcrStatsWidget] = []
 

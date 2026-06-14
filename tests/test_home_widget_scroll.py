@@ -32,6 +32,12 @@ class HomeWidgetLayoutContractTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def test_home_widget_uses_direct_simplified_layout(self):
         main_window = MockMainWindow()
         widget = HomeWidget(main_window)

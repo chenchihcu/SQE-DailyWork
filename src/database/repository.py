@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, TypedDict
 
 from database.product_stage import (
@@ -83,7 +83,7 @@ def _today_iso() -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now().replace(microsecond=0).isoformat(sep=" ")
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(sep=" ")
 
 
 def _gen_id() -> str:
@@ -258,6 +258,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             department TEXT NOT NULL DEFAULT '',
             phone TEXT NOT NULL DEFAULT '',
             contact_email TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '正式供應商',
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -499,12 +500,19 @@ def create_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE UNIQUE INDEX IF NOT EXISTS uniq_defect_records_business_key
             ON defect_records(event_date, work_order_no, internal_work_order_no, transfer_slip_no, item_no, defect_desc);
+        CREATE INDEX IF NOT EXISTS idx_defect_records_status
+            ON defect_records(status);
+        CREATE INDEX IF NOT EXISTS idx_defect_records_event_date
+            ON defect_records(event_date);
 
         CREATE TABLE IF NOT EXISTS ui_settings (
             setting_key TEXT PRIMARY KEY,
             setting_value TEXT NOT NULL
         );
         """
+    )
+    _ensure_column(
+        conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
     )
     _remove_products_spec_desc_column_if_present(conn)
 
@@ -553,21 +561,23 @@ def create_schema(conn: sqlite3.Connection) -> None:
         END;
 
         -- 共享供應商主檔 VIEW 與 INSTEAD OF Triggers
-        CREATE VIEW IF NOT EXISTS supplier_records AS
+        DROP VIEW IF EXISTS supplier_records;
+        CREATE VIEW supplier_records AS
         SELECT
             id,
             supplier_name AS name,
-            '正式供應商' AS category,
+            category,
             created_at
         FROM suppliers;
 
         CREATE TRIGGER IF NOT EXISTS trg_supplier_records_insert
         INSTEAD OF INSERT ON supplier_records
         BEGIN
-            INSERT INTO suppliers (id, supplier_name, created_at, updated_at, is_active)
+            INSERT INTO suppliers (id, supplier_name, category, created_at, updated_at, is_active)
             VALUES (
                 COALESCE(NEW.id, hex(randomblob(16))),
                 NEW.name,
+                COALESCE(NEW.category, '正式供應商'),
                 COALESCE(NEW.created_at, datetime('now', 'localtime')),
                 datetime('now', 'localtime'),
                 1
@@ -580,6 +590,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         BEGIN
             UPDATE suppliers
             SET supplier_name = NEW.name,
+                category = COALESCE(NEW.category, category),
                 updated_at = datetime('now', 'localtime')
             WHERE id = OLD.id;
         END;
@@ -3609,12 +3620,15 @@ def delete_visit(conn: sqlite3.Connection, visit_id: str) -> None:
     if existing is None:
         raise ValueError("Visit not found")
 
-    referenced = conn.execute(
-        "SELECT COUNT(*) AS c FROM anomalies WHERE visit_id = ?",
+    # 若已有異常關聯此訪廠，禁止刪除
+    anomaly_refs = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM anomalies WHERE visit_id = ?",
         (visit_key,),
     ).fetchone()
-    if referenced is not None and _as_int(referenced["c"], 0) > 0:
-        raise ValueError("Visit is referenced by anomalies")
+    if anomaly_refs and int(anomaly_refs["cnt"]) > 0:
+        raise ValueError(
+            f"Visit is referenced by {anomaly_refs['cnt']} anomaly/anomalies"
+        )
 
     conn.execute("DELETE FROM visit_defect_notes WHERE visit_id = ?", (visit_key,))
     conn.execute("DELETE FROM visit_product_sections WHERE visit_id = ?", (visit_key,))

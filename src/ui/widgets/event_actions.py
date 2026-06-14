@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
@@ -409,6 +412,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "編輯失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("編輯異常失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -438,6 +442,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "刪除失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("刪除異常失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -457,6 +462,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "編輯失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("編輯訪廠失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -482,6 +488,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "刪除失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("刪除訪廠失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -496,6 +503,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "查詢失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("讀取訪廠失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -514,6 +522,7 @@ class EventActionsController:
             )
             dialog.exec()
         except Exception as exc:
+            logger.exception("開啟異常預覽失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -532,6 +541,7 @@ class EventActionsController:
             )
             dialog.exec()
         except Exception as exc:
+            logger.exception("開啟訪廠預覽失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",
@@ -560,6 +570,7 @@ class EventActionsController:
         except ValueError as exc:
             QMessageBox.warning(self._parent, "操作失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("重新處理異常失敗")
             QMessageBox.critical(
                 self._parent,
                 "錯誤",

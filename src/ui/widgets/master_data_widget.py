@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -355,10 +358,18 @@ class SupplierContactManagerDialog(QDialog):
         self._refresh_list()
 
     def _on_delete(self, contact_id: str) -> None:
-        confirm = QMessageBox.question(self, "確認刪除", "確定要刪除此聯絡人嗎？")
-        if confirm == QMessageBox.StandardButton.Yes:
-            event_service.delete_supplier_contact(contact_id)
-            self._refresh_list()
+        box = QMessageBox(self)
+        box.setWindowTitle("確認刪除")
+        box.setText("確定要刪除此聯絡人嗎？")
+        box.setIcon(QMessageBox.Icon.Warning)
+        btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_yes)
+        box.exec()
+        if box.clickedButton() is not btn_yes:
+            return
+        event_service.delete_supplier_contact(contact_id)
+        self._refresh_list()
 
 
 class ProductFormDialog(QDialog):
@@ -1293,6 +1304,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("建立供應商失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1318,6 +1330,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("更新供應商失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1350,6 +1363,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception(f"{action_text}供應商失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1382,6 +1396,7 @@ class MasterDataWidget(QWidget):
             dialog = ProductStageLogDialog(self._product_label(product_id), logs, self)
             dialog.exec()
         except Exception as exc:
+            logger.exception("載入階段異動紀錄失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1497,6 +1512,7 @@ class MasterDataWidget(QWidget):
         except (ValueError, master_import_service.MasterImportError) as exc:
             QMessageBox.warning(self, "匯入失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("匯入產品主檔失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1531,6 +1547,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("刪除供應商失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1612,6 +1629,7 @@ class MasterDataWidget(QWidget):
                     localize_popup_message(f"已刪除 {len(deleted)} 筆供應商"),
                 )
         except Exception as exc:
+            logger.exception("批次刪除供應商失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1630,6 +1648,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("建立產品失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1654,6 +1673,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("更新產品失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1686,6 +1706,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception(f"{action_text}產品失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",
@@ -1719,6 +1740,7 @@ class MasterDataWidget(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:
+            logger.exception("刪除產品失敗")
             QMessageBox.critical(
                 self,
                 "錯誤",

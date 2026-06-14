@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from database.connection import get_connection
 from database import repository
@@ -488,6 +491,9 @@ def close_anomaly(
 ) -> None:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
+    text = (improvement_desc or "").strip()
+    if not text:
+        raise ValueError("Improvement description is required")
     with get_connection() as conn:
         repository.close_anomaly(
             conn,
@@ -667,6 +673,7 @@ def export_event_pdf(path: str, row: dict) -> tuple[bool, str]:
             linked_visit=linked_visit,
         )
     except Exception as exc:
+        logger.exception("PDF 匯出失敗")
         return False, f"匯出失敗：{exc}"
 
 
@@ -680,6 +687,7 @@ def export_brief_event_pdf(path: str, row: dict) -> tuple[bool, str]:
             linked_visit=linked_visit,
         )
     except Exception as exc:
+        logger.exception("精簡版 PDF 匯出失敗")
         return False, f"匯出精簡版失敗：{exc}"
 
 
@@ -693,6 +701,7 @@ def render_brief_event_image(row: dict) -> "QImage | None":
             linked_visit=linked_visit,
         )
     except Exception:
+        logger.exception("渲染精簡報告圖片失敗")
         return None
 
 
@@ -784,4 +793,5 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
             detail_df.to_excel(writer, sheet_name="明細", index=False)
         return True, f"已匯出至：{output}"
     except Exception as exc:
+        logger.exception("月報匯出失敗")
         return False, f"匯出失敗：{exc}"

@@ -186,7 +186,6 @@ def _migrate_suppliers(
             contact_name=str(_pick(row, "contact_name", default="")).strip(),
             phone=str(_pick(row, "phone", default="")).strip(),
         )
-    v2_conn.commit()
 
 
 def _migrate_anomalies(
@@ -271,7 +270,6 @@ def _migrate_anomalies(
             )
         except Exception as exc:
             report["errors"].append(f"issues.id={_pick(row, 'id', default='?')}: {exc}")
-    v2_conn.commit()
 
 
 def _migrate_visits(
@@ -324,7 +322,6 @@ def _migrate_visits(
             report["errors"].append(
                 f"supplier_visits.id={_pick(row, 'id', default='?')}: {exc}"
             )
-    v2_conn.commit()
 
 
 def write_migration_report(path: Path, report: dict) -> None:

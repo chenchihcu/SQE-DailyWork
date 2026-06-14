@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import QDate, QEvent, QObject, Qt
+
+logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -256,6 +260,7 @@ class HomeWidget(QWidget):
                     )
                     defect_count = int(warehouse_summary.get("open_count", 0))
             except Exception:
+                logger.exception("讀取不合格品統計失敗")
                 defect_count = 0
 
             summary = dict(summary)
@@ -264,6 +269,7 @@ class HomeWidget(QWidget):
             for key, card in self._kpi_cards.items():
                 card.set_value(str(int(summary.get(key, 0))))
         except Exception:
+            logger.exception("讀取儀表板摘要失敗")
             for card in self._kpi_cards.values():
                 card.set_value("-")
 
@@ -276,12 +282,14 @@ class HomeWidget(QWidget):
                 {"event_type": "ANOMALY", "status": "待處理", "overdue_only": True}
             )
         except Exception:
+            logger.exception("讀取逾期待辦清單失敗")
             overdue_rows = []
         try:
             pending_rows = event_service.list_events(
                 {"event_type": "ANOMALY", "status": "待處理"}
             )
         except Exception:
+            logger.exception("讀取待辦清單失敗")
             pending_rows = []
 
         # 逾期優先，再補其餘待處理；以 event_id 去重。

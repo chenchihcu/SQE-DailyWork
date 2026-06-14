@@ -15,6 +15,12 @@ class WindowSizingTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def test_fit_widget_preserves_supported_minimum_by_default(self) -> None:
         widget = QWidget()
         try:

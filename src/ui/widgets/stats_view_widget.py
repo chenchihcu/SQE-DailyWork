@@ -439,6 +439,7 @@ class StatsViewWidget(QWidget):
             )
             self._refresh_defect_charts()
         except Exception as exc:
+            logger.exception("重新整理統計視圖失敗")
             self._refresh_decision_summary({}, [])
             self._render_charts([], [], error_message=localize_exception(exc))
 
@@ -542,6 +543,7 @@ class StatsViewWidget(QWidget):
                 warehouse_text = f"倉庫待處理：{open_count} 件"
                 warehouse_enabled = True
         except Exception:
+            logger.exception("讀取倉庫摘要失敗")
             warehouse_enabled = False
         self._set_summary_button(
             "warehouse",
@@ -860,7 +862,11 @@ class StatsViewWidget(QWidget):
 
     def _on_chart_bar_hovered(self, status: bool, index: int, bar_set: QBarSet):
         """相容性方法，供測試與現有邏輯使用"""
-        self._on_supplier_bar_hovered(status, index, self._last_supplier_data)
+        data = self._last_supplier_data
+        if not isinstance(data, list):
+            QToolTip.hideText()
+            return
+        self._on_supplier_bar_hovered(status, index, data)
 
     def _on_chart_bar_clicked(self, index: int, bar_set: QBarSet):
         """點擊圖表跳轉至異常列表"""
@@ -1200,6 +1206,7 @@ class StatsViewWidget(QWidget):
                 product_rows = ncr_stats_service.get_top_products_stats(conn)
                 supplier_rows = ncr_stats_service.get_supplier_disposition_stats(conn)
         except Exception as exc:
+            logger.exception("載入倉庫不合格品統計數據失敗")
             err_lbl = QLabel(f"無法載入倉庫不合格品統計數據：{exc}")
             self.defect_grid.addWidget(err_lbl, 0, 0)
             return

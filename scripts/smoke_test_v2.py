@@ -1,11 +1,18 @@
-"""Smoke test for SQE DailyWork v2 local workflow."""
+"""Smoke test for SQE DailyWork v2 local workflow.
+
+WARNING: By default uses an isolated scratch database. Pass --danger-use-prod-db
+to run against the real data/sqe_v2.db (for integration testing only).
+"""
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
 import sqlite3
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,13 +23,62 @@ for _path in (_PROJECT_ROOT / "src", _PROJECT_ROOT):
         sys.path.insert(0, _path_text)
 
 from database import repository  # noqa: E402
-from database.connection import get_connection, initialize_database  # noqa: E402
+from database.connection import get_connection as _real_get_connection  # noqa: E402
+from database.connection import initialize_database as _real_initialize_database  # noqa: E402
+from database.connection import DB_PATH as PROD_DB_PATH  # noqa: E402
 from services import event_service  # noqa: E402
 
 
 TEST_DATE = "2026-04-15"
 TEST_MONTH = "202604"
 ANOMALY_NO_PATTERN = re.compile(r"^\d{11}$")
+
+# Will be set by main() or --scratch-db
+_SCRATCH_DB_PATH: Path | None = None
+
+
+def _get_scratch_db_path() -> Path:
+    global _SCRATCH_DB_PATH
+    if _SCRATCH_DB_PATH is None:
+        _SCRATCH_DB_PATH = (
+            _PROJECT_ROOT
+            / "scratch"
+            / f"smoke_test_{uuid.uuid4().hex[:12]}.db"
+        )
+    return _SCRATCH_DB_PATH
+
+
+def get_connection():
+    """Return connection to the scratch database (isolated from production)."""
+    from database.connection import get_connection as _real_conn
+    return _real_conn(_get_scratch_db_path())
+
+
+def initialize_database():
+    """Initialize the scratch database schema (isolated from production)."""
+    db_path = _get_scratch_db_path()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        repository.create_schema(conn)
+    finally:
+        conn.close()
+    return {"migrated": False, "product_seed": False}
+
+
+def _patch_event_service():
+    """Temporarily redirect event_service DB calls to scratch DB."""
+    import database.connection as conn_mod
+    conn_mod.DB_PATH = _get_scratch_db_path()
+
+
+def _restore_event_service():
+    """Restore event_service DB path."""
+    from database.connection import DB_PATH
+    import database.connection as conn_mod
+    conn_mod.DB_PATH = DB_PATH
 
 
 def _get_anomaly_row(anomaly_no: str):
@@ -139,8 +195,37 @@ def _verify_seed_behavior() -> None:
             conn.close()
 
 
-def main() -> int:
-    report = initialize_database()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="SQE DailyWork v2 smoke test",
+    )
+    parser.add_argument(
+        "--danger-use-prod-db",
+        action="store_true",
+        help="Run against the real data/sqe_v2.db (DANGEROUS: writes test data)",
+    )
+    parser.add_argument(
+        "--scratch-db",
+        type=str,
+        default=None,
+        help="Custom scratch database path (default: scratch/smoke_test_<uuid>.db)",
+    )
+    args = parser.parse_args(argv)
+
+    global _SCRATCH_DB_PATH
+    if args.scratch_db:
+        _SCRATCH_DB_PATH = Path(args.scratch_db)
+        _SCRATCH_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.danger_use_prod_db:
+        print("WARNING: Running against production database!")
+        report = _real_initialize_database()
+        _restore_event_service()
+    else:
+        print(f"Using scratch database: {_get_scratch_db_path()}")
+        report = initialize_database()
+        _patch_event_service()
+
     print("init_migrated", report.get("migrated"))
     print("product_seed", report.get("product_seed"))
 
@@ -368,7 +453,7 @@ def main() -> int:
 
     stats = event_service.get_monthly_stats(TEST_MONTH)
     print("stats", stats)
-    output = Path("data/smoke_export.xlsx")
+    output = _get_scratch_db_path().parent / f"smoke_export_{uuid.uuid4().hex[:8]}.xlsx"
     ok, message = event_service.export_monthly_excel(str(output), TEST_MONTH)
     print("export_ok", ok)
     print("export_msg", message)

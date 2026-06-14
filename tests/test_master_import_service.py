@@ -146,7 +146,8 @@ class ProductMasterImportServiceTests(unittest.TestCase):
             finally:
                 conn.close()
 
-    def test_existing_supplier_mismatch_is_blocked(self) -> None:
+    def test_same_product_code_allowed_across_suppliers(self) -> None:
+        """Different suppliers may share the same product_code (scoped by supplier)."""
         conn = self.create_connection()
         try:
             conn.execute(
@@ -178,49 +179,45 @@ class ProductMasterImportServiceTests(unittest.TestCase):
                 workbook_path = Path(temp_dir) / "erp_products.xlsx"
                 self.write_workbook(
                     workbook_path,
-                    [("ERP-ITEM-003", "Changed Product", "Supplier B", "量產")],
+                    [("ERP-ITEM-003", "Supplier B Product", "Supplier B", "量產")],
                 )
 
                 preview = master_import_service.preview_product_master_import(
                     conn,
                     workbook_path,
                 )
-                self.assertFalse(preview.can_import)
-                self.assertEqual(preview.error_count, 1)
-                with self.assertRaises(ValueError):
-                    master_import_service.apply_product_master_import(conn, preview)
-                batch_id = master_import_service.record_product_master_import_rejection(
+                self.assertTrue(preview.can_import)
+                self.assertEqual(preview.error_count, 0)
+                result = master_import_service.apply_product_master_import(
                     conn,
                     preview,
                     source_file=workbook_path,
                 )
+                self.assertEqual(result.added_count, 1)
 
-                product = conn.execute(
+                # Original product under Supplier A unchanged
+                product_a = conn.execute(
                     """
                     SELECT product_name, supplier_id
                     FROM products
-                    WHERE product_code = 'ERP-ITEM-003'
+                    WHERE product_code = 'ERP-ITEM-003' AND supplier_id = 'supplier-a'
                     """
                 ).fetchone()
-                self.assertIsNotNone(product)
-                assert product is not None
-                self.assertEqual(product["product_name"], "Current Product")
-                self.assertEqual(product["supplier_id"], "supplier-a")
-                batch = conn.execute(
+                self.assertIsNotNone(product_a)
+                assert product_a is not None
+                self.assertEqual(product_a["product_name"], "Current Product")
+
+                # New product created under Supplier B
+                product_b = conn.execute(
                     """
-                    SELECT status, error_count, added_count, updated_count, backup_path
-                    FROM import_batches
-                    WHERE id = ?
-                    """,
-                    (batch_id,),
+                    SELECT product_name, supplier_id
+                    FROM products
+                    WHERE product_code = 'ERP-ITEM-003' AND supplier_id = 'supplier-b'
+                    """
                 ).fetchone()
-                self.assertIsNotNone(batch)
-                assert batch is not None
-                self.assertEqual(master_import_service.IMPORT_BATCH_BLOCKED, batch["status"])
-                self.assertEqual(1, batch["error_count"])
-                self.assertEqual(0, batch["added_count"])
-                self.assertEqual(0, batch["updated_count"])
-                self.assertEqual("", batch["backup_path"])
+                self.assertIsNotNone(product_b)
+                assert product_b is not None
+                self.assertEqual(product_b["product_name"], "Supplier B Product")
         finally:
             conn.close()
 

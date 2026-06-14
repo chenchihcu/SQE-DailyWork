@@ -1,7 +1,10 @@
+import logging
 import sqlite3
 import sys
 
 from PySide6.QtCore import Qt
+
+logger = logging.getLogger(__name__)
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
@@ -310,6 +313,7 @@ class MainWindow(QMainWindow):
             summary = event_service.get_dashboard_summary()
             count = int(summary.get("open_count", 0))
         except Exception:
+            logger.exception("重新整理事件徽章失敗")
             count = 0
         self.sidebar.set_badge(EVENT_PAGE_INDEX, count)
         try:
@@ -317,6 +321,7 @@ class MainWindow(QMainWindow):
                 warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
             warehouse_count = int(warehouse_summary.get("open_count", 0))
         except Exception:
+            logger.exception("重新整理倉庫徽章失敗")
             warehouse_count = 0
         self.sidebar.set_badge(NCR_PAGE_INDEX, warehouse_count)
 

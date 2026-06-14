@@ -25,6 +25,12 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def setUp(self) -> None:
         self._list_suppliers_patch = patch(
             "ui.widgets.master_data_widget.event_service.list_suppliers",

@@ -24,6 +24,12 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         initialize_database()
         cls.app = QApplication.instance() or QApplication([])
 
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            cls.app.quit()
+
     def tearDown(self) -> None:
         self.app.processEvents()
 
