@@ -20,5 +20,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
 ```
 
 - Interpreter for tests / `py_compile` / probe: `.venv\Scripts\python.exe` (Python 3.14.3) — not the `.uv-python/3.12` tree.
-- Iterate with focused tests (`$env:QT_QPA_PLATFORM='offscreen'; .venv\Scripts\python.exe -m unittest tests.<module>`); the full suite (`-m unittest discover -s tests`) is ~279 tests / several minutes.
+- Iterate with focused tests (`$env:PYTHONPATH='src;.'; $env:QT_QPA_PLATFORM='offscreen'; .venv\Scripts\python.exe -m unittest tests.<module>`); the full suite (`-m unittest discover -s tests`) is ~279 tests / several minutes. The `PYTHONPATH` is required or `from ui ...` imports fail with `ModuleNotFoundError`; `scripts/verify.ps1` sets it for you.
 - `scripts/qt_visual_probe.py --target main|form-density|stats-stress` writes a native PNG — **read the PNG** for CJK evidence; the console prints CJK as mojibake (cp950 display artifact, not broken data).

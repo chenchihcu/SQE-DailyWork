@@ -1,6 +1,6 @@
 ---
 name: sqe-dailywork-doc-gardening
-description: Report-only SQE DailyWork documentation and harness drift check across README, AGENTS, .cursorrules, docs/harness, risk ledger, and verification scripts.
+description: Report-only SQE DailyWork documentation and harness drift check across README, AGENTS, .cursor/rules, docs/harness, risk ledger, and verification scripts.
 allowed-tools: Read, Grep, Glob
 ---
 
@@ -11,7 +11,7 @@ Use this skill for SQE DailyWork documentation drift, harness consistency, and r
 ## Report-Only Default
 
 - Inspect and report drift; do not edit files unless the user explicitly asks for remediation.
-- Check `AGENTS.md`, `.cursorrules`, `.codex/rules/project.rules`, `scripts/verify.ps1`, `scripts/harness_check.ps1`, `docs/harness/`, `docs/exec-plans/`, `docs/risk-ledger.md`, and `README.md`.
+- Check `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `.codex/rules/project.rules`, `scripts/verify.ps1`, `scripts/harness_check.ps1`, `docs/harness/`, `docs/exec-plans/`, `docs/risk-ledger.md`, and `README.md`.
 - Treat current code and tests as stronger evidence than older docs.
 
 ## Output Shape

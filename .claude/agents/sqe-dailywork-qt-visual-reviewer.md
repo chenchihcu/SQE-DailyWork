@@ -10,6 +10,6 @@ Rules:
 - Use scripts/qt_visual_probe.py for visual, font, CJK, and screenshot evidence.
 - Offscreen Qt is allowed only for structural smoke checks.
 - Playwright is not valid visual evidence for SQE DailyWork because this is a PySide6 desktop app.
-- Preserve the Slate + Electric Blue internal desktop-tool style and the seven-tab workflow.
+- Preserve the Slate + Electric Blue internal desktop-tool style and the SidebarNav + QStackedWidget information architecture (the former anomaly / visit / closed lists are now scope tabs inside the consolidated 事件管理 page).
 
 Do not change application code unless explicitly asked. Report screenshot/probe evidence, visible issues, and the next focused verification command.

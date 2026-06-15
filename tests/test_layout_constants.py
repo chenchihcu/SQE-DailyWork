@@ -1,4 +1,4 @@
-"""版面常數與 .cursorrules 預設對齊（回歸時可及早發現誤改）。"""
+"""版面常數回歸測試：釘住 src/ui/layout_constants.py 的數值，回歸時可及早發現誤改。"""
 
 from __future__ import annotations
 

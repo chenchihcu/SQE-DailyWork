@@ -29,12 +29,13 @@ global baseline.
 - Keep SQE DailyWork terminology aligned across services, dialogs, tables, `src/ui/popup_i18n.py`, and `README.md`.
 - Keep `docs/architecture-workflow-contract.md` synchronized when changing workflow tables, import behavior, statistics, or entrypoint routing.
 - Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
+- **Trunk-Based Development**：遵循全域 `CLAUDE.md` 的 TBD 規則，所有開發直接在 `main` 進行，禁止開 feature branch。
 
 ## 1. Core Architectural Laws (The Atomic Path)
 Every core design change must be reflected across the entire stack. Never leave "ghost" fields or orphaned code.
 1. **Data layer**: `src/database/` (connection, repository, migration).
 2. **Service layer**: `src/services/` (business rules, Excel export).
-3. **Desktop UI**: `src/ui/` — `main_window.py` routing, `src/ui/widgets/` pages, `src/ui/theme.py` (QSS), **`src/ui/layout_constants.py`** (single source of layout numbers: 960 / 24 / 16).
+3. **Desktop UI**: `src/ui/` — `main_window.py` routing, `src/ui/widgets/` pages, `src/ui/theme.py` (QSS), **`src/ui/layout_constants.py`** (single source of layout numbers; values pinned by `tests/test_layout_constants.py`).
 4. **User-visible copy**: Prefer `src/ui/popup_i18n.py` for service messages; keep terminology consistent across dialogs and tables.
 
 ## 2. Business Process Rules
@@ -51,10 +52,10 @@ Every core design change must be reflected across the entire stack. Never leave 
 
 ## 3. UI/UX & Styling Standards (Slate + Electric Blue)
 - **Terminology**: Keep labels and status terms consistent with existing dialogs and `src/ui/popup_i18n.py` patterns.
-- **Grid Layout** (implemented in `src/ui/layout_constants.py`):
-  - Standard form area max width: `960px` (dialog `setMaximumWidth`).
-  - Panel padding: `24px`.
-  - 2-column rhythm: `24px` gutter, `16px` row-gap where `QGridLayout` / `QFormLayout` applies.
+- **Grid Layout** (single source of truth: `src/ui/layout_constants.py`; values pinned by `tests/test_layout_constants.py` — import the constants, do not hardcode pixels):
+  - Standard form area max width: `960px` (`FORM_MAX_WIDTH`, dialog `setMaximumWidth`).
+  - Top-level page outer frame `PAGE_OUTER_MARGINS = (24, 24, 24, 24)`; main panel inner padding `PANEL_MARGINS = (12, 10, 12, 10)`.
+  - 2-column grid rhythm: `GRID_GUTTER = 12`, `ROW_GAP = 8` for `QGridLayout`; `QFormLayout` uses `FORM_HORIZONTAL_SPACING = 16` / `FORM_VERTICAL_SPACING = 12`.
 - **Aesthetics**: High density, light Slate surfaces, Electric Blue primary actions, card-based professional internal-tool look.
 - **Workbench topology**: Keep the first screen operational, not decorative. Do not reintroduce hero/cover panels, feature tours, project-structure copy, or card-in-card wrappers for the home workbench.
 - **Feedback**: `QMessageBox` for confirmations; destructive actions use explicit confirm dialogs.
@@ -87,7 +88,7 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - Data migration, destructive data changes, or export/data-contract changes follow the global Hard Trigger rules and require explicit verification evidence.
 
 ## 8. Multi-Assistant Coexistence
-- **Coexistence Policy:** Codex, Claude Code, Cursor, and Gemini/Antigravity operate in the same workspace. All assistants must treat this file as the authoritative repository policy. Cursor rules are defined in `.cursor/rules/` and point to this file.
+- **Coexistence Policy:** Codex, Claude Code, Cursor, and Gemini/Antigravity operate in the same workspace. All assistants must treat this file as the authoritative repository policy. Cursor rules are defined in `.cursor/rules/` and point to this file. **Trunk-Based Development (TBD)** 為所有 AI 工具的強制開發流程：一律直接提交到 `main`，禁止開 feature branch。
 - **Gemini (Antigravity) Flow & Workflow Sync:** When operating via Antigravity, strictly follow `~/.gemini/GEMINI.md` triage (L0/L1/M1/F1/F2), implementation plans, and the Gate A~F checklists. Deliverables (plans, tasks, walkthroughs) must use Traditional Chinese (繁體中文). If changes were directly made using Cursor or Claude Code without prior Gemini plan approval, the developer must perform `git diff` when switching back to Gemini, manually update `walkthrough.md` to document changes, and resolve any process gaps before completing the task.
 - **Command Policy & Codex Sync Rule:** Any modifications or additions to verification and development commands must be synchronized with the Python-like rules in `.codex/rules/project.rules` to prevent Codex sandbox blocks.
 - **AI Rules Compatibility:** Read `docs/harness/ai-rules-compatibility.md` before cross-tool handoff or governance edits. Official claims, local observations, audit inferences, assumptions, and `not verified` items must remain labeled.

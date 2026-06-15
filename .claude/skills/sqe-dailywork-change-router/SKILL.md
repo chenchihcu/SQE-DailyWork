@@ -10,7 +10,7 @@ Use this skill before implementing SQE DailyWork changes that may touch more tha
 
 ## Routing Rules
 
-- UI or visible copy: read `AGENTS.md`, `README.md`, `.cursorrules`, and the relevant `src/ui/` widget or `src/ui/popup_i18n.py`.
+- UI or visible copy: read `AGENTS.md`, `README.md`, `.cursor/rules/agents_gateway.mdc`, and the relevant `src/ui/` widget or `src/ui/popup_i18n.py`.
 - Data contract, migration, visit/anomaly behavior, or storage path: read `README.md`, `docs/risk-ledger.md`, `src/database/repository.py`, and focused tests before changing code.
 - Service or export behavior: read the related `src/services/` module plus tests for PDF, Excel, PPTX, or event-service behavior.
 - Harness, Claude automation, or repo guidance: read `docs/harness/README.md`, `docs/harness/doc-gardening.md`, `scripts/harness_check.ps1`, and this repo's `AGENTS.md`.
