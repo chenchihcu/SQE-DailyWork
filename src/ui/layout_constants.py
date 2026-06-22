@@ -148,3 +148,12 @@ MENU_ITEM_PADDING_HORIZONTAL = 18
 # QCalendarWidget 內嵌控制項（與全臺階層一致略縮）
 CALENDAR_TOOLBUTTON_MIN_HEIGHT = 26
 CALENDAR_SPINBOX_MIN_HEIGHT = 24
+
+# 首頁 backlog 供應商欄最大寬度（防止超長廠商名稱破壞卡片比例）
+BACKLOG_SUPPLIER_MAX_COL_WIDTH = 120
+
+# 附件清單高度（附件編輯器預覽列表固定高度）
+ATTACHMENT_LIST_HEIGHT = 172
+
+# 事件清單供應商/品名欄最小顯示寬度（防止 Interactive 模式下拖至不可讀）
+EVENT_LIST_NAME_COL_MIN_WIDTH = 80

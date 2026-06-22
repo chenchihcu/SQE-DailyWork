@@ -34,16 +34,6 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.window.close()
         self.app.processEvents()
 
-    def _has_ancestor_role_before(
-        self, widget: QWidget, role: str, stop_widget: QWidget | None = None
-    ) -> bool:
-        parent = widget.parentWidget()
-        while parent is not None and parent is not stop_widget:
-            if parent.property("role") == role:
-                return True
-            parent = parent.parentWidget()
-        return False
-
     def _is_descendant_of(self, widget: QWidget, maybe_ancestor: QWidget) -> bool:
         parent = widget.parentWidget()
         while parent is not None:

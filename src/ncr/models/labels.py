@@ -49,8 +49,8 @@ HINT_OUTSOURCE_LOCKED = "已鎖定委外供應商"
 HINT_SAVE_SHORTCUT = "快捷鍵：Ctrl+S"
 HINT_RESET_FILTER = "重置恢復預設條件"
 HINT_OPEN_CASES_SCOPE = "待處理追蹤預設顯示所有未結案 (不限月份)"
-HINT_CLOSED_CASES_SCOPE = "已結案/溯源預設全歷史；可勾選月份縮小範圍"
-HINT_CLOSED_CASES_MONTH_SCOPE = "已結案/溯源僅顯示 {}"
+HINT_CLOSED_CASES_SCOPE = "歷史紀錄預設全歷史；可勾選月份縮小範圍"
+HINT_CLOSED_CASES_MONTH_SCOPE = "歷史紀錄僅顯示 {}"
 HINT_EMPTY_RESULT = "目前查詢結果為 0 筆，請先調整條件後再匯出。"
 
 # Validation Messages

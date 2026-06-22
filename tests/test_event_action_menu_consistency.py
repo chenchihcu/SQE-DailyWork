@@ -23,9 +23,6 @@ class _DummyMainWindow:
     def open_new_visit_dialog(self) -> None:
         return
 
-    def _open_master_data(self) -> None:
-        return
-
 
 class EventActionMenuConsistencyTests(unittest.TestCase):
     @classmethod

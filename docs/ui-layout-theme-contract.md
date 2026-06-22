@@ -142,3 +142,15 @@
   single page (this fixes the former 訪廠發現異常 KPI scope mismatch and removes
   the orphan `visit_anomaly_widget`). Confirm with
   `scripts/qt_visual_probe.py --target main`.
+- Visual-QA coverage + font/chart contract - 2026-06-22: the native probe gained
+  list/empty/export targets (`event-list`, `master-data`, `ncr-tracker`,
+  `empty-states`, `pdf-export`) plus `--scale` (multi-DPI), `--min-width`, a
+  three-source CJK font report (`cjk_font_ok` / `ncr_cjk_font_ok` /
+  `pdf_cjk_font_ok`), and a `qss_unknown_property_warnings` count. Live Qt QSS now
+  uses only `font-weight` 400/700 (no 500/600); the CJK font fallback chain is a
+  single source of truth in `src/ui/theme.py` (`ncr.ui.ui_style` imports it).
+  Charts set figure vs plot-area backgrounds as separate tokens via
+  `src/ui/widgets/chart_style.py` (`chart_plot_bg`). Visual regression baselines
+  live in `tests/visual_baseline/` (`scripts/qt_visual_regress.py`). Pinned by
+  `tests/test_font_source_single_truth.py` and
+  `tests/test_theme_typography_consistency.py`.

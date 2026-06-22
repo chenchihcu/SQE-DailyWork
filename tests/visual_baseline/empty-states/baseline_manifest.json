@@ -1,0 +1,13 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.0",
+    "device_pixel_ratio": 2.0
+  },
+  "files": [
+    "empty-states_empty-event-list.png",
+    "empty-states_empty-master.png",
+    "empty-states_empty-ncr-placeholder.png"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.0",
+    "device_pixel_ratio": 2.0
+  },
+  "files": [
+    "event-list_event-list-scope0.png",
+    "event-list_event-list-scope1.png",
+    "event-list_event-list-scope2.png",
+    "event-list_event-list-scope3.png"
+  ]
+}

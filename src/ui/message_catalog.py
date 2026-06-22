@@ -58,7 +58,4 @@ NO_SUPPLIER_AVAILABLE = "目前沒有可用供應商"
 EMPTY_TABLE_HINT = "目前無資料,請使用上方按鈕新增"
 LOADING = "載入中…"
 
-# ── 操作失敗訊息產生器 ─────────────────────────────────────────────────
-def operation_failed(action: str, reason: str) -> str:
-    """例: operation_failed('刪除異常', '找不到資料') -> '刪除異常失敗:找不到資料'"""
-    return f"{action}失敗:{reason}"
+

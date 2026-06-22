@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ncr.services import stats_service as warehouse_stats_service
 from services import event_service
 from ui.layout_constants import (
+    BACKLOG_SUPPLIER_MAX_COL_WIDTH,
     GRID_GUTTER,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
@@ -296,7 +297,8 @@ class HomeWidget(QWidget):
         merged: list[dict] = []
         seen: set[str] = set()
         for row in [*overdue_rows, *pending_rows]:
-            key = str(row.get("event_id") or row.get("anomaly_id") or id(row))
+            event_id = row.get("event_id") or row.get("anomaly_id")
+            key = str(event_id or f"{row.get('supplier_name','')}_{row.get('event_date','')}_{row.get('content','')}")
             if key in seen:
                 continue
             seen.add(key)
@@ -320,15 +322,21 @@ class HomeWidget(QWidget):
             date_item = QTableWidgetItem(str(row.get("event_date") or "—"))
             date_item.setData(Qt.ItemDataRole.UserRole, dict(row))
             self._backlog_table.setItem(idx, 0, date_item)
-            self._backlog_table.setItem(
-                idx, 1, QTableWidgetItem(str(row.get("supplier_name") or "—"))
-            )
+            full_name = str(row.get("supplier_name") or "—")
+            name_item = QTableWidgetItem(full_name)
+            name_item.setToolTip(full_name)
+            self._backlog_table.setItem(idx, 1, name_item)
             self._backlog_table.setItem(
                 idx, 2, QTableWidgetItem(str(row.get("content") or "—"))
             )
             self._backlog_table.setItem(
                 idx, 3, create_status_item(str(row.get("status") or "待處理"))
             )
+
+        # Cap supplier column so very long names don't crowd the problem/summary column.
+        actual_w = self._backlog_table.horizontalHeader().sectionSize(1)
+        if actual_w > BACKLOG_SUPPLIER_MAX_COL_WIDTH:
+            self._backlog_table.setColumnWidth(1, BACKLOG_SUPPLIER_MAX_COL_WIDTH)
 
     def _on_backlog_row_clicked(self, row_idx: int, _column_idx: int) -> None:
         item = self._backlog_table.item(row_idx, 0)

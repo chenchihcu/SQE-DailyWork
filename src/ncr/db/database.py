@@ -11,7 +11,6 @@ from database.connection import DB_PATH
 SCHEMA_VERSION = 11
 
 
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS defect_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,78 +90,12 @@ BEGIN
 END;
 """
 
-LEGACY_SCHEMA = """
-CREATE TABLE IF NOT EXISTS defect_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    defect_no TEXT UNIQUE,
-    event_date TEXT,
-    work_order_no TEXT,
-    item_no TEXT,
-    product_name TEXT,
-    qty INTEGER,
-    category TEXT,
-    supplier_name TEXT,
-    outsource_supplier_name TEXT,
-    defect_desc TEXT,
-    status TEXT,
-    disposition TEXT,
-    created_at TEXT
-);
-"""
-
-
 class DatabaseMigrationError(RuntimeError):
     """Raised when local database cannot be safely upgraded."""
 
 
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        SELECT 1
-        FROM sqlite_master
-        WHERE type = 'table' AND name = ?
-        LIMIT 1
-        """,
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return any(str(row[1]) == column_name for row in rows)
-
-
-def _get_user_version(conn: sqlite3.Connection) -> int:
-    row = conn.execute("PRAGMA user_version").fetchone()
-    return int(row[0]) if row is not None else 0
-
-
 def _set_user_version(conn: sqlite3.Connection, version: int) -> None:
     conn.execute(f"PRAGMA user_version = {version}")
-
-
-def _create_v2_objects(conn: sqlite3.Connection) -> None:
-    conn.execute(SCHEMA)
-    conn.execute(UNIQUE_BUSINESS_INDEX_SQL)
-    conn.execute(FUTURE_DATE_INSERT_TRIGGER_SQL)
-    conn.execute(FUTURE_DATE_UPDATE_TRIGGER_SQL)
-
-
-def _create_v3_objects(conn: sqlite3.Connection) -> None:
-    _create_v5_objects(conn)
-
-
-def _create_v5_objects(conn: sqlite3.Connection) -> None:
-    conn.execute(SCHEMA)
-    conn.execute(SUPPLIER_SCHEMA)
-    conn.execute(UNIQUE_BUSINESS_INDEX_SQL)
-    conn.execute(FUTURE_DATE_INSERT_TRIGGER_SQL)
-    conn.execute(FUTURE_DATE_UPDATE_TRIGGER_SQL)
-
-
-def _create_v7_objects(conn: sqlite3.Connection) -> None:
-    _create_v8_objects(conn)
 
 
 def _create_v8_objects(conn: sqlite3.Connection) -> None:
@@ -177,10 +110,6 @@ def _create_v8_objects(conn: sqlite3.Connection) -> None:
 def _create_current_objects(conn: sqlite3.Connection) -> None:
     _create_v8_objects(conn)
     conn.execute(SETTINGS_SCHEMA)
-
-
-def _create_v6_objects(conn: sqlite3.Connection) -> None:
-    _create_v7_objects(conn)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -211,7 +140,7 @@ def initialize_database() -> sqlite3.Connection:
             connection.execute("DELETE FROM supplier_records WHERE TRIM(name) = 'N/A'")
             connection.commit()
         except sqlite3.Error:
-            pass
+            logger.info("NCR 清潔 N/A 供應商記錄完成（無需處理）")
         return connection
     except Exception:
         logger.exception("NCR 資料庫初始化失敗")

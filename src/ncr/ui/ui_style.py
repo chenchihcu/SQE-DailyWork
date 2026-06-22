@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QFont, QGuiApplication, QIcon
+from PySide6.QtGui import QColor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStyle,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -30,6 +29,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 from PySide6.QtWidgets import QStyledItemDelegate
+
+# Single source of truth for the CJK font fallback chain lives in ui.theme; the NCR
+# module reuses it instead of maintaining a second, divergent list.
+from ui.theme import CJK_FONT_FAMILY_CSS, PREFERRED_CJK_FONT_FAMILIES
 
 
 PAGE_MARGIN = 8
@@ -51,34 +54,14 @@ EMPTY_PLACEHOLDER = "—"
 ITEMS_PER_PAGE = 12
 WINDOW_SCREEN_WIDTH_RATIO = 0.94
 WINDOW_SCREEN_HEIGHT_RATIO = 0.92
-PREFERRED_CJK_FONT_FAMILIES = (
-    "Microsoft JhengHei UI",
-    "Microsoft JhengHei",
-    "Microsoft YaHei UI",
-    "Microsoft YaHei",
-    "Segoe UI",
-    "PingFang TC",
-    "Noto Sans TC",
-    "Noto Sans HK",
-    "Noto Sans CJK TC",
-    "Source Han Sans TC",
-    "Noto Sans CJK SC",
-    "Source Han Sans SC",
-    "WenQuanYi Zen Hei",
-    "Arial Unicode MS",
-)
-CJK_FONT_FAMILY_CSS = (
-    "'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Microsoft YaHei UI', "
-    "'Microsoft YaHei', 'Noto Sans TC', 'Noto Sans HK', 'Noto Sans CJK TC', "
-    "'Source Han Sans TC', 'Noto Sans CJK SC', 'Source Han Sans SC', "
-    "'PingFang TC', 'WenQuanYi Zen Hei', 'Arial Unicode MS', 'Segoe UI', sans-serif"
-)
+# PREFERRED_CJK_FONT_FAMILIES and CJK_FONT_FAMILY_CSS are imported from ui.theme
+# (single source of truth). Re-exported here for existing call sites and probes.
 
 
 def configure_qt_font_environment() -> None:
     if os.name != "nt" or os.environ.get("QT_QPA_FONTDIR"):
         return
-    windows_dir = Path(os.environ.get("WINDIR", r"C:\Windows"))
+    windows_dir = Path(os.environ.get("WINDIR", str(Path.home().drive) + r"\Windows"))
     font_dir = windows_dir / "Fonts"
     if font_dir.exists():
         os.environ["QT_QPA_FONTDIR"] = str(font_dir)
@@ -198,53 +181,6 @@ ICON_PIXMAP_NAMES: dict[str, str] = {
 }
 
 
-def _supports_cjk_writing_system(font_db, family: str) -> bool:
-    systems = font_db.writingSystems(family)
-    return (
-        font_db.WritingSystem.TraditionalChinese in systems
-        or font_db.WritingSystem.SimplifiedChinese in systems
-        or font_db.WritingSystem.Japanese in systems
-        or font_db.WritingSystem.Korean in systems
-    )
-
-
-def apply_preferred_cjk_font() -> None:
-    app = QApplication.instance()
-    if not isinstance(app, QApplication):
-        return
-
-    # Import lazily to avoid broadening QtGui imports for callers that only need constants.
-    from PySide6.QtGui import QFontDatabase
-
-    available_families = set(QFontDatabase.families())
-
-    selected_family: str | None = None
-    for family in PREFERRED_CJK_FONT_FAMILIES:
-        if family in available_families and _supports_cjk_writing_system(QFontDatabase, family):
-            selected_family = family
-            break
-
-    if selected_family is None:
-        for family in QFontDatabase.families():
-            if _supports_cjk_writing_system(QFontDatabase, family):
-                selected_family = family
-                break
-
-    if selected_family is None:
-        return
-
-    app_font = app.font()
-    app_font.setFamily(selected_family)
-    prefer_antialias = getattr(QFont.StyleStrategy, "PreferAntialias", None)
-    if prefer_antialias is not None:
-        app_font.setStyleStrategy(app_font.styleStrategy() | prefer_antialias)
-    prefer_hinting = getattr(QFont.HintingPreference, "PreferDefaultHinting", None)
-    if prefer_hinting is not None:
-        app_font.setHintingPreference(prefer_hinting)
-    app_font.setKerning(True)
-    app.setFont(app_font)
-
-
 def stylesheet_url(path: Path) -> str:
     return path.resolve().as_posix()
 
@@ -340,7 +276,7 @@ def app_stylesheet() -> str:
     QLabel[uiRole="sidebarBrandSubtitle"] {{
         color: {COLOR_INFO_TEXT};
         font-size: 11px;
-        font-weight: 600;
+        font-weight: 700;
         background: transparent;
     }}
     QLabel[uiRole="sidebarGroupLabel"] {{
@@ -402,7 +338,7 @@ def app_stylesheet() -> str:
         border: 1px solid {COLOR_BORDER_DEFAULT};
         padding: 8px 16px;
         min-width: 0;
-        font-weight: 600;
+        font-weight: 700;
         margin-right: 2px;
         border-top-left-radius: 10px;
         border-top-right-radius: 10px;
@@ -449,7 +385,7 @@ def app_stylesheet() -> str:
         border-bottom-color: {COLOR_BORDER_DEFAULT};
         border-top-left-radius: 8px;
         border-top-right-radius: 8px;
-        font-weight: 600;
+        font-weight: 700;
     }}
     QTabWidget#analysisTabs QTabBar::tab:selected,
     QTabWidget#homeSubTabs QTabBar::tab:selected,
@@ -485,7 +421,7 @@ def app_stylesheet() -> str:
         background: transparent;
     }}
     QLabel[uiRole="fieldLabel"] {{
-        font-weight: 600;
+        font-weight: 700;
         color: {COLOR_TEXT_SECONDARY};
         background: transparent;
         font-size: {BASE_TEXT_PX}px;
@@ -497,7 +433,7 @@ def app_stylesheet() -> str:
         background: transparent;
     }}
     QLabel[uiRole="metaValue"] {{
-        font-weight: 500;
+        font-weight: 400;
         color: {COLOR_TEXT_PRIMARY};
         background: transparent;
     }}
@@ -515,7 +451,7 @@ def app_stylesheet() -> str:
     }}
     QLabel[uiRole="paginationStatus"] {{
         color: {COLOR_TEXT_PRIMARY};
-        font-weight: 600;
+        font-weight: 700;
         font-size: {BASE_TEXT_PX}px;
     }}
     QLabel[uiRole="compactNotice"] {{
@@ -738,7 +674,7 @@ def app_stylesheet() -> str:
         border: 1px solid {COLOR_BORDER_DEFAULT};
         background: {COLOR_SURFACE_BASE};
         color: {COLOR_TEXT_PRIMARY};
-        font-weight: 600;
+        font-weight: 700;
     }}
     QPushButton:disabled {{
         background: {COLOR_SURFACE_DISABLED};
@@ -947,7 +883,7 @@ def app_stylesheet() -> str:
     QLabel[uiRole="chipLabel"] {{
         color: {COLOR_TEXT_MUTED};
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
         background: transparent;
     }}
     QLabel[uiRole="chipValue"] {{
@@ -957,109 +893,6 @@ def app_stylesheet() -> str:
         background: transparent;
     }}
     """
-
-
-def home_doc_browser_stylesheet() -> str:
-    return f"""
-    QTextBrowser {{
-        background: {COLOR_SURFACE_BASE};
-        border: none;
-        color: {COLOR_TEXT_SECONDARY};
-        font-family: {CJK_FONT_FAMILY_CSS};
-        font-size: {BASE_TEXT_PX}px;
-        padding: 0px;
-    }}
-    """
-
-
-def home_doc_html_stylesheet() -> str:
-    return f"""
-    h3 {{
-        color: {COLOR_TEXT_PRIMARY};
-        font-size: {SECTION_TITLE_TEXT_PX}px;
-        line-height: 1.5;
-        margin-top: 18px;
-        margin-bottom: 10px;
-        font-weight: 700;
-    }}
-    ul,
-    ol {{
-        margin-top: 6px;
-        margin-bottom: 12px;
-        padding-left: 24px;
-    }}
-    li {{
-        margin-bottom: 6px;
-        line-height: 1.6;
-        color: {COLOR_TEXT_SECONDARY};
-    }}
-    p {{
-        margin-top: 6px;
-        margin-bottom: 10px;
-        line-height: 1.6;
-        color: {COLOR_TEXT_SECONDARY};
-    }}
-    b {{
-        color: {COLOR_TEXT_PRIMARY};
-        font-weight: 700;
-    }}
-    code {{
-        background: {COLOR_SURFACE_MUTED};
-        padding: 2px 4px;
-        border-radius: 4px;
-        font-family: 'Consolas', 'Courier New', monospace;
-        font-size: {MONOSPACE_TEXT_PX}px;
-    }}
-    pre {{
-        margin-top: 10px;
-        margin-bottom: 12px;
-        background: {COLOR_SURFACE_MUTED};
-        border: 1px solid {COLOR_BORDER_SOFT};
-        border-radius: 12px;
-        padding: 14px;
-        font-family: 'Consolas', 'Courier New', monospace;
-        font-size: {MONOSPACE_TEXT_PX}px;
-        line-height: 1.5;
-        color: {COLOR_TEXT_PRIMARY};
-        white-space: pre;
-    }}
-    """
-
-
-def apply_drop_shadow(
-    widget: QWidget,
-    blur_radius: int = 16,
-    x_offset: int = 0,
-    y_offset: int = 4,
-    alpha: int = 22,
-) -> None:
-    """Apply a soft drop shadow to a widget for card elevation."""
-    from PySide6.QtWidgets import QGraphicsDropShadowEffect
-
-    effect = QGraphicsDropShadowEffect(widget)
-    effect.setBlurRadius(blur_radius)
-    effect.setOffset(x_offset, y_offset)
-    effect.setColor(QColor(15, 23, 42, alpha))
-    widget.setGraphicsEffect(effect)
-
-
-def create_info_chip(label_text: str, value_text: str) -> QFrame:
-    """Create a styled info chip with a label/value pair."""
-    chip = QFrame()
-    chip.setProperty("uiRole", "infoChip")
-    layout = QHBoxLayout(chip)
-    layout.setContentsMargins(12, 6, 14, 6)
-    layout.setSpacing(6)
-
-    label_widget = QLabel(label_text)
-    label_widget.setProperty("uiRole", "chipLabel")
-
-    value_widget = QLabel(value_text)
-    value_widget.setProperty("uiRole", "chipValue")
-
-    layout.addWidget(label_widget)
-    layout.addWidget(value_widget)
-    return chip
 
 
 def set_button_role(button: QPushButton, role: str) -> None:
@@ -1089,14 +922,6 @@ def apply_button_icon(button: QPushButton, icon_key: str) -> None:
     icon = standard_icon(icon_key)
     if not icon.isNull():
         button.setIcon(icon)
-
-
-def tab_icon(icon_key: str) -> QIcon:
-    return standard_icon(icon_key)
-
-
-def set_tab_icon(tab_widget: QTabWidget, tab_index: int, icon_key: str) -> None:
-    tab_widget.setTabIcon(tab_index, tab_icon(icon_key))
 
 
 def create_section_title_with_icon(title: str, icon_key: str) -> QWidget:
@@ -1285,50 +1110,6 @@ def make_hint_label(text: str, role: str = "hint") -> QLabel:
     return label
 
 
-def create_summary_card(
-    label: str,
-    value: str,
-    icon_key: str | None = None,
-    *,
-    accent_role: str = "default",
-) -> QFrame:
-    card = QFrame()
-    card.setProperty("uiRole", "summaryCard")
-    card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    card.setProperty(
-        "accentRole",
-        accent_role if accent_role in SUMMARY_ACCENT_COLORS else "default",
-    )
-    layout = QHBoxLayout(card)
-    layout.setContentsMargins(18, 16, 18, 16)
-    layout.setSpacing(12)
-    if icon_key:
-        icon_label = QLabel()
-        icon_label.setObjectName("summaryIconLabel")
-        icon_label.setProperty("uiRole", "summaryIcon")
-        icon_label.setFixedSize(22, 22)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon = standard_icon(icon_key)
-        if not icon.isNull():
-            icon_label.setPixmap(icon.pixmap(20, 20))
-        layout.addWidget(icon_label)
-    value_label = QLabel(value)
-    value_label.setObjectName("summaryValueLabel")
-    value_label.setProperty("uiRole", "summaryValue")
-    value_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    value_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
-    text_label = QLabel(label)
-    text_label.setObjectName("summaryTextLabel")
-    text_label.setProperty("uiRole", "summaryLabel")
-    text_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-    text_label.setWordWrap(True)
-    text_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    layout.addWidget(value_label)
-    layout.addWidget(text_label)
-    layout.addStretch(1)
-    return card
-
-
 def style_table(table: QTableWidget) -> None:
     table.setAlternatingRowColors(True)
     table.setShowGrid(True)
@@ -1396,7 +1177,7 @@ def create_status_badge(
         f"border: 1px solid {border_color or resolved_border};"
         "border-radius: 999px;"
         "padding: 4px 10px;"
-        "font-weight: 600;"
+        "font-weight: 700;"
         "}"
     )
     return label

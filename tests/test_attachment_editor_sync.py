@@ -2,7 +2,7 @@ import os
 import unittest
 from pathlib import Path
 from uuid import uuid4
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QListWidgetItem
 from ui.widgets.defect_form_widget import AttachmentEditor
 from services import attachment_manager
 
@@ -67,7 +67,6 @@ class AttachmentEditorSyncTests(unittest.TestCase):
         # 2. Add img3
         img3 = self._make_img("img3.png")
         self.editor._pending_attachments.append(img3)
-        from PySide6.QtWidgets import QListWidgetItem
         item3 = QListWidgetItem("img3.png")
         item3.setData(0x0100, str(img3)) # Qt.UserRole
         item3.setData(0x0101, "img3.png") # UserRole + 1

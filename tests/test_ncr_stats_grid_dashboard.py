@@ -6,12 +6,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import QApplication, QGridLayout, QScrollArea, QSizePolicy, QLabel
+from PySide6.QtWidgets import QApplication, QGridLayout, QScrollArea, QSizePolicy
 from PySide6.QtCharts import QChartView, QPieSlice
 
 from ui.widgets.ncr_stats_widget import NcrStatsWidget
-from ui.widgets.common_widgets import EmptyStateWidget
+
 
 
 class NcrStatsGridDashboardTests(unittest.TestCase):

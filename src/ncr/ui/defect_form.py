@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from ui.layout_constants import DIALOG_OUTER_MARGINS
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
@@ -67,6 +68,7 @@ from ncr.models.labels import (
 from ncr.services import defect_service, product_service
 from ncr.ui.ui_style import (
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
+    FIELD_SPACING_Y,
     FORM_COMPACT_FIELD_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
     INPUT_HEIGHT,
@@ -109,7 +111,16 @@ def _connect_dirty_tracking_signals(
     fields.responsibility_combo.currentTextChanged.connect(on_dirty)
 
 
+class DirtyTrackingMixin:
+    def _mark_dirty(self, *_args: object) -> None:
+        if self._track_changes:
+            self._is_dirty = True
 
+    def _mark_clean(self) -> None:
+        self._is_dirty = False
+
+    def _set_save_busy_state(self, busy: bool) -> None:
+        self._is_saving = busy
 
 
 class QuickProductCreateDialog(QDialog):
@@ -126,8 +137,8 @@ class QuickProductCreateDialog(QDialog):
         fit_window_to_available_screen(self, 420, 220, enable_size_grip=True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
+        layout.setSpacing(FIELD_SPACING_Y)
 
         form_grid = create_form_grid(field_count=1)
         self.item_no_input = QLineEdit(item_no.strip())
@@ -161,6 +172,20 @@ class QuickProductCreateDialog(QDialog):
     def _show_error(self, message: str) -> None:
         self.feedback_label.setText(message)
         self.feedback_label.setVisible(True)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self.product_name_input.text().strip():
+            reply = QMessageBox.question(
+                self,
+                "放棄輸入",
+                "產品名稱尚未儲存，確定要關閉嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        super().closeEvent(event)
 
     def create_product(self) -> bool:
         item_no = self.item_no_input.text().strip()
@@ -208,7 +233,6 @@ class DefectFieldsWidget(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(SECTION_SPACING)
 
         self.event_date_edit = QDateEdit()
@@ -645,8 +669,7 @@ class DefectFieldsWidget(QWidget):
             return True
         return bool(self.sync_product_name_from_item_no())
 
-    def _on_item_no_changed(self, text: str) -> None:
-        _ = text
+    def _on_item_no_changed(self, _text: str) -> None:
         self.sync_product_name_from_item_no()
 
     def _sync_quick_add_product_visibility(self, product_name: str = "") -> None:
@@ -681,7 +704,7 @@ class DefectFieldsWidget(QWidget):
             line_edit.selectAll()
 
 
-class DefectFormWidget(QWidget):
+class DefectFormWidget(DirtyTrackingMixin, QWidget):
     saved = Signal()
     data_changed = Signal()
     status_message = Signal(str, int)
@@ -790,13 +813,6 @@ class DefectFormWidget(QWidget):
     def _connect_dirty_tracking(self) -> None:
         _connect_dirty_tracking_signals(self.fields_widget, self._mark_dirty)
 
-    def _mark_dirty(self, *_args: object) -> None:
-        if self._track_changes:
-            self._is_dirty = True
-
-    def _mark_clean(self) -> None:
-        self._is_dirty = False
-
     def has_unsaved_changes(self) -> bool:
         return self._is_dirty
 
@@ -824,7 +840,7 @@ class DefectFormWidget(QWidget):
         return False
 
     def _set_save_busy_state(self, busy: bool) -> None:
-        self._is_saving = busy
+        super()._set_save_busy_state(busy)
         self.save_button.setEnabled(not busy)
         self.clear_button.setEnabled(not busy)
         self.reset_button.setEnabled(not busy)

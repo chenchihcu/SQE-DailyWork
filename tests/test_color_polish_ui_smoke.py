@@ -7,9 +7,10 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QListWidget, QTabBar
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QListWidget
 
 from ui.main_window import MainWindow
+from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
 from ui.widgets.defect_form_widget import (
     AttachmentEditor,
@@ -33,7 +34,6 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             cls.app.quit()
 
     def test_main_window_exposes_color_polish_surfaces(self) -> None:
-        from ui.sidebar_nav import SidebarNav
         window = MainWindow()
         try:
             # Sidebar navigation replaces old QTabWidget

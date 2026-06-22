@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import shutil
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -31,8 +34,8 @@ class ClosingConnection(sqlite3.Connection):
         # Always close the connection when leaving the with-block.
         try:
             self.close()
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as exc:
+            logger.debug("Error closing connection: %s", exc)
         return result
 
 

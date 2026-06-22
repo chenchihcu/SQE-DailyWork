@@ -732,7 +732,6 @@ class DefectServiceTests(DatabaseTestCase):
         self.assertEqual(outsource_stats[0]["case_count"], 1)
         status_total_by_name = {row["status"]: row["total_qty"] for row in status_totals}
         self.assertEqual(status_total_by_name["處理中"], 10)  # 5 + 3 + 2
-        # self.assertEqual(status_total_by_name["待處理"], 2)
         self.assertEqual(len(outsource_processing_stats), 2)
         self.assertEqual(outsource_processing_stats[0]["outsource_supplier_name"], "Outsource A")
         self.assertEqual(outsource_processing_stats[0]["total_qty"], 5)

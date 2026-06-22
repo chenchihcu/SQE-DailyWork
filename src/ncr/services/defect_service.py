@@ -162,7 +162,7 @@ def ensure_not_duplicate_business_key(
     raise ValueError(VALIDATION_DUPLICATE_RECORD.format(defect_no))
 
 
-def generate_defect_no(conn: sqlite3.Connection, event_date: Any) -> str:
+def generate_defect_no(conn: sqlite3.Connection) -> str:
     prefix = "NCR-"
     cursor = conn.execute(
         """
@@ -184,7 +184,7 @@ def generate_defect_no(conn: sqlite3.Connection, event_date: Any) -> str:
 def create_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> str:
     normalized = validate_defect_data(data, require_status_default=True)
     ensure_not_duplicate_business_key(conn, normalized)
-    normalized["defect_no"] = generate_defect_no(conn, normalized["event_date"])
+    normalized["defect_no"] = generate_defect_no(conn)
     normalized["created_at"] = datetime.now().isoformat(timespec="seconds")
     try:
         crud.insert_defect(conn, normalized)

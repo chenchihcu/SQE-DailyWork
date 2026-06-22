@@ -49,7 +49,9 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         qss = get_theme_qss()
         tab_block = _selector_block(qss, "QTabWidget#MainWorkflowTabs QTabBar::tab")
         self.assertIn("font-size: 13px;", tab_block)
-        self.assertIn("font-weight: 600;", tab_block)
+        # Unselected tab weight normalized 600 -> 400 (CJK avoids 500/600 per the
+        # universal UI rule); the selected state is carried by colour + weight 700.
+        self.assertIn("font-weight: 400;", tab_block)
         self.assertIn(f'color: {TOKENS["nav_dark_text"]};', tab_block)
 
         hover_block = _selector_block(qss, "QTabWidget#MainWorkflowTabs QTabBar::tab:hover:!selected")
@@ -64,9 +66,17 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         tab_block = _selector_block(qss, "QTabBar::tab")
         self.assertIn("font-size: 13px;", tab_block)
 
+    def test_theme_qss_avoids_medium_font_weights(self) -> None:
+        # CJK renders inconsistently at 500/600 on Windows; the theme must only use
+        # 400 / 700 (universal UI rule §6). Pins the normalization against regression.
+        qss = get_theme_qss()
+        offenders = re.findall(r"font-weight:\s*(500|600)\b", qss)
+        self.assertEqual(offenders, [], f"theme QSS still uses 500/600: {offenders}")
+
     def test_kpi_widgets_have_no_inline_font_size_override(self) -> None:
-        home_widget = Path("src/ui/widgets/home_widget.py").read_text(encoding="utf-8")
-        stats_widget = Path("src/ui/widgets/stats_view_widget.py").read_text(encoding="utf-8")
+        _root = Path(__file__).resolve().parents[1]
+        home_widget = (_root / "src/ui/widgets/home_widget.py").read_text(encoding="utf-8")
+        stats_widget = (_root / "src/ui/widgets/stats_view_widget.py").read_text(encoding="utf-8")
         self.assertNotIn("font-size", home_widget)
         self.assertNotIn("font-size", stats_widget)
 

@@ -12,7 +12,9 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.oxml.ns import qn
 from pptx.util import Cm, Pt
+from lxml import etree
 
 # ── 路徑設定 ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,7 +38,7 @@ C_NEW_ITEM   = RGBColor(0xD4, 0x7B, 0x00)   # 琥珀橘，本週新增高亮
 
 FONT_NAME    = "微軟正黑體"
 FONT_NAME_EN = "Calibri"
-LOGO_PATH = BASE_DIR / "ui" / "assets" / "mitcorp_logo.png"
+
 
 SLIDE_W = Cm(33.867)
 SLIDE_H = Cm(19.05)
@@ -66,21 +68,6 @@ def fetch_open_anomalies(conn):
         FROM anomalies a
         LEFT JOIN suppliers s ON a.supplier_id = s.id
         WHERE a.status != '已結案'
-        ORDER BY s.supplier_name, a.anomaly_date DESC
-    """)
-    return [dict(r) for r in cur.fetchall()]
-
-def fetch_standalone_anomalies(conn):
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT a.anomaly_no, a.anomaly_date, a.category, a.product_name,
-               a.product_stage, a.problem_desc, a.pending_items, a.improvement_desc,
-               a.responsible_person, a.due_date, a.root_cause_category, a.status,
-               s.supplier_name
-        FROM anomalies a
-        LEFT JOIN suppliers s ON a.supplier_id = s.id
-        WHERE (a.visit_id IS NULL OR a.visit_id = '')
-          AND a.status != '已結案'
         ORDER BY s.supplier_name, a.anomaly_date DESC
     """)
     return [dict(r) for r in cur.fetchall()]
@@ -122,9 +109,10 @@ def trunc(text: str, max_len: int) -> str:
     text = text.replace("\n", " ").strip()
     return text if len(text) <= max_len else text[:max_len] + "…"
 
+_TODAY = date.today()
+
 def week_label() -> str:
-    today = date.today()
-    year, week, _ = today.isocalendar()
+    year, week, _ = _TODAY.isocalendar()
     return f"{year}W{week:02d}"
 
 _CN_NUMS = "一二三四五六七八九十"
@@ -133,8 +121,6 @@ def _cn(n: int) -> str:
     return _CN_NUMS[n-1] if 1 <= n <= len(_CN_NUMS) else str(n)
 
 def set_cell_bg(cell, rgb: RGBColor):
-    from pptx.oxml.ns import qn
-    from lxml import etree
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
     for old in tcPr.findall(qn("a:solidFill")):
@@ -144,8 +130,6 @@ def set_cell_bg(cell, rgb: RGBColor):
     srgbClr.set("val", f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}")
 
 def set_cell_border(cell, rgb: RGBColor, width_pt: float = 0.5):
-    from pptx.oxml.ns import qn
-    from lxml import etree
     def make_ln(parent_tag):
         ln = etree.Element(qn(parent_tag))
         ln.set("w", str(int(width_pt * 12700)))
@@ -374,7 +358,7 @@ def build_cover(prs: Presentation):
     tf2 = tb2.text_frame
     p2  = tf2.paragraphs[0]
     r2  = p2.add_run()
-    r2.text = f"週次：{week_label()}   ／   報告日期：{date.today().strftime('%Y/%m/%d')}"
+    r2.text = f"週次：{week_label()}   ／   報告日期：{_TODAY.strftime('%Y/%m/%d')}"
     r2.font.size  = Pt(13)
     r2.font.color.rgb = C_TEAL_MC
     r2.font.name  = FONT_NAME
@@ -405,8 +389,8 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
     ROW_H    = Cm(ROW_H_CM)
     LEFT     = Cm(0.3)
     total_w  = 33.2  # 滿版寬度
-    today_str  = date.today().isoformat()
-    cutoff_str = (date.today() - timedelta(days=new_within_days)).isoformat() \
+    today_str  = _TODAY.isoformat()
+    cutoff_str = (_TODAY - timedelta(days=new_within_days)).isoformat() \
                  if new_within_days > 0 else None
 
     headers = [c[0] for c in cols_def]
@@ -470,8 +454,8 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
 
 def add_kpi_row(slide, anomalies: list[dict]) -> None:
     """在 slide 頂部繪製 4 個 KPI 統計方塊（僅第一頁呼叫）。"""
-    today_str  = date.today().isoformat()
-    cutoff_str = (date.today() - timedelta(days=7)).isoformat()
+    today_str  = _TODAY.isoformat()
+    cutoff_str = (_TODAY - timedelta(days=7)).isoformat()
 
     total     = len(anomalies)
     overdue   = sum(1 for a in anomalies
@@ -533,8 +517,8 @@ def categorize_anomalies(anomalies: list[dict]) -> tuple[list, list, list]:
       - others:        其餘
     輸入排序保留（呼叫端負責 supplier_name 排序）。
     """
-    today_str  = date.today().isoformat()
-    cutoff_str = (date.today() - timedelta(days=7)).isoformat()
+    today_str  = _TODAY.isoformat()
+    cutoff_str = (_TODAY - timedelta(days=7)).isoformat()
 
     new_items, overdue_items, others = [], [], []
     for a in anomalies:
@@ -654,7 +638,7 @@ def build_anomaly_slide(prs: Presentation, anomalies: list[dict],
 def build_visit_normal_slide(prs: Presentation, visits: list[dict], v_anoms: dict,
                              chapter_no: int = 1) -> int:
     # 僅顯示本週（近 7 天）且未發生異常的訪廠；歷史資料屬於過去式，無討論價值
-    cutoff_str = (date.today() - timedelta(days=7)).isoformat()
+    cutoff_str = (_TODAY - timedelta(days=7)).isoformat()
     normal_visits = [v for v in visits
                      if not v_anoms.get(v.get("id"))
                      and (v.get("visit_date") or "") >= cutoff_str]
@@ -677,58 +661,6 @@ def build_visit_normal_slide(prs: Presentation, visits: list[dict], v_anoms: dic
     return chapter_no + 1
 
 # ── Slide 4：訪廠發現異常 ─────────────────────────
-
-def build_visit_anomaly_slide(prs: Presentation, visits: list[dict], v_anoms: dict,
-                              chapter_no: int = 1) -> int:
-    all_va = []
-    for v in visits:
-        vid = v.get("id")
-        if vid in v_anoms:
-            for a in v_anoms[vid]:
-                a_copy = dict(a)
-                a_copy["_visit_date"] = v["visit_date"]
-                all_va.append(a_copy)
-
-    cols = [
-        ("訪廠日期", "_visit_date", 0),
-        ("廠商", "supplier_name", 0),
-        ("問題描述", "problem_desc", 60),
-        ("待辦事項", "pending_items", 50),
-        ("負責人", "responsible_person", 0),
-        ("截止日", "due_date", 0),
-    ]
-    pages = _paginate(all_va)
-    total_pages = len(pages)
-    for idx, chunk in enumerate(pages, 1):
-        slide = add_slide(prs)
-        page_tag = f" ({idx}/{total_pages})" if total_pages > 1 else ""
-        add_content_bg(slide, f"{_cn(chapter_no)}. 訪廠發生異常事件{page_tag}",
-                       f"共 {len(all_va)} 筆")
-        add_matrix_table(slide, "訪廠發現異常", cols, chunk)
-    return chapter_no + 1
-
-# ── Slide 5：異常事件 (無訪廠紀錄) ─────────────────────────────────
-
-def build_standalone_anomaly_slide(prs: Presentation, standalone_anomalies: list[dict],
-                                   chapter_no: int = 1) -> int:
-    cols = [
-        ("日期", "anomaly_date", 0),
-        ("廠商", "supplier_name", 0),
-        ("產品", "product_name", 30),
-        ("問題描述", "problem_desc", 60),
-        ("待辦事項", "pending_items", 50),
-        ("負責人", "responsible_person", 0),
-        ("截止日", "due_date", 0),
-    ]
-    pages = _paginate(standalone_anomalies)
-    total_pages = len(pages)
-    for idx, chunk in enumerate(pages, 1):
-        slide = add_slide(prs)
-        page_tag = f" ({idx}/{total_pages})" if total_pages > 1 else ""
-        add_content_bg(slide, f"{_cn(chapter_no)}. 異常事件 (無訪廠紀錄){page_tag}",
-                       f"共 {len(standalone_anomalies)} 筆")
-        add_matrix_table(slide, "異常事件", cols, chunk)
-    return chapter_no + 1
 
 # ── 主流程 ────────────────────────────────────────────────
 

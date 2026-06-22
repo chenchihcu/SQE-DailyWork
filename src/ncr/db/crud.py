@@ -24,13 +24,32 @@ TABLE_COLUMNS = (
     "created_at",
 )
 
+_INSERT_PLACEHOLDERS = ", ".join("?" for _ in TABLE_COLUMNS)
+_INSERT_COLUMNS = ", ".join(TABLE_COLUMNS)
+_EDITABLE_COLUMNS = (
+    "event_date",
+    "return_slip_type",
+    "work_order_no",
+    "internal_work_order_no",
+    "transfer_slip_no",
+    "item_no",
+    "product_name",
+    "qty",
+    "category",
+    "supplier_name",
+    "outsource_supplier_name",
+    "defect_desc",
+    "status",
+    "disposition",
+    "responsibility",
+)
+_UPDATE_ASSIGNMENTS = ", ".join(f"{column} = ?" for column in _EDITABLE_COLUMNS)
+
 
 def insert_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
-    placeholders = ", ".join("?" for _ in TABLE_COLUMNS)
-    columns = ", ".join(TABLE_COLUMNS)
     values = [data.get(column) for column in TABLE_COLUMNS]
     cursor = conn.execute(
-        f"INSERT INTO defect_records ({columns}) VALUES ({placeholders})",
+        f"INSERT INTO defect_records ({_INSERT_COLUMNS}) VALUES ({_INSERT_PLACEHOLDERS})",
         values,
     )
     conn.commit()
@@ -137,43 +156,33 @@ def get_defect_by_id(
 def update_defect(
     conn: sqlite3.Connection, defect_id: int, data: dict[str, Any]
 ) -> None:
-    editable_columns = (
-        "event_date",
-        "return_slip_type",
-        "work_order_no",
-        "internal_work_order_no",
-        "transfer_slip_no",
-        "item_no",
-        "product_name",
-        "qty",
-        "category",
-        "supplier_name",
-        "outsource_supplier_name",
-        "defect_desc",
-        "status",
-        "disposition",
-        "responsibility",
-    )
-    assignments = ", ".join(f"{column} = ?" for column in editable_columns)
-    values = [data.get(column) for column in editable_columns]
+    values = [data.get(column) for column in _EDITABLE_COLUMNS]
     values.append(defect_id)
 
-    cursor = conn.execute(
-        f"UPDATE defect_records SET {assignments} WHERE id = ?",
-        values,
-    )
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute(
+            f"UPDATE defect_records SET {_UPDATE_ASSIGNMENTS} WHERE id = ?",
+            values,
+        )
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要更新的資料 ID: {defect_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要更新的資料 ID: {defect_id}")
-    conn.commit()
+        raise
 
 
 def delete_defect(conn: sqlite3.Connection, defect_id: int) -> None:
-    cursor = conn.execute("DELETE FROM defect_records WHERE id = ?", (defect_id,))
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute("DELETE FROM defect_records WHERE id = ?", (defect_id,))
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要刪除的資料 ID: {defect_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要刪除的資料 ID: {defect_id}")
-    conn.commit()
+        raise
 
 
 # Supplier CRUD
@@ -206,22 +215,30 @@ def get_suppliers(
 def update_supplier(
     conn: sqlite3.Connection, supplier_id: int, data: dict[str, Any]
 ) -> None:
-    cursor = conn.execute(
-        "UPDATE supplier_records SET name = ?, category = ? WHERE id = ?",
-        (data["name"], data["category"], supplier_id),
-    )
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute(
+            "UPDATE supplier_records SET name = ?, category = ? WHERE id = ?",
+            (data["name"], data["category"], supplier_id),
+        )
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要更新的供應商 ID: {supplier_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要更新的供應商 ID: {supplier_id}")
-    conn.commit()
+        raise
 
 
 def delete_supplier(conn: sqlite3.Connection, supplier_id: int) -> None:
-    cursor = conn.execute("DELETE FROM supplier_records WHERE id = ?", (supplier_id,))
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute("DELETE FROM supplier_records WHERE id = ?", (supplier_id,))
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要刪除的供應商 ID: {supplier_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要刪除的供應商 ID: {supplier_id}")
-    conn.commit()
+        raise
 
 
 def upsert_supplier_by_name(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
@@ -396,34 +413,28 @@ def get_product_by_item_no(conn: sqlite3.Connection, item_no: str) -> sqlite3.Ro
 def update_product(
     conn: sqlite3.Connection, product_id: int, data: dict[str, Any]
 ) -> None:
-    cursor = conn.execute(
-        "UPDATE product_records SET item_no = ?, product_name = ? WHERE id = ?",
-        (data["item_no"], data["product_name"], product_id),
-    )
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute(
+            "UPDATE product_records SET item_no = ?, product_name = ? WHERE id = ?",
+            (data["item_no"], data["product_name"], product_id),
+        )
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要更新的產品 ID: {product_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要更新的產品 ID: {product_id}")
-    conn.commit()
-
-
-def upsert_product_by_item_no(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
-    # If item_no exists, update product_name. Otherwise insert.
-    conn.execute(
-        """
-        INSERT INTO product_records (item_no, product_name, created_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(item_no) DO UPDATE SET
-            product_name = excluded.product_name
-        """,
-        (data["item_no"], data["product_name"], data["created_at"]),
-    )
-    conn.commit()
+        raise
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
-    cursor = conn.execute("DELETE FROM product_records WHERE id = ?", (product_id,))
-    if cursor.rowcount <= 0:
+    conn.execute("BEGIN")
+    try:
+        cursor = conn.execute("DELETE FROM product_records WHERE id = ?", (product_id,))
+        if cursor.rowcount <= 0:
+            raise sqlite3.DatabaseError(f"找不到要刪除的產品 ID: {product_id}")
+        conn.commit()
+    except Exception:
         conn.rollback()
-        raise sqlite3.DatabaseError(f"找不到要刪除的產品 ID: {product_id}")
-    conn.commit()
+        raise
 

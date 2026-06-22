@@ -1,5 +1,3 @@
-import pytest
-from pathlib import Path
 from services import attachment_manager
 
 def test_rename_attachment(tmp_path, monkeypatch):

@@ -1,0 +1,12 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.0",
+    "device_pixel_ratio": 2.0
+  },
+  "files": [
+    "master-data_master-supplier.png",
+    "master-data_master-product.png"
+  ]
+}

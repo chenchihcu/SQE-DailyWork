@@ -93,6 +93,9 @@ PALETTE: dict[str, object] = {
     "chart_5": "#E0455E",
     "chart_grid": "#E2E9F0",
     "chart_axis": "#46566B",
+    # Plot area background, kept distinct from the figure surface (the card's
+    # panel_bg) so the plotting region reads as its own layer (universal §10).
+    "chart_plot_bg": "#FFFFFF",
 
     # ── Hero banner gradient (SQE DailyWork home) ──────────────────────────────────
     "hero_start": "#0E2233",

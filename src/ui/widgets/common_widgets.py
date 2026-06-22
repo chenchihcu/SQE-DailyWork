@@ -3,22 +3,22 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollBar,
     QSizePolicy,
-    QStyle,
-    QStyleOptionSlider,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtGui import QPainter, QPen, QColor, QBrush
+from PySide6.QtGui import QBrush, QColor
 
 from ui.layout_constants import (
+    FORM_HORIZONTAL_SPACING,
     GRID_GUTTER,
     PANEL_MARGINS,
     ROW_GAP,
@@ -26,6 +26,10 @@ from ui.layout_constants import (
 )
 from ui.status_colors import get_status_palette, get_status_tone
 from ui.theme import TOKENS
+from database.product_stage import (
+    PRODUCT_STAGE_MASS_PRODUCTION,
+    normalize_product_stage_ui,
+)
 
 EMPTY_DISPLAY = "—"
 
@@ -307,70 +311,121 @@ class BrandDivider(QWidget):
         layout.addStretch(1)
 
 
-class NavigatorScrollBar(QScrollBar):
-    """A premium scrollbar that paints a data summary (minimap) on its track.
-    
-    The background displays a vertical 'sparkline' or color-coded segments 
-    representing the entire dataset, allowing for high-level navigation.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._nav_data: list[str] = []  # List of colors for each data point
-        self.setMouseTracking(True)
+def set_combo_current_data(combo: QComboBox, value: str) -> bool:
+    idx = combo.findData(value)
+    if idx < 0:
+        return False
+    combo.setCurrentIndex(idx)
+    return True
 
-    def set_navigation_data(self, colors: list[str]):
-        """Update the minimap with a list of hex colors representing the rows."""
-        self._nav_data = colors
-        self.update()
 
-    def paintEvent(self, event):
-        # 1. Draw the standard scrollbar parts (handle, etc.)
-        # Note: Track is transparent via QSS, so we can draw behind it.
-        super().paintEvent(event)
-        
-        if not self._nav_data:
-            return
+def mark_button_variant(button: QPushButton | None, variant: str) -> None:
+    if button is None:
+        return
+    button.setProperty("variant", variant)
+    apply_clickable_affordance(button)
+    style = button.style()
+    style.unpolish(button)
+    style.polish(button)
 
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        
-        # 2. Identify the track area
-        opt = QStyleOptionSlider()
-        self.initStyleOption(opt)
-        
-        # We want to draw in the 'groove' (the background track)
-        track_rect = self.style().subControlRect(
-            QStyle.ComplexControl.CC_ScrollBar, 
-            opt, 
-            QStyle.SubControl.SC_ScrollBarGroove, 
-            self
+
+def paired_label(label: str | QWidget | None) -> QWidget | None:
+    if label is None:
+        return None
+    if isinstance(label, QWidget):
+        return label
+    return QLabel(label)
+
+
+def make_paired_form_row(
+    object_name: str,
+    left_label: str | QWidget,
+    left_field: QWidget,
+    right_label: str | QWidget | None,
+    right_field: QWidget,
+) -> QWidget:
+    row = QWidget()
+    row.setObjectName(object_name)
+    grid = QGridLayout(row)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+    grid.setVerticalSpacing(0)
+
+    left_label_widget = paired_label(left_label)
+    right_label_widget = paired_label(right_label)
+    if left_label_widget is not None:
+        grid.addWidget(left_label_widget, 0, 0)
+    grid.addWidget(left_field, 0, 1)
+    if right_label_widget is not None:
+        grid.addWidget(right_label_widget, 0, 2)
+        grid.addWidget(right_field, 0, 3)
+    else:
+        grid.addWidget(right_field, 0, 2, 1, 2)
+    grid.setColumnStretch(1, 1)
+    grid.setColumnStretch(3, 1)
+    return row
+
+
+class SupplierProductFormMixin:
+    """Mixin for dialogs that need supplier/product combo loading."""
+
+    def _load_suppliers(self) -> None:
+        import services.event_service as _event_service
+        suppliers = (
+            _event_service.list_suppliers(include_inactive=True)
+            if self._is_edit
+            else _event_service.list_active_suppliers()
         )
-        
-        if track_rect.isEmpty():
-            return
-            
-        # 3. Draw the segments
-        n = len(self._nav_data)
-        item_h = track_rect.height() / n
-        
-        # Draw small markers on the right edge of the track for a sleek look
-        # or full width for a bolder look. Let's go with full width but subtle alpha.
-        x = track_rect.x()
-        w = track_rect.width()
-        
-        for i, color_str in enumerate(self._nav_data):
-            color = QColor(color_str)
-            color.setAlpha(120) # Semi-transparent for 'background' feel
-            
-            y_start = track_rect.y() + (i * item_h)
-            
-            painter.fillRect(
-                int(x), 
-                int(y_start), 
-                int(w), 
-                int(max(1, item_h)), 
-                QBrush(color)
-            )
-        
-        painter.end()
+        self.supplier_combo.blockSignals(True)
+        self.supplier_combo.clear()
+        self.supplier_combo.addItem("請選擇供應商", "")
+        for item in suppliers:
+            name = item["supplier_name"]
+            if self._is_edit and not item.get("is_active", True):
+                name = f"{name}（停用）"
+            self.supplier_combo.addItem(name, item["id"])
+        self.supplier_combo.blockSignals(False)
+        self._on_supplier_changed()
+
+    def _on_supplier_changed(self) -> None:
+        import services.event_service as _event_service
+        supplier_id = (self.supplier_combo.currentData() or "").strip()
+        products = _event_service.list_active_products_for_supplier(supplier_id)
+        self._product_stage_by_id = {}
+        self._product_code_by_id = {}
+        self.product_combo.clear()
+        self.product_combo.addItem("請選擇產品 *", "")
+        for item in products:
+            product_id = str(item.get("id") or "").strip()
+            self.product_combo.addItem(self._product_combo_label(item), product_id)
+            if product_id:
+                self._product_stage_by_id[product_id] = normalize_product_stage_ui(
+                    item.get("product_stage")
+                )
+                self._product_code_by_id[product_id] = str(item.get("product_code") or "").strip()
+        self._on_product_changed()
+        self._on_supplier_changed_post(supplier_id, list(products))
+
+    def _on_product_changed(self, _index: int = -1) -> None:
+        product_id = (self.product_combo.currentData() or "").strip()
+        product_stage = self._product_stage_by_id.get(
+            product_id, PRODUCT_STAGE_MASS_PRODUCTION
+        )
+        self.product_stage_combo.setCurrentText(
+            normalize_product_stage_ui(product_stage)
+        )
+        self.product_code_input.setText(self._product_code_by_id.get(product_id, ""))
+        self._on_product_changed_post()
+
+    def _product_combo_label(self, item: dict) -> str:
+        code = str(item.get("product_code") or "").strip()
+        name = str(item.get("product_name") or "").strip()
+        if code and name:
+            return f"[{code}] {name}"
+        return name or code or "(未命名產品)"
+
+    def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
+        pass
+
+    def _on_product_changed_post(self) -> None:
+        pass

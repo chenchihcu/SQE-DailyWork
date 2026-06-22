@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -335,7 +336,7 @@ def date_today() -> str:
 
 
 def _new_id() -> str:
-    return datetime.now().strftime("%Y%m%d%H%M%S%f")
+    return uuid.uuid4().hex
 
 
 def legacy_anomaly_no(anomaly_date: str, *, seq: int = 1) -> str:

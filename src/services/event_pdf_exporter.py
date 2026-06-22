@@ -251,7 +251,7 @@ def _preferred_pdf_font_family() -> str:
 
 
 def _font_candidate_paths() -> tuple[Path, ...]:
-    fonts_dir = Path(environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    fonts_dir = Path(environ.get("WINDIR", str(Path.home().drive) + r"\Windows")) / "Fonts"
     return (
         fonts_dir / "msjh.ttc",
         fonts_dir / "mingliu.ttc",
@@ -1276,16 +1276,6 @@ def _paragraph_line_class(text: str) -> str:
     return "paragraph-subitem" if "." in match.group(1) else "paragraph-item"
 
 
-def _yes_no(value: object) -> str:
-    return "有" if bool(value) else "沒有"
-
-
-def _yes_no_marked(value: object) -> _RawHtml:
-    if bool(value):
-        return _RawHtml('<span class="yes-check">&radic; 有</span>')
-    return _RawHtml('<span class="no-mark">沒有</span>')
-
-
 def _tech_state_marked(state: object, *, legacy_value: object = None) -> _RawHtml:
     """Render a tech-transfer item respecting tri-state ('yes'/'no'/'na').
 
@@ -1456,7 +1446,7 @@ def render_brief_event_to_image(
     Returns ``None`` on failure.
     """
     try:
-        from PySide6.QtCore import QRectF, Qt
+        from PySide6.QtCore import QRectF
         from PySide6.QtGui import QColor, QImage, QPainter
 
         # 手機卡片寬度固定為 1080，高度動態計算，底限為 1440

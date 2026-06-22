@@ -226,28 +226,6 @@ def _resolve_tech_transfer_states(
     return result
 
 
-def _normalize_visit_tech_transfer_fields(
-    *,
-    tech_transfer: bool = False,
-    tech_transfer_doc: bool = False,
-    carrier_requirement: bool = False,
-    dispensing_process: bool = False,
-    functional_test: bool = False,
-    packaging_requirement: bool = False,
-) -> tuple[bool, bool, bool, bool, bool, bool]:
-    detail_values = (
-        bool(tech_transfer_doc),
-        bool(carrier_requirement),
-        bool(dispensing_process),
-        bool(functional_test),
-        bool(packaging_requirement),
-    )
-    normalized_tech_transfer = bool(tech_transfer) or any(detail_values)
-    if not normalized_tech_transfer:
-        detail_values = (False, False, False, False, False)
-    return (normalized_tech_transfer, *detail_values)
-
-
 def create_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -640,13 +618,16 @@ def create_schema(conn: sqlite3.Connection) -> None:
         VISIT_TECH_TRANSFER_STATE_COLUMNS,
     ):
         _ensure_column(conn, "visits", state_col, "TEXT NOT NULL DEFAULT 'no'")
-        # Backfill state from legacy bool: 1 → 'yes'. Safe to re-run because once
-        # a row's state diverges from the bool (e.g. user picks 'na'), the bool
-        # is 0 and we won't overwrite the explicit state.
-        conn.execute(
-            f"UPDATE visits SET {state_col} = 'yes' "
-            f"WHERE {legacy_col} = 1 AND {state_col} = 'no'"
-        )
+    if get_migration_meta(conn, "tech_transfer_state_backfill_v1") != "1":
+        for legacy_col, state_col in zip(
+            VISIT_TECH_TRANSFER_ITEM_COLUMNS,
+            VISIT_TECH_TRANSFER_STATE_COLUMNS,
+        ):
+            conn.execute(
+                f"UPDATE visits SET {state_col} = 'yes' "
+                f"WHERE {legacy_col} = 1 AND {state_col} = 'no'"
+            )
+        upsert_migration_meta(conn, "tech_transfer_state_backfill_v1", "1")
     _ensure_index(conn, "idx_anomalies_visit", "anomalies", "visit_id")
     _ensure_index(conn, "idx_anomalies_product", "anomalies", "product_id")
     _ensure_index(conn, "idx_visits_product", "visits", "product_id")
@@ -1397,6 +1378,8 @@ def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
 
 
 def _quote_identifier(identifier: str) -> str:
+    if not identifier:
+        raise ValueError("Identifier must not be empty")
     return '"' + str(identifier).replace('"', '""') + '"'
 
 
@@ -4082,27 +4065,19 @@ def list_events(
     return events
 
 
-def get_open_anomalies(conn: sqlite3.Connection, *, supplier_keyword: str = "") -> list[dict]:
-    events = list_events(
-        conn,
-        event_type="ANOMALY",
-        status="待處理",
-        supplier_keyword=supplier_keyword,
-    )
-    return events
-
-
 def get_dashboard_summary(conn: sqlite3.Connection) -> dict:
-    open_count = conn.execute(
-        "SELECT COUNT(*) AS c FROM anomalies WHERE status = '待處理'"
-    ).fetchone()["c"]
-    closed_count = conn.execute(
-        "SELECT COUNT(*) AS c FROM anomalies WHERE status = '已結案'"
-    ).fetchone()["c"]
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count,
+            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_count
+        FROM anomalies
+        """
+    ).fetchone()
     return {
-        "unclosed_count": int(open_count),
-        "open_count": int(open_count),
-        "closed_count": int(closed_count),
+        "unclosed_count": int(row["open_count"]),
+        "open_count": int(row["open_count"]),
+        "closed_count": int(row["closed_count"]),
         "recent_events": list_events(conn, limit=10),
     }
 
@@ -4113,12 +4088,24 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
         month = "ALL"
         yyyymm_prefix = ""
         visit_count = int(conn.execute("SELECT COUNT(*) AS c FROM visits").fetchone()["c"])
-        closed_anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies WHERE status = '已結案'").fetchone()["c"])
-        anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies").fetchone()["c"])
-        open_anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies WHERE status = '待處理'").fetchone()["c"])
-        standalone_open_anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies WHERE status = '待處理' AND visit_id IS NULL").fetchone()["c"])
-        visit_open_anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies WHERE status = '待處理' AND visit_id IS NOT NULL").fetchone()["c"])
-        overdue_open_anomaly_count = int(conn.execute("SELECT COUNT(*) AS c FROM anomalies WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime')").fetchone()["c"])
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS anomaly_count,
+                COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
+                COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_anomaly_count,
+                COUNT(CASE WHEN status = '待處理' AND visit_id IS NULL THEN 1 END) AS standalone_open_anomaly_count,
+                COUNT(CASE WHEN status = '待處理' AND visit_id IS NOT NULL THEN 1 END) AS visit_open_anomaly_count,
+                COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
+            FROM anomalies
+            """
+        ).fetchone()
+        closed_anomaly_count = int(row["closed_anomaly_count"])
+        anomaly_count = int(row["anomaly_count"])
+        open_anomaly_count = int(row["open_anomaly_count"])
+        standalone_open_anomaly_count = int(row["standalone_open_anomaly_count"])
+        visit_open_anomaly_count = int(row["visit_open_anomaly_count"])
+        overdue_open_anomaly_count = int(row["overdue_open_anomaly_count"])
         supplier_coverage_count = int(
             conn.execute(
                 """
@@ -4378,7 +4365,6 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             if supplier_anomaly_count > 0
             else (100.0 if supplier_closed_count > 0 else 0.0)
         )
-        
 
         top_suppliers_by_anomaly.append(
             {
@@ -4510,7 +4496,7 @@ def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[
     return results
 
 
-def refresh_monthly_cache(conn: sqlite3.Connection, yyyymm: str) -> None:
+def refresh_monthly_cache(conn: sqlite3.Connection, yyyymm: str, *, _commit: bool = True) -> None:
     month = _normalize_month(yyyymm)
     yyyymm_prefix = f"{month[:4]}-{month[4:]}"
     visit_count = conn.execute(
@@ -4541,7 +4527,8 @@ def refresh_monthly_cache(conn: sqlite3.Connection, yyyymm: str) -> None:
         """,
         (month, int(visit_count), int(closed_anomaly_count)),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
 
 
 def rebuild_all_monthly_cache(conn: sqlite3.Connection) -> None:
@@ -4557,7 +4544,8 @@ def rebuild_all_monthly_cache(conn: sqlite3.Connection) -> None:
         if row["yyyymm"]:
             months.add(str(row["yyyymm"]))
     for month in sorted(months):
-        refresh_monthly_cache(conn, month)
+        refresh_monthly_cache(conn, month, _commit=False)
+    conn.commit()
 
 
 def count_rows(conn: sqlite3.Connection) -> dict:
@@ -5071,6 +5059,31 @@ def _join_unique_texts(values: Any) -> str:
     return "、".join(result)
 
 
+def _prepare_tech_transfer_values(
+    *,
+    tech_transfer: bool = False,
+    tech_transfer_doc: bool = False,
+    carrier_requirement: bool = False,
+    dispensing_process: bool = False,
+    functional_test: bool = False,
+    packaging_requirement: bool = False,
+    tech_transfer_states: dict[str, str] | None = None,
+) -> tuple[bool, dict[str, str]]:
+    booleans = {
+        "tech_transfer_doc": tech_transfer_doc,
+        "carrier_requirement": carrier_requirement,
+        "dispensing_process": dispensing_process,
+        "functional_test": functional_test,
+        "packaging_requirement": packaging_requirement,
+    }
+    states = _resolve_tech_transfer_states(states=tech_transfer_states, booleans=booleans)
+    has_any_yes = any(v == TECH_TRANSFER_STATE_YES for v in states.values())
+    normalized_tech_transfer = bool(tech_transfer) or has_any_yes
+    if not normalized_tech_transfer:
+        states = {key: TECH_TRANSFER_STATE_NO for key in states}
+    return normalized_tech_transfer, states
+
+
 def _insert_visit_row(
     conn: sqlite3.Connection,
     *,
@@ -5101,20 +5114,15 @@ def _insert_visit_row(
         production_qty,
         field_name="Production quantity",
     )
-    booleans = {
-        "tech_transfer_doc": tech_transfer_doc,
-        "carrier_requirement": carrier_requirement,
-        "dispensing_process": dispensing_process,
-        "functional_test": functional_test,
-        "packaging_requirement": packaging_requirement,
-    }
-    states = _resolve_tech_transfer_states(states=tech_transfer_states, booleans=booleans)
-    has_any_yes = any(v == TECH_TRANSFER_STATE_YES for v in states.values())
-    normalized_tech_transfer = bool(tech_transfer) or has_any_yes
-    if not normalized_tech_transfer:
-        # Master toggle off → reset every item back to 'no' (keeps existing
-        # behaviour for users who toggle the master off to wipe the panel).
-        states = {key: TECH_TRANSFER_STATE_NO for key in states}
+    normalized_tech_transfer, states = _prepare_tech_transfer_values(
+        tech_transfer=tech_transfer,
+        tech_transfer_doc=tech_transfer_doc,
+        carrier_requirement=carrier_requirement,
+        dispensing_process=dispensing_process,
+        functional_test=functional_test,
+        packaging_requirement=packaging_requirement,
+        tech_transfer_states=tech_transfer_states,
+    )
     conn.execute(
         """
         INSERT INTO visits(
@@ -5230,39 +5238,39 @@ def _next_anomaly_no(conn: sqlite3.Connection, anomaly_date: str) -> str:
     normalized_date = _normalize_date(anomaly_date)
     day_key = normalized_date.replace("-", "")
     prefix = day_key
-    rows = conn.execute(
+    row = conn.execute(
         """
-        SELECT anomaly_no
+        SELECT COALESCE(MAX(
+            CASE
+                WHEN length(anomaly_no) = 11 AND anomaly_no GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                    AND substr(anomaly_no, 1, 8) = ?
+                THEN CAST(substr(anomaly_no, 9) AS INTEGER)
+            END
+        ), 0) AS max_seq
         FROM anomalies
         WHERE anomaly_date = ?
         """,
-        (normalized_date,),
-    ).fetchall()
-    max_seq = 0
-    for row in rows:
-        anomaly_no = str(row["anomaly_no"])
-        if len(anomaly_no) != 11 or not anomaly_no.isdigit():
-            continue
-        if not anomaly_no.startswith(prefix):
-            continue
-        suffix = anomaly_no[len(prefix) :].strip()
-        if len(suffix) == 3 and suffix.isdigit():
-            max_seq = max(max_seq, int(suffix))
-    seq = max_seq + 1
+        (prefix, normalized_date),
+    ).fetchone()
+    seq = int(row["max_seq"]) + 1
     return f"{prefix}{seq:03d}"
 
 
 def _next_auto_product_code(conn: sqlite3.Connection) -> str:
-    rows = conn.execute(
-        "SELECT product_code FROM products WHERE product_code LIKE 'AUTO-%'"
-    ).fetchall()
-    max_seq = 0
-    for row in rows:
-        code = str(row["product_code"])
-        suffix = code[5:]
-        if suffix.isdigit():
-            max_seq = max(max_seq, int(suffix))
-    return f"AUTO-{max_seq + 1:04d}"
+    row = conn.execute(
+        """
+        SELECT COALESCE(MAX(
+            CASE
+                WHEN product_code GLOB 'AUTO-[0-9][0-9][0-9][0-9]'
+                    AND substr(product_code, 6) IS NOT NULL
+                THEN CAST(substr(product_code, 6) AS INTEGER)
+            END
+        ), 0) AS max_seq
+        FROM products
+        WHERE product_code LIKE 'AUTO-%'
+        """
+    ).fetchone()
+    return f"AUTO-{int(row['max_seq']) + 1:04d}"
 
 
 def _find_product_id_by_name_scope(
@@ -5302,6 +5310,8 @@ def _find_product_id_by_name_scope(
 
 def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> None:
     if not _has_column(conn, "products", "spec_desc"):
+        return
+    if get_migration_meta(conn, "products_spec_desc_removed_v1") == "1":
         return
 
     has_product_stage = _has_column(conn, "products", "product_stage")
@@ -5377,6 +5387,7 @@ def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> No
         conn.execute("ALTER TABLE products__new RENAME TO products")
         _ensure_product_indexes(conn)
         conn.execute("COMMIT")
+        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
     except Exception:
         if conn.in_transaction:
             conn.execute("ROLLBACK")
@@ -5387,6 +5398,9 @@ def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> No
 
 
 def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, "event_status_normalized_v1") == "1":
+        return
+
     anomalies_sql = _table_sql(conn, "anomalies")
     visits_sql = _table_sql(conn, "visits")
 
@@ -5425,6 +5439,7 @@ def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
         if needs_anomaly_rebuild:
             _rebuild_anomalies_with_zh_status(conn)
         conn.execute("COMMIT")
+        upsert_migration_meta(conn, "event_status_normalized_v1", "1")
     except Exception:
         if conn.in_transaction:
             conn.execute("ROLLBACK")

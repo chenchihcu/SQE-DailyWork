@@ -1,6 +1,6 @@
 ---
 name: sqe-dailywork-change-router
-description: Route SQE DailyWork changes to the right source files and verification gate before editing PySide6 UI, SQLite data contracts, services, exports, docs, or tests.
+description: 把 SQE DailyWork 的變更路由到正確的來源檔案與驗證 gate,在動 PySide6 UI、SQLite 資料契約、services、匯出、docs 或 tests 之前先分類。Use this skill 當要決定改哪裡、跑什麼驗證時。觸發詞包含「route」「change router」「驗證 gate」「PySide6」「SQLite」「data contract」「services」「該改哪」。
 allowed-tools: Read, Grep, Glob
 ---
 

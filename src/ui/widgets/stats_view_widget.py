@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 
 from PySide6.QtCharts import (
-    QAbstractBarSeries,
     QBarCategoryAxis,
     QBarSeries,
     QBarSet,
@@ -20,7 +19,7 @@ from PySide6.QtCharts import (
 from database.connection import get_connection
 import ncr.services.stats_service as ncr_stats_service
 from PySide6.QtCore import QDate, QMargins, Qt
-from PySide6.QtGui import QBrush, QColor, QCursor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -42,25 +41,29 @@ from PySide6.QtWidgets import (
 
 from services import event_service
 from ui.layout_constants import (
-    CARD_INNER_MARGINS,
     CHART_BAR_HEIGHT,
     CHART_HEADER_FOOTER_OFFSET,
     CHART_MIN_HEIGHT,
-    GRID_GUTTER,
     INLINE_SPACING,
     INLINE_TIGHT_SPACING,
     PANEL_MARGINS,
     RANK_PANEL_MARGINS,
-    ROOT_SECTION_SPACING,
-    ROW_GAP,
 )
+from ui.design_tokens import PALETTE
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
+from ui.widgets.chart_style import apply_chart_surface
+
+# Chart colour aliases sourced from shared design_tokens so theme updates propagate.
+_C_DANGER = QColor(PALETTE["danger_chart"])   # 報廢 / 高風險
+_C_PENDING = QColor(PALETTE["pending_chart"]) # 退貨 / 待處理
+_C_SUCCESS = QColor(PALETTE["success_chart"]) # 重工 / 達標
+_C_INFO = QColor(PALETTE["info_chart"])       # 一般品項 / 趨勢線
+_C_CHART4 = QColor(PALETTE["chart_4"])        # 趨勢線（紫色）
 from ui.widgets.common_widgets import (
-    EmptyStateWidget, 
-    KpiCard, 
-    apply_clickable_affordance
+    EmptyStateWidget,
+    apply_clickable_affordance,
 )
 
 logger = logging.getLogger(__name__)
@@ -530,7 +533,7 @@ class StatsViewWidget(QWidget):
         try:
             with get_connection() as conn:
                 warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
-                product_rows = ncr_stats_service.get_top_products_stats(conn)
+                product_rows = ncr_stats_service.get_top_products_stats_filtered(conn)
             if product_rows:
                 top_product = product_rows[0]
                 warehouse_product_name = str(top_product["product_name"] or "").strip() or "未命名產品"
@@ -778,7 +781,7 @@ class StatsViewWidget(QWidget):
         chart.addSeries(bar_series)
         chart.addSeries(line_series)
         chart.setTitle("供應商品質風險堆疊分析")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.setMargins(QMargins(10, 10, 10, 10))
         
         # 3. Axes
@@ -954,7 +957,7 @@ class StatsViewWidget(QWidget):
         chart.addSeries(backlog_series)
         chart.addSeries(backlog_points)
         backlog_points.setName("")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
         
         axis_label_font = QFont(app_font_family)
@@ -1099,7 +1102,7 @@ class StatsViewWidget(QWidget):
         chart = QChart()
         chart.addSeries(bar_series)
         chart.addSeries(line_series)
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
         
         # 3. Axes
@@ -1133,7 +1136,7 @@ class StatsViewWidget(QWidget):
         axis_y_rate.setTitleText("平均處理時效 (天)")
         max_time = max((r["avg_resolution_time"] for r in data), default=10)
         axis_y_rate.setRange(0, max_time + 5)
-        axis_y_rate.setLabelFormat("%.1f") # Removed " 天" to fix rendering issue (?)
+        axis_y_rate.setLabelFormat("%.1f") # Removed " 天" to fix rendering issue
         axis_y_rate.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_y_rate.setLabelsFont(axis_label_font)
         axis_y_rate.setTitleFont(axis_title_font)
@@ -1203,7 +1206,7 @@ class StatsViewWidget(QWidget):
             with get_connection() as conn:
                 pie_rows = ncr_stats_service.get_disposition_stats(conn)
                 trend_rows = ncr_stats_service.get_trend_stats(conn, months=6)
-                product_rows = ncr_stats_service.get_top_products_stats(conn)
+                product_rows = ncr_stats_service.get_top_products_stats_filtered(conn)
                 supplier_rows = ncr_stats_service.get_supplier_disposition_stats(conn)
         except Exception as exc:
             logger.exception("載入倉庫不合格品統計數據失敗")
@@ -1230,9 +1233,9 @@ class StatsViewWidget(QWidget):
         total_qty = sum(int(r["total_qty"] or 0) for r in rows)
 
         colors = {
-            "報廢": QColor("#EF4444"),
-            "退貨": QColor("#F59E0B"),
-            "重工": QColor("#10B981")
+            "報廢": _C_DANGER,
+            "退貨": _C_PENDING,
+            "重工": _C_SUCCESS,
         }
 
         for r in rows:
@@ -1242,12 +1245,12 @@ class StatsViewWidget(QWidget):
                 pct = (qty / total_qty * 100) if total_qty > 0 else 0
                 slice_obj = series.append(f"{disp} ({qty}件, {pct:.1f}%)", qty)
                 slice_obj.setLabelVisible(False)
-                slice_obj.setBrush(colors.get(disp, QColor("#3B82F6")))
+                slice_obj.setBrush(colors.get(disp, _C_INFO))
 
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle("倉庫不合格品處置數量佔比")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
 
@@ -1258,7 +1261,7 @@ class StatsViewWidget(QWidget):
     def _build_defect_trend_chart(self, rows) -> QChartView:
         series = QLineSeries()
         series.setName("月度不合格品總數 (件)")
-        series.setColor(QColor("#6366F1"))
+        series.setColor(_C_CHART4)
         series.setPointsVisible(True)
 
         categories = []
@@ -1274,7 +1277,7 @@ class StatsViewWidget(QWidget):
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle("近六個月倉庫不合格品趨勢")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setVisible(False)
 
         app_font_family = QApplication.font().family()
@@ -1306,7 +1309,7 @@ class StatsViewWidget(QWidget):
         series.setBarWidth(0.6)
 
         bar_set = QBarSet("不合格品總數")
-        bar_set.setBrush(QColor("#3B82F6"))
+        bar_set.setBrush(_C_INFO)
         categories = []
 
         data = list(rows)[:5]
@@ -1320,7 +1323,7 @@ class StatsViewWidget(QWidget):
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle("Top 5 倉庫不合格品產品")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setVisible(False)
 
         app_font_family = QApplication.font().family()
@@ -1364,22 +1367,32 @@ class StatsViewWidget(QWidget):
         series.setBarWidth(0.6)
 
         set_scrap = QBarSet("報廢")
-        set_scrap.setBrush(QColor("#EF4444"))
+        set_scrap.setBrush(_C_DANGER)
         set_return = QBarSet("退貨")
-        set_return.setBrush(QColor("#F59E0B"))
+        set_return.setBrush(_C_PENDING)
         set_rework = QBarSet("重工")
-        set_rework.setBrush(QColor("#10B981"))
+        set_rework.setBrush(_C_SUCCESS)
 
         short_suppliers = []
         for s in suppliers:
             short_suppliers.append(self._short_supplier_label(s, max_len=10))
-            scrap_qty = sum(int(r["total_qty"] or 0) for r in rows if r["supplier_name"] == s and r["disposition"] == "報廢")
-            return_qty = sum(int(r["total_qty"] or 0) for r in rows if r["supplier_name"] == s and r["disposition"] == "退貨")
-            rework_qty = sum(int(r["total_qty"] or 0) for r in rows if r["supplier_name"] == s and r["disposition"] == "重工")
-
-            set_scrap.append(scrap_qty)
-            set_return.append(return_qty)
-            set_rework.append(rework_qty)
+            scrap = 0
+            ret = 0
+            rework = 0
+            for r in rows:
+                if r["supplier_name"] != s:
+                    continue
+                qty = int(r["total_qty"] or 0)
+                disp = r["disposition"]
+                if disp == "報廢":
+                    scrap += qty
+                elif disp == "退貨":
+                    ret += qty
+                elif disp == "重工":
+                    rework += qty
+            set_scrap.append(scrap)
+            set_return.append(ret)
+            set_rework.append(rework)
         short_suppliers = self._dedupe_chart_labels(short_suppliers)
 
         series.append(set_scrap)
@@ -1389,7 +1402,7 @@ class StatsViewWidget(QWidget):
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle("供應商 / 倉庫處置關聯分析")
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
 

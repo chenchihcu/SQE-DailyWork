@@ -356,7 +356,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 return_value={"open_count": 2},
             ),
             patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats",
+                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats_filtered",
                 return_value=[{"product_name": "Warehouse-Part-A", "total_qty": 12}],
             ),
             patch(
@@ -496,7 +496,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 ],
             ),
             patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats",
+                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats_filtered",
                 return_value=warehouse_products,
             ),
             patch(

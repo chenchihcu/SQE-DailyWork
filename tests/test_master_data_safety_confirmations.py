@@ -15,9 +15,6 @@ class _DummyMainWindow:
     def refresh_all_views(self) -> None:
         return
 
-    def return_from_master(self) -> None:
-        return
-
 
 class MasterDataSafetyConfirmationsTests(unittest.TestCase):
     @classmethod

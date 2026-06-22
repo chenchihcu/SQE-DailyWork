@@ -29,16 +29,16 @@ from services import event_service
 from ui.event_display import event_type_display
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
+    EVENT_LIST_NAME_COL_MIN_WIDTH,
     INLINE_SPACING,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
     SUBPANEL_TOOLBAR_MARGINS,
 )
-from ui.status_colors import get_status_palette
+
 from ui.widgets.common_widgets import (
     EMPTY_DISPLAY,
     EmptyStateWidget,
-    NavigatorScrollBar,
     apply_clickable_affordance,
     apply_table_action_affordance,
     create_status_item,
@@ -290,6 +290,8 @@ class EventListWidget(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 日期
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 類型
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 供應商
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 品名
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 料號
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 階段
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)       # 工單（限寬）
@@ -300,7 +302,7 @@ class EventListWidget(QWidget):
         header.sectionClicked.connect(self._on_header_clicked)
         # 初始工單欄寬度 — 防止超長工單號擠壓 Stretch 欄；使用者仍可手動拖寬
         self.table.setColumnWidth(6, 140)
-        header.setMinimumSectionSize(40)
+        header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
 
         self.table.cellDoubleClicked.connect(self._on_table_row_clicked)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
@@ -580,7 +582,6 @@ class EventListWidget(QWidget):
             "全部": "ALL",
             "待處理": "待處理",
             "已結案": "已結案",
-            "已完成": "已完成",
         }
         self._filter_status = status_map.get(status_key.upper(), status_map.get(status_key, "ALL"))
         # Allow '已結案' even in query mode if it's explicitly requested or fixed.

@@ -4,10 +4,12 @@ Hosts the consolidated DefectTrackerPage inside the SQE DailyWork main window's 
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
+
+logger = logging.getLogger(__name__)
 from PySide6.QtCore import QObject
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QHBoxLayout, QPushButton, QWidget, QVBoxLayout, QTabWidget
+from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from ncr.db.database import initialize_database
 from ncr.ui.defect_form import DefectFormWidget
@@ -122,4 +124,4 @@ class NcrController(QObject):
         try:
             self.conn.close()
         except sqlite3.Error:
-            pass
+            logger.exception("Failed to close NCR DB connection")

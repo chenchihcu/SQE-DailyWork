@@ -47,12 +47,20 @@ PREFERRED_CJK_FONT_FAMILIES = (
     "DengXian",
     "Segoe UI",
     "PingFang TC",
+    "Noto Sans TC",
+    "Noto Sans HK",
     "Noto Sans CJK TC",
     "Source Han Sans TC",
     "Noto Sans CJK SC",
     "Source Han Sans SC",
     "WenQuanYi Zen Hei",
     "Arial Unicode MS",
+)
+
+# Single source of truth for the CJK font fallback chain. ncr.ui.ui_style imports
+# this instead of keeping a divergent second copy (AGENTS.md single-source rule).
+CJK_FONT_FAMILY_CSS = (
+    ", ".join(f"'{_family}'" for _family in PREFERRED_CJK_FONT_FAMILIES) + ", sans-serif"
 )
 
 # Values re-sourced from the unified design_tokens.PALETTE (keys unchanged, so
@@ -122,6 +130,7 @@ TOKENS = {
     "status_na_chart": _P["na_chart"],
     "chart_grid": _P["chart_grid"],
     "chart_axis_text": _P["chart_axis"],
+    "chart_plot_bg": _P["chart_plot_bg"],
     "radius_sm": _P["radius_sm"],
     "radius_md": _P["radius_md"],
     "radius_lg": _P["radius_lg"],
@@ -185,7 +194,7 @@ TOKENS = {
 }
 
 TYPOGRAPHY = {
-    "font_family": '"Microsoft JhengHei UI", "Microsoft JhengHei", "Microsoft YaHei UI", "Microsoft YaHei", "DengXian", "Segoe UI", "PingFang TC", "Noto Sans CJK TC", "Source Han Sans TC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Zen Hei", "Arial Unicode MS", sans-serif',
+    "font_family": ", ".join(f'"{_family}"' for _family in PREFERRED_CJK_FONT_FAMILIES) + ", sans-serif",
     "base": 13,
     "brand_title": 22,
     "nav_tab": 13,
@@ -362,7 +371,7 @@ def get_theme_qss() -> str:
             background: transparent;
             color: {TOKENS["text_secondary"]};
             font-size: {TYPOGRAPHY["helper_text"]}px;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QLabel[role="sourceTag"],
@@ -412,7 +421,7 @@ def get_theme_qss() -> str:
         QLabel[role="errorText"] {{
             background: transparent;
             color: {TOKENS["danger"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QLabel[role="messageText"] {{
@@ -421,7 +430,7 @@ def get_theme_qss() -> str:
             border-radius: {TOKENS["radius_sm"]}px;
             color: {TOKENS["info"]};
             font-size: {TYPOGRAPHY["helper_text"]}px;
-            font-weight: 600;
+            font-weight: 400;
             padding: 4px 8px;
         }}
 
@@ -441,7 +450,7 @@ def get_theme_qss() -> str:
             background: transparent;
             color: {TOKENS["text_muted"]};
             font-size: {TYPOGRAPHY["caption"]}px;
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QLabel[role="counterText"][tone="danger"] {{
@@ -480,7 +489,7 @@ def get_theme_qss() -> str:
             background: {TOKENS["nav_dark_bg"]};
             color: {TOKENS["nav_dark_text"]};
             font-size: {TYPOGRAPHY["tab_label"]}px;
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QTabWidget#MainWorkflowTabs QTabBar::tab:hover:!selected {{
@@ -514,7 +523,7 @@ def get_theme_qss() -> str:
             padding: {TAB_BAR_TAB_PADDING_VERTICAL}px {TAB_BAR_TAB_PADDING_HORIZONTAL}px;
             margin-right: 3px;
             font-size: {TYPOGRAPHY["tab_label"]}px;
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QTabBar::tab:selected {{
@@ -562,7 +571,7 @@ def get_theme_qss() -> str:
             border-top-right-radius: {TOKENS["radius_sm"]}px;
             padding: {TAB_BAR_TAB_PADDING_VERTICAL}px 14px;
             margin-right: 3px;
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QTabWidget#StatsTabs QTabBar::tab:selected {{
@@ -629,7 +638,7 @@ def get_theme_qss() -> str:
             padding: 1px 18px 0 18px;
             min-height: {NAV_TAB_MIN_HEIGHT}px;
             font-size: {TYPOGRAPHY["nav_tab"]}px;
-            font-weight: 600;
+            font-weight: 400;
             color: {TOKENS["text_secondary"]};
             text-align: center;
         }}
@@ -694,7 +703,7 @@ def get_theme_qss() -> str:
             border: 1px solid {TOKENS["border"]};
             background: {TOKENS["panel_alt_bg"]};
             color: {TOKENS["text_primary"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton:hover {{
@@ -739,7 +748,7 @@ def get_theme_qss() -> str:
             border: 1px solid {TOKENS["border"]};
             background: {TOKENS["panel_bg"]};
             color: {TOKENS["text_secondary"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[variant="secondary"]:hover,
@@ -843,7 +852,7 @@ def get_theme_qss() -> str:
             border: 1px solid {TOKENS["toolbar_ghost_border"]};
             background: {TOKENS["toolbar_ghost_bg"]};
             color: {TOKENS["toolbar_ghost_text"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[variant="toolbarGhost"]:hover {{
@@ -900,7 +909,7 @@ def get_theme_qss() -> str:
             border: 1px solid {TOKENS["border_soft"]};
             padding: 14px 12px 10px 12px;
             font-size: {TYPOGRAPHY["group_box_title"]}px;
-            font-weight: 600;
+            font-weight: 700;
             background: {TOKENS["panel_alt_bg"]};
         }}
 
@@ -943,7 +952,7 @@ def get_theme_qss() -> str:
             border-radius: 0;
             background: transparent;
             color: {TOKENS["primary_btn"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QTableWidget QPushButton[role="tableCellAction"]:hover {{
@@ -1107,7 +1116,7 @@ def get_theme_qss() -> str:
 
         QLabel#techCardTitle {{
             color: {TOKENS["text_secondary"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QFrame#techTransferCard[state="selected"] QLabel#techCardTitle {{
@@ -1128,7 +1137,7 @@ def get_theme_qss() -> str:
 
         QLabel[role="refCardName"] {{
             color: {TOKENS["text_secondary"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QLabel[role="refCardValue"] {{
@@ -1241,14 +1250,14 @@ def get_theme_qss() -> str:
         QFrame[role="visitDetailCard"] QLabel[role="meta"] {{
             color: {TOKENS["text_muted"]};
             font-size: {TYPOGRAPHY["caption"]}px;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.3px;
         }}
 
         QFrame[role="visitDetailCard"] QLabel[role="value"] {{
             color: {TOKENS["text_primary"]};
             font-size: {TYPOGRAPHY["label_strong"]}px;
-            font-weight: 500;
+            font-weight: 700;
         }}
 
         QFrame[role="visitDetailCard"] QLabel[role="summary"] {{
@@ -1278,7 +1287,7 @@ def get_theme_qss() -> str:
         QFrame[role="visitDetailCard"] QLabel[role="techValue"] {{
             color: {TOKENS["text_disabled"]};
             font-size: {TYPOGRAPHY["body_small"]}px;
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QFrame[role="visitDetailCard"] QLabel[role="techValue"][state="on"] {{
@@ -1329,7 +1338,7 @@ def get_theme_qss() -> str:
             background: {TOKENS["primary_btn"]};
             border: 1px solid {TOKENS["primary_btn"]};
             color: #FFFFFF;
-            font-weight: 600;
+            font-weight: 700;
             border-radius: {TOKENS["radius_sm"]}px;
             min-height: 34px;
             padding: 0 20px;
@@ -1361,7 +1370,7 @@ def get_theme_qss() -> str:
 
         QLabel[role="requiredLabel"] {{
             color: {TOKENS["text_primary"]};
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QLabel[role="requiredLabel"] QLabel[role="requiredMark"] {{
@@ -1463,7 +1472,7 @@ def get_theme_qss() -> str:
             background: transparent;
             color: {TOKENS["sidebar_text"]};
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 400;
         }}
 
         /* D1 fix: child QLabels inside NavButton must inherit sidebar text colour */
@@ -1471,7 +1480,7 @@ def get_theme_qss() -> str:
             color: {TOKENS["sidebar_text"]};
             background: transparent;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 400;
         }}
 
         QPushButton#NavButton:hover {{
@@ -1597,14 +1606,14 @@ def get_theme_qss() -> str:
         QLabel#OverdueBannerText {{
             color: {TOKENS["overdue_banner_text"]};
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             background: transparent;
         }}
 
         QPushButton#OverdueBannerLink {{
             color: {TOKENS["overdue_banner_link"]};
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
             background: transparent;
             border: none;
             text-decoration: underline;

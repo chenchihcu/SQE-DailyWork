@@ -1,6 +1,6 @@
 ---
 name: sqe-dailywork-data-contract
-description: Use for SQE DailyWork SQLite schema, migrations, visit/anomaly contracts, storage paths, exports, report data, PDF, Excel, and PPTX contract changes.
+description: 用於 SQE DailyWork 的 SQLite schema、migration、visit/anomaly 契約、儲存路徑、匯出、報告資料,以及 PDF / Excel / PPTX 契約變更。Use this skill 當要新增或修改上述資料契約時。觸發詞包含「SQLite」「schema」「migration」「data contract」「匯出」「export」「PDF」「Excel」「PPTX」「資料契約」。
 allowed-tools: Read, Grep, Glob, Bash
 ---
 

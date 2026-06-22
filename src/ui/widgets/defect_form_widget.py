@@ -26,9 +26,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -62,7 +60,13 @@ from ui.layout_constants import (
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.window_sizing import fit_dialog_to_available_screen
-from ui.widgets.common_widgets import RequiredFieldLabel, apply_clickable_affordance
+from ui.widgets.common_widgets import (
+    RequiredFieldLabel,
+    SupplierProductFormMixin,
+    make_paired_form_row as _make_paired_form_row,
+    mark_button_variant as _mark_button_variant,
+    set_combo_current_data as _set_combo_current_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +127,6 @@ def _product_label(item: dict) -> str:
     return name or code or "(未命名產品)"
 
 
-def _set_combo_current_data(combo: QComboBox, value: str) -> bool:
-    idx = combo.findData(value)
-    if idx < 0:
-        return False
-    combo.setCurrentIndex(idx)
-    return True
-
 
 def _set_combo_current_text(combo: QComboBox, value: str) -> None:
     text = (value or "").strip()
@@ -142,15 +139,6 @@ def _set_combo_current_text(combo: QComboBox, value: str) -> None:
         return
     combo.setEditText(text)
 
-
-def _mark_button_variant(button: QPushButton | None, variant: str) -> None:
-    if button is None:
-        return
-    button.setProperty("variant", variant)
-    apply_clickable_affordance(button)
-    style = button.style()
-    style.unpolish(button)
-    style.polish(button)
 
 
 def _set_tone(widget: QWidget, tone: str) -> None:
@@ -172,11 +160,6 @@ def _style_dialog_buttons(buttons: QDialogButtonBox) -> QPushButton:
     return save_button
 
 
-def _make_divider_title(text: str) -> QLabel:
-    title = QLabel(text)
-    title.setProperty("role", "dividerTitle")
-    return title
-
 
 def _set_text_edit_visible_rows(editor: QTextEdit, rows: int) -> None:
     line_height = editor.fontMetrics().lineSpacing()
@@ -186,43 +169,6 @@ def _set_text_edit_visible_rows(editor: QTextEdit, rows: int) -> None:
     editor.setFixedHeight(
         line_height * max(rows, 1) + vertical_padding + document_margin + frame_height
     )
-
-
-def _paired_label(label: str | QWidget | None) -> QWidget | None:
-    if label is None:
-        return None
-    if isinstance(label, QWidget):
-        return label
-    return QLabel(label)
-
-
-def _make_paired_form_row(
-    object_name: str,
-    left_label: str | QWidget,
-    left_field: QWidget,
-    right_label: str | QWidget | None,
-    right_field: QWidget,
-) -> QWidget:
-    row = QWidget()
-    row.setObjectName(object_name)
-    grid = QGridLayout(row)
-    grid.setContentsMargins(0, 0, 0, 0)
-    grid.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-    grid.setVerticalSpacing(0)
-
-    left_label_widget = _paired_label(left_label)
-    right_label_widget = _paired_label(right_label)
-    if left_label_widget is not None:
-        grid.addWidget(left_label_widget, 0, 0)
-    grid.addWidget(left_field, 0, 1)
-    if right_label_widget is not None:
-        grid.addWidget(right_label_widget, 0, 2)
-        grid.addWidget(right_field, 0, 3)
-    else:
-        grid.addWidget(right_field, 0, 2, 1, 2)
-    grid.setColumnStretch(1, 1)
-    grid.setColumnStretch(3, 1)
-    return row
 
 
 def _apply_dialog_layout(
@@ -620,14 +566,10 @@ class TechTransferCard(QFrame):
     def get_state(self) -> str:
         return self._state
 
-    # ---- Legacy bool-shaped API kept for other callers / tests --------------
     def set_value(self, has_value: bool) -> None:
         self.set_state(
             TECH_TRANSFER_STATE_YES if has_value else TECH_TRANSFER_STATE_NO
         )
-
-    def get_value(self) -> bool:
-        return self._state == TECH_TRANSFER_STATE_YES
 
 
 class VisitSelectionDialog(QDialog):
@@ -903,7 +845,7 @@ class ProductSectionEditor(QGroupBox):
         self.product_code_input.setText(self._product_code_by_id.get(product_id, ""))
 
 
-class NewAnomalyDialog(QDialog):
+class NewAnomalyDialog(QDialog, SupplierProductFormMixin):
     def __init__(
         self,
         parent=None,
@@ -1319,39 +1261,8 @@ class NewAnomalyDialog(QDialog):
             preview = "-"
         self.anomaly_no_preview_input.setText(preview)
 
-    def _load_suppliers(self):
-        suppliers = (
-            event_service.list_suppliers(include_inactive=True)
-            if self._is_edit
-            else event_service.list_active_suppliers()
-        )
-        self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
-        self.supplier_combo.addItem("請選擇供應商", "")
-        for item in suppliers:
-            name = item["supplier_name"]
-            if self._is_edit and not item.get("is_active", True):
-                name = f"{name}（停用）"
-            self.supplier_combo.addItem(name, item["id"])
-        self.supplier_combo.blockSignals(False)
-        self._on_supplier_changed()
-
-    def _on_supplier_changed(self):
-        supplier_id = (self.supplier_combo.currentData() or "").strip()
-        products = event_service.list_active_products_for_supplier(supplier_id)
+    def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
         self._product_items = products
-        self._product_stage_by_id = {}
-        self.product_combo.clear()
-        self.product_combo.addItem("請選擇產品 *", "")
-        for item in products:
-            product_id = str(item.get("id") or "").strip()
-            self.product_combo.addItem(_product_label(item), product_id)
-            if product_id:
-                self._product_stage_by_id[product_id] = normalize_product_stage_ui(
-                    item.get("product_stage")
-                )
-                self._product_code_by_id[product_id] = str(item.get("product_code") or "").strip()
-        self._on_product_changed()
         self._refresh_submit_state()
         self._load_tech_transfer_ref(supplier_id)
         self._apply_same_day_visit_defaults()
@@ -1597,13 +1508,7 @@ class NewAnomalyDialog(QDialog):
             self._same_day_visit_hint_label.setText("")
             self._same_day_visit_hint_label.setVisible(False)
 
-    def _on_product_changed(self, _index: int = -1) -> None:
-        product_id = (self.product_combo.currentData() or "").strip()
-        product_stage = self._product_stage_by_id.get(
-            product_id, PRODUCT_STAGE_MASS_PRODUCTION
-        )
-        self.product_stage_combo.setCurrentText(normalize_product_stage_ui(product_stage))
-        self.product_code_input.setText(self._product_code_by_id.get(product_id, ""))
+    def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
 
     def _refresh_submit_state(self) -> None:
@@ -1784,7 +1689,7 @@ class NewAnomalyDialog(QDialog):
             )
 
 
-class NewVisitDialog(QDialog):
+class NewVisitDialog(QDialog, SupplierProductFormMixin):
     def __init__(
         self,
         parent=None,
@@ -2111,51 +2016,13 @@ class NewVisitDialog(QDialog):
         editor.deleteLater()
         self._refresh_submit_state()
 
-    def _load_suppliers(self):
-        suppliers = (
-            event_service.list_suppliers(include_inactive=True)
-            if self._is_edit
-            else event_service.list_active_suppliers()
-        )
-        self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
-        self.supplier_combo.addItem("請選擇供應商", "")
-        for item in suppliers:
-            name = item["supplier_name"]
-            if self._is_edit and not item.get("is_active", True):
-                name = f"{name}（停用）"
-            self.supplier_combo.addItem(name, item["id"])
-        self.supplier_combo.blockSignals(False)
-        self._on_supplier_changed()
-
-    def _on_supplier_changed(self):
-        supplier_id = (self.supplier_combo.currentData() or "").strip()
-        products = event_service.list_active_products_for_supplier(supplier_id)
+    def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
         self._product_items = list(products)
-        self._product_stage_by_id = {}
-        self._product_code_by_id = {}
-        self.product_combo.clear()
-        self.product_combo.addItem("請選擇產品 *", "")
-        for item in products:
-            product_id = str(item.get("id") or "").strip()
-            self.product_combo.addItem(_product_label(item), product_id)
-            if product_id:
-                self._product_stage_by_id[product_id] = normalize_product_stage_ui(
-                    item.get("product_stage")
-                )
-                self._product_code_by_id[product_id] = str(item.get("product_code") or "").strip()
-        self._on_product_changed()
         for editor in self._extra_section_editors:
             editor.set_products(products)
         self._refresh_submit_state()
 
-    def _on_product_changed(self, _index: int = -1) -> None:
-        product_id = (self.product_combo.currentData() or "").strip()
-        product_stage = self._product_stage_by_id.get(
-            product_id, PRODUCT_STAGE_MASS_PRODUCTION
-        )
-        self.product_stage_combo.setCurrentText(normalize_product_stage_ui(product_stage))
-        self.product_code_input.setText(self._product_code_by_id.get(product_id, ""))
+    def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
 
     def _refresh_submit_state(self) -> None:

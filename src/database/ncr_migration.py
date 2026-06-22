@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from database.repository import upsert_migration_meta
+
 
 NCR_MIGRATION_META_KEY = "ncr_defect_db_migrated_v1"
 
@@ -51,19 +53,6 @@ def _table_counts(conn: sqlite3.Connection, table_names: tuple[str, ...]) -> dic
 
 def _row_value(row: sqlite3.Row, key: str, default: Any = "") -> Any:
     return row[key] if key in row.keys() and row[key] is not None else default
-
-
-def _upsert_migration_meta(conn: sqlite3.Connection, value: str) -> None:
-    conn.execute(
-        """
-        INSERT INTO migration_meta (key, value, updated_at)
-        VALUES (?, ?, datetime('now', 'localtime'))
-        ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at
-        """,
-        (NCR_MIGRATION_META_KEY, value),
-    )
 
 
 def _archive_path(path: Path) -> Path:
@@ -291,7 +280,7 @@ def migrate_ncr_data_once(
                     "Source defects missing after insert: " + ", ".join(missing)
                 )
 
-            _upsert_migration_meta(v2_conn, "1")
+            upsert_migration_meta(v2_conn, NCR_MIGRATION_META_KEY, "1")
             v2_conn.commit()
             report["migrated"] = True
             report["target_after"] = _table_counts(

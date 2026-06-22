@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -32,12 +31,12 @@ from ncr.ui.supplier_combo_utils import (
 )
 from ncr.models.defect import LIST_FIELD_ORDER, LIST_HEADERS, STATUS_OPTIONS
 from ncr.models.labels import (
-    HEADER_EVENT_MONTH,
     HINT_EMPTY_RESULT,
     HINT_OPEN_CASES_SCOPE,
     HINT_CLOSED_CASES_SCOPE,
     HINT_CLOSED_CASES_MONTH_SCOPE,
     HINT_RESET_FILTER,
+    HEADER_EVENT_MONTH,
     LABEL_DATA_COUNT,
     LABEL_OPEN_COUNT,
     LABEL_CLOSED_COUNT,
@@ -45,7 +44,6 @@ from ncr.models.labels import (
     LABEL_OUTSOURCE_SUPPLIER_NAME,
     LABEL_STATUS,
     LABEL_SUPPLIER_NAME,
-    LABEL_WORK_ORDER_NO,
     MSG_DELETE_CONFIRM,
 )
 from ncr.services import export_service
@@ -394,11 +392,6 @@ class DefectListWidget(QWidget):
         """Compatibility property for tests."""
         return self._get_active_table()
 
-    @property
-    def current_results(self) -> list[sqlite3.Row]:
-        """Compatibility property for tests."""
-        return self._get_active_results()
-
     def refresh_data(self) -> None:
         self.current_page = 1
         self.refresh_filter_options()
@@ -446,12 +439,7 @@ class DefectListWidget(QWidget):
     def update_display(self) -> None:
         active_results = self._get_active_results()
         self.pagination.update_state(len(active_results), ITEMS_PER_PAGE, self.current_page)
-        
-        # We need to populate BOTH tables or just the active one?
-        # To keep it simple and correct, we update both but with their respective slicings
-        # However, pagination is SHARED, so we only slice based on current_page for the ACTIVE table.
-        # But wait, if I switch tabs, the page should probably reset or stay? 
-        # Usually resetting is safer.
+
         if self.workflow == "tracking":
             self.populate_table(self.open_table, self.open_results, is_active=True)
         elif self.workflow == "trace":
@@ -560,7 +548,6 @@ class DefectListWidget(QWidget):
                 if field_name == "defect_desc" and display_value != EMPTY_PLACEHOLDER:
                     item.setData(Qt.ItemDataRole.DisplayRole, display_value)
                 table.setItem(row_index, column_index, item)
-        self._setup_table_headers(table)
 
     def refresh_filter_options(self) -> None:
         """從資料庫獲取現有的供應商清單並更新篩選選單。"""
@@ -627,7 +614,10 @@ class DefectListWidget(QWidget):
 
     def _selected_row_index(self) -> int | None:
         table = self._get_active_table()
-        selected_rows = table.selectionModel().selectedRows()
+        model = table.selectionModel()
+        if model is None:
+            return None
+        selected_rows = model.selectedRows()
         if not selected_rows:
             return None
         return selected_rows[0].row()
@@ -704,9 +694,7 @@ class DefectListWidget(QWidget):
     def _summarize_rows(
         rows: list[sqlite3.Row], key_name: str, *, skip_blank: bool
     ) -> list[dict[str, object]]:
-        summary: dict[tuple[str, str, str, str, str], tuple[int, int]] = defaultdict(
-            lambda: (0, 0)
-        )
+        summary: dict[tuple[str, str, str, str, str], tuple[int, int]] = {}
         for row in rows:
             row_dict = dict(row)
             name = str(row_dict.get(key_name, "") or "").strip()
@@ -723,7 +711,8 @@ class DefectListWidget(QWidget):
                 qty_value = 0
 
             group_key = (name, disposition, category, event_month, status)
-            case_count, total_qty = summary[group_key]
+            existing = summary.setdefault(group_key, (0, 0))
+            case_count, total_qty = existing
             summary[group_key] = (case_count + 1, total_qty + qty_value)
 
         def _month_sort_token(value: str) -> int:

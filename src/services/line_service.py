@@ -59,7 +59,7 @@ def launch_line_desktop() -> bool:
         user_profile = os.environ.get("USERPROFILE")
         if not user_profile:
             username = os.getlogin()
-            user_profile = f"C:/Users/{username}"
+            user_profile = f"{os.environ.get('SystemDrive', 'C:')}/Users/{username}"
 
         possible_paths = [
             Path(user_profile) / "AppData/Local/LINE/bin/LINE.exe",

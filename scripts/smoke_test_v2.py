@@ -7,7 +7,6 @@ to run against the real data/sqe_v2.db (for integration testing only).
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sqlite3
 import sys
@@ -23,9 +22,7 @@ for _path in (_PROJECT_ROOT / "src", _PROJECT_ROOT):
         sys.path.insert(0, _path_text)
 
 from database import repository  # noqa: E402
-from database.connection import get_connection as _real_get_connection  # noqa: E402
 from database.connection import initialize_database as _real_initialize_database  # noqa: E402
-from database.connection import DB_PATH as PROD_DB_PATH  # noqa: E402
 from services import event_service  # noqa: E402
 
 

@@ -6,6 +6,7 @@ from collections.abc import Callable
 logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt
+
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QDialog,
@@ -79,6 +80,33 @@ def build_event_action_menu(
         menu.addSeparator()
         _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
     return menu, action_map
+
+
+def _confirm_and_delete(parent: QWidget, item_type: str, item_name: str, delete_func: Callable[[], None], refresh_func: Callable[[], None]) -> None:
+    box = QMessageBox(parent)
+    box.setWindowTitle("確認刪除")
+    box.setText(localize_popup_message(f"確定要刪除{item_type}「{item_name}」？\n此操作無法復原。"))
+    box.setIcon(QMessageBox.Icon.Warning)
+    btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(btn_yes)
+    box.exec()
+    if box.clickedButton() is not btn_yes:
+        return
+    try:
+        delete_func()
+        refresh_func()
+        QMessageBox.information(parent, "成功", localize_popup_message(f"{item_type}「{item_name}」已刪除"))
+    except ValueError as exc:
+        QMessageBox.warning(parent, "刪除失敗", localize_exception(exc))
+    except Exception as exc:
+        logger.exception("刪除%s失敗", item_type)
+        QMessageBox.critical(
+            parent,
+            "錯誤",
+            localize_popup_message(f"刪除{item_type}失敗：{localize_exception(exc)}"),
+        )
+
 
 
 def dispatch_event_action(
@@ -421,33 +449,11 @@ class EventActionsController:
 
     def delete_anomaly(self, anomaly_id: str, ref_no: str) -> None:
         ref_text = ref_no.strip() or anomaly_id
-        box = QMessageBox(self._parent)
-        box.setWindowTitle("確認刪除")
-        box.setText(localize_popup_message(f"確定要刪除異常單「{ref_text}」？\n此操作無法復原。"))
-        box.setIcon(QMessageBox.Icon.Warning)
-        btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(btn_yes)
-        box.exec()
-        if box.clickedButton() is not btn_yes:
-            return
-        try:
-            event_service.delete_anomaly(anomaly_id)
-            self._refresh_all_views()
-            QMessageBox.information(
-                self._parent,
-                "成功",
-                localize_popup_message(f"異常單「{ref_text}」已刪除"),
-            )
-        except ValueError as exc:
-            QMessageBox.warning(self._parent, "刪除失敗", localize_exception(exc))
-        except Exception as exc:
-            logger.exception("刪除異常失敗")
-            QMessageBox.critical(
-                self._parent,
-                "錯誤",
-                localize_popup_message(f"刪除異常失敗：{localize_exception(exc)}"),
-            )
+        _confirm_and_delete(
+            self._parent, "異常單", ref_text,
+            lambda: event_service.delete_anomaly(anomaly_id),
+            self._refresh_all_views,
+        )
 
     def open_edit_visit_dialog(self, visit_id: str) -> None:
         try:
@@ -471,29 +477,11 @@ class EventActionsController:
 
     def delete_visit(self, visit_id: str, visit_date: str) -> None:
         date_text = visit_date.strip() or visit_id
-        box = QMessageBox(self._parent)
-        box.setWindowTitle("確認刪除")
-        box.setText(localize_popup_message(f"確定要刪除訪廠紀錄（{date_text}）？\n此操作無法復原。"))
-        box.setIcon(QMessageBox.Icon.Warning)
-        btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-        box.setDefaultButton(btn_yes)
-        box.exec()
-        if box.clickedButton() is not btn_yes:
-            return
-        try:
-            event_service.delete_visit(visit_id)
-            self._refresh_all_views()
-            QMessageBox.information(self._parent, "成功", localize_popup_message("訪廠紀錄已刪除"))
-        except ValueError as exc:
-            QMessageBox.warning(self._parent, "刪除失敗", localize_exception(exc))
-        except Exception as exc:
-            logger.exception("刪除訪廠失敗")
-            QMessageBox.critical(
-                self._parent,
-                "錯誤",
-                localize_popup_message(f"刪除訪廠失敗：{localize_exception(exc)}"),
-            )
+        _confirm_and_delete(
+            self._parent, "訪廠紀錄", date_text,
+            lambda: event_service.delete_visit(visit_id),
+            self._refresh_all_views,
+        )
 
     def open_visit_detail(self, visit_id: str) -> None:
         try:

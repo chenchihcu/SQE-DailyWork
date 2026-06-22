@@ -9,11 +9,14 @@ folder. No database table is used; presence on disk is the source of truth.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Iterable
 
 from database.connection import DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 ANOMALY_ATTACHMENT_ROOT = DATA_DIR / "attachments" / "anomaly"
 ALLOWED_IMAGE_SUFFIXES: frozenset[str] = frozenset({".jpg", ".jpeg", ".png"})
@@ -138,6 +141,8 @@ def set_anomaly_captions(
         json.dumps(pruned, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
 def delete_anomaly_attachment(anomaly_id: str, filename: str) -> bool:
     """Delete a specific attachment file and its caption entry.
 
@@ -197,7 +202,8 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
         except OSError:
             if temp_path.exists():
                 try: temp_path.rename(old_path)
-                except OSError: pass
+                except OSError:
+                    logger.warning("rename rollback failed: %s -> %s", temp_path, old_path)
             return False
 
     # Normal rename

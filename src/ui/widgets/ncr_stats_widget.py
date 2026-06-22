@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from PySide6.QtCore import QDate, QMargins, Qt
+from PySide6.QtCore import QDate, Qt
 
 logger = logging.getLogger(__name__)
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
@@ -32,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from database.connection import get_connection
 import ncr.services.stats_service as ncr_stats_service
+from ui.design_tokens import PALETTE
 from ui.layout_constants import (
     PANEL_MARGINS,
     CHART_MIN_HEIGHT,
@@ -40,7 +40,15 @@ from ui.layout_constants import (
     RANK_PANEL_MARGINS,
 )
 from ui.theme import TOKENS
+from ui.widgets.chart_style import apply_chart_surface
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
+
+# Chart colour aliases sourced from shared design_tokens so theme updates propagate.
+_C_DANGER = QColor(PALETTE["danger_chart"])       # 報廢 / 高風險
+_C_SUCCESS = QColor(PALETTE["success_chart"])      # 重工 / 達標
+_C_INFO = QColor(PALETTE["info_chart"])            # 廠內退料 / Top 供應商
+_C_PENDING = QColor(PALETTE["pending_chart"])      # 託外退料
+_C_NA = QColor(PALETTE["na_chart"])               # 未分類 / 預設
 
 SUPPLIER_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
@@ -240,7 +248,7 @@ class NcrStatsWidget(QWidget):
         except Exception as exc:
             logger.exception("載入 NCR 統計數據失敗")
             err_lbl = QLabel(f"無法載入統計數據：{exc}")
-            err_lbl.setStyleSheet("color: red; font-weight: bold;")
+            err_lbl.setProperty("role", "errorText")
             self.grid_layout.addWidget(err_lbl, 0, 0)
             self.insight_label.setText("載入數據時發生錯誤。")
             return
@@ -255,7 +263,7 @@ class NcrStatsWidget(QWidget):
 
         # 1. Top 5 供應商 (水平條形圖)
         supplier_view = self._build_horizontal_bar_chart(
-            top_suppliers, "supplier_name", "Top 5 不合格品供應商", "#3B82F6"
+            top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"]
         )
         self.grid_layout.addWidget(supplier_view, 0, 0)
 
@@ -268,14 +276,14 @@ class NcrStatsWidget(QWidget):
         # 3. 報廢/重工 比例% (環形圖)
         disposition_view = self._build_donut_chart(
             scrap_rework, "disposition", "報廢 / 重工 比例佔比",
-            {"報廢": QColor("#EF4444"), "重工": QColor("#10B981")}
+            {"報廢": _C_DANGER, "重工": _C_SUCCESS}
         )
         self.grid_layout.addWidget(disposition_view, 1, 0)
 
         # 4. 廠內退料/託外退料 比例% (環形圖)
         return_slip_view = self._build_donut_chart(
             return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比",
-            {"廠內退料": QColor("#3B82F6"), "託外退料": QColor("#F59E0B")}
+            {"廠內退料": _C_INFO, "託外退料": _C_PENDING}
         )
         self.grid_layout.addWidget(return_slip_view, 1, 1)
 
@@ -323,7 +331,7 @@ class NcrStatsWidget(QWidget):
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle(title)
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setVisible(False)
 
         app_font_family = QApplication.font().family()
@@ -368,12 +376,12 @@ class NcrStatsWidget(QWidget):
                 slice_obj = series.append(f"{name} ({qty}件, {pct:.1f}%)", qty)
                 slice_obj.setLabelVisible(True)
                 slice_obj.setLabelPosition(QPieSlice.LabelPosition.LabelOutside)
-                slice_obj.setBrush(color_map.get(name, QColor("#9CA3AF")))
+                slice_obj.setBrush(color_map.get(name, _C_NA))
 
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle(title)
-        chart.setBackgroundVisible(False)
+        apply_chart_surface(chart)
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
 
@@ -447,8 +455,14 @@ class NcrStatsWidget(QWidget):
 
         # 4. 退料來源
         if return_slips:
-            in_house = sum(int(r["total_qty"] or 0) for r in return_slips if r["return_slip_type"] == "廠內退料")
-            outsource = sum(int(r["total_qty"] or 0) for r in return_slips if r["return_slip_type"] == "託外退料")
+            in_house = 0
+            outsource = 0
+            for r in return_slips:
+                qty = int(r["total_qty"] or 0)
+                if r["return_slip_type"] == "廠內退料":
+                    in_house += qty
+                elif r["return_slip_type"] == "託外退料":
+                    outsource += qty
             total = in_house + outsource
             if total > 0:
                 in_house_pct = (in_house / total) * 100

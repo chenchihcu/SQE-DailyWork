@@ -1033,7 +1033,7 @@ class MasterDataWidget(QWidget):
         if selected_supplier_id and selected_row_index is None:
             # If the selected item is not on the current page, we keep the ID but clear selection
             self.supplier_table.clearSelection()
-            # self._set_supplier_toggle_button_state(is_active=True) # Keep current state if possible
+            self._set_supplier_toggle_button_state(is_active=True)
         elif selected_row_index is not None:
             self._select_single_row(self.supplier_table, selected_row_index)
 

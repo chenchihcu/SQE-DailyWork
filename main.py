@@ -4,7 +4,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QSharedMemory, Qt, qInstallMessageHandler, QtMsgType
+from PySide6.QtCore import QSharedMemory, qInstallMessageHandler, QtMsgType
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 # 確保能從 src/ 導入專案套件，同時保留 repo root 作為 scripts/runtime 脈絡。
@@ -14,7 +14,7 @@ for _path in (_repo_root / "src", _repo_root):
     if _path_text not in sys.path:
         sys.path.insert(0, _path_text)
 
-from database.connection import DB_PATH, initialize_database
+from database.connection import initialize_database
 from ui.main_window import MainWindow
 from ui.theme import apply_app_theme
 
@@ -79,7 +79,7 @@ def _global_excepthook(exc_type, exc_value, exc_tb) -> None:
                 f"應用程式發生未預期錯誤：\n\n{msg}\n\n請查看 logs/app.log 取得詳細資訊。",
             )
     except Exception:
-        pass
+        logger.exception("Global excepthook UI also failed")
 
 
 def main() -> int:
