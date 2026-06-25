@@ -332,16 +332,21 @@ def insert_products(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int
 def insert_products_if_missing(
     conn: sqlite3.Connection, rows: list[dict[str, Any]]
 ) -> int:
+    # product_records 是 VIEW，INSERT 經 INSTEAD OF trigger 寫進 products；
+    # cursor.rowcount 只反映 VIEW 上的直接變更（恆為 0，不含 trigger 動作），
+    # 會讓呼叫端誤判「沒有新增」。改用 conn.total_changes 差值（涵蓋 trigger
+    # 內層 INSERT），對實體表與視圖皆正確。
     inserted_count = 0
     for row in rows:
-        cursor = conn.execute(
+        before = conn.total_changes
+        conn.execute(
             """
             INSERT OR IGNORE INTO product_records (item_no, product_name, created_at)
             VALUES (?, ?, ?)
             """,
             (row["item_no"], row["product_name"], row["created_at"]),
         )
-        inserted_count += cursor.rowcount
+        inserted_count += conn.total_changes - before
     return inserted_count
 
 
@@ -413,14 +418,20 @@ def get_product_by_item_no(conn: sqlite3.Connection, item_no: str) -> sqlite3.Ro
 def update_product(
     conn: sqlite3.Connection, product_id: int, data: dict[str, Any]
 ) -> None:
+    # product_records 是 VIEW，寫入經 INSTEAD OF trigger 進到 products；此時
+    # cursor.rowcount 反映的是 VIEW 上的直接變更（恆為 0，不含 trigger 動作），
+    # 不能用來判斷「是否找到」。改以明確存在性查詢判斷。
     conn.execute("BEGIN")
     try:
-        cursor = conn.execute(
+        exists = conn.execute(
+            "SELECT 1 FROM product_records WHERE id = ?", (product_id,)
+        ).fetchone()
+        if exists is None:
+            raise sqlite3.DatabaseError(f"找不到要更新的產品 ID: {product_id}")
+        conn.execute(
             "UPDATE product_records SET item_no = ?, product_name = ? WHERE id = ?",
             (data["item_no"], data["product_name"], product_id),
         )
-        if cursor.rowcount <= 0:
-            raise sqlite3.DatabaseError(f"找不到要更新的產品 ID: {product_id}")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -428,11 +439,15 @@ def update_product(
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
+    # 同 update_product：VIEW 上 cursor.rowcount 恆為 0，需用存在性查詢判斷。
     conn.execute("BEGIN")
     try:
-        cursor = conn.execute("DELETE FROM product_records WHERE id = ?", (product_id,))
-        if cursor.rowcount <= 0:
+        exists = conn.execute(
+            "SELECT 1 FROM product_records WHERE id = ?", (product_id,)
+        ).fetchone()
+        if exists is None:
             raise sqlite3.DatabaseError(f"找不到要刪除的產品 ID: {product_id}")
+        conn.execute("DELETE FROM product_records WHERE id = ?", (product_id,))
         conn.commit()
     except Exception:
         conn.rollback()

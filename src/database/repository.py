@@ -497,7 +497,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
         -- 共享品名主檔 VIEW 與 INSTEAD OF Triggers
-        CREATE VIEW IF NOT EXISTS product_records AS
+        -- 用 DROP+CREATE（非 IF NOT EXISTS）：升級既有 DB 時會重建 VIEW，
+        -- 並 cascade-drop 舊版 trigger，藉此替換掉下方修正前的損壞 trigger。
+        DROP VIEW IF EXISTS product_records;
+        CREATE VIEW product_records AS
         SELECT
             id,
             product_code AS item_no,
@@ -505,6 +508,15 @@ def create_schema(conn: sqlite3.Connection) -> None:
             created_at
         FROM products;
 
+        -- 內層採「純 INSERT」不帶 ON CONFLICT：products.product_code 僅有部分唯一索引
+        -- （idx_products_global_code WHERE supplier_id IS NULL），無法作為 ON CONFLICT 目標
+        -- （否則 INSERT 會拋 OperationalError: ON CONFLICT clause does not match...）。
+        -- 改由外層語句決定衝突策略，trigger 內層 INSERT 會繼承之：
+        --   `INSERT INTO product_records ...`           -> 重複料號拋 UNIQUE constraint，
+        --      供 create_product 轉成使用者可讀的「料號已存在」。
+        --   `INSERT OR IGNORE INTO product_records ...`  -> 重複料號略過，
+        --      供 sync_product_from_defect / insert_products_if_missing。
+        -- 插入列的 supplier_id 預設為 NULL，故僅命中 global（共享品名主檔）唯一索引。
         CREATE TRIGGER IF NOT EXISTS trg_product_records_insert
         INSTEAD OF INSERT ON product_records
         BEGIN
@@ -516,10 +528,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 COALESCE(NEW.created_at, datetime('now', 'localtime')),
                 datetime('now', 'localtime'),
                 1
-            )
-            ON CONFLICT(product_code) DO UPDATE SET
-                product_name = NEW.product_name,
-                updated_at = datetime('now', 'localtime');
+            );
         END;
 
         CREATE TRIGGER IF NOT EXISTS trg_product_records_update
