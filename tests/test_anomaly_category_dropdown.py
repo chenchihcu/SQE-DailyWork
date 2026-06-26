@@ -26,14 +26,36 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self._pandas_patch.start()
         self.addCleanup(self._pandas_patch.stop)
 
+        # Re-import the widget module fresh, but DO NOT pop ``services.event_service``.
+        # The supplier/product combos resolve the service through a *call-time*
+        # ``import services.event_service`` inside
+        # ``common_widgets.SupplierProductFormMixin`` (_load_suppliers /
+        # _on_supplier_changed), whereas the patches below target the module-level
+        # ``event_service`` reference held by ``defect_form_widget``. Popping
+        # ``services.event_service`` from ``sys.modules`` desyncs those two references
+        # once earlier suite modules have pre-populated the import state: the mocks land
+        # on one module object while the dialog resolves a different one, so supplier
+        # loading hits the real service/DB and ``supplier_combo`` comes up empty
+        # (``findData`` returns -1). Keep the canonical module in ``sys.modules`` and pin
+        # the widget's reference to it so the patch target is exactly the object the
+        # dialog resolves at call time. This keeps the suite order-independent.
         sys.modules.pop("ui.widgets.defect_form_widget", None)
-        sys.modules.pop("services.event_service", None)
         self.widget_module = importlib.import_module("ui.widgets.defect_form_widget")
+        self.addCleanup(lambda: sys.modules.pop("ui.widgets.defect_form_widget", None))
+
+        import services.event_service as canonical_event_service
+
+        self.widget_module.event_service = canonical_event_service
+        self.assertIs(
+            self.widget_module.event_service,
+            sys.modules["services.event_service"],
+            "event_service patch target must be the module dialogs resolve at call time;"
+            " do not pop services.event_service from sys.modules here.",
+        )
+
         self.NewAnomalyDialog = self.widget_module.NewAnomalyDialog
         self.NewVisitDialog = self.widget_module.NewVisitDialog
         self.category_options = self.widget_module.ANOMALY_CATEGORY_OPTIONS
-        self.addCleanup(lambda: sys.modules.pop("ui.widgets.defect_form_widget", None))
-        self.addCleanup(lambda: sys.modules.pop("services.event_service", None))
 
         self._suppliers = [{"id": "sup-1", "supplier_name": "供應商A", "is_active": True}]
 
