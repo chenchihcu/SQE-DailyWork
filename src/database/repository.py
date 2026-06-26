@@ -12,218 +12,29 @@ from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     PRODUCT_STAGE_OPTIONS,
 )
-SUPPLIER_CONSOLIDATION_META_KEY = "supplier_consolidation_v1"
-PRODUCT_STAGE_SYNC_META_KEY = "product_stage_sync_v1"
-DEFAULT_STAGE_CHANGED_BY = "local_user"
-STAGE_SYNC_SCOPE_ALL_HISTORY = "all_history_and_future"
-_SUPPLIER_SUFFIX_PATTERN = re.compile(
-    r"(?:-\d+|-[0-9a-fA-F]{8}(?:-受保護)?)$"
+from database.repo_helpers import *  # noqa: F403, F401 — re-exported for backward compat
+from database.repo_helpers import (  # noqa: F401, F811 — imported explicitly because import * skips _-prefixed names
+    _table_exists,
+    _table_columns,
+    _quote_identifier,
+    _now_iso,
+    _today_iso,
+    _gen_id,
+    _as_int,
+    _normalize_date,
+    _normalize_strict_iso_date,
+    _ensure_date_not_in_future,
+    _normalize_non_negative_int,
+    _normalize_month,
+    _month_from_date_value,
+    _normalize_product_stage,
+    _normalize_product_stage_for_read,
+    _normalize_tech_transfer_state,
+    _resolve_tech_transfer_states,
+    _normalized_lookup_text,
+    _register_unique_lookup_key,
+    _build_product_lookup_by_supplier_and_name,
 )
-_STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-VISIT_TECH_TRANSFER_ITEM_COLUMNS = (
-    "tech_transfer_doc",
-    "carrier_requirement",
-    "dispensing_process",
-    "functional_test",
-    "packaging_requirement",
-)
-TECH_TRANSFER_STATE_YES = "yes"
-TECH_TRANSFER_STATE_NO = "no"
-TECH_TRANSFER_STATE_NA = "na"
-TECH_TRANSFER_STATE_VALUES: tuple[str, ...] = (
-    TECH_TRANSFER_STATE_YES,
-    TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_NA,
-)
-VISIT_TECH_TRANSFER_STATE_COLUMNS: tuple[str, ...] = tuple(
-    f"{col}_state" for col in VISIT_TECH_TRANSFER_ITEM_COLUMNS
-)
-EVENT_SCOPE_VISIT_ONLY = "VISIT_ONLY"
-EVENT_SCOPE_VISIT_WITH_ANOMALY = "VISIT_WITH_ANOMALY"
-EVENT_SCOPE_ANOMALY_ONLY = "ANOMALY_ONLY"
-EVENT_SCOPE_CLOSED_ONLY = "CLOSED_ONLY"
-EVENT_SCOPE_VALUES = {
-    EVENT_SCOPE_VISIT_ONLY,
-    EVENT_SCOPE_VISIT_WITH_ANOMALY,
-    EVENT_SCOPE_ANOMALY_ONLY,
-    EVENT_SCOPE_CLOSED_ONLY,
-}
-DEFECT_NOTE_IMPROVED = "已記錄改善"
-DEFECT_NOTE_PENDING_IMPROVEMENT = "待補改善"
-
-
-class SupplierDeleteFailure(TypedDict):
-    id: str
-    reason: str
-
-
-class SupplierDeleteResult(TypedDict):
-    deleted: list[str]
-    failed: list[SupplierDeleteFailure]
-
-
-class ProductStageSyncReport(TypedDict):
-    applied: bool
-    product_link_updates: int
-    anomalies_stage_updates: int
-    visits_stage_updates: int
-    anomalies_backfilled_by_name: int
-    visits_backfilled_by_name: int
-    backfill_skipped_ambiguous: int
-    backfill_skipped_not_found: int
-
-
-class ProductStageSyncOnceReport(ProductStageSyncReport):
-    skipped: bool
-    reason: str
-
-
-def _today_iso() -> str:
-    return date.today().isoformat()
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(sep=" ")
-
-
-def _gen_id() -> str:
-    return uuid.uuid4().hex
-
-
-def _as_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _normalize_date(value: Any, fallback: str | None = None) -> str:
-    if isinstance(value, date):
-        return value.isoformat()
-    if value is None:
-        return fallback or _today_iso()
-    text = str(value).strip()
-    if not text:
-        return fallback or _today_iso()
-    # Normalize datetime-like strings to YYYY-MM-DD.
-    return text[:10]
-
-
-def _normalize_strict_iso_date(
-    value: Any,
-    *,
-    field_name: str,
-    fallback: Any | None = None,
-) -> str:
-    if value is None:
-        if fallback is not None:
-            return _normalize_strict_iso_date(
-                fallback,
-                field_name=field_name,
-            )
-        return _today_iso()
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-
-    text = str(value).strip()
-    if not text:
-        if fallback is not None:
-            return _normalize_strict_iso_date(
-                fallback,
-                field_name=field_name,
-            )
-        return _today_iso()
-    if not _STRICT_ISO_DATE_PATTERN.fullmatch(text):
-        raise ValueError(f"{field_name} must be YYYY-MM-DD")
-    try:
-        return date.fromisoformat(text).isoformat()
-    except ValueError as exc:
-        raise ValueError(f"{field_name} must be YYYY-MM-DD") from exc
-
-
-def _ensure_date_not_in_future(value: str, *, field_name: str) -> None:
-    if date.fromisoformat(value) > date.today():
-        raise ValueError(f"{field_name} cannot be in the future")
-
-
-def _normalize_non_negative_int(value: Any, *, field_name: str) -> int:
-    result = _as_int(value, 0)
-    if result < 0:
-        raise ValueError(f"{field_name} cannot be negative")
-    return result
-
-
-def _normalize_month(yyyymm: str) -> str:
-    text = (yyyymm or "").strip()
-    if len(text) == 7 and "-" in text:
-        return text.replace("-", "")
-    if len(text) != 6 or not text.isdigit():
-        raise ValueError("Month must be YYYYMM or YYYY-MM")
-    return text
-
-
-def _month_from_date_value(value: Any | None) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return _normalize_date(text)[:7].replace("-", "")
-
-
-def _normalize_product_stage(value: Any, fallback: str | None = None) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return fallback or PRODUCT_STAGE_MASS_PRODUCTION
-    if text not in PRODUCT_STAGE_OPTIONS:
-        raise ValueError("Product stage must be 量產 or 試產")
-    return text
-
-
-def _normalize_product_stage_for_read(value: Any) -> str:
-    try:
-        return _normalize_product_stage(
-            value,
-            fallback=PRODUCT_STAGE_MASS_PRODUCTION,
-        )
-    except ValueError:
-        return PRODUCT_STAGE_MASS_PRODUCTION
-
-
-def _normalize_tech_transfer_state(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    if text in TECH_TRANSFER_STATE_VALUES:
-        return text
-    return TECH_TRANSFER_STATE_NO
-
-
-def _resolve_tech_transfer_states(
-    *,
-    states: dict | None,
-    booleans: dict[str, bool],
-) -> dict[str, str]:
-    """Compute final state-strings per item.
-
-    `states` (if a dict) is canonical and may carry 'yes' / 'no' / 'na'. Missing
-    keys (or invalid values) fall back to the matching boolean: True → 'yes',
-    False → 'no'. This lets older callers that only pass booleans keep working.
-    """
-    result: dict[str, str] = {}
-    for key in VISIT_TECH_TRANSFER_ITEM_COLUMNS:
-        explicit: str | None = None
-        if isinstance(states, dict) and key in states:
-            candidate = str(states[key] or "").strip().lower()
-            if candidate in TECH_TRANSFER_STATE_VALUES:
-                explicit = candidate
-        if explicit is not None:
-            result[key] = explicit
-        else:
-            result[key] = (
-                TECH_TRANSFER_STATE_YES
-                if booleans.get(key)
-                else TECH_TRANSFER_STATE_NO
-            )
-    return result
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -492,7 +303,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(
         conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
     )
-    _remove_products_spec_desc_column_if_present(conn)
 
     conn.executescript(
         """
@@ -643,6 +453,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_product_indexes(conn)
     _normalize_event_status_tables(conn)
     _normalize_defect_records_optional_work_order(conn)
+    _remove_products_spec_desc_column_if_present(conn)
     _ensure_index(conn, "idx_anomalies_date", "anomalies", "anomaly_date")
     _ensure_index(conn, "idx_anomalies_supplier", "anomalies", "supplier_id")
     _ensure_index(conn, "idx_anomalies_status", "anomalies", "status")
@@ -676,75 +487,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
-
-
-def upsert_migration_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
-    conn.execute(
-        """
-        INSERT INTO migration_meta(key, value, updated_at)
-        VALUES (?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = CURRENT_TIMESTAMP
-        """,
-        (key, value),
-    )
-    conn.commit()
-
-
-def get_migration_meta(conn: sqlite3.Connection, key: str) -> str | None:
-    row = conn.execute(
-        "SELECT value FROM migration_meta WHERE key = ?",
-        (key,),
-    ).fetchone()
-    if row is None:
-        return None
-    return str(row["value"])
-
-
-def _normalized_lookup_text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _register_unique_lookup_key(
-    lookup: dict[tuple[str, str], str | None],
-    key: tuple[str, str],
-    product_id: str,
-) -> None:
-    if not key[0] or not key[1]:
-        return
-    existing = lookup.get(key)
-    if existing is None and key not in lookup:
-        lookup[key] = product_id
-        return
-    if existing == product_id:
-        return
-    lookup[key] = None
-
-
-def _build_product_lookup_by_supplier_and_name(
-    conn: sqlite3.Connection,
-) -> dict[tuple[str, str], str | None]:
-    rows = conn.execute(
-        """
-        SELECT
-            id,
-            supplier_id,
-            secondary_supplier_id,
-            trim(product_name) AS product_name
-        FROM products
-        WHERE trim(product_name) <> ''
-        """
-    ).fetchall()
-    lookup: dict[tuple[str, str], str | None] = {}
-    for row in rows:
-        product_id = _normalized_lookup_text(row["id"])
-        product_name = _normalized_lookup_text(row["product_name"])
-        supplier_id = _normalized_lookup_text(row["supplier_id"])
-        secondary_supplier_id = _normalized_lookup_text(row["secondary_supplier_id"])
-        _register_unique_lookup_key(lookup, (supplier_id, product_name), product_id)
-        _register_unique_lookup_key(lookup, (secondary_supplier_id, product_name), product_id)
-    return lookup
 
 
 def _insert_product_stage_change_log(
@@ -1259,33 +1001,107 @@ def _build_old_to_new_mapping(rows: list[dict[str, Any]]) -> dict[str, str]:
 
 
 def _apply_key_updates(conn: sqlite3.Connection, updates: list[dict[str, Any]]) -> None:
+    """Apply anomaly_no/issue_no recoding with UNIQUE constraint collision retry.
+
+    Uses a two-phase update (temp value -> final value) to avoid UNIQUE conflicts.
+    If a collision occurs on the second phase (concurrent same-day same-seq),
+    retries with a new sequence number.
+    """
     if not updates:
         return
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Phase 1: write temp values
+            for item in updates:
+                table_name = item["table"]
+                number_column = item["number_column"]
+                rowid = item["rowid"]
+                tmp_value = f"__TMP_ANO__{uuid.uuid4().hex}__"
+                conn.execute(
+                    f"""
+                    UPDATE {_quote_identifier(table_name)}
+                    SET {_quote_identifier(number_column)} = ?
+                    WHERE rowid = ?
+                    """,
+                    (tmp_value, rowid),
+                )
+            # Phase 2: write final values
+            for item in updates:
+                table_name = item["table"]
+                number_column = item["number_column"]
+                rowid = item["rowid"]
+                conn.execute(
+                    f"""
+                    UPDATE {_quote_identifier(table_name)}
+                    SET {_quote_identifier(number_column)} = ?
+                    WHERE rowid = ?
+                    """,
+                    (item["new_no"], rowid),
+                )
+            return  # Success
+        except sqlite3.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc) and attempt < max_retries - 1:
+                # Collision on new_no: regenerate sequence for conflicting items and retry
+                _regenerate_conflicting_nos(conn, updates)
+                continue
+            raise
+
+
+def _regenerate_conflicting_nos(conn: sqlite3.Connection, updates: list[dict[str, Any]]) -> None:
+    """Regenerate anomaly_no for items that hit UNIQUE collision.
+
+    Groups by table and date, assigns fresh sequences starting from max existing + 1.
+    """
+    from collections import defaultdict
+
+    # Resolve the per-table date/number columns once, not per item/group.
+    specs = _resolve_anomaly_no_target_specs(conn)
+    date_col_by_table = {s["table"]: s["date_column"] for s in specs}
+    number_col_by_table = {s["table"]: s["number_column"] for s in specs}
+
+    # Group updates by (table, date_column) to assign fresh sequences per day
+    by_table_date: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for item in updates:
         table_name = item["table"]
-        number_column = item["number_column"]
-        rowid = item["rowid"]
-        tmp_value = f"__TMP_ANO__{uuid.uuid4().hex}__"
-        conn.execute(
+        date_col = date_col_by_table.get(table_name)
+        if not date_col:
+            continue
+        # Fetch the date for this rowid
+        row = conn.execute(
+            f"SELECT {_quote_identifier(date_col)} FROM {_quote_identifier(table_name)} WHERE rowid = ?",
+            (item["rowid"],),
+        ).fetchone()
+        if row:
+            day_key = _normalize_date(row[0]).replace("-", "")
+            by_table_date[(table_name, day_key)].append(item)
+
+    # Regenerate for each group
+    for (table_name, day_key), group in by_table_date.items():
+        number_col = number_col_by_table.get(table_name)
+        if not number_col:
+            continue
+        # Find max existing sequence for this day
+        row = conn.execute(
             f"""
-            UPDATE {_quote_identifier(table_name)}
-            SET {_quote_identifier(number_column)} = ?
-            WHERE rowid = ?
+            SELECT COALESCE(MAX(
+                CASE
+                    WHEN length({_quote_identifier(number_col)}) = 11
+                         AND {_quote_identifier(number_col)} GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+                         AND substr({_quote_identifier(number_col)}, 1, 8) = ?
+                    THEN CAST(substr({_quote_identifier(number_col)}, 9) AS INTEGER)
+                END
+            ), 0) AS max_seq
+            FROM {_quote_identifier(table_name)}
+            WHERE {_quote_identifier(number_col)} LIKE ?
             """,
-            (tmp_value, rowid),
-        )
-    for item in updates:
-        table_name = item["table"]
-        number_column = item["number_column"]
-        rowid = item["rowid"]
-        conn.execute(
-            f"""
-            UPDATE {_quote_identifier(table_name)}
-            SET {_quote_identifier(number_column)} = ?
-            WHERE rowid = ?
-            """,
-            (item["new_no"], rowid),
-        )
+            (day_key, f"{day_key}%"),
+        ).fetchone()
+        seq = int(row["max_seq"]) + 1
+        for item in group:
+            item["new_no"] = f"{day_key}{seq:03d}"
+            seq += 1
 
 
 def _rewrite_text_columns(
@@ -1362,34 +1178,6 @@ def _iter_text_columns(conn: sqlite3.Connection) -> list[tuple[str, str]]:
             if col_type.startswith("TEXT"):
                 columns.append((table_name, col_name))
     return columns
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        SELECT 1
-        FROM sqlite_master
-        WHERE type = 'table' AND name = ?
-        LIMIT 1
-        """,
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    if not _table_exists(conn, table_name):
-        return set()
-    rows = conn.execute(
-        f"PRAGMA table_info({_quote_identifier(table_name)})"
-    ).fetchall()
-    return {str(row["name"]) for row in rows}
-
-
-def _quote_identifier(identifier: str) -> str:
-    if not identifier:
-        raise ValueError("Identifier must not be empty")
-    return '"' + str(identifier).replace('"', '""') + '"'
 
 
 def list_suppliers(conn: sqlite3.Connection, *, include_inactive: bool = True) -> list[dict]:
@@ -5175,6 +4963,7 @@ def _insert_visit_row(
 def _find_latest_visit_id(
     conn: sqlite3.Connection, *, supplier_id: str, visit_date: str
 ) -> str | None:
+    normalized_date = _normalize_strict_iso_date(visit_date, field_name="Visit date")
     row = conn.execute(
         """
         SELECT id
@@ -5183,7 +4972,7 @@ def _find_latest_visit_id(
         ORDER BY created_at DESC, rowid DESC
         LIMIT 1
         """,
-        (supplier_id, _normalize_date(visit_date)),
+        (supplier_id, normalized_date),
     ).fetchone()
     if row is None:
         return None
@@ -5315,147 +5104,66 @@ def _find_product_id_by_name_scope(
     if row is None:
         return None
     return str(row["id"])
-
-
-def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> None:
-    if not _has_column(conn, "products", "spec_desc"):
-        return
-    if get_migration_meta(conn, "products_spec_desc_removed_v1") == "1":
-        return
-
-    has_product_stage = _has_column(conn, "products", "product_stage")
-    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
-    product_stage_select_sql = (
-        "CASE"
-        " WHEN trim(coalesce(product_stage, '')) IN ('量產', '試產')"
-        " THEN trim(product_stage)"
-        " ELSE '量產'"
-        " END AS product_stage"
-        if has_product_stage
-        else "'量產' AS product_stage"
-    )
-    secondary_supplier_select_sql = (
-        "secondary_supplier_id"
-        if has_secondary_supplier_id
-        else "NULL AS secondary_supplier_id"
-    )
-
-    conn.commit()
-    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
-    fk_enabled = bool(
-        _as_int((fk_row[0] if fk_row is not None else 1), 1)
-    )
-    if fk_enabled:
-        conn.execute("PRAGMA foreign_keys=OFF")
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute("DROP TABLE IF EXISTS products__new")
-        conn.execute(
-            """
-            CREATE TABLE products__new (
-                id TEXT PRIMARY KEY,
-                product_code TEXT NOT NULL,
-                product_name TEXT NOT NULL,
-                product_stage TEXT NOT NULL DEFAULT '量產',
-                supplier_id TEXT,
-                secondary_supplier_id TEXT,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
-                FOREIGN KEY (secondary_supplier_id) REFERENCES suppliers(id)
-            )
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO products__new(
-                id, product_code, product_name, product_stage, supplier_id, secondary_supplier_id,
-                is_active, created_at, updated_at
-            )
-            SELECT
-                id,
-                product_code,
-                product_name,
-                """
-            + product_stage_select_sql
-            + """
-                ,
-                supplier_id,
-                """
-            + secondary_supplier_select_sql
-            + """
-                ,
-                is_active,
-                created_at,
-                updated_at
-            FROM products
-            """
-        )
-        conn.execute("DROP TABLE products")
-        conn.execute("ALTER TABLE products__new RENAME TO products")
-        _ensure_product_indexes(conn)
-        conn.execute("COMMIT")
-        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
-    except Exception:
-        if conn.in_transaction:
-            conn.execute("ROLLBACK")
-        raise
-    finally:
-        if fk_enabled:
-            conn.execute("PRAGMA foreign_keys=ON")
-
-
-def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
-    if get_migration_meta(conn, "event_status_normalized_v1") == "1":
-        return
-
-    anomalies_sql = _table_sql(conn, "anomalies")
-    visits_sql = _table_sql(conn, "visits")
-
-    needs_anomaly_rebuild = False
-    needs_visit_rebuild = False
-
-    if anomalies_sql:
-        needs_anomaly_rebuild = ("'OPEN'" in anomalies_sql) or ("'CLOSED'" in anomalies_sql)
-    if visits_sql:
-        needs_visit_rebuild = "'COMPLETED'" in visits_sql
-
-    legacy_anomaly_row = conn.execute(
-        "SELECT 1 FROM anomalies WHERE status IN ('OPEN', 'CLOSED') LIMIT 1"
+def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
     ).fetchone()
-    if legacy_anomaly_row is not None:
-        needs_anomaly_rebuild = True
+    if row is None:
+        return ""
+    if isinstance(row, sqlite3.Row):
+        return str(row["sql"] or "")
+    return str(row[0] or "")
 
-    legacy_visit_row = conn.execute(
-        "SELECT 1 FROM visits WHERE status = 'COMPLETED' LIMIT 1"
-    ).fetchone()
-    if legacy_visit_row is not None:
-        needs_visit_rebuild = True
 
-    if not needs_anomaly_rebuild and not needs_visit_rebuild:
+def _ensure_product_indexes(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_global_code
+            ON products(product_code)
+            WHERE supplier_id IS NULL
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_supplier_code
+            ON products(supplier_id, product_code)
+            WHERE supplier_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id)"
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_products_secondary_supplier
+            ON products(secondary_supplier_id)
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)"
+    )
+
+
+def _ensure_column(
+    conn: sqlite3.Connection, table_name: str, column_name: str, column_ddl: str
+) -> None:
+    if _has_column(conn, table_name, column_name):
         return
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_ddl}")
 
-    conn.commit()
-    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
-    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
-    if fk_enabled:
-        conn.execute("PRAGMA foreign_keys=OFF")
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        if needs_visit_rebuild:
-            _rebuild_visits_with_zh_status(conn)
-        if needs_anomaly_rebuild:
-            _rebuild_anomalies_with_zh_status(conn)
-        conn.execute("COMMIT")
-        upsert_migration_meta(conn, "event_status_normalized_v1", "1")
-    except Exception:
-        if conn.in_transaction:
-            conn.execute("ROLLBACK")
-        raise
-    finally:
-        if fk_enabled:
-            conn.execute("PRAGMA foreign_keys=ON")
+
+def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(str(row["name"]) == column_name for row in rows)
+
+
+def _ensure_index(
+    conn: sqlite3.Connection, index_name: str, table_name: str, column_name: str
+) -> None:
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"
+    )
 
 
 def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> None:
@@ -5543,7 +5251,84 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
             conn.execute("PRAGMA foreign_keys=ON")
 
 
+def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
+    """Normalize legacy OPEN/CLOSED/COMPLETED status values to zh-TW.
+
+    One-time migration guarded by the ``event_status_normalized_v1`` meta key.
+    A rebuild only runs when legacy status *values* still exist or a stale
+    ``CHECK`` constraint mentions the legacy tokens. The anomalies/visits
+    rebuilds run inside a single ``BEGIN IMMEDIATE`` transaction with foreign
+    key enforcement temporarily disabled; the transaction is rolled back on any
+    error and the connection's prior FK state is restored afterward. This keeps
+    the migration atomic — an interrupted run leaves the original tables intact
+    rather than a half-migrated schema.
+    """
+    if get_migration_meta(conn, "event_status_normalized_v1") == "1":
+        return
+
+    anomalies_sql = _table_sql(conn, "anomalies")
+    visits_sql = _table_sql(conn, "visits")
+
+    needs_anomaly_rebuild = False
+    needs_visit_rebuild = False
+    if anomalies_sql:
+        needs_anomaly_rebuild = ("'OPEN'" in anomalies_sql) or ("'CLOSED'" in anomalies_sql)
+    if visits_sql:
+        needs_visit_rebuild = "'COMPLETED'" in visits_sql
+
+    if (
+        conn.execute(
+            "SELECT 1 FROM anomalies WHERE status IN ('OPEN', 'CLOSED') LIMIT 1"
+        ).fetchone()
+        is not None
+    ):
+        needs_anomaly_rebuild = True
+    if (
+        conn.execute(
+            "SELECT 1 FROM visits WHERE status != '已完成' LIMIT 1"
+        ).fetchone()
+        is not None
+    ):
+        needs_visit_rebuild = True
+
+    if not needs_anomaly_rebuild and not needs_visit_rebuild:
+        upsert_migration_meta(conn, "event_status_normalized_v1", "1")
+        return
+
+    conn.commit()
+    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
+    if fk_enabled:
+        conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if needs_visit_rebuild:
+            _rebuild_visits_with_zh_status(conn)
+        if needs_anomaly_rebuild:
+            _rebuild_anomalies_with_zh_status(conn)
+        conn.execute("COMMIT")
+        upsert_migration_meta(conn, "event_status_normalized_v1", "1")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        if fk_enabled:
+            conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
+    """Rebuild anomalies, mapping legacy OPEN/CLOSED status to 待處理/已結案.
+
+    Single-pass table reconstruction matching the canonical anomalies schema
+    and restoring the ``CHECK (status IN ('待處理','已結案'))`` constraint.
+    Must run inside the caller's transaction with FK enforcement disabled (see
+    ``_normalize_event_status_tables``); it uses individual ``conn.execute``
+    statements — never ``executescript`` — so it does not commit mid-rebuild.
+    Only ``status`` (and the derived ``closed_at``) are normalized; every other
+    column, including ``product_stage`` (試產/量產) and the closure-tracking
+    fields, is preserved as-is.
+    """
     conn.execute("DROP TABLE IF EXISTS anomalies__new")
     conn.execute(
         """
@@ -5563,7 +5348,12 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
             batch_qty INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
             improvement_desc TEXT NOT NULL DEFAULT '',
+            closed_by TEXT NOT NULL DEFAULT '',
+            root_cause_category TEXT NOT NULL DEFAULT '',
             closed_at TEXT,
+            pending_items TEXT NOT NULL DEFAULT '',
+            responsible_person TEXT NOT NULL DEFAULT '',
+            due_date TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
@@ -5575,44 +5365,63 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         INSERT INTO anomalies__new(
-            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
-            category, product_lot_no, product_name, product_stage, outsource_work_order, batch_qty,
-            status, improvement_desc, closed_at, created_at, updated_at
+            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
+            problem_desc, category, product_lot_no, product_name, product_stage,
+            outsource_work_order, batch_qty, status, improvement_desc, closed_by,
+            root_cause_category, closed_at, pending_items, responsible_person,
+            due_date, created_at, updated_at
         )
         SELECT
-            id,
-            anomaly_no,
-            anomaly_date,
-            supplier_id,
-            visit_id,
-            product_id,
-            problem_desc,
-            category,
-            product_lot_no,
-            product_name,
-            '量產' AS product_stage,
-            outsource_work_order,
-            batch_qty,
+            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
+            problem_desc, category, product_lot_no, product_name, product_stage,
+            outsource_work_order, batch_qty,
             CASE
                 WHEN status IN ('OPEN', '待處理') THEN '待處理'
                 WHEN status IN ('CLOSED', '已結案') THEN '已結案'
                 ELSE '待處理'
             END AS status,
-            improvement_desc,
+            improvement_desc, closed_by, root_cause_category,
             CASE
                 WHEN status IN ('CLOSED', '已結案') THEN closed_at
                 ELSE NULL
             END AS closed_at,
-            created_at,
-            updated_at
+            pending_items, responsible_person, due_date, created_at, updated_at
         FROM anomalies
         """
     )
     conn.execute("DROP TABLE anomalies")
     conn.execute("ALTER TABLE anomalies__new RENAME TO anomalies")
+    # Recreate the full index set so the rebuilt table is complete in this same
+    # run (the DROP discarded every index, including idx_anomalies_visit/product
+    # created earlier in create_schema).
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomalies_date ON anomalies(anomaly_date)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomalies_supplier ON anomalies(supplier_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomalies_status ON anomalies(status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomalies_visit ON anomalies(visit_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anomalies_product ON anomalies(product_id)"
+    )
 
 
 def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
+    """Rebuild visits, normalizing legacy status values to '已完成'.
+
+    Single-pass table reconstruction matching the canonical visits schema and
+    restoring the ``CHECK (status='已完成')`` constraint. Must run inside the
+    caller's transaction with FK enforcement disabled (see
+    ``_normalize_event_status_tables``); it uses individual ``conn.execute``
+    statements — never ``executescript`` — so it does not commit mid-rebuild.
+    Every column is preserved as-is except ``status``, which is forced to
+    '已完成' (the only value the constraint permits).
+    """
     conn.execute("DROP TABLE IF EXISTS visits__new")
     conn.execute(
         """
@@ -5623,6 +5432,7 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
             product_id TEXT,
             product_name TEXT NOT NULL DEFAULT '',
             product_stage TEXT NOT NULL DEFAULT '量產',
+            visitor_name TEXT NOT NULL DEFAULT '',
             summary TEXT NOT NULL DEFAULT '',
             work_order_no TEXT NOT NULL DEFAULT '',
             production_qty INTEGER NOT NULL DEFAULT 0,
@@ -5632,6 +5442,11 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
             dispensing_process INTEGER NOT NULL DEFAULT 0,
             functional_test INTEGER NOT NULL DEFAULT 0,
             packaging_requirement INTEGER NOT NULL DEFAULT 0,
+            tech_transfer_doc_state TEXT NOT NULL DEFAULT 'no',
+            carrier_requirement_state TEXT NOT NULL DEFAULT 'no',
+            dispensing_process_state TEXT NOT NULL DEFAULT 'no',
+            functional_test_state TEXT NOT NULL DEFAULT 'no',
+            packaging_requirement_state TEXT NOT NULL DEFAULT 'no',
             status TEXT NOT NULL DEFAULT '已完成' CHECK (status='已完成'),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -5643,97 +5458,158 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         INSERT INTO visits__new(
-            id, visit_date, supplier_id, product_id, product_name, product_stage, summary,
-            work_order_no, production_qty, tech_transfer, tech_transfer_doc,
-            carrier_requirement, dispensing_process, functional_test, packaging_requirement,
-            status, created_at, updated_at
+            id, visit_date, supplier_id, product_id, product_name, product_stage,
+            visitor_name, summary, work_order_no, production_qty, tech_transfer,
+            tech_transfer_doc, carrier_requirement, dispensing_process,
+            functional_test, packaging_requirement, tech_transfer_doc_state,
+            carrier_requirement_state, dispensing_process_state,
+            functional_test_state, packaging_requirement_state, status,
+            created_at, updated_at
         )
         SELECT
-            id,
-            visit_date,
-            supplier_id,
-            product_id,
-            product_name,
-            '量產' AS product_stage,
-            summary,
-            work_order_no,
-            production_qty,
-            tech_transfer,
-            0 AS tech_transfer_doc,
-            0 AS carrier_requirement,
-            0 AS dispensing_process,
-            0 AS functional_test,
-            0 AS packaging_requirement,
-            CASE
-                WHEN status IN ('COMPLETED', '已完成') THEN '已完成'
-                ELSE '已完成'
-            END AS status,
-            created_at,
-            updated_at
+            id, visit_date, supplier_id, product_id, product_name, product_stage,
+            visitor_name, summary, work_order_no, production_qty, tech_transfer,
+            tech_transfer_doc, carrier_requirement, dispensing_process,
+            functional_test, packaging_requirement, tech_transfer_doc_state,
+            carrier_requirement_state, dispensing_process_state,
+            functional_test_state, packaging_requirement_state,
+            '已完成' AS status,
+            created_at, updated_at
         FROM visits
         """
     )
     conn.execute("DROP TABLE visits")
     conn.execute("ALTER TABLE visits__new RENAME TO visits")
-
-
-def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    if row is None:
-        return ""
-    if isinstance(row, sqlite3.Row):
-        return str(row["sql"] or "")
-    return str(row[0] or "")
-
-
-def _ensure_product_indexes(conn: sqlite3.Connection) -> None:
+    # Recreate the full index set so the rebuilt table is complete in this same
+    # run (the DROP discarded every index, including idx_visits_product created
+    # earlier in create_schema).
     conn.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_global_code
-            ON products(product_code)
-            WHERE supplier_id IS NULL
-        """
+        "CREATE INDEX IF NOT EXISTS idx_visits_date ON visits(visit_date)"
     )
     conn.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_supplier_code
-            ON products(supplier_id, product_code)
-            WHERE supplier_id IS NOT NULL
-        """
+        "CREATE INDEX IF NOT EXISTS idx_visits_supplier ON visits(supplier_id)"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id)"
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_products_secondary_supplier
-            ON products(secondary_supplier_id)
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)"
+        "CREATE INDEX IF NOT EXISTS idx_visits_product ON visits(product_id)"
     )
 
 
-def _ensure_column(
-    conn: sqlite3.Connection, table_name: str, column_name: str, column_ddl: str
-) -> None:
-    if _has_column(conn, table_name, column_name):
+def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> None:
+    """Remove the legacy ``spec_desc`` column from products if present.
+
+    One-time migration guarded by the ``products_spec_desc_removed_v1`` meta
+    key. The rebuild runs inside a single ``BEGIN IMMEDIATE`` transaction with
+    FK enforcement temporarily disabled (products is referenced by anomalies /
+    visits / sections), rolled back on error, with the prior FK state restored.
+    """
+    if get_migration_meta(conn, "products_spec_desc_removed_v1") == "1":
         return
-    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_ddl}")
+    if not _has_column(conn, "products", "spec_desc"):
+        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
+        return
+
+    conn.commit()
+    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
+    if fk_enabled:
+        conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _rebuild_products_without_spec_desc(conn)
+        conn.execute("COMMIT")
+        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        if fk_enabled:
+            conn.execute("PRAGMA foreign_keys=ON")
 
 
-def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return any(str(row["name"]) == column_name for row in rows)
+def _rebuild_products_without_spec_desc(conn: sqlite3.Connection) -> None:
+    """Rebuild products without the legacy ``spec_desc`` column.
 
+    Single-pass reconstruction matching the canonical products schema
+    (``product_stage`` DEFAULT '量產', plain supplier FKs, uniqueness enforced
+    by the partial indexes rather than a table-level UNIQUE). Must run inside
+    the caller's transaction with FK enforcement disabled; uses individual
+    ``conn.execute`` statements — never ``executescript`` — so it does not
+    commit mid-rebuild.
 
-def _ensure_index(
-    conn: sqlite3.Connection, index_name: str, table_name: str, column_name: str
-) -> None:
-    conn.execute(
-        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"
+    The ``product_records`` view and its INSTEAD OF triggers reference
+    ``products`` by name and remain valid across the drop/rename, so they are
+    intentionally left untouched — dropping the view would silently drop those
+    triggers and break NCR writes that go through the view.
+    """
+    has_product_stage = _has_column(conn, "products", "product_stage")
+    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
+    product_stage_select_sql = (
+        "CASE"
+        " WHEN trim(coalesce(product_stage, '')) IN ('量產', '試產')"
+        " THEN trim(product_stage)"
+        " ELSE '量產'"
+        " END AS product_stage"
+        if has_product_stage
+        else "'量產' AS product_stage"
     )
+    secondary_supplier_select_sql = (
+        "secondary_supplier_id"
+        if has_secondary_supplier_id
+        else "NULL AS secondary_supplier_id"
+    )
+
+    conn.execute("DROP TABLE IF EXISTS products__new")
+    conn.execute(
+        """
+        CREATE TABLE products__new (
+            id TEXT PRIMARY KEY,
+            product_code TEXT NOT NULL,
+            product_name TEXT NOT NULL,
+            product_stage TEXT NOT NULL DEFAULT '量產',
+            supplier_id TEXT,
+            secondary_supplier_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+            FOREIGN KEY (secondary_supplier_id) REFERENCES suppliers(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO products__new(
+            id, product_code, product_name, product_stage, supplier_id,
+            secondary_supplier_id, is_active, created_at, updated_at
+        )
+        SELECT
+            id,
+            product_code,
+            product_name,
+            """
+        + product_stage_select_sql
+        + """,
+            supplier_id,
+            """
+        + secondary_supplier_select_sql
+        + """,
+            is_active,
+            created_at,
+            updated_at
+        FROM products
+        """
+    )
+    # The product_records view and its INSTEAD OF triggers reference `products`
+    # by name. Modern SQLite re-validates dependent views during ALTER TABLE
+    # RENAME, which would raise ("no such table: main.products") while products
+    # is briefly absent. legacy_alter_table=ON skips that re-validation, so the
+    # table is swapped WITHOUT dropping the view or its triggers — preserving the
+    # NCR product_records write path that goes through those triggers.
+    conn.execute("PRAGMA legacy_alter_table=ON")
+    try:
+        conn.execute("DROP TABLE products")
+        conn.execute("ALTER TABLE products__new RENAME TO products")
+    finally:
+        conn.execute("PRAGMA legacy_alter_table=OFF")
+    _ensure_product_indexes(conn)
