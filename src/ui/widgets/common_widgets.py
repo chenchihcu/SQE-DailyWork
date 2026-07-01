@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+from typing import TypeVar
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -8,6 +12,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QTableWidget,
@@ -31,7 +36,46 @@ from database.product_stage import (
     normalize_product_stage_ui,
 )
 
+logger = logging.getLogger(__name__)
+
 EMPTY_DISPLAY = "—"
+
+T = TypeVar("T")
+
+
+def safe_ui_operation(
+    parent: QWidget,
+    operation: Callable[[], T],
+    *,
+    success_msg: str | None = None,
+    success_title: str = "成功",
+    warning_title: str = "驗證失敗",
+    error_title: str = "錯誤",
+    logger_msg: str = "操作失敗",
+    error_msg: str | None = None,
+) -> T | None:
+    """Execute *operation* with unified try/except ValueError/Exception + user feedback.
+
+    Returns the operation's return value on success (or None if the operation
+    returned None), or None when an exception was caught.
+    """
+    from ui.popup_i18n import localize_exception, localize_popup_message
+
+    try:
+        result = operation()
+        if success_msg:
+            QMessageBox.information(parent, success_title, localize_popup_message(success_msg))
+        return result
+    except ValueError as exc:
+        QMessageBox.warning(parent, warning_title, localize_exception(exc))
+    except Exception as exc:
+        logger.exception(logger_msg)
+        QMessageBox.critical(
+            parent,
+            error_title,
+            localize_popup_message(error_msg or f"操作失敗：{localize_exception(exc)}"),
+        )
+    return None
 
 
 def create_page_shell(parent: QWidget | None = None) -> QWidget:
@@ -254,6 +298,87 @@ class RequiredFieldLabel(QLabel):
         self._set_text(text)
 
 
+def repolish(widget: QWidget) -> None:
+    """Re-run a widget's style after a dynamic QSS property changed.
+
+    Qt does not repaint a property-based selector (e.g. ``[invalid="true"]``)
+    until the style is unpolished/polished again — every property flip that
+    should change appearance must call this.
+    """
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+
+
+def set_field_invalid(field: QWidget, invalid: bool = True) -> None:
+    """Toggle the danger error border on an input via the ``[invalid]`` QSS hook."""
+    if bool(field.property("invalid")) == bool(invalid):
+        return
+    field.setProperty("invalid", bool(invalid))
+    repolish(field)
+
+
+def make_inline_error_label() -> QLabel:
+    """Form-level inline error hint (hidden until validation fails).
+
+    Reuses the shared ``messageText``/``danger`` role so the styling stays in
+    the theme rather than per-widget setStyleSheet.
+    """
+    label = QLabel("")
+    label.setProperty("role", "messageText")
+    label.setProperty("tone", "danger")
+    label.setWordWrap(True)
+    label.setVisible(False)
+    return label
+
+
+def text_table_item(value, *, empty: str = EMPTY_DISPLAY) -> QTableWidgetItem:
+    """Table cell whose tooltip shows the full CJK text when the column elides it.
+
+    Long Traditional-Chinese names/contents must not be silently truncated
+    (ui-ux-universal §6); the tooltip restores the full value on hover.
+    """
+    text = str(value or "").strip() or empty
+    item = QTableWidgetItem(text)
+    if text and text != empty:
+        item.setToolTip(text)
+    return item
+
+
+class DirtyTrackingMixin:
+    """Unsaved-changes guard for edit dialogs (mix in *before* QDialog).
+
+    Call ``_init_dirty_tracking([...signals])`` after building inputs and after
+    applying any initial data, so programmatic population does not flip the flag.
+    The save/accept path must set ``self._dirty = False`` before closing. Mirrors
+    the ``closeEvent`` guard already used by CloseAnomalyDialog so every edit
+    dialog behaves consistently (ui-ux-universal §2).
+    """
+
+    def _init_dirty_tracking(self, signals) -> None:
+        self._dirty = False
+        for signal in signals:
+            signal.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *args) -> None:
+        self._dirty = True
+
+    def _confirm_discard(self) -> bool:
+        return QMessageBox.question(
+            self,
+            "未儲存變更",
+            "有未儲存的變更，確定要放棄嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if getattr(self, "_dirty", False) and not self._confirm_discard():
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+
 class EmptyStateWidget(QFrame):
     """Shared empty-state placeholder for list/table pages."""
 
@@ -394,7 +519,9 @@ class SupplierProductFormMixin:
         self._product_stage_by_id = {}
         self._product_code_by_id = {}
         self.product_combo.clear()
-        self.product_combo.addItem("請選擇產品 *", "")
+        # placeholder 不帶 *：異常單以紅色「品名 *」標籤標示必填；訪廠單「主要產品」為非必填，
+        # 是否必填於儲存時由 _product_guard_label 欄位層級即時提示，故欄內不再重複放 *。
+        self.product_combo.addItem("請選擇產品", "")
         for item in products:
             product_id = str(item.get("id") or "").strip()
             self.product_combo.addItem(self._product_combo_label(item), product_id)

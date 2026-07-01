@@ -126,7 +126,7 @@ def initialize_database() -> dict:
     report["product_stage_sync"] = product_stage_sync
     report["ncr_migration"] = ncr_migration_report
     if report.get("migrated"):
-        print(f"Migrated legacy data from {LEGACY_DB_PATH} -> {DB_PATH}")
+        logger.info("已將 Legacy 資料從 %s 遷移至 %s", LEGACY_DB_PATH, DB_PATH)
     return report
 
 

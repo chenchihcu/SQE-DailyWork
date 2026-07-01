@@ -5,13 +5,15 @@
 | Entrypoint | Open path | File / class | Parent | Sizing policy | Overflow / scroll | Theme source | Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
-| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Six KPI management cards plus a read-only backlog (待辦) list | Shared theme tokens | UI smoke + native visual probe |
-| Event management (consolidated) | Sidebar `事件管理` | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus `src/ui/widgets/defect_form_widget.py` dialogs | `MainWindow` | Fills content stack, dialogs clamped | Scope tabs (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) + table pagination + visit dialog body scroll | Shared theme tokens | UI smoke |
-| Warehouse nonconforming tracker | Sidebar `不合格品追蹤` | `src/ncr/embed.py` / embedded NCR page | `MainWindow` | Fills content stack | Embedded tab/table layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests |
-| Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Functional tab-level scroll guards and chart panels sized from shared constants | Shared theme tokens | UI smoke plus native dense-chart probe |
+| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Four KPI management cards plus a read-only backlog (待辦) list | Shared theme tokens | UI smoke + native visual probe |
+| Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus `src/ui/widgets/defect_form_widget.py` dialogs | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination + visit dialog body scroll; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
+| Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | Continuous-entry form layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Warehouse pending | Sidebar `待處理不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`) | `MainWindow` | Fills content stack | Pending table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Three supplier-event tabs (趨勢 / 責任人績效 / 風險) with tab-level scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
 | New / edit anomaly | Anomaly buttons | `src/ui/widgets/defect_form_widget.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
-| New / edit visit | Visit list actions and sidebar footer action | `src/ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Close anomaly | Event action menu | `src/ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
@@ -56,13 +58,13 @@
 - Supplier event pages and warehouse nonconforming-product pages must stay visually
   connected through the shell while keeping their data sources and statistics
   labeled separately.
-- Home is an operations workbench (daily cockpit): six KPI management cards
+- Home is an operations workbench (daily cockpit): four KPI management cards
   followed by one read-only backlog (待辦) list. Still forbidden: quick-entry
   write panels, hero/cover banners, feature-tour blocks, and project-structure
   explanations. The backlog list is not a generic recent-event feed — it is a
   filtered, actionable to-do list (open / overdue anomalies) that only reads
   existing services and only routes through existing navigation.
-- Home KPI cards and backlog rows are operational shortcuts. The six cards plus
+- Home KPI cards and backlog rows are operational shortcuts. The four cards plus
   the single backlog list are the complete first-screen contract, and each must
   provide a hover/click affordance that routes through existing main-window
   navigation with filters instead of introducing new write paths. The backlog
@@ -72,29 +74,36 @@
 - Supplier event lists show a compact source tag such as `供應商事件 / 單獨異常`
   or `供應商事件 / 訪廠發現異常`. PDF export remains single-record output and
   is disabled until a row is selected.
-- Warehouse nonconforming-product tracking uses one sidebar entry and internal
-  tabs for 待處理、結案溯源、連續登錄; do not reintroduce multiple sidebar
-  shell pages for the same warehouse workflow.
-- Sidebar information architecture is workflow-first with one item per group:
-  首頁 (overview), 事件管理 (supplier events), 異常事件統計 (analysis), 基礎資料
-  (master data), and 不合格品追蹤 (warehouse). Groups are conveyed by per-item
-  icons and spacing (no text section headers or divider lines). Page indexes:
-  `0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 基礎資料 / 4 不合格品追蹤` (NCR offset 4).
-  The former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are now scope
-  tabs inside 事件管理. When page indexes change, update the index constants,
-  legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`), `ncr.embed.NCR_PAGE_OFFSET`,
-  and the affected tests together (Atomic Path).
-- Sidebar badges must expose pending work symmetrically for supplier events and
-  warehouse physical nonconforming products.
-- Sidebar quick-create actions live in a separate footer: supplier anomaly
-  creation is the primary action, warehouse nonconforming-product creation is a
-  secondary action.
-- The warehouse page toolbar is context-aware: the internal `建立不合格品`
-  tab stays present, while duplicate shortcut buttons hide when the current tab
-  already represents the same action.
-- Statistics may show a compact decision-summary strip above charts, but it
-  must read only existing service data. Missing data displays `暫無資料`; no
-  statistics table, cache, migration, or cross-workflow write path is allowed.
+- Warehouse nonconforming-product tracking exposes three first-class sidebar
+  rows: 建立不合格品, 待處理不合格品, and 歷史紀錄. Do not reintroduce the retired
+  outer `DefectTrackerPage` tab host for these three entrypoints.
+- Sidebar information architecture is workflow-first with three domain group
+  headers (text labels): 供應商事件, 倉庫不合格品, 系統. The four supplier-event
+  scopes are first-class nav rows (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案,
+  default 單獨異常; the 已結案 row locks the status filter to 已結案) plus 異常事件統計;
+  倉庫不合格品 holds 建立不合格品 / 待處理不合格品 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. There is no
+  in-page scope tab bar — the event page is driven by the active sidebar scope row,
+  shown via the source tag. Stack page indexes are
+  (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 / 4 待處理不合格品 /
+  5 歷史紀錄 / 6 不合格品統計分析 / 7 基礎資料`, NCR offset 3).
+- The sidebar is decoupled from stack indexes: it emits `nav_activated(action)`
+  where action is `("page", PAGE_KEY)` or `("scope", EVENT_SCOPE_*)`; `MainWindow`
+  maps PAGE_KEY → stack index and routes scope rows through
+  `open_event_query_with_filters` / `EventListWidget.set_event_scope`. When page
+  indexes or the PAGE_KEY map change, update the index constants, legacy aliases
+  (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`), `ncr.embed.NCR_PAGE_OFFSET`,
+  `_PAGE_KEY_TO_INDEX`, and the affected tests together (Atomic Path).
+- Sidebar badges must expose pending work symmetrically: the supplier-event badge
+  rides the 單獨異常 scope row (open anomalies), the warehouse badge rides 待處理不合格品.
+- Quick-create has no sidebar footer. Creation uses each page's existing entry
+  points: the event toolbar `新增異常` / `新增訪廠`, and the 倉庫不合格品 sidebar
+  `建立不合格品` row. Do not reintroduce a global quick-create footer.
+- Statistics (異常事件統計) is supplier-event only: three tabs (趨勢 / 責任人績效 /
+  風險) plus a compact decision-summary strip (risk / overdue / trend) that reads
+  only existing service data. Warehouse nonconforming-product statistics live
+  solely on the 不合格品統計分析 page (no duplicate warehouse tab here). Missing
+  data displays `暫無資料`; no statistics table, cache, migration, or
+  cross-workflow write path is allowed.
 - Master-list update, disable, delete, and stage-log actions remain disabled
   until a row is selected, and the toolbar must name the current selected
   supplier or product before destructive actions become available.
@@ -111,8 +120,9 @@
 - Container decision: keep functional panels for KPI, tables,
   filters, tab bodies, and dialogs; no decorative cover wrapper or page
   card-in-card shell remains in the first screen.
-- NCR topology: one embedded `DefectTrackerPage` with internal tabs. Legacy
-  standalone `defect.db` launch and multi-page NCR sidebar shell are retired.
+- NCR topology: one embedded `src/ncr/` workflow with three first-class shell
+  pages (建立不合格品 / 待處理不合格品 / 歷史紀錄). Legacy standalone `defect.db`
+  launch and the outer `DefectTrackerPage` tab host are retired.
 - Form density check - 2026-06-04: supplier-event long text fields are compacted
   by visible row count; warehouse nonconforming-product description is full
   width; quick product creation uses a direct form instead of a decorative card;
@@ -154,3 +164,32 @@
   live in `tests/visual_baseline/` (`scripts/qt_visual_regress.py`). Pinned by
   `tests/test_font_source_single_truth.py` and
   `tests/test_theme_typography_consistency.py`.
+
+## UI IA simplification (sidebar-first) - 2026-06-30
+
+- Home KPIs reduced 6 → 4 (`逾期未結 / 單獨異常 / 訪廠發現異常 / 倉庫待處理不合格品`);
+  removed `總異常件數` and `已結案` cards (their navigation survives via the 單獨異常
+  card and the 已結案 sidebar scope row).
+- Statistics de-duplicated: the warehouse tab (`倉庫不合格品統計`) and its
+  decision-summary button were removed from 異常事件統計 (now three supplier tabs);
+  warehouse stats remain only on 不合格品統計分析. Dead warehouse chart code was
+  removed from `stats_chart_mixin.py` and the `EventQueryScopeTabs` QSS retired.
+- Sidebar footer quick-create (`＋新增異常` / `＋建立不合格品`) removed; creation uses
+  in-page entries. The dead 72px placeholder gap was removed and three domain group
+  headers added (供應商事件 / 倉庫不合格品 / 系統).
+- Event scope tabs promoted to first-class sidebar rows (單獨異常 / 訪廠發現異常 /
+  訪廠紀錄 / 已結案); the in-page scope tab bar was removed. The sidebar now emits
+  `nav_activated(action)` (`("page", KEY)` | `("scope", SCOPE)`) instead of
+  `page_changed(int)`; `MainWindow` owns the `_PAGE_KEY_TO_INDEX` map and
+  `EventListWidget.set_event_scope` preserves supplier/month filters across scope
+  switches.
+- Warehouse workflow tabs promoted to first-class sidebar rows - 2026-07-01:
+  `建立不合格品`, `待處理不合格品`, and `歷史紀錄` now occupy stack indexes 3/4/5;
+  `不合格品統計分析` moves to index 6 and `基礎資料` to index 7. The warehouse
+  pending badge rides `待處理不合格品`; `open_warehouse_nonconforming_tracker()`
+  routes there, while `open_warehouse_nonconforming_create()` routes to
+  `建立不合格品`.
+- Verify with `scripts/qt_visual_probe.py --target main` and `--target stats-stress`,
+  plus `tests/test_top_nav_compact_height`, `tests/test_ncr_embedding_smoke`,
+  `tests/test_closed_tab_categories`, `tests/test_event_list_widget_render_stability`,
+  `tests/test_home_recent_events_panel`, and `tests/test_stats_view_anomaly_chart`.

@@ -347,27 +347,42 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
     import sqlite3
 
     from ncr.db.database import apply_schema
-    from ncr.embed import DefectTrackerPage
+    from ncr.embed import NcrWorkflowPage
+    from ncr.ui.defect_form import DefectFormWidget
+    from ncr.ui.defect_list import DefectListWidget
 
     screenshots: list[str] = []
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     try:
         apply_schema(conn, with_version=True)
-        page = DefectTrackerPage(conn)
-        page.resize(*(size or (1180, 720)))
-        page.show()
-        app.processEvents()
+        pages = [
+            (NcrWorkflowPage(DefectFormWidget(conn), "NcrCreatePage"), "ncr-create"),
+            (
+                NcrWorkflowPage(
+                    DefectListWidget(conn, workflow="tracking"),
+                    "NcrPendingPage",
+                ),
+                "ncr-pending",
+            ),
+            (
+                NcrWorkflowPage(
+                    DefectListWidget(conn, workflow="trace"),
+                    "NcrHistoryPage",
+                ),
+                "ncr-history",
+            ),
+        ]
         output.parent.mkdir(parents=True, exist_ok=True)
-        # Tabs: 0 建立 / 1 待處理 / 2 歷史 — capture the list/tracking tabs (not just the form).
-        for index, suffix in enumerate(("ncr-create", "ncr-pending", "ncr-history")):
-            page.tabs.setCurrentIndex(index)
+        for page, suffix in pages:
+            page.resize(*(size or (1180, 720)))
+            page.show()
             app.processEvents()
             target = _target_output_path(output, suffix)
             page.grab().save(str(target))
             screenshots.append(str(target))
-        page.close()
-        app.processEvents()
+            page.close()
+            app.processEvents()
     finally:
         conn.close()
     return screenshots
@@ -403,7 +418,7 @@ def _capture_empty_states(output: Path, app: "QApplication", size: tuple[int, in
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
 
-    placeholder = QLabel("倉庫不合格品追蹤模組暫時無法載入。\n\n（範例：資料庫初始化失敗）")
+    placeholder = QLabel("倉庫不合格品模組暫時無法載入。\n\n（範例：資料庫初始化失敗）")
     placeholder.setObjectName("NcrUnavailablePlaceholder")
     placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
     placeholder.setWordWrap(True)
@@ -419,8 +434,8 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
 
     from database.connection import initialize_database
     from ncr.db.database import apply_schema
-    from ncr.embed import DefectTrackerPage
-    from ncr.ui.defect_form import QuickProductCreateDialog
+    from ncr.embed import NcrWorkflowPage
+    from ncr.ui.defect_form import DefectFormWidget, QuickProductCreateDialog
     from ui.widgets.defect_form_widget import NewVisitDialog
     from ui.widgets.master_data_widget import ProductFormDialog, SupplierFormDialog
 
@@ -456,8 +471,7 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     conn.row_factory = sqlite3.Row
     try:
         apply_schema(conn, with_version=True)
-        warehouse_form = DefectTrackerPage(conn)
-        warehouse_form.open_create_entry()
+        warehouse_form = NcrWorkflowPage(DefectFormWidget(conn), "NcrCreatePage")
         warehouse_form.resize(1180, 720)
         screenshots.append(
             _capture_widget(
@@ -467,7 +481,14 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
             )
         )
 
-        quick_product_dialog = QuickProductCreateDialog(conn, "ITEM-NEW")
+        # production 中此對話框的 parent 為已套用 NCR stylesheet 的頁面，
+        # role="primary" 才會呈現 Electric Blue；探針給予同樣 styled parent 以反映實際渲染。
+        from PySide6.QtWidgets import QWidget
+        from ncr.ui.ui_style import app_stylesheet as _ncr_app_stylesheet
+
+        _ncr_style_host = QWidget()
+        _ncr_style_host.setStyleSheet(_ncr_app_stylesheet())
+        quick_product_dialog = QuickProductCreateDialog(conn, "ITEM-NEW", _ncr_style_host)
         screenshots.append(
             _capture_widget(
                 quick_product_dialog,
@@ -489,7 +510,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
     from ui.widgets.stats_view_widget import StatsViewWidget
 
     long_supplier = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    long_product = "倉庫產品名稱-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     summary = {
         "anomaly_count": 200,
         "visit_count": 20,
@@ -530,27 +550,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         }
         for index in range(25)
     ]
-    warehouse_products = [
-        {
-            "product_name": (
-                long_product
-                if index == 0
-                else f"倉庫產品名稱-{index:02d}-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            ),
-            "total_qty": index * 2 + 1,
-        }
-        for index in range(10)
-    ]
-    supplier_disposition_rows = [
-        {
-            "supplier_name": f"倉庫供應商-{index:02d}-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            "disposition": disposition,
-            "total_qty": index + 1,
-        }
-        for index in range(10)
-        for disposition in ("報廢", "退貨", "重工")
-    ]
-
     class _StatsProbeHost:
         def open_event_query_with_filters(self, **_kwargs):
             return None
@@ -563,29 +562,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         patch("services.event_service.get_monthly_stats", return_value=summary),
         patch("services.event_service.get_anomaly_trend", return_value=trend_data),
         patch("services.event_service.get_responsible_person_stats", return_value=resp_stats),
-        patch(
-            "ui.widgets.stats_view_widget.ncr_stats_service.get_disposition_stats",
-            return_value=[
-                {"disposition": "報廢", "total_qty": 10},
-                {"disposition": "退貨", "total_qty": 5},
-                {"disposition": "重工", "total_qty": 8},
-            ],
-        ),
-        patch(
-            "ui.widgets.stats_view_widget.ncr_stats_service.get_trend_stats",
-            return_value=[
-                {"event_month": f"2026-{month:02d}", "total_qty": month * 3}
-                for month in range(1, 13)
-            ],
-        ),
-        patch(
-            "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats_filtered",
-            return_value=warehouse_products,
-        ),
-        patch(
-            "ui.widgets.stats_view_widget.ncr_stats_service.get_supplier_disposition_stats",
-            return_value=supplier_disposition_rows,
-        ),
     ):
         widget = StatsViewWidget(main_window=_StatsProbeHost())
         widget.month_input.setDate(QDate(2026, 6, 1))
@@ -599,7 +575,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
                     "stats-trend",
                     "stats-responsible",
                     "stats-supplier-risk",
-                    "stats-warehouse",
                 )
             ):
                 widget.tabs.setCurrentIndex(index)

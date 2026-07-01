@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from services import event_service
 from ui.design_tokens import PALETTE as _PALETTE
 from ui.layout_constants import (
     SIDEBAR_LOGO_HEIGHT,
@@ -28,31 +29,39 @@ _NAV_GROUP_GAP = 14  # 群組以「圖示 + 間距」區隔，取代原本的分
 _NAV_ICON_COLOR = _PALETTE["sidebar_text"]
 _NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
 
-# (label, page_name, badge_enabled, icon_asset)
-_OVERVIEW_ITEMS = [
-    ("首頁", "首頁", False, "icons/home.svg"),
-]
+# 頁面語意鍵：main_window 負責把 PAGE_KEY 對應到 QStackedWidget 索引，側欄不耦合堆疊索引。
+PAGE_HOME = "HOME"
+PAGE_STATS = "STATS"
+PAGE_NCR_CREATE = "NCR_CREATE"
+PAGE_NCR_PENDING = "NCR_PENDING"
+PAGE_NCR_HISTORY = "NCR_HISTORY"
+PAGE_NCR = PAGE_NCR_PENDING
+PAGE_NCR_STATS = "NCR_STATS"
+PAGE_MASTER = "MASTER"
 
-# 事件管理：單一入口，內含 scope 分頁（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）。
-_EVENT_ITEMS = [
-    ("事件管理", "事件管理", True, "icons/anomaly.svg"),   # badge_enabled=True
-]
-
-_INSIGHT_ITEMS = [
-    ("異常事件統計", "異常事件統計", False, "icons/stats.svg"),
-]
-
-# 倉庫不合格品 module pages, embedded in-process after the SQE DailyWork pages.
-_NCR_ITEMS = [
-    ("不合格品追蹤", True, "icons/warehouse.svg"),
-]
-
-_NCR_STATS_ITEMS = [
-    ("不合格品統計分析", "不合格品統計分析", False, "icons/stats.svg"),
-]
-
-_MASTER_ITEMS = [
-    ("基礎資料", "基礎資料", False, "icons/master.svg"),
+# 導覽 action 形式：("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*)。
+# 事件的 4 個 scope 升級為一等導覽列，事件頁不再有頁內 scope 分頁。
+# 結構：(群組標題 | None, [(label, action, badge_enabled, icon), ...])
+_NAV_GROUPS = [
+    (None, [
+        ("首頁", ("page", PAGE_HOME), False, "icons/home.svg"),
+    ]),
+    ("供應商事件", [
+        ("單獨異常", ("scope", event_service.EVENT_SCOPE_ANOMALY_ONLY), True, "icons/anomaly.svg"),
+        ("訪廠發現異常", ("scope", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY), False, "icons/anomaly.svg"),
+        ("訪廠紀錄", ("scope", event_service.EVENT_SCOPE_VISIT_ONLY), False, "icons/anomaly.svg"),
+        ("已結案", ("scope", event_service.EVENT_SCOPE_CLOSED_ONLY), False, "icons/anomaly.svg"),
+        ("異常事件統計", ("page", PAGE_STATS), False, "icons/stats.svg"),
+    ]),
+    ("倉庫不合格品", [
+        ("建立不合格品", ("page", PAGE_NCR_CREATE), False, "icons/warehouse.svg"),
+        ("待處理不合格品", ("page", PAGE_NCR_PENDING), True, "icons/warehouse.svg"),
+        ("已結案", ("page", PAGE_NCR_HISTORY), False, "icons/closed.svg"),
+        ("不合格品統計", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
+    ]),
+    ("系統", [
+        ("基礎資料", ("page", PAGE_MASTER), False, "icons/master.svg"),
+    ]),
 ]
 
 
@@ -162,21 +171,16 @@ class _NavButton(QPushButton):
 
 
 class SidebarNav(QFrame):
-    """左側 220px 深色固定側欄，發出 page_changed(int) signal。
+    """左側 220px 深色固定側欄，點擊發出 nav_activated(action) signal。
 
-    索引對應：
-        0 = 首頁
-        1 = 事件管理（內含單獨異常、訪廠發現異常、訪廠紀錄、已結案 scope 分頁）
-        2 = 異常事件統計
-        3 = 基礎資料
-        4 = 倉庫不合格品追蹤（內含待處理、結案溯源、連續登錄 tabs）
+    action 為 ("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*)。事件的 4 個 scope
+    （單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）以及倉庫不合格品三個工作頁
+    升級為一等導覽列；main_window 負責把 PAGE_KEY 對應到 QStackedWidget 索引。
 
-    導覽項目放在可捲動區域內，區分事件管理與倉庫不合格品實物管理。
+    導覽項目以「供應商事件 / 倉庫不合格品 / 系統」三組標題分隔，區分兩條工作流程資料線。
     """
 
-    page_changed = Signal(int)
-    quick_create_clicked = Signal()
-    warehouse_create_clicked = Signal()
+    nav_activated = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -185,7 +189,7 @@ class SidebarNav(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
         self._buttons: list[_NavButton] = []
-        self._active_index: int = 0
+        self._active_action: object | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -208,44 +212,17 @@ class SidebarNav(QFrame):
         nav_layout.setContentsMargins(0, 0, 0, 0)
         nav_layout.setSpacing(0)
 
-        # 分組以「圖示 + 間距」呈現工作流程結構，不再使用分組標題文字或分隔線。
-        # 頁面索引與堆疊路由維持不變（見 docs/architecture-workflow-contract.md）。
+        # 領域分組：群組標題（非按鈕 QLabel）+ 間距呈現工作流程結構；
+        # 每個導覽列攜帶 action（("page", KEY) 或 ("scope", SCOPE)），不耦合堆疊索引。
         nav_layout.addSpacing(4)
-
-        for idx, (label, _name, badge, icon) in enumerate(_OVERVIEW_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, idx, badge_enabled=badge, icon=icon))
-
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        offset = len(_OVERVIEW_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_EVENT_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
-
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        offset += len(_EVENT_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_INSIGHT_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, offset + idx, badge_enabled=badge, icon=icon))
-
-        # To keep "不合格品追蹤" at its original position and separated from "異常事件統計",
-        # we add a spacing equivalent to the removed "基礎資料" item height + gap.
-        nav_layout.addSpacing(SIDEBAR_NAV_ITEM_HEIGHT + _NAV_GROUP_GAP * 2)
-
-        ncr_offset = offset + len(_INSIGHT_ITEMS)
-        for idx, (label, badge, icon) in enumerate(_NCR_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, ncr_offset + idx, badge_enabled=badge, icon=icon))
-
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        ncr_stats_offset = ncr_offset + len(_NCR_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_NCR_STATS_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, ncr_stats_offset + idx, badge_enabled=badge, icon=icon))
-
-        nav_layout.addSpacing(_NAV_GROUP_GAP)
-
-        master_offset = ncr_stats_offset + len(_NCR_STATS_ITEMS)
-        for idx, (label, _name, badge, icon) in enumerate(_MASTER_ITEMS):
-            nav_layout.addWidget(self._make_nav_btn(label, master_offset + idx, badge_enabled=badge, icon=icon))
+        for header, items in _NAV_GROUPS:
+            if header is not None:
+                nav_layout.addSpacing(_NAV_GROUP_GAP)
+                nav_layout.addWidget(self._make_group_header(header))
+            for label, action, badge_enabled, icon in items:
+                nav_layout.addWidget(
+                    self._make_nav_btn(label, action, badge_enabled=badge_enabled, icon=icon)
+                )
 
         nav_layout.addStretch(1)
 
@@ -255,9 +232,7 @@ class SidebarNav(QFrame):
         nav_scroll.viewport().setStyleSheet("background: transparent;")
         root.addWidget(nav_scroll, 1)
 
-        root.addWidget(self._build_footer())
-
-        self.set_active(0)
+        self.set_active(("page", PAGE_HOME))
 
     @staticmethod
     def _make_white_logo(path: str, max_w: int, max_h: int) -> QPixmap | None:
@@ -306,56 +281,44 @@ class SidebarNav(QFrame):
 
         return section
 
-    def _build_footer(self) -> QWidget:
-        footer = QWidget()
-        footer.setObjectName("SidebarFooter")
-
-        layout = QVBoxLayout(footer)
-        layout.setContentsMargins(12, 10, 12, 16)
-        layout.setSpacing(8)
-
-        label = QLabel("快速建立")
-        label.setObjectName("SidebarFooterLabel")
-        layout.addWidget(label)
-
-        btn = QPushButton("＋ 新增異常")
-        btn.setObjectName("SidebarQuickCreate")
-        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(self.quick_create_clicked)
-        layout.addWidget(btn)
-
-        warehouse_btn = QPushButton("＋ 建立不合格品")
-        warehouse_btn.setObjectName("SidebarWarehouseQuickCreate")
-        warehouse_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        warehouse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        warehouse_btn.clicked.connect(self.warehouse_create_clicked)
-        layout.addWidget(warehouse_btn)
-
-        return footer
+    def _make_group_header(self, text: str) -> QLabel:
+        """建立側欄領域分組標題（靜態 QLabel，不進入 self._buttons）。"""
+        label = QLabel(text)
+        label.setObjectName("SidebarGroupHeader")
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        return label
 
     def _make_nav_btn(
         self,
         label: str,
-        index: int,
+        action: object,
         *,
         badge_enabled: bool = False,
         icon: str | None = None,
     ) -> _NavButton:
         btn = _NavButton(label, badge_enabled=badge_enabled, icon=icon)
-        btn.clicked.connect(lambda _checked=False, i=index: self._on_nav_clicked(i))
+        btn.action = action
+        btn.clicked.connect(lambda _checked=False, a=action: self._on_nav_activated(a))
         self._buttons.append(btn)
         return btn
 
-    def _on_nav_clicked(self, index: int) -> None:
-        self.set_active(index)
-        self.page_changed.emit(index)
+    def _on_nav_activated(self, action: object) -> None:
+        # main_window 為 active 狀態的唯一真相：路由成功後會呼叫 set_active；
+        # 若導覽被攔截（例如 NCR 髒資料守衛），舊高亮維持不變。
+        self.nav_activated.emit(action)
 
-    def set_active(self, index: int) -> None:
-        self._active_index = index
-        for i, btn in enumerate(self._buttons):
-            btn.set_active(i == index)
+    def button_for_action(self, action: object) -> "_NavButton | None":
+        for btn in self._buttons:
+            if getattr(btn, "action", None) == action:
+                return btn
+        return None
 
-    def set_badge(self, index: int, count: int) -> None:
-        if 0 <= index < len(self._buttons):
-            self._buttons[index].set_badge(count)
+    def set_active(self, action: object) -> None:
+        self._active_action = action
+        for btn in self._buttons:
+            btn.set_active(getattr(btn, "action", None) == action)
+
+    def set_badge(self, action: object, count: int) -> None:
+        btn = self.button_for_action(action)
+        if btn is not None:
+            btn.set_badge(count)

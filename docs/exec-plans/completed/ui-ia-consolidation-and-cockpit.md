@@ -1,6 +1,14 @@
 # UI IA Consolidation + Daily Cockpit
 
 Date: 2026-06-07
+Completed: 2026-06-25
+
+> **Completion note**: The consolidation was implemented, but the final sidebar settled
+> at **6 items** (not 5 as planned) because an `不合格品統計分析` group was added after
+> the plan was written. The `NCR_PAGE_OFFSET` landed at **3** (not 4 as planned).
+> These divergences are reflected in the current `README.md` and
+> `docs/architecture-workflow-contract.md`. The plan's core goals (event-entry
+> consolidation, home cockpit backlog, scope-tab routing, dead-code removal) were achieved.
 
 ## Context
 

@@ -101,12 +101,8 @@ class MicroInteractionTests(unittest.TestCase):
             widget.show()
             self._drain_events()
 
-            assert widget.event_scope_tab_bar is not None
-            self.assertEqual(
-                Qt.CursorShape.PointingHandCursor,
-                widget.event_scope_tab_bar.cursor().shape(),
-            )
-            self.assertEqual("切換事件管理分類", widget.event_scope_tab_bar.toolTip())
+            # Stage 2：頁內 scope 分頁列已移除；scope 由側欄導覽列驅動。
+            self.assertIsNone(widget.event_scope_tab_bar)
 
             self.assertEqual(
                 Qt.CursorShape.PointingHandCursor,

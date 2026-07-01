@@ -111,6 +111,6 @@ PALETTE: dict[str, object] = {
 }
 
 
-def color(name: str) -> str:
+def color(name: str) -> object:
     """Return a palette colour by name (raises KeyError if missing — fail fast)."""
-    return PALETTE[name]  # type: ignore[return-value]
+    return PALETTE[name]

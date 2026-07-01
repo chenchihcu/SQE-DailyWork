@@ -7,33 +7,28 @@
 ===================
 - 混合(Mixin)方法僅存取 self 上由主 Widget 提供的屬性/方法
 - 不持有 QWidget 子類別的狀態  —  狀態一律由主 Widget 管理
-- Duck Typing：self._month_key()、self.defect_grid 等會於執行期由主 Widget 滿足
+- Duck Typing：self._month_key()、self._chart_content_layout 等會於執行期由主 Widget 滿足
 """
 
 from __future__ import annotations
 
 import logging
 
-import ncr.services.stats_service as ncr_stats_service
-from database.connection import get_connection
 from PySide6.QtCharts import (
     QBarCategoryAxis,
     QBarSeries,
     QBarSet,
     QChart,
     QChartView,
-    QHorizontalBarSeries,
     QHorizontalStackedBarSeries,
     QLineSeries,
-    QPieSeries,
     QScatterSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QMargins, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QLabel, QSizePolicy, QToolTip
+from PySide6.QtWidgets import QApplication, QLabel, QToolTip
 
-from ui.design_tokens import PALETTE
 from ui.layout_constants import CHART_BAR_HEIGHT, CHART_HEADER_FOOTER_OFFSET, CHART_MIN_HEIGHT
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
@@ -53,11 +48,6 @@ CHART_OVERDUE_PALETTE = get_status_palette("逾期未結")
 CHART_OPEN_COLOR = QColor(CHART_OPEN_PALETTE.chart)
 CHART_CLOSED_COLOR = QColor(CHART_CLOSED_PALETTE.chart)
 CHART_OVERDUE_COLOR = QColor(CHART_OVERDUE_PALETTE.chart)
-_C_DANGER = QColor(PALETTE["danger_chart"])
-_C_PENDING = QColor(PALETTE["pending_chart"])
-_C_SUCCESS = QColor(PALETTE["success_chart"])
-_C_INFO = QColor(PALETTE["info_chart"])
-_C_CHART4 = QColor(PALETTE["chart_4"])
 
 
 class _StatsChartMixin:
@@ -69,7 +59,6 @@ class _StatsChartMixin:
 
     圖表方法會透過 self 存取主 Widget 提供的以下屬性/方法：
     - self.main_window              (set in __init__)
-    - self.defect_grid              (set in _setup_ui)
     - self._chart_content_layout    (set in _setup_ui)
     - self._trend_content_layout    (set in _setup_ui)
     - self._resp_content_layout     (set in _setup_ui)
@@ -546,242 +535,4 @@ class _StatsChartMixin:
             self
         )
 
-    # ── 不合格品（倉庫）圖表 ──────────────────────────────
-
-    def _refresh_defect_charts(self):
-        while self.defect_grid.count() > 0:
-            item = self.defect_grid.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.hide()
-                w.setParent(None)
-                w.deleteLater()
-
-        try:
-            with get_connection() as conn:
-                pie_rows = ncr_stats_service.get_disposition_stats(conn)
-                trend_rows = ncr_stats_service.get_trend_stats(conn, months=6)
-                product_rows = ncr_stats_service.get_top_products_stats_filtered(conn)
-                supplier_rows = ncr_stats_service.get_supplier_disposition_stats(conn)
-        except Exception as exc:
-            logger.exception("載入倉庫不合格品統計數據失敗")
-            err_lbl = QLabel(f"無法載入倉庫不合格品統計數據：{exc}")
-            self.defect_grid.addWidget(err_lbl, 0, 0)
-            return
-
-        pie_view = self._build_defect_pie_chart(pie_rows)
-        trend_view = self._build_defect_trend_chart(trend_rows)
-        product_view = self._build_defect_product_chart(product_rows)
-        supplier_view = self._build_defect_supplier_chart(supplier_rows)
-
-        for row_index, view in enumerate((pie_view, trend_view, product_view, supplier_view)):
-            self.defect_grid.addWidget(view, row_index, 0)
-            if view:
-                view.setMinimumHeight(CHART_MIN_HEIGHT)
-                view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-        self.defect_grid.setColumnStretch(0, 1)
-
-    def _build_defect_pie_chart(self, rows) -> QChartView:
-        series = QPieSeries()
-        series.setHoleSize(0.35)
-        series.setPieSize(0.85)
-        total_qty = sum(int(r["total_qty"] or 0) for r in rows)
-
-        colors = {
-            "報廢": _C_DANGER,
-            "退貨": _C_PENDING,
-            "重工": _C_SUCCESS,
-        }
-
-        for r in rows:
-            disp = r["disposition"] or "未註明"
-            qty = int(r["total_qty"] or 0)
-            if qty > 0:
-                pct = (qty / total_qty * 100) if total_qty > 0 else 0
-                slice_obj = series.append(f"{disp} ({qty}件, {pct:.1f}%)", qty)
-                slice_obj.setLabelVisible(False)
-                slice_obj.setBrush(colors.get(disp, _C_INFO))
-
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setTitle("倉庫不合格品處置數量佔比")
-        apply_chart_surface(chart)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignRight)
-        chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-
-        view = QChartView(chart)
-        view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        return view
-
-    def _build_defect_trend_chart(self, rows) -> QChartView:
-        series = QLineSeries()
-        series.setName("月度不合格品總數 (件)")
-        series.setColor(_C_CHART4)
-        series.setPointsVisible(True)
-
-        categories = []
-        max_qty = 0
-        for i, r in enumerate(rows):
-            month = r["event_month"]
-            qty = int(r["total_qty"] or 0)
-            categories.append(month)
-            series.append(i, qty)
-            if qty > max_qty:
-                max_qty = qty
-
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setTitle("近六個月倉庫不合格品趨勢")
-        apply_chart_surface(chart)
-        chart.legend().setVisible(False)
-
-        app_font_family = QApplication.font().family()
-        axis_label_font = QFont(app_font_family, CHART_AXIS_LABEL_POINT_SIZE)
-
-        axis_x = QBarCategoryAxis()
-        axis_x.append(categories)
-        axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_x.setLabelsFont(axis_label_font)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis_x)
-
-        axis_y = QValueAxis()
-        axis_y.setLabelFormat("%d")
-        axis_y.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_y.setLabelsFont(axis_label_font)
-        axis_y.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        axis_y.setRange(0, max_qty + 5 if max_qty > 0 else 10)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_y)
-
-        view = QChartView(chart)
-        view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        return view
-
-    def _build_defect_product_chart(self, rows) -> QChartView:
-        series = QHorizontalBarSeries()
-        series.setLabelsVisible(True)
-        series.setBarWidth(0.6)
-
-        bar_set = QBarSet("不合格品總數")
-        bar_set.setBrush(_C_INFO)
-        categories = []
-
-        data = list(rows)[:5]
-        for r in reversed(data):
-            categories.append(self._short_supplier_label(r["product_name"], max_len=12))
-            bar_set.append(int(r["total_qty"] or 0))
-        categories = self._dedupe_chart_labels(categories)
-
-        series.append(bar_set)
-
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setTitle("Top 5 倉庫不合格品產品")
-        apply_chart_surface(chart)
-        chart.legend().setVisible(False)
-
-        app_font_family = QApplication.font().family()
-        axis_label_font = QFont(app_font_family, CHART_AXIS_LABEL_POINT_SIZE)
-
-        axis_y = QBarCategoryAxis()
-        axis_y.append(categories)
-        axis_y.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_y.setLabelsFont(axis_label_font)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_y)
-
-        axis_x = QValueAxis()
-        axis_x.setLabelFormat("%d")
-        axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_x.setLabelsFont(axis_label_font)
-        axis_x.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        max_qty = max((int(r["total_qty"] or 0) for r in data), default=10)
-        axis_x.setRange(0, max_qty + 2)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis_x)
-
-        view = QChartView(chart)
-        view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        return view
-
-    def _build_defect_supplier_chart(self, rows) -> QChartView:
-        suppliers = []
-        for r in rows:
-            if r["supplier_name"] not in suppliers:
-                suppliers.append(r["supplier_name"])
-
-        supplier_totals = {s: 0 for s in suppliers}
-        for r in rows:
-            supplier_totals[r["supplier_name"]] += int(r["total_qty"] or 0)
-        suppliers.sort(key=lambda s: supplier_totals[s], reverse=True)
-        suppliers = list(reversed(suppliers[:5]))
-
-        series = QHorizontalStackedBarSeries()
-        series.setLabelsVisible(True)
-        series.setBarWidth(0.6)
-
-        set_scrap = QBarSet("報廢")
-        set_scrap.setBrush(_C_DANGER)
-        set_return = QBarSet("退貨")
-        set_return.setBrush(_C_PENDING)
-        set_rework = QBarSet("重工")
-        set_rework.setBrush(_C_SUCCESS)
-
-        short_suppliers = []
-        for s in suppliers:
-            short_suppliers.append(self._short_supplier_label(s, max_len=10))
-            scrap = 0
-            ret = 0
-            rework = 0
-            for r in rows:
-                if r["supplier_name"] != s:
-                    continue
-                qty = int(r["total_qty"] or 0)
-                disp = r["disposition"]
-                if disp == "報廢":
-                    scrap += qty
-                elif disp == "退貨":
-                    ret += qty
-                elif disp == "重工":
-                    rework += qty
-            set_scrap.append(scrap)
-            set_return.append(ret)
-            set_rework.append(rework)
-        short_suppliers = self._dedupe_chart_labels(short_suppliers)
-
-        series.append(set_scrap)
-        series.append(set_return)
-        series.append(set_rework)
-
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setTitle("供應商 / 倉庫處置關聯分析")
-        apply_chart_surface(chart)
-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-        chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-
-        app_font_family = QApplication.font().family()
-        axis_label_font = QFont(app_font_family, CHART_AXIS_LABEL_POINT_SIZE)
-
-        axis_y = QBarCategoryAxis()
-        axis_y.append(short_suppliers)
-        axis_y.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_y.setLabelsFont(axis_label_font)
-        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-        series.attachAxis(axis_y)
-
-        axis_x = QValueAxis()
-        axis_x.setLabelFormat("%d")
-        axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_x.setLabelsFont(axis_label_font)
-        axis_x.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        max_total = max(supplier_totals.values(), default=10)
-        axis_x.setRange(0, max_total + 2)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis_x)
-
-        view = QChartView(chart)
-        view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        return view
+    # 倉庫不合格品圖表已移至獨立的「不合格品統計分析」頁（NcrStatsWidget），本 Mixin 不再持有。

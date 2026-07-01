@@ -81,10 +81,10 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
         self.widget._selected_supplier_id = "sup-1"
         with (
             patch(
-                "ui.widgets.master_data_widget.QMessageBox.question",
+                "ui.widgets.master_data_supplier_mixin.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.No,
             ),
-            patch("ui.widgets.master_data_widget.event_service.set_supplier_active") as toggle_mock,
+            patch("ui.widgets.master_data_supplier_mixin.event_service.set_supplier_active") as toggle_mock,
         ):
             self.widget._toggle_supplier_active()
         toggle_mock.assert_not_called()
@@ -93,11 +93,11 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
         self.widget._selected_product_id = "prd-1"
         with (
             patch(
-                "ui.widgets.master_data_widget.QMessageBox.question",
+                "ui.widgets.master_data_product_mixin.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
             ),
-            patch("ui.widgets.master_data_widget.event_service.set_product_active") as toggle_mock,
-            patch("ui.widgets.master_data_widget.QMessageBox.information"),
+            patch("ui.widgets.master_data_product_mixin.event_service.set_product_active") as toggle_mock,
+            patch("ui.widgets.master_data_product_mixin.QMessageBox.information"),
         ):
             self.widget._toggle_product_active()
         toggle_mock.assert_called_once_with("prd-1", False)
@@ -110,15 +110,15 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
                 return_value=["sup-1", "sup-2"],
             ),
             patch(
-                "ui.widgets.master_data_widget.QMessageBox.question",
+                "ui.widgets.master_data_supplier_mixin.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             patch(
-                "ui.widgets.master_data_widget.QInputDialog.getText",
+                "ui.widgets.master_data_supplier_mixin.QInputDialog.getText",
                 return_value=("wrong", True),
             ),
-            patch("ui.widgets.master_data_widget.event_service.delete_suppliers") as delete_mock,
-            patch("ui.widgets.master_data_widget.QMessageBox.warning") as warning_mock,
+            patch("ui.widgets.master_data_supplier_mixin.event_service.delete_suppliers") as delete_mock,
+            patch("ui.widgets.master_data_supplier_mixin.QMessageBox.warning") as warning_mock,
         ):
             self.widget._delete_selected_suppliers()
         delete_mock.assert_not_called()
@@ -132,18 +132,18 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
                 return_value=["sup-1", "sup-2"],
             ),
             patch(
-                "ui.widgets.master_data_widget.QMessageBox.question",
+                "ui.widgets.master_data_supplier_mixin.QMessageBox.question",
                 return_value=QMessageBox.StandardButton.Yes,
             ),
             patch(
-                "ui.widgets.master_data_widget.QInputDialog.getText",
+                "ui.widgets.master_data_supplier_mixin.QInputDialog.getText",
                 return_value=("DELETE", True),
             ),
             patch(
-                "ui.widgets.master_data_widget.event_service.delete_suppliers",
+                "ui.widgets.master_data_supplier_mixin.event_service.delete_suppliers",
                 return_value={"deleted": ["sup-1"], "failed": []},
             ) as delete_mock,
-            patch("ui.widgets.master_data_widget.QMessageBox.information"),
+            patch("ui.widgets.master_data_supplier_mixin.QMessageBox.information"),
         ):
             self.widget._delete_selected_suppliers()
         delete_mock.assert_called_once_with(["sup-1", "sup-2"])

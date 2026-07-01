@@ -34,6 +34,7 @@ from ui.widgets.common_widgets import (
     create_status_item,
     safe_ui_operation,
     style_table,
+    text_table_item,
 )
 from ui.widgets.product_form_dialog import ProductFormDialog
 from ui.widgets.product_stage_log_dialog import ProductStageLogDialog
@@ -202,10 +203,10 @@ class _MasterDataProductMixin:
             primary_supplier_text = row.get("supplier_name") or "（未指定）"
             secondary_supplier_text = row.get("secondary_supplier_name") or "（未指定）"
             self.product_table.setItem(idx, 0, QTableWidgetItem(row["product_code"]))
-            self.product_table.setItem(idx, 1, QTableWidgetItem(row["product_name"]))
+            self.product_table.setItem(idx, 1, text_table_item(row["product_name"]))
             self.product_table.setItem(idx, 2, QTableWidgetItem(product_stage))
-            self.product_table.setItem(idx, 3, QTableWidgetItem(primary_supplier_text))
-            self.product_table.setItem(idx, 4, QTableWidgetItem(secondary_supplier_text))
+            self.product_table.setItem(idx, 3, text_table_item(primary_supplier_text))
+            self.product_table.setItem(idx, 4, text_table_item(secondary_supplier_text))
             status_item = create_status_item(status_text)
             self.product_table.setItem(idx, 5, status_item)
             self.product_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])

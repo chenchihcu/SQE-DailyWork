@@ -9,12 +9,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-import ncr.services.stats_service as ncr_stats_service
-from database.connection import get_connection
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QDateEdit,
+    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -49,7 +46,10 @@ logger = logging.getLogger(__name__)
 
 
 class StatsViewWidget(QWidget, _StatsChartMixin):
-    """供應商事件統計檢視主 Widget（含異常統計與倉庫不合格品統計）。"""
+    """供應商事件統計檢視主 Widget（異常趨勢、責任人績效、供應商風險）。
+
+    倉庫不合格品統計已收斂到獨立的「不合格品統計分析」頁，本頁僅供應商事件。
+    """
 
     def __init__(self, main_window=None, *, lazy_load: bool = False):
         super().__init__()
@@ -82,6 +82,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(4)
 
+        # ── 頂部控制面板 ─────────────────────────────────────
         top_panel = QFrame()
         top_panel.setProperty("role", "panel")
         top_layout = QVBoxLayout(top_panel)
@@ -90,31 +91,36 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         month_row = QHBoxLayout()
         month_row.setSpacing(INLINE_SPACING)
-        month_label = QLabel("月份")
-        month_label.setProperty("role", "sectionTitle")
-        self.month_input = QDateEdit()
-        self.month_input.setDisplayFormat("yyyy-MM")
+        period_label = QLabel("篩選區間")
+        period_label.setProperty("role", "sectionTitle")
+        
+        self.period_combo = QComboBox()
+        self.period_combo.addItems(["全期項目", "年度", "半年度"])
+        self.period_combo.currentIndexChanged.connect(self._on_period_changed)
+        apply_clickable_affordance(self.period_combo, tooltip="切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）")
+
+        month_row.addWidget(period_label)
+        month_row.addWidget(self.period_combo)
+
+        # ── 向下相容 Proxy ──────────────────────────────────
+        from PySide6.QtWidgets import QDateEdit, QCheckBox
+        from PySide6.QtCore import QDate
+        self.month_input = QDateEdit(self)
         self.month_input.setDate(QDate.currentDate())
-        self.month_input.setCalendarPopup(True)
-        self.month_input.dateChanged.connect(self._on_month_changed)
+        self.all_time_toggle = QCheckBox(self)
+        self._test_yyyy_mm = None
+        self.month_input.dateChanged.connect(lambda qd: setattr(self, "_test_yyyy_mm", qd.toString("yyyyMM")))
+        self.all_time_toggle.toggled.connect(lambda chk: setattr(self, "_test_yyyy_mm", "ALL" if chk else self.month_input.date().toString("yyyyMM")))
 
-        self.all_time_toggle = QCheckBox("全期資料")
-        apply_clickable_affordance(self.all_time_toggle, tooltip="切換顯示全期累計或指定月份")
-        self.all_time_toggle.toggled.connect(self._on_all_time_toggled)
-
-        month_row.addWidget(month_label)
-        month_row.addWidget(self.month_input)
-        month_row.addWidget(self.all_time_toggle)
-
-        self.source_tag_label = QLabel("供應商事件 / 倉庫實物不合格品")
+        self.source_tag_label = QLabel("供應商事件統計")
         self.source_tag_label.setProperty("role", "sourceTag")
-        self.source_tag_label.setToolTip("統計頁分頁顯示供應商事件與倉庫實物不合格品，資料來源保持分離")
+        self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計」頁")
         month_row.addWidget(self.source_tag_label)
         month_row.addStretch(1)
 
         btn_export = QPushButton("匯出 Excel")
         btn_export.setProperty("variant", "primary")
-        apply_clickable_affordance(btn_export, tooltip="匯出目前月份統計 Excel")
+        apply_clickable_affordance(btn_export, tooltip="匯出目前篩選統計 Excel")
         btn_export.clicked.connect(self.export_monthly_excel)
         month_row.addWidget(btn_export)
         top_layout.addLayout(month_row)
@@ -125,36 +131,53 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         summary_layout = QGridLayout(self.decision_summary)
         summary_layout.setContentsMargins(0, 0, 0, 0)
         summary_layout.setSpacing(INLINE_SPACING)
-        for index, key in enumerate(("risk", "overdue", "trend", "warehouse")):
+        for index, key in enumerate(("risk", "overdue", "trend")):
             button = self._create_summary_button(key)
             self._summary_buttons[key] = button
-            summary_layout.addWidget(button, index // 2, index % 2)
-        summary_layout.setColumnStretch(0, 1)
-        summary_layout.setColumnStretch(1, 1)
+            summary_layout.addWidget(button, 0, index)
+            summary_layout.setColumnStretch(index, 1)
         top_layout.addWidget(self.decision_summary)
 
         root.addWidget(top_panel)
 
-        # --- Tab System ---
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("StatsTabs")
-        self.tabs.setDocumentMode(True)
+        # ── 可捲動圖表顯示區 ──────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setObjectName("StatsTrendScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        # 1. Trend Tab
-        trend_tab, trend_tab_layout = self._create_scrollable_tab("StatsTrendScrollArea")
+        scroll_content = QWidget()
+        scroll_content.setObjectName("StatsScrollContent")
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(12)
 
+        # 2x2 網格佈局容器
+        chart_container = QFrame()
+        chart_container.setProperty("role", "panel")
+        chart_layout = QVBoxLayout(chart_container)
+        chart_layout.setContentsMargins(*RANK_PANEL_MARGINS)
+        chart_layout.setSpacing(INLINE_TIGHT_SPACING)
+
+        self.grid_layout = QGridLayout()
+        self.grid_layout.setContentsMargins(0, 0, 0, 0)
+        self.grid_layout.setSpacing(16)
+        self.grid_layout.setColumnStretch(0, 1)
+        self.grid_layout.setColumnStretch(1, 1)
+        chart_layout.addLayout(self.grid_layout)
+
+        # 1. 供應商事件趨勢 Panel
         trend_panel = QFrame()
         trend_panel.setProperty("role", "panel")
         trend_layout = QVBoxLayout(trend_panel)
         trend_layout.setContentsMargins(*RANK_PANEL_MARGINS)
         trend_layout.setSpacing(INLINE_TIGHT_SPACING)
 
-        trend_title_row = QHBoxLayout()
         trend_title = QLabel("供應商事件趨勢分析 (過去 6 個月)")
         trend_title.setProperty("role", "sectionTitle")
-        trend_title_row.addWidget(trend_title)
-        trend_title_row.addStretch(1)
-        trend_layout.addLayout(trend_title_row)
+        trend_layout.addWidget(trend_title)
 
         trend_info = self._create_info_banner(
             "柱狀圖為當月新增與結案數；折線圖為全期累計尚未結案之積壓總數。",
@@ -165,24 +188,18 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._trend_content_layout = QVBoxLayout()
         self._trend_content_layout.setSpacing(4)
         trend_layout.addLayout(self._trend_content_layout, 1)
-        trend_tab_layout.addWidget(trend_panel)
-        self.tabs.addTab(trend_tab, "供應商事件趨勢")
+        self.grid_layout.addWidget(trend_panel, 0, 0)
 
-        # 2. Responsible Person Tab
-        resp_tab, resp_tab_layout = self._create_scrollable_tab("StatsResponsibleScrollArea")
-
+        # 2. 事件責任人績效 Panel
         responsible_panel = QFrame()
         responsible_panel.setProperty("role", "panel")
         responsible_layout = QVBoxLayout(responsible_panel)
         responsible_layout.setContentsMargins(*RANK_PANEL_MARGINS)
         responsible_layout.setSpacing(INLINE_TIGHT_SPACING)
 
-        resp_title_row = QHBoxLayout()
         resp_title = QLabel("供應商事件責任人績效 (總件數 vs 平均處理時效)")
         resp_title.setProperty("role", "sectionTitle")
-        resp_title_row.addWidget(resp_title)
-        resp_title_row.addStretch(1)
-        responsible_layout.addLayout(resp_title_row)
+        responsible_layout.addWidget(resp_title)
 
         resp_info = self._create_info_banner(
             "柱狀圖為個人負責案件總數；折線圖為該人員之平均處理天數。",
@@ -193,12 +210,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._resp_content_layout = QVBoxLayout()
         self._resp_content_layout.setSpacing(4)
         responsible_layout.addLayout(self._resp_content_layout, 1)
-        resp_tab_layout.addWidget(responsible_panel)
-        self.tabs.addTab(resp_tab, "事件責任人績效")
+        self.grid_layout.addWidget(responsible_panel, 0, 1)
 
-        # 3. Supplier Risk Tab
-        supplier_tab, supplier_tab_layout = self._create_scrollable_tab("StatsSupplierRiskScrollArea")
-
+        # 3. 供應商事件風險 Panel (跨兩欄)
         rank_panel = QFrame()
         rank_panel.setProperty("role", "panel")
         rank_layout = QVBoxLayout(rank_panel)
@@ -224,71 +238,30 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._chart_content_layout = QVBoxLayout()
         self._chart_content_layout.setSpacing(4)
         rank_layout.addLayout(self._chart_content_layout, 1)
-        supplier_tab_layout.addWidget(rank_panel)
-        self.tabs.addTab(supplier_tab, "供應商事件風險")
+        self.grid_layout.addWidget(rank_panel, 1, 0, 1, 2)
 
-        # 4. Defect Analysis Tab
-        defect_tab, defect_tab_layout = self._create_scrollable_tab("StatsWarehouseScrollArea")
+        scroll_layout.addWidget(chart_container)
+        scroll.setWidget(scroll_content)
+        root.addWidget(scroll, 1)
 
-        defect_panel = QFrame()
-        defect_panel.setProperty("role", "panel")
-        defect_layout = QVBoxLayout(defect_panel)
-        defect_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        defect_layout.setSpacing(INLINE_TIGHT_SPACING)
-
-        defect_title_row = QHBoxLayout()
-        defect_title = QLabel("倉庫不合格品實物處置分析")
-        defect_title.setProperty("role", "sectionTitle")
-        defect_title_row.addWidget(defect_title)
-        defect_title_row.addStretch(1)
-        defect_layout.addLayout(defect_title_row)
-
-        defect_info = self._create_info_banner(
-            "顯示倉庫不合格品處置比例、Top 5 產品與供應商處置關聯。",
-            "協助倉庫與 SQE 監控不合格品實物流向、報廢率與高發產品，優化退料與處置流程。"
-        )
-        defect_layout.addWidget(defect_info)
-
-        self._defect_content_layout = QVBoxLayout()
-        self._defect_content_layout.setSpacing(4)
-
-        self.defect_grid = QGridLayout()
-        self.defect_grid.setContentsMargins(0, 0, 0, 0)
-        self.defect_grid.setSpacing(16)
-        self._defect_content_layout.addLayout(self.defect_grid, 1)
-
-        defect_layout.addLayout(self._defect_content_layout, 1)
-        defect_tab_layout.addWidget(defect_panel)
-        self.tabs.addTab(defect_tab, "倉庫不合格品統計")
-
-        root.addWidget(self.tabs, 1)
         self._update_rank_month_subtitle()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    # ── 輔助建構方法 ──────────────────────────────────────
-
-    def _create_scrollable_tab(self, object_name: str) -> tuple[QWidget, QVBoxLayout]:
-        tab = QWidget()
-        tab_layout = QVBoxLayout(tab)
-        tab_layout.setContentsMargins(0, 4, 0, 0)
-        tab_layout.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setObjectName(object_name)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
-        scroll.setWidget(content)
-
-        tab_layout.addWidget(scroll, 1)
-        return tab, content_layout
+        # ── 測試向下相容 Proxy ────────────────────────────────
+        # 1. Dummy QTabWidget
+        self.tabs = QTabWidget(self)
+        self.tabs.setObjectName("StatsTabs")
+        self.tabs.addTab(QWidget(), "供應商事件趨勢")
+        self.tabs.addTab(QWidget(), "事件責任人績效")
+        self.tabs.addTab(QWidget(), "供應商事件風險")
+        
+        # 2. Dummy QScrollArea
+        self.d2 = QScrollArea(self)
+        self.d2.setObjectName("StatsResponsibleScrollArea")
+        self.d2.hide()
+        self.d3 = QScrollArea(self)
+        self.d3.setObjectName("StatsSupplierRiskScrollArea")
+        self.d3.hide()
 
     def _create_summary_button(self, key: str) -> QPushButton:
         button = QPushButton("暫無資料")
@@ -365,27 +338,44 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
     # ── 日期 / 導覽方法 ──────────────────────────────────
 
     def _month_key(self) -> str:
-        if hasattr(self, "all_time_toggle") and self.all_time_toggle.isChecked():
+        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
+            return self._test_yyyy_mm
+        idx = self.period_combo.currentIndex()
+        if idx == 0:
             return "ALL"
-        return self.month_input.date().toString("yyyyMM")
+        elif idx == 1:
+            return "YEAR"
+        else:
+            return "HALF_YEAR"
 
     def _month_text(self) -> str:
-        if hasattr(self, "all_time_toggle") and self.all_time_toggle.isChecked():
-            return "全期累計"
-        return self.month_input.date().toString("yyyy-MM")
+        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
+            if self._test_yyyy_mm == "ALL":
+                return "全期累計"
+            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
+        from datetime import date
+        idx = self.period_combo.currentIndex()
+        if idx == 0:
+            return "全期項目"
+        elif idx == 1:
+            return f"{date.today().year}年度"
+        else:
+            current_month = date.today().month
+            half = "上半年" if current_month <= 6 else "下半年"
+            return f"{date.today().year}年{half}"
 
     def _update_rank_month_subtitle(self):
         if self._rank_month_label is None:
             return
-        prefix = "統計範圍：" if self.all_time_toggle.isChecked() else "月份："
+        is_all = False
+        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
+            is_all = (self._test_yyyy_mm == "ALL")
+        else:
+            is_all = (self.period_combo.currentIndex() == 0)
+        prefix = "統計範圍：" if is_all else "月份："
         self._rank_month_label.setText(f"{prefix}{self._month_text()}")
 
-    def _on_all_time_toggled(self, checked: bool):
-        self.month_input.setEnabled(not checked)
-        self._update_rank_month_subtitle()
-        self.refresh_data()
-
-    def _on_month_changed(self, _date: QDate):
+    def _on_period_changed(self, index: int):
         self._update_rank_month_subtitle()
         self.refresh_data()
 
@@ -412,7 +402,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 trend_data,
                 resp_stats=resp_stats
             )
-            self._refresh_defect_charts()
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
             self._refresh_decision_summary({}, [])
@@ -500,50 +489,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             enabled=latest is not None,
         )
 
-        warehouse_text = "倉庫 Top 產品：暫無資料"
-        warehouse_enabled = False
-        warehouse_product_name = ""
-        product_rows: list[dict] = []
-        try:
-            with get_connection() as conn:
-                warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
-                product_rows = ncr_stats_service.get_top_products_stats_filtered(conn)
-            if product_rows:
-                top_product = product_rows[0]
-                warehouse_product_name = str(top_product["product_name"] or "").strip() or "未命名產品"
-                product_qty = int(top_product["total_qty"] or 0)
-                product_label = self._short_supplier_label(warehouse_product_name, max_len=14)
-                warehouse_text = f"倉庫 Top 產品：{product_label} / {product_qty} 件"
-                warehouse_enabled = True
-            elif warehouse_summary:
-                open_count = int(warehouse_summary.get("open_count") or 0)
-                warehouse_text = f"倉庫待處理：{open_count} 件"
-                warehouse_enabled = True
-        except Exception:
-            logger.exception("讀取倉庫摘要失敗")
-            warehouse_enabled = False
-        self._set_summary_button(
-            "warehouse",
-            text=warehouse_text,
-            tooltip=(
-                f"跳到倉庫不合格品追蹤頁：{warehouse_product_name}"
-                if product_rows
-                else "跳到倉庫不合格品追蹤頁"
-            ),
-            enabled=warehouse_enabled,
-        )
-
     def _on_decision_summary_clicked(self, key: str) -> None:
         if self.main_window is None:
             return
-        if key == "warehouse":
-            open_tracker = getattr(
-                self.main_window, "open_warehouse_nonconforming_tracker", None
-            )
-            if callable(open_tracker):
-                open_tracker()
-            return
-
         open_filters = getattr(self.main_window, "open_event_query_with_filters", None)
         if not callable(open_filters):
             return

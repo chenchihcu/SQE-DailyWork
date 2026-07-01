@@ -162,7 +162,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             "ui.widgets.master_data_widget.event_service.create_product",
             return_value="new-product-id",
         ) as create_mock, patch(
-            "ui.widgets.master_data_widget.QMessageBox.information"
+            "ui.widgets.master_data_product_mixin.QMessageBox.information"
         ), patch.object(
             self.widget, "_open_product_dialog", return_value=payload
         ) as open_dialog_mock:
@@ -184,7 +184,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         with patch(
             "ui.widgets.master_data_widget.event_service.update_product"
         ) as update_mock, patch(
-            "ui.widgets.master_data_widget.QMessageBox.information"
+            "ui.widgets.master_data_product_mixin.QMessageBox.information"
         ), patch.object(
             self.widget, "_open_product_dialog", return_value=payload
         ):
@@ -230,7 +230,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             patch(
                 "ui.widgets.master_data_widget.event_service.update_supplier"
             ) as update_supplier_mock,
-            patch("ui.widgets.master_data_widget.QMessageBox.information"),
+            patch("ui.widgets.master_data_supplier_mixin.QMessageBox.information"),
             patch.object(self.widget, "_open_supplier_dialog", return_value=payload),
         ):
             self.widget._update_supplier()

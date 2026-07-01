@@ -173,7 +173,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 "供應商事件趨勢",
                 "事件責任人績效",
                 "供應商事件風險",
-                "倉庫不合格品統計",
             ],
             [widget.tabs.tabText(index) for index in range(widget.tabs.count())],
         )
@@ -264,7 +263,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 "StatsTrendScrollArea",
                 "StatsResponsibleScrollArea",
                 "StatsSupplierRiskScrollArea",
-                "StatsWarehouseScrollArea",
             },
             {scroll.objectName() for scroll in widget.findChildren(QScrollArea)},
         )
@@ -350,48 +348,24 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             {"yyyymm": "2026-10", "total_count": 2, "closed_count": 1, "overdue_count": 0, "backlog_count": 2},
             {"yyyymm": "2026-11", "total_count": 4, "closed_count": 3, "overdue_count": 1, "backlog_count": 3},
         ]
-        with (
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_warehouse_nonconforming_summary",
-                return_value={"open_count": 2},
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats_filtered",
-                return_value=[{"product_name": "Warehouse-Part-A", "total_qty": 12}],
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_disposition_stats",
-                return_value=[],
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_trend_stats",
-                return_value=[],
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_supplier_disposition_stats",
-                return_value=[],
-            ),
-        ):
-            widget, host = self._build_widget(
-                summary,
-                month=QDate(2026, 11, 1),
-                trend_data=trend_data,
-            )
+        widget, host = self._build_widget(
+            summary,
+            month=QDate(2026, 11, 1),
+            trend_data=trend_data,
+        )
 
+        # 倉庫去重複後，決策摘要只剩供應商事件三鈕（risk / overdue / trend）。
         self.assertEqual(
-            {"risk", "overdue", "trend", "warehouse"},
+            {"risk", "overdue", "trend"},
             set(widget._summary_buttons),
         )
         buttons = widget.findChildren(QPushButton)
         self.assertTrue(any(button.property("role") == "decisionSummary" for button in buttons))
         self.assertIn("Supplier-Risk", widget._summary_buttons["risk"].text())
-        self.assertIn("倉庫 Top 產品", widget._summary_buttons["warehouse"].text())
-        self.assertIn("Warehouse-Part-A", widget._summary_buttons["warehouse"].toolTip())
 
         widget._summary_buttons["risk"].click()
         widget._summary_buttons["overdue"].click()
         widget._summary_buttons["trend"].click()
-        widget._summary_buttons["warehouse"].click()
 
         self.assertEqual(
             {
@@ -410,11 +384,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertIs(True, host.quick_filter_calls[1]["overdue_only"])
         self.assertEqual("已結案", host.quick_filter_calls[2]["status"])
         self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, host.quick_filter_calls[2]["event_scope"])
-        self.assertEqual(1, host.warehouse_tracker_calls)
 
     def test_stats_view_visual_stress_keeps_scroll_guards_and_compact_width(self) -> None:
         long_supplier = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        long_product = "倉庫產品名稱-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         summary = {
             "anomaly_count": 200,
             "visit_count": 20,
@@ -455,54 +427,10 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             }
             for index in range(25)
         ]
-        warehouse_products = [
-            {
-                "product_name": (
-                    long_product
-                    if index == 0
-                    else f"倉庫產品名稱-{index:02d}-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                ),
-                "total_qty": index * 2 + 1,
-            }
-            for index in range(10)
-        ]
-        supplier_disposition_rows = [
-            {
-                "supplier_name": f"倉庫供應商-{index:02d}-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                "disposition": disposition,
-                "total_qty": index + 1,
-            }
-            for index in range(10)
-            for disposition in ("報廢", "退貨", "重工")
-        ]
-
         with (
             patch("services.event_service.get_monthly_stats", return_value=summary),
             patch("services.event_service.get_anomaly_trend", return_value=trend_data),
             patch("services.event_service.get_responsible_person_stats", return_value=resp_stats),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_disposition_stats",
-                return_value=[
-                    {"disposition": "報廢", "total_qty": 10},
-                    {"disposition": "退貨", "total_qty": 5},
-                    {"disposition": "重工", "total_qty": 8},
-                ],
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_trend_stats",
-                return_value=[
-                    {"event_month": f"2026-{month:02d}", "total_qty": month * 3}
-                    for month in range(1, 13)
-                ],
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_top_products_stats_filtered",
-                return_value=warehouse_products,
-            ),
-            patch(
-                "ui.widgets.stats_view_widget.ncr_stats_service.get_supplier_disposition_stats",
-                return_value=supplier_disposition_rows,
-            ),
         ):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             widget.month_input.setDate(QDate(2026, 6, 1))
@@ -524,7 +452,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 "StatsTrendScrollArea",
                 "StatsResponsibleScrollArea",
                 "StatsSupplierRiskScrollArea",
-                "StatsWarehouseScrollArea",
             },
             set(scrolls),
         )
@@ -536,22 +463,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             self.assertEqual(QSizePolicy.Policy.Ignored, button.sizePolicy().horizontalPolicy())
 
         self.assertIn(long_supplier, widget._summary_buttons["risk"].toolTip())
-        self.assertIn(long_product, widget._summary_buttons["warehouse"].toolTip())
         self.assertLess(len(widget._summary_buttons["risk"].text()), len(long_supplier) + 12)
-        self.assertLess(len(widget._summary_buttons["warehouse"].text()), len(long_product) + 12)
-
-        warehouse_titles = {
-            "倉庫不合格品處置數量佔比",
-            "近六個月倉庫不合格品趨勢",
-            "Top 5 倉庫不合格品產品",
-            "供應商 / 倉庫處置關聯分析",
-        }
-        warehouse_charts = [
-            view
-            for view in widget.findChildren(QChartView)
-            if view.chart().title() in warehouse_titles
-        ]
-        self.assertEqual(4, len(warehouse_charts))
 
         for chart_view in widget.findChildren(QChartView):
             for axis in chart_view.chart().axes():
@@ -579,7 +491,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         assert widget._chart_series is not None
         bar_set = widget._chart_series.barSets()[0]
 
-        with patch("ui.widgets.stats_view_widget.QToolTip.showText") as mock_show:
+        with patch("ui.widgets.stats_chart_mixin.QToolTip.showText") as mock_show:
             widget._on_chart_bar_hovered(True, 0, bar_set)
         mock_show.assert_called_once()
         tooltip_text = str(mock_show.call_args.args[1])
@@ -591,7 +503,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertIn("平均處理時效：3.2 天", tooltip_text)
         self.assertIn("月份：2026-09", tooltip_text)
 
-        with patch("ui.widgets.stats_view_widget.QToolTip.hideText") as mock_hide:
+        with patch("ui.widgets.stats_chart_mixin.QToolTip.hideText") as mock_hide:
             widget._on_chart_bar_hovered(False, 0, bar_set)
         mock_hide.assert_called_once()
 

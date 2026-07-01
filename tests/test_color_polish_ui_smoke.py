@@ -39,7 +39,7 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             # Sidebar navigation replaces old QTabWidget
             self.assertIsNotNone(window.sidebar)
             self.assertIsInstance(window.sidebar, SidebarNav)
-            self.assertEqual(6, len(window.sidebar._buttons))
+            self.assertEqual(9, len(window.sidebar._buttons))
             self.assertIsNotNone(window.findChild(QFrame, "HomeKpiPanel"))
             self.assertIsNone(window.findChild(QFrame, "HomeQuickActionPanel"))
             self.assertIsNotNone(window.findChild(QFrame, "MasterInlineToolbar"))
@@ -48,7 +48,7 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
                 for frame in window.findChildren(QFrame)
                 if frame.property("role") == "kpiCard"
             ]
-            self.assertEqual(6, len(kpi_cards))
+            self.assertEqual(4, len(kpi_cards))
         finally:
             window.close()
 

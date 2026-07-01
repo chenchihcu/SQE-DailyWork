@@ -1,0 +1,1215 @@
+diff --git a/scripts/qt_visual_probe.py b/scripts/qt_visual_probe.py
+index 9c42e3f..95ebcb8 100644
+--- a/scripts/qt_visual_probe.py
++++ b/scripts/qt_visual_probe.py
+@@ -467,7 +467,14 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
+             )
+         )
+ 
+-        quick_product_dialog = QuickProductCreateDialog(conn, "ITEM-NEW")
++        # production 中此對話框的 parent 為已套用 NCR stylesheet 的頁面，
++        # role="primary" 才會呈現 Electric Blue；探針給予同樣 styled parent 以反映實際渲染。
++        from PySide6.QtWidgets import QWidget
++        from ncr.ui.ui_style import app_stylesheet as _ncr_app_stylesheet
++
++        _ncr_style_host = QWidget()
++        _ncr_style_host.setStyleSheet(_ncr_app_stylesheet())
++        quick_product_dialog = QuickProductCreateDialog(conn, "ITEM-NEW", _ncr_style_host)
+         screenshots.append(
+             _capture_widget(
+                 quick_product_dialog,
+diff --git a/src/database/repository.py b/src/database/repository.py
+index 63c8b0a..2515d45 100644
+--- a/src/database/repository.py
++++ b/src/database/repository.py
+@@ -492,7 +492,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
+     _ensure_column(
+         conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
+     )
+-    _remove_products_spec_desc_column_if_present(conn)
+ 
+     conn.executescript(
+         """
+@@ -633,7 +632,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
+     _ensure_index(conn, "idx_visits_product", "visits", "product_id")
+     _ensure_product_indexes(conn)
+     _normalize_event_status_tables(conn)
+-    _normalize_defect_records_optional_work_order(conn)
++    _remove_products_spec_desc_column_if_present(conn)
+     _ensure_index(conn, "idx_anomalies_date", "anomalies", "anomaly_date")
+     _ensure_index(conn, "idx_anomalies_supplier", "anomalies", "supplier_id")
+     _ensure_index(conn, "idx_anomalies_status", "anomalies", "status")
+@@ -1250,33 +1249,104 @@ def _build_old_to_new_mapping(rows: list[dict[str, Any]]) -> dict[str, str]:
+ 
+ 
+ def _apply_key_updates(conn: sqlite3.Connection, updates: list[dict[str, Any]]) -> None:
++    """Apply anomaly_no/issue_no recoding with UNIQUE constraint collision retry.
++
++    Uses a two-phase update (temp value -> final value) to avoid UNIQUE conflicts.
++    If a collision occurs on the second phase (concurrent same-day same-seq),
++    retries with a new sequence number.
++    """
+     if not updates:
+         return
++
++    max_retries = 3
++    for attempt in range(max_retries):
++        try:
++            # Phase 1: write temp values
++            for item in updates:
++                table_name = item["table"]
++                number_column = item["number_column"]
++                rowid = item["rowid"]
++                tmp_value = f"__TMP_ANO__{uuid.uuid4().hex}__"
++                conn.execute(
++                    f"""
++                    UPDATE {_quote_identifier(table_name)}
++                    SET {_quote_identifier(number_column)} = ?
++                    WHERE rowid = ?
++                    """,
++                    (tmp_value, rowid),
++                )
++            # Phase 2: write final values
++            for item in updates:
++                table_name = item["table"]
++                number_column = item["number_column"]
++                rowid = item["rowid"]
++                conn.execute(
++                    f"""
++                    UPDATE {_quote_identifier(table_name)}
++                    SET {_quote_identifier(number_column)} = ?
++                    WHERE rowid = ?
++                    """,
++                    (item["new_no"], rowid),
++                )
++            return  # Success
++        except sqlite3.IntegrityError as exc:
++            if "UNIQUE constraint failed" in str(exc) and attempt < max_retries - 1:
++                # Collision on new_no: regenerate sequence for conflicting items and retry
++                _regenerate_conflicting_nos(conn, updates)
++                continue
++            raise
++
++
++def _regenerate_conflicting_nos(conn: sqlite3.Connection, updates: list[dict[str, Any]]) -> None:
++    """Regenerate anomaly_no for items that hit UNIQUE collision.
++
++    Groups by table and date, assigns fresh sequences starting from max existing + 1.
++    """
++    from collections import defaultdict
++
++    # Group updates by (table, date_column) to assign fresh sequences per day
++    by_table_date: dict[tuple[str, str], list[dict]] = defaultdict(list)
+     for item in updates:
+         table_name = item["table"]
+-        number_column = item["number_column"]
+-        rowid = item["rowid"]
+-        tmp_value = f"__TMP_ANO__{uuid.uuid4().hex}__"
+-        conn.execute(
+-            f"""
+-            UPDATE {_quote_identifier(table_name)}
+-            SET {_quote_identifier(number_column)} = ?
+-            WHERE rowid = ?
+-            """,
+-            (tmp_value, rowid),
+-        )
+-    for item in updates:
+-        table_name = item["table"]
+-        number_column = item["number_column"]
+-        rowid = item["rowid"]
+-        conn.execute(
++        # Find the date_column for this table
++        spec = _resolve_anomaly_no_target_specs(conn)
++        date_col = next((s["date_column"] for s in spec if s["table"] == table_name), None)
++        if not date_col:
++            continue
++        # Fetch the date for this rowid
++        row = conn.execute(
++            f"SELECT {_quote_identifier(date_col)} FROM {_quote_identifier(table_name)} WHERE rowid = ?",
++            (item["rowid"],),
++        ).fetchone()
++        if row:
++            day_key = _normalize_date(row[0]).replace("-", "")
++            by_table_date[(table_name, day_key)].append(item)
++
++    # Regenerate for each group
++    for (table_name, day_key), group in by_table_date.items():
++        number_col = next((s["number_column"] for s in _resolve_anomaly_no_target_specs(conn) if s["table"] == table_name), None)
++        if not number_col:
++            continue
++        # Find max existing sequence for this day
++        row = conn.execute(
+             f"""
+-            UPDATE {_quote_identifier(table_name)}
+-            SET {_quote_identifier(number_column)} = ?
+-            WHERE rowid = ?
++            SELECT COALESCE(MAX(
++                CASE
++                    WHEN length({_quote_identifier(number_col)}) = 11
++                         AND {_quote_identifier(number_col)} GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
++                         AND substr({_quote_identifier(number_col)}, 1, 8) = ?
++                    THEN CAST(substr({_quote_identifier(number_col)}, 9) AS INTEGER)
++                END
++            ), 0) AS max_seq
++            FROM {_quote_identifier(table_name)}
++            WHERE {_quote_identifier(number_col)} LIKE ?
+             """,
+-            (item["new_no"], rowid),
+-        )
++            (day_key, f"{day_key}%"),
++        ).fetchone()
++        seq = int(row["max_seq"]) + 1
++        for item in group:
++            item["new_no"] = f"{day_key}{seq:03d}"
++            seq += 1
+ 
+ 
+ def _rewrite_text_columns(
+@@ -5166,6 +5236,7 @@ def _insert_visit_row(
+ def _find_latest_visit_id(
+     conn: sqlite3.Connection, *, supplier_id: str, visit_date: str
+ ) -> str | None:
++    normalized_date = _normalize_strict_iso_date(visit_date, field_name="Visit date")
+     row = conn.execute(
+         """
+         SELECT id
+@@ -5174,7 +5245,7 @@ def _find_latest_visit_id(
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT 1
+         """,
+-        (supplier_id, _normalize_date(visit_date)),
++        (supplier_id, normalized_date),
+     ).fetchone()
+     if row is None:
+         return None
+@@ -5306,239 +5377,107 @@ def _find_product_id_by_name_scope(
+     if row is None:
+         return None
+     return str(row["id"])
++def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
++    row = conn.execute(
++        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
++        (table_name,),
++    ).fetchone()
++    if row is None:
++        return ""
++    if isinstance(row, sqlite3.Row):
++        return str(row["sql"] or "")
++    return str(row[0] or "")
+ 
+ 
+-def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> None:
+-    if not _has_column(conn, "products", "spec_desc"):
+-        return
+-    if get_migration_meta(conn, "products_spec_desc_removed_v1") == "1":
+-        return
+-
+-    has_product_stage = _has_column(conn, "products", "product_stage")
+-    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
+-    product_stage_select_sql = (
+-        "CASE"
+-        " WHEN trim(coalesce(product_stage, '')) IN ('量產', '試產')"
+-        " THEN trim(product_stage)"
+-        " ELSE '量產'"
+-        " END AS product_stage"
+-        if has_product_stage
+-        else "'量產' AS product_stage"
++def _ensure_product_indexes(conn: sqlite3.Connection) -> None:
++    conn.execute(
++        """
++        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_global_code
++            ON products(product_code)
++            WHERE supplier_id IS NULL
++        """
+     )
+-    secondary_supplier_select_sql = (
+-        "secondary_supplier_id"
+-        if has_secondary_supplier_id
+-        else "NULL AS secondary_supplier_id"
++    conn.execute(
++        """
++        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_supplier_code
++            ON products(supplier_id, product_code)
++            WHERE supplier_id IS NOT NULL
++        """
+     )
+-
+-    conn.commit()
+-    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+-    fk_enabled = bool(
+-        _as_int((fk_row[0] if fk_row is not None else 1), 1)
++    conn.execute(
++        "CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id)"
++    )
++    conn.execute(
++        """
++        CREATE INDEX IF NOT EXISTS idx_products_secondary_supplier
++            ON products(secondary_supplier_id)
++        """
++    )
++    conn.execute(
++        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)"
+     )
+-    if fk_enabled:
+-        conn.execute("PRAGMA foreign_keys=OFF")
+-    try:
+-        conn.execute("BEGIN IMMEDIATE")
+-        conn.execute("DROP TABLE IF EXISTS products__new")
+-        conn.execute(
+-            """
+-            CREATE TABLE products__new (
+-                id TEXT PRIMARY KEY,
+-                product_code TEXT NOT NULL,
+-                product_name TEXT NOT NULL,
+-                product_stage TEXT NOT NULL DEFAULT '量產',
+-                supplier_id TEXT,
+-                secondary_supplier_id TEXT,
+-                is_active INTEGER NOT NULL DEFAULT 1,
+-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-                FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+-                FOREIGN KEY (secondary_supplier_id) REFERENCES suppliers(id)
+-            )
+-            """
+-        )
+-        conn.execute(
+-            """
+-            INSERT INTO products__new(
+-                id, product_code, product_name, product_stage, supplier_id, secondary_supplier_id,
+-                is_active, created_at, updated_at
+-            )
+-            SELECT
+-                id,
+-                product_code,
+-                product_name,
+-                """
+-            + product_stage_select_sql
+-            + """
+-                ,
+-                supplier_id,
+-                """
+-            + secondary_supplier_select_sql
+-            + """
+-                ,
+-                is_active,
+-                created_at,
+-                updated_at
+-            FROM products
+-            """
+-        )
+-        conn.execute("DROP TABLE products")
+-        conn.execute("ALTER TABLE products__new RENAME TO products")
+-        _ensure_product_indexes(conn)
+-        conn.execute("COMMIT")
+-        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
+-    except Exception:
+-        if conn.in_transaction:
+-            conn.execute("ROLLBACK")
+-        raise
+-    finally:
+-        if fk_enabled:
+-            conn.execute("PRAGMA foreign_keys=ON")
+ 
+ 
+-def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
+-    if get_migration_meta(conn, "event_status_normalized_v1") == "1":
++def _ensure_column(
++    conn: sqlite3.Connection, table_name: str, column_name: str, column_ddl: str
++) -> None:
++    if _has_column(conn, table_name, column_name):
+         return
++    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_ddl}")
+ 
+-    anomalies_sql = _table_sql(conn, "anomalies")
+-    visits_sql = _table_sql(conn, "visits")
+ 
+-    needs_anomaly_rebuild = False
+-    needs_visit_rebuild = False
++def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
++    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
++    return any(str(row["name"]) == column_name for row in rows)
+ 
+-    if anomalies_sql:
+-        needs_anomaly_rebuild = ("'OPEN'" in anomalies_sql) or ("'CLOSED'" in anomalies_sql)
+-    if visits_sql:
+-        needs_visit_rebuild = "'COMPLETED'" in visits_sql
+ 
+-    legacy_anomaly_row = conn.execute(
+-        "SELECT 1 FROM anomalies WHERE status IN ('OPEN', 'CLOSED') LIMIT 1"
+-    ).fetchone()
+-    if legacy_anomaly_row is not None:
+-        needs_anomaly_rebuild = True
+-
+-    legacy_visit_row = conn.execute(
+-        "SELECT 1 FROM visits WHERE status = 'COMPLETED' LIMIT 1"
+-    ).fetchone()
+-    if legacy_visit_row is not None:
+-        needs_visit_rebuild = True
++def _ensure_index(
++    conn: sqlite3.Connection, index_name: str, table_name: str, column_name: str
++) -> None:
++    conn.execute(
++        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"
++    )
+ 
+-    if not needs_anomaly_rebuild and not needs_visit_rebuild:
+-        return
+ 
+-    conn.commit()
+-    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+-    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
+-    if fk_enabled:
+-        conn.execute("PRAGMA foreign_keys=OFF")
+-    try:
+-        conn.execute("BEGIN IMMEDIATE")
+-        if needs_visit_rebuild:
+-            _rebuild_visits_with_zh_status(conn)
+-        if needs_anomaly_rebuild:
++def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
++    """Normalize legacy OPEN/CLOSED status values to zh-TW (待處理/已結案).
++    
++    This is a one-time migration for legacy databases created before the
++    CHECK constraint was added. The meta key 'event_status_normalized_v1'
++    ensures this only runs once.
++    
++    Note: This migration temporarily disables CHECK constraints to allow
++    updating legacy OPEN/CLOSED values to zh-TW values.
++    """
++    if get_migration_meta(conn, "event_status_normalized_v1") != "1":
++        # Temporarily disable foreign key and check constraints for migration
++        conn.execute("PRAGMA foreign_keys = OFF")
++        try:
+             _rebuild_anomalies_with_zh_status(conn)
+-        conn.execute("COMMIT")
+-        upsert_migration_meta(conn, "event_status_normalized_v1", "1")
+-    except Exception:
+-        if conn.in_transaction:
+-            conn.execute("ROLLBACK")
+-        raise
+-    finally:
+-        if fk_enabled:
+-            conn.execute("PRAGMA foreign_keys=ON")
+-
++            _rebuild_visits_with_zh_status(conn)
++            upsert_migration_meta(conn, "event_status_normalized_v1", "1")
++        finally:
++            conn.execute("PRAGMA foreign_keys = ON")
+ 
+-def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> None:
+-    """Drop the legacy ``CHECK(TRIM(work_order_no) <> '')`` so 委外製令 is optional.
+ 
+-    SQLite cannot drop a CHECK constraint via ALTER, so rebuild the table when the
+-    old constraint is still present. Idempotent: returns early once the constraint
+-    is gone. ``defect_records`` has no triggers in sqe_v2.db; its only dependent
+-    object is the ``uniq_defect_records_business_key`` index, recreated afterwards.
++def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
++    """Migrate anomalies status from OPEN/CLOSED to 待處理/已結案.
++    
++    This function rebuilds the anomalies table to allow legacy OPEN/CLOSED
++    values to be updated to zh-TW values. It uses table reconstruction
++    to bypass CHECK constraints.
+     """
+-    table_sql = _table_sql(conn, "defect_records")
+-    if not table_sql or "CHECK(TRIM(work_order_no)" not in table_sql:
++    # Check if there are any legacy OPEN/CLOSED values
++    row = conn.execute(
++        "SELECT COUNT(*) as cnt FROM anomalies WHERE status IN ('OPEN', 'CLOSED')"
++    ).fetchone()
++    if row["cnt"] == 0:
+         return
+-
+-    conn.commit()
+-    fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
+-    fk_enabled = bool(_as_int((fk_row[0] if fk_row is not None else 1), 1))
+-    if fk_enabled:
+-        conn.execute("PRAGMA foreign_keys=OFF")
+-    try:
+-        conn.execute("BEGIN IMMEDIATE")
+-        conn.execute("DROP TABLE IF EXISTS defect_records__new")
+-        conn.execute(
+-            """
+-            CREATE TABLE defect_records__new (
+-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+-                defect_no TEXT NOT NULL UNIQUE CHECK(TRIM(defect_no) <> ''),
+-                event_date TEXT NOT NULL
+-                    CHECK(
+-                        event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+-                        AND date(event_date) IS NOT NULL
+-                    ),
+-                return_slip_type TEXT NOT NULL DEFAULT '',
+-                work_order_no TEXT NOT NULL DEFAULT '',
+-                internal_work_order_no TEXT NOT NULL DEFAULT '',
+-                transfer_slip_no TEXT NOT NULL DEFAULT '',
+-                item_no TEXT NOT NULL CHECK(TRIM(item_no) <> ''),
+-                product_name TEXT NOT NULL DEFAULT '',
+-                qty INTEGER NOT NULL CHECK(qty > 0),
+-                category TEXT NOT NULL DEFAULT '',
+-                supplier_name TEXT NOT NULL DEFAULT '',
+-                outsource_supplier_name TEXT NOT NULL DEFAULT '',
+-                defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
+-                status TEXT NOT NULL DEFAULT '',
+-                disposition TEXT NOT NULL DEFAULT '',
+-                responsibility TEXT NOT NULL DEFAULT '',
+-                created_at TEXT NOT NULL CHECK(TRIM(created_at) <> '')
+-            )
+-            """
+-        )
+-        conn.execute(
+-            """
+-            INSERT INTO defect_records__new(
+-                id, defect_no, event_date, return_slip_type, work_order_no,
+-                internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
+-                category, supplier_name, outsource_supplier_name, defect_desc, status,
+-                disposition, responsibility, created_at
+-            )
+-            SELECT
+-                id, defect_no, event_date, return_slip_type, work_order_no,
+-                internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
+-                category, supplier_name, outsource_supplier_name, defect_desc, status,
+-                disposition, responsibility, created_at
+-            FROM defect_records
+-            """
+-        )
+-        conn.execute("DROP TABLE defect_records")
+-        conn.execute("ALTER TABLE defect_records__new RENAME TO defect_records")
+-        conn.execute(
+-            """
+-            CREATE UNIQUE INDEX IF NOT EXISTS uniq_defect_records_business_key
+-                ON defect_records(
+-                    event_date, work_order_no, internal_work_order_no,
+-                    transfer_slip_no, item_no, defect_desc
+-                )
+-            """
+-        )
+-        conn.execute("COMMIT")
+-    except Exception:
+-        if conn.in_transaction:
+-            conn.execute("ROLLBACK")
+-        raise
+-    finally:
+-        if fk_enabled:
+-            conn.execute("PRAGMA foreign_keys=ON")
+-
+-
+-def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
+-    conn.execute("DROP TABLE IF EXISTS anomalies__new")
+-    conn.execute(
++    
++    # Rebuild table without CHECK constraint temporarily
++    conn.executescript(
+         """
+-        CREATE TABLE anomalies__new (
++        CREATE TABLE IF NOT EXISTS anomalies_old (
+             id TEXT PRIMARY KEY,
+             anomaly_no TEXT NOT NULL UNIQUE,
+             anomaly_date TEXT NOT NULL,
+@@ -5552,68 +5491,120 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
+             product_stage TEXT NOT NULL DEFAULT '量產',
+             outsource_work_order TEXT NOT NULL DEFAULT '',
+             batch_qty INTEGER NOT NULL DEFAULT 0,
+-            status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
++            status TEXT NOT NULL DEFAULT '待處理',
+             improvement_desc TEXT NOT NULL DEFAULT '',
++            closed_by TEXT NOT NULL DEFAULT '',
++            root_cause_category TEXT NOT NULL DEFAULT '',
+             closed_at TEXT,
++            pending_items TEXT NOT NULL DEFAULT '',
++            responsible_person TEXT NOT NULL DEFAULT '',
++            due_date TEXT NOT NULL DEFAULT '',
+             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+             FOREIGN KEY (visit_id) REFERENCES visits(id),
+             FOREIGN KEY (product_id) REFERENCES products(id)
+-        )
++        );
++        INSERT INTO anomalies_old SELECT 
++            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
++            problem_desc, category, product_lot_no, product_name, product_stage,
++            outsource_work_order, batch_qty, status, improvement_desc, closed_by,
++            root_cause_category, closed_at, pending_items, responsible_person,
++            due_date, created_at, updated_at
++        FROM anomalies;
++        DROP TABLE anomalies;
++        ALTER TABLE anomalies_old RENAME TO anomalies;
++        CREATE INDEX idx_anomalies_date ON anomalies(anomaly_date);
++        CREATE INDEX idx_anomalies_supplier ON anomalies(supplier_id);
++        CREATE INDEX idx_anomalies_status ON anomalies(status);
+         """
+     )
++    
++    # Now update the status values
+     conn.execute(
+         """
+-        INSERT INTO anomalies__new(
+-            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
+-            category, product_lot_no, product_name, product_stage, outsource_work_order, batch_qty,
+-            status, improvement_desc, closed_at, created_at, updated_at
+-        )
+-        SELECT
+-            id,
+-            anomaly_no,
+-            anomaly_date,
+-            supplier_id,
+-            visit_id,
+-            product_id,
+-            problem_desc,
+-            category,
+-            product_lot_no,
+-            product_name,
+-            '量產' AS product_stage,
+-            outsource_work_order,
+-            batch_qty,
+-            CASE
+-                WHEN status IN ('OPEN', '待處理') THEN '待處理'
+-                WHEN status IN ('CLOSED', '已結案') THEN '已結案'
+-                ELSE '待處理'
+-            END AS status,
+-            improvement_desc,
+-            CASE
+-                WHEN status IN ('CLOSED', '已結案') THEN closed_at
+-                ELSE NULL
+-            END AS closed_at,
+-            created_at,
+-            updated_at
+-        FROM anomalies
++        UPDATE anomalies
++        SET status = CASE
++            WHEN status = 'OPEN' THEN '待處理'
++            WHEN status = 'CLOSED' THEN '已結案'
++            ELSE status
++        END
++        WHERE status IN ('OPEN', 'CLOSED')
++        """
++    )
++    
++    # Recreate table with CHECK constraint
++    conn.executescript(
++        """
++        CREATE TABLE IF NOT EXISTS anomalies_new (
++            id TEXT PRIMARY KEY,
++            anomaly_no TEXT NOT NULL UNIQUE,
++            anomaly_date TEXT NOT NULL,
++            supplier_id TEXT NOT NULL,
++            visit_id TEXT,
++            product_id TEXT,
++            problem_desc TEXT NOT NULL,
++            category TEXT NOT NULL DEFAULT '',
++            product_lot_no TEXT NOT NULL DEFAULT '',
++            product_name TEXT NOT NULL DEFAULT '',
++            product_stage TEXT NOT NULL DEFAULT '量產',
++            outsource_work_order TEXT NOT NULL DEFAULT '',
++            batch_qty INTEGER NOT NULL DEFAULT 0,
++            status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
++            improvement_desc TEXT NOT NULL DEFAULT '',
++            closed_by TEXT NOT NULL DEFAULT '',
++            root_cause_category TEXT NOT NULL DEFAULT '',
++            closed_at TEXT,
++            pending_items TEXT NOT NULL DEFAULT '',
++            responsible_person TEXT NOT NULL DEFAULT '',
++            due_date TEXT NOT NULL DEFAULT '',
++            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
++            FOREIGN KEY (visit_id) REFERENCES visits(id),
++            FOREIGN KEY (product_id) REFERENCES products(id)
++        );
++        INSERT INTO anomalies_new SELECT 
++            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
++            problem_desc, category, product_lot_no, product_name, product_stage,
++            outsource_work_order, batch_qty, status, improvement_desc, closed_by,
++            root_cause_category, closed_at, pending_items, responsible_person,
++            due_date, created_at, updated_at
++        FROM anomalies;
++        DROP TABLE anomalies;
++        ALTER TABLE anomalies_new RENAME TO anomalies;
++        CREATE INDEX idx_anomalies_date ON anomalies(anomaly_date);
++        CREATE INDEX idx_anomalies_supplier ON anomalies(supplier_id);
++        CREATE INDEX idx_anomalies_status ON anomalies(status);
+         """
+     )
+-    conn.execute("DROP TABLE anomalies")
+-    conn.execute("ALTER TABLE anomalies__new RENAME TO anomalies")
+ 
+ 
+ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
+-    conn.execute("DROP TABLE IF EXISTS visits__new")
+-    conn.execute(
++    """Migrate visits status from OPEN/CLOSED/COMPLETED to 已完成.
++    
++    This function rebuilds the visits table to allow legacy status values
++    to be updated to '已完成'. It uses table reconstruction to bypass
++    CHECK constraints.
++    """
++    # Check if there are any legacy values
++    row = conn.execute(
++        "SELECT COUNT(*) as cnt FROM visits WHERE status != '已完成'"
++    ).fetchone()
++    if row["cnt"] == 0:
++        return
++    
++    # Rebuild table without CHECK constraint temporarily
++    conn.executescript(
+         """
+-        CREATE TABLE visits__new (
++        CREATE TABLE IF NOT EXISTS visits_old (
+             id TEXT PRIMARY KEY,
+             visit_date TEXT NOT NULL,
+             supplier_id TEXT NOT NULL,
+             product_id TEXT,
+             product_name TEXT NOT NULL DEFAULT '',
+             product_stage TEXT NOT NULL DEFAULT '量產',
++            visitor_name TEXT NOT NULL DEFAULT '',
+             summary TEXT NOT NULL DEFAULT '',
+             work_order_no TEXT NOT NULL DEFAULT '',
+             production_qty INTEGER NOT NULL DEFAULT 0,
+@@ -5623,108 +5614,151 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
+             dispensing_process INTEGER NOT NULL DEFAULT 0,
+             functional_test INTEGER NOT NULL DEFAULT 0,
+             packaging_requirement INTEGER NOT NULL DEFAULT 0,
+-            status TEXT NOT NULL DEFAULT '已完成' CHECK (status='已完成'),
++            tech_transfer_doc_state TEXT NOT NULL DEFAULT 'no',
++            carrier_requirement_state TEXT NOT NULL DEFAULT 'no',
++            dispensing_process_state TEXT NOT NULL DEFAULT 'no',
++            functional_test_state TEXT NOT NULL DEFAULT 'no',
++            packaging_requirement_state TEXT NOT NULL DEFAULT 'no',
++            status TEXT NOT NULL DEFAULT '已完成',
+             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+             FOREIGN KEY (product_id) REFERENCES products(id)
+-        )
+-        """
+-    )
+-    conn.execute(
+-        """
+-        INSERT INTO visits__new(
+-            id, visit_date, supplier_id, product_id, product_name, product_stage, summary,
+-            work_order_no, production_qty, tech_transfer, tech_transfer_doc,
+-            carrier_requirement, dispensing_process, functional_test, packaging_requirement,
+-            status, created_at, updated_at
+-        )
+-        SELECT
+-            id,
+-            visit_date,
+-            supplier_id,
+-            product_id,
+-            product_name,
+-            '量產' AS product_stage,
+-            summary,
+-            work_order_no,
+-            production_qty,
+-            tech_transfer,
+-            0 AS tech_transfer_doc,
+-            0 AS carrier_requirement,
+-            0 AS dispensing_process,
+-            0 AS functional_test,
+-            0 AS packaging_requirement,
+-            CASE
+-                WHEN status IN ('COMPLETED', '已完成') THEN '已完成'
+-                ELSE '已完成'
+-            END AS status,
+-            created_at,
+-            updated_at
+-        FROM visits
+-        """
+-    )
+-    conn.execute("DROP TABLE visits")
+-    conn.execute("ALTER TABLE visits__new RENAME TO visits")
+-
+-
+-def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
+-    row = conn.execute(
+-        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
+-        (table_name,),
+-    ).fetchone()
+-    if row is None:
+-        return ""
+-    if isinstance(row, sqlite3.Row):
+-        return str(row["sql"] or "")
+-    return str(row[0] or "")
+-
+-
+-def _ensure_product_indexes(conn: sqlite3.Connection) -> None:
+-    conn.execute(
+-        """
+-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_global_code
+-            ON products(product_code)
+-            WHERE supplier_id IS NULL
++        );
++        INSERT INTO visits_old SELECT 
++            id, visit_date, supplier_id, product_id, product_name, product_stage,
++            visitor_name, summary, work_order_no, production_qty, tech_transfer,
++            tech_transfer_doc, carrier_requirement, dispensing_process,
++            functional_test, packaging_requirement, tech_transfer_doc_state,
++            carrier_requirement_state, dispensing_process_state,
++            functional_test_state, packaging_requirement_state, status,
++            created_at, updated_at
++        FROM visits;
++        DROP TABLE visits;
++        ALTER TABLE visits_old RENAME TO visits;
++        CREATE INDEX idx_visits_date ON visits(visit_date);
++        CREATE INDEX idx_visits_supplier ON visits(supplier_id);
+         """
+     )
++    
++    # Update all non-已完成 values to 已完成
+     conn.execute(
+         """
+-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_supplier_code
+-            ON products(supplier_id, product_code)
+-            WHERE supplier_id IS NOT NULL
++        UPDATE visits
++        SET status = '已完成'
++        WHERE status != '已完成'
+         """
+     )
+-    conn.execute(
+-        "CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id)"
+-    )
+-    conn.execute(
++    
++    # Recreate table with CHECK constraint
++    conn.executescript(
+         """
+-        CREATE INDEX IF NOT EXISTS idx_products_secondary_supplier
+-            ON products(secondary_supplier_id)
++        CREATE TABLE IF NOT EXISTS visits_new (
++            id TEXT PRIMARY KEY,
++            visit_date TEXT NOT NULL,
++            supplier_id TEXT NOT NULL,
++            product_id TEXT,
++            product_name TEXT NOT NULL DEFAULT '',
++            product_stage TEXT NOT NULL DEFAULT '量產',
++            visitor_name TEXT NOT NULL DEFAULT '',
++            summary TEXT NOT NULL DEFAULT '',
++            work_order_no TEXT NOT NULL DEFAULT '',
++            production_qty INTEGER NOT NULL DEFAULT 0,
++            tech_transfer INTEGER NOT NULL DEFAULT 0,
++            tech_transfer_doc INTEGER NOT NULL DEFAULT 0,
++            carrier_requirement INTEGER NOT NULL DEFAULT 0,
++            dispensing_process INTEGER NOT NULL DEFAULT 0,
++            functional_test INTEGER NOT NULL DEFAULT 0,
++            packaging_requirement INTEGER NOT NULL DEFAULT 0,
++            tech_transfer_doc_state TEXT NOT NULL DEFAULT 'no',
++            carrier_requirement_state TEXT NOT NULL DEFAULT 'no',
++            dispensing_process_state TEXT NOT NULL DEFAULT 'no',
++            functional_test_state TEXT NOT NULL DEFAULT 'no',
++            packaging_requirement_state TEXT NOT NULL DEFAULT 'no',
++            status TEXT NOT NULL DEFAULT '已完成' CHECK (status='已完成'),
++            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
++            FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
++            FOREIGN KEY (product_id) REFERENCES products(id)
++        );
++        INSERT INTO visits_new SELECT 
++            id, visit_date, supplier_id, product_id, product_name, product_stage,
++            visitor_name, summary, work_order_no, production_qty, tech_transfer,
++            tech_transfer_doc, carrier_requirement, dispensing_process,
++            functional_test, packaging_requirement, tech_transfer_doc_state,
++            carrier_requirement_state, dispensing_process_state,
++            functional_test_state, packaging_requirement_state, status,
++            created_at, updated_at
++        FROM visits;
++        DROP TABLE visits;
++        ALTER TABLE visits_new RENAME TO visits;
++        CREATE INDEX idx_visits_date ON visits(visit_date);
++        CREATE INDEX idx_visits_supplier ON visits(supplier_id);
+         """
+     )
+-    conn.execute(
+-        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)"
+-    )
+ 
+ 
+-def _ensure_column(
+-    conn: sqlite3.Connection, table_name: str, column_name: str, column_ddl: str
+-) -> None:
+-    if _has_column(conn, table_name, column_name):
+-        return
+-    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_ddl}")
+-
+-
+-def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+-    return any(str(row["name"]) == column_name for row in rows)
++def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> None:
++    """Remove legacy spec_desc column from products table if present.
++    
++    This is a one-time migration for legacy databases. The meta key
++    'products_spec_desc_removed_v1' ensures this only runs once.
++    """
++    if get_migration_meta(conn, "products_spec_desc_removed_v1") != "1":
++        if _has_column(conn, "products", "spec_desc"):
++            _rebuild_products_without_spec_desc(conn)
++        upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
+ 
+ 
+-def _ensure_index(
+-    conn: sqlite3.Connection, index_name: str, table_name: str, column_name: str
+-) -> None:
+-    conn.execute(
+-        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"
++def _rebuild_products_without_spec_desc(conn: sqlite3.Connection) -> None:
++    """Rebuild products table without the legacy spec_desc column.
++    
++    This function must drop and recreate the product_records view which
++    depends on the products table.
++    """
++    conn.executescript(
++        """
++        -- Drop dependent view
++        DROP VIEW IF EXISTS product_records;
++        
++        -- Create new table without spec_desc
++        CREATE TABLE IF NOT EXISTS products_new (
++            id TEXT NOT NULL PRIMARY KEY,
++            supplier_id TEXT REFERENCES suppliers(id) ON DELETE RESTRICT,
++            product_code TEXT NOT NULL,
++            product_name TEXT NOT NULL,
++            product_stage TEXT NOT NULL DEFAULT '試產',
++            secondary_supplier_id TEXT REFERENCES suppliers(id) ON DELETE RESTRICT,
++            is_active INTEGER NOT NULL DEFAULT 1,
++            created_at TEXT NOT NULL,
++            updated_at TEXT NOT NULL,
++            UNIQUE(supplier_id, product_code)
++        );
++        
++        -- Copy data (excluding spec_desc)
++        INSERT INTO products_new (id, supplier_id, product_code, product_name, product_stage, secondary_supplier_id, is_active, created_at, updated_at)
++        SELECT id, supplier_id, product_code, product_name, product_stage, secondary_supplier_id, is_active, created_at, updated_at
++        FROM products;
++        
++        -- Replace old table
++        DROP TABLE products;
++        ALTER TABLE products_new RENAME TO products;
++        
++        -- Recreate indexes
++        CREATE UNIQUE INDEX idx_products_global_code ON products(product_code) WHERE supplier_id IS NULL;
++        CREATE UNIQUE INDEX idx_products_supplier_code ON products(supplier_id, product_code) WHERE supplier_id IS NOT NULL;
++        CREATE INDEX idx_products_supplier ON products(supplier_id);
++        CREATE INDEX idx_products_secondary_supplier ON products(secondary_supplier_id);
++        CREATE INDEX idx_products_active ON products(is_active);
++        
++        -- Recreate dependent view
++        CREATE VIEW IF NOT EXISTS product_records AS
++        SELECT
++            id,
++            product_code AS item_no,
++            product_name,
++            created_at
++        FROM products
++        WHERE is_active = 1;
++        """
+     )
+diff --git a/src/ncr/ui/defect_form.py b/src/ncr/ui/defect_form.py
+index 70f5e00..7c8d6a4 100644
+--- a/src/ncr/ui/defect_form.py
++++ b/src/ncr/ui/defect_form.py
+@@ -165,8 +165,8 @@ class QuickProductCreateDialog(QDialog):
+         apply_button_icon(self.save_button, "save")
+         self.cancel_button.clicked.connect(self.reject)
+         self.save_button.clicked.connect(self.create_product)
+-        actions.addWidget(self.cancel_button)
+         actions.addWidget(self.save_button)
++        actions.addWidget(self.cancel_button)
+         layout.addLayout(actions)
+ 
+     def _show_error(self, message: str) -> None:
+@@ -238,6 +238,8 @@ class DefectFieldsWidget(QWidget):
+         self.event_date_edit = QDateEdit()
+         self.event_date_edit.setCalendarPopup(True)
+         self.event_date_edit.setDisplayFormat("yyyy-MM-dd")
++        # 確保 yyyy-MM-dd 與日曆鈕在 1.5x DPI 不被裁成 yyyy-MM
++        self.event_date_edit.setMinimumWidth(150)
+ 
+         self.return_slip_type_combo = QComboBox()
+         self.return_slip_type_combo.addItem("")
+@@ -1042,8 +1044,8 @@ class DefectEditDialog(QDialog):
+         self.cancel_button.clicked.connect(self.reject)
+ 
+         button_layout.addStretch(1)
+-        button_layout.addWidget(self.cancel_button)
+         button_layout.addWidget(self.save_button)
++        button_layout.addWidget(self.cancel_button)
+         main_card_layout.addLayout(button_layout)
+ 
+         layout.addWidget(main_card, 1)
+diff --git a/src/ncr/ui/defect_list.py b/src/ncr/ui/defect_list.py
+index 1fa1d1f..e7dab42 100644
+--- a/src/ncr/ui/defect_list.py
++++ b/src/ncr/ui/defect_list.py
+@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
+     QLineEdit,
+     QMessageBox,
+     QPushButton,
++    QSizePolicy,
+     QTableWidget,
+     QTableWidgetItem,
+     QVBoxLayout,
+@@ -249,12 +250,16 @@ class DefectListWidget(QWidget):
+         self.filter_notice = make_notice_label("", role="compactNotice")
+         self.month_scope_notice.setWordWrap(False)
+         self.filter_notice.setWordWrap(False)
++        for _n in (self.month_scope_notice, self.filter_notice):
++            _n.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+         action_row.addWidget(self.month_scope_notice)
+         action_row.addWidget(self.filter_notice)
+ 
+         # 3. Reset Hint
+         hint_label = make_hint_label(HINT_RESET_FILTER)
+         hint_label.setWordWrap(False)
++        # 高 DPI 時讓次要重置提示優先讓位，避免右側「匯出 Excel / 刪除選取」動作鈕被擠到裁字
++        hint_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+         if self.workflow == "trace":
+             action_row.addWidget(self.month_filter_checkbox)
+             self.month_filter_checkbox.stateChanged.connect(self.refresh_data)
+@@ -273,6 +278,7 @@ class DefectListWidget(QWidget):
+             (self.delete_button, "danger", "delete"),
+         ]:
+             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
++            btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+             set_button_role(btn, role)
+             apply_button_icon(btn, icon)
+             action_row.addWidget(btn)
+diff --git a/src/ncr/ui/ui_style.py b/src/ncr/ui/ui_style.py
+index e6efe31..e3eee38 100644
+--- a/src/ncr/ui/ui_style.py
++++ b/src/ncr/ui/ui_style.py
+@@ -577,7 +577,7 @@ def app_stylesheet() -> str:
+     QComboBox,
+     QDateEdit,
+     QAbstractSpinBox {{
+-        background: {COLOR_SURFACE_MUTED};
++        background: {COLOR_SURFACE_BASE};
+         border: 1px solid {COLOR_BORDER_DEFAULT};
+         border-radius: 10px;
+         selection-background-color: {COLOR_SELECTION_BG};
+diff --git a/src/ui/main_window.py b/src/ui/main_window.py
+index 26cf374..f960242 100644
+--- a/src/ui/main_window.py
++++ b/src/ui/main_window.py
+@@ -34,6 +34,7 @@ from ui.page_header_bar import PageHeaderBar
+ from ui.sidebar_nav import SidebarNav
+ from ui.theme import asset_path
+ from ui.window_sizing import fit_widget_to_available_screen
++from ui.widgets.common_widgets import EmptyStateWidget
+ from ui.widgets.defect_form_widget import NewAnomalyDialog, NewVisitDialog
+ from ui.widgets.defect_list_widget import EventListWidget
+ from ui.widgets.home_widget import HomeWidget
+@@ -177,12 +178,12 @@ class MainWindow(QMainWindow):
+     def _insert_ncr_placeholders(self, reason: str) -> None:
+         """NCR 載入失敗時插入佔位頁，維持側欄索引與嵌入頁對齊。"""
+         for offset_idx in range(NCR_PAGE_COUNT):
+-            placeholder = QLabel(
+-                f"倉庫不合格品追蹤模組暫時無法載入。\n\n{reason}"
++            placeholder = EmptyStateWidget(
++                "倉庫不合格品追蹤模組暫時無法載入",
++                f"原因：{reason}\n\n"
++                "請嘗試重新啟動程式；若持續發生，請確認資料庫檔案是否存在或損毀後再試。",
+             )
+             placeholder.setObjectName("NcrUnavailablePlaceholder")
+-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+-            placeholder.setWordWrap(True)
+             self.stack.insertWidget(NCR_PAGE_OFFSET + offset_idx, placeholder)
+ 
+     # ── Navigation ──────────────────────────────────────────────────────────
+diff --git a/src/ui/widgets/common_widgets.py b/src/ui/widgets/common_widgets.py
+index 320a308..aa925e1 100644
+--- a/src/ui/widgets/common_widgets.py
++++ b/src/ui/widgets/common_widgets.py
+@@ -394,7 +394,9 @@ class SupplierProductFormMixin:
+         self._product_stage_by_id = {}
+         self._product_code_by_id = {}
+         self.product_combo.clear()
+-        self.product_combo.addItem("請選擇產品 *", "")
++        # placeholder 不帶 *：異常單以紅色「品名 *」標籤標示必填；訪廠單「主要產品」為非必填，
++        # 是否必填於儲存時由 _product_guard_label 欄位層級即時提示，故欄內不再重複放 *。
++        self.product_combo.addItem("請選擇產品", "")
+         for item in products:
+             product_id = str(item.get("id") or "").strip()
+             self.product_combo.addItem(self._product_combo_label(item), product_id)
+diff --git a/src/ui/widgets/defect_form_widget.py b/src/ui/widgets/defect_form_widget.py
+index b921db7..069efdd 100644
+--- a/src/ui/widgets/defect_form_widget.py
++++ b/src/ui/widgets/defect_form_widget.py
+@@ -959,9 +959,9 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin):
+         grid.setColumnStretch(5, 1)
+ 
+         _LEFT_TOP = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+-        grid.addWidget(QLabel("供應商 *"), 0, 0)
++        grid.addWidget(RequiredFieldLabel("供應商"), 0, 0)
+         grid.addWidget(self.supplier_combo, 0, 1, 1, 2)
+-        grid.addWidget(QLabel("日期 *"), 0, 3)
++        grid.addWidget(RequiredFieldLabel("日期"), 0, 3)
+         grid.addWidget(self.date_edit, 0, 4)
+         grid.addWidget(self.is_tech_transfer_check, 0, 5)
+ 
+@@ -972,7 +972,7 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin):
+         pr_layout.addWidget(self.product_combo, 3)
+         pr_layout.addWidget(self.product_stage_combo, 1)
+ 
+-        grid.addWidget(QLabel("品名 *"), 1, 0)
++        grid.addWidget(RequiredFieldLabel("品名"), 1, 0)
+         grid.addWidget(product_row, 1, 1, 1, 2)
+         grid.addWidget(QLabel("料號"), 1, 3)
+         grid.addWidget(self.product_code_input, 1, 4, 1, 2)
+@@ -1022,7 +1022,7 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin):
+         desc_layout = QVBoxLayout(tab_desc)
+         desc_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
+         desc_layout.setSpacing(8)
+-        desc_layout.addWidget(QLabel("不良現象描述 *"))
++        desc_layout.addWidget(RequiredFieldLabel("不良現象描述"))
+         desc_layout.addWidget(self.problem_input)
+         desc_layout.addWidget(QLabel("確認事項 / 待追蹤"))
+         desc_layout.addWidget(self.pending_items_input)
+@@ -1799,6 +1799,9 @@ class NewVisitDialog(QDialog, SupplierProductFormMixin):
+         form.addRow("", self._product_guard_label)
+         form.addRow("活動摘要", self.summary_input)
+         basic_layout.addLayout(form)
++        # 多餘垂直空間導向底部，避免 _product_guard_label 提示框被拉伸成大色塊
++        # （與 NewAnomalyDialog 基本資訊分頁一致）。
++        basic_layout.addStretch(1)
+         self.tabs.addTab(tab_basic, "基本資訊")
+ 
+         # --- Tab 2: 進階與技轉 ---
+diff --git a/src/ui/widgets/master_data_widget.py b/src/ui/widgets/master_data_widget.py
+index 347fdeb..79444bd 100644
+--- a/src/ui/widgets/master_data_widget.py
++++ b/src/ui/widgets/master_data_widget.py
+@@ -269,7 +269,7 @@ class SupplierContactManagerDialog(QDialog):
+         form.setSpacing(8)
+         
+         self.new_name = QLineEdit()
+-        self.new_name.setPlaceholderText("姓名*")
++        self.new_name.setPlaceholderText("姓名 *")
+         self.new_dept = QLineEdit()
+         self.new_dept.setPlaceholderText("部門")
+         self.new_phone = QLineEdit()
+@@ -446,7 +446,7 @@ class ProductFormDialog(QDialog):
+ 
+     def _load_supplier_options(self) -> None:
+         self.primary_supplier_combo.clear()
+-        self.primary_supplier_combo.addItem("請選擇主供應商 *", "")
++        self.primary_supplier_combo.addItem("請選擇主供應商", "")
+ 
+         self.secondary_supplier_combo.clear()
+         self.secondary_supplier_combo.addItem("（未指定）", "")
+@@ -912,7 +912,11 @@ class MasterDataWidget(QWidget):
+             ["供應商", "聯絡人", "部門", "電子郵件", "電話/行動", "狀態"]
+         )
+         style_table(self.supplier_table, single_selection=False)
+-        self.supplier_table.horizontalHeader().setStretchLastSection(True)
++        # 讓內容欄(供應商)吸收多餘寬度，狀態欄貼齊內容，避免末欄過度拉伸留下大片空白。
++        _sup_header = self.supplier_table.horizontalHeader()
++        _sup_header.setStretchLastSection(False)
++        _sup_header.setSectionResizeMode(0, _sup_header.ResizeMode.Stretch)
++        _sup_header.setSectionResizeMode(5, _sup_header.ResizeMode.ResizeToContents)
+         apply_table_action_affordance(
+             self.supplier_table,
+             "點擊供應商列開啟管理動作；Ctrl/Shift 可多選後批次刪除",
+@@ -942,7 +946,11 @@ class MasterDataWidget(QWidget):
+             ["料號", "品名", "階段", "主供應商", "次要供應商", "狀態"]
+         )
+         style_table(self.product_table)
+-        self.product_table.horizontalHeader().setStretchLastSection(True)
++        # 讓內容欄(品名)吸收多餘寬度，狀態欄貼齊內容，避免末欄過度拉伸留下大片空白。
++        _prod_header = self.product_table.horizontalHeader()
++        _prod_header.setStretchLastSection(False)
++        _prod_header.setSectionResizeMode(1, _prod_header.ResizeMode.Stretch)
++        _prod_header.setSectionResizeMode(5, _prod_header.ResizeMode.ResizeToContents)
+         apply_table_action_affordance(
+             self.product_table,
+             "點擊產品列開啟編輯、停用、刪除或階段紀錄動作",
+diff --git a/src/ui/widgets/pagination_bar.py b/src/ui/widgets/pagination_bar.py
+index f544c80..59e8660 100644
+--- a/src/ui/widgets/pagination_bar.py
++++ b/src/ui/widgets/pagination_bar.py
+@@ -64,7 +64,7 @@ class PaginationBar(QWidget):
+         self.page_size_combo = QComboBox()
+         for size in self._page_size_options:
+             self.page_size_combo.addItem(str(size), size)
+-        self.page_size_combo.setFixedWidth(84)
++        self.page_size_combo.setFixedWidth(76)
+         self.page_size_combo.setToolTip("調整每頁顯示筆數")
+         self.page_size_combo.setStatusTip("調整每頁顯示筆數")
+         self.page_size_combo.currentIndexChanged.connect(self._handle_page_size_changed)
+@@ -128,7 +128,7 @@ class PaginationBar(QWidget):
+         self.jump_label_prefix = QLabel("跳至")
+         root.addWidget(self.jump_label_prefix)
+         self.jump_input = QLineEdit()
+-        self.jump_input.setFixedWidth(54)
++        self.jump_input.setFixedWidth(48)
+         self.jump_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+         self.jump_input.setPlaceholderText("-")
+         self.jump_input.setToolTip("輸入頁碼後按 Enter 跳頁")
+@@ -138,6 +138,13 @@ class PaginationBar(QWidget):
+         self.jump_label_suffix = QLabel("頁")
+         root.addWidget(self.jump_label_suffix)
+ 
++        # 分數倍率(1.25x/1.5x)字寬捨入會讓非伸縮文字標籤末字被裁切(共 N→共、每頁→每、跳至→跳)：
++        # 以 sizeHint 為下限(Minimum policy)，靠右側彈性 spacer 吸收差額。
++        for _lbl in self.findChildren(QLabel):
++            _lbl.setSizePolicy(
++                QSizePolicy.Policy.Minimum, _lbl.sizePolicy().verticalPolicy()
++            )
++
+     def set_state(
+         self, *, total_items: int, current_page: int, page_size: int | None = None
+     ) -> None:
+diff --git a/src/ui/widgets/stats_view_widget.py b/src/ui/widgets/stats_view_widget.py
+index db13df0..d380e54 100644
+--- a/src/ui/widgets/stats_view_widget.py
++++ b/src/ui/widgets/stats_view_widget.py
+@@ -828,7 +828,9 @@ class StatsViewWidget(QWidget):
+             
+         chart_view = QChartView(chart)
+         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+-        
++        # 水平堆疊條圖：依類別數給足高度，確保底部「異常件數」X 軸在 1.5x DPI 不被裁出畫布
++        chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, len(categories) * 28 + 150))
++
+         # Tooltips
+         bar_series.hovered.connect(lambda status, idx, bs: self._on_chart_bar_hovered(status, idx, bs))
+         bar_series.clicked.connect(lambda idx, bs: self._on_chart_bar_clicked(idx, bs))
+@@ -1004,6 +1006,9 @@ class StatsViewWidget(QWidget):
+         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+         if TOKENS.get("chart_axis_text"):
+             chart.legend().setLabelColor(QColor(TOKENS["chart_axis_text"]))
++        # 散點系列僅為視覺強調(無名稱)，隱藏其圖例 marker 避免出現空白方塊。
++        for _marker in chart.legend().markers(backlog_points):
++            _marker.setVisible(False)
+             
+         chart_view = QChartView(chart)
+         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+@@ -1150,9 +1155,10 @@ class StatsViewWidget(QWidget):
+             
+         chart_view = QChartView(chart)
+         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+-        calc_h = (len(data) * 16) + 160
++        # 1.5x DPI 下旋轉 65° 的 CJK 類別標籤較高，需更高視圖避免 QtCharts 丟棄整列 X 軸標籤
++        calc_h = (len(data) * 18) + 240
+         chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, calc_h))
+-        
++
+         # Tooltips
+         bar_series.hovered.connect(lambda status, idx, bs: self._on_resp_hovered(status, idx, data))
+         
+@@ -1230,6 +1236,7 @@ class StatsViewWidget(QWidget):
+     def _build_defect_pie_chart(self, rows) -> QChartView:
+         series = QPieSeries()
+         series.setHoleSize(0.35)
++        series.setPieSize(0.85)
+         total_qty = sum(int(r["total_qty"] or 0) for r in rows)
+ 
+         colors = {
+@@ -1251,7 +1258,8 @@ class StatsViewWidget(QWidget):
+         chart.addSeries(series)
+         chart.setTitle("倉庫不合格品處置數量佔比")
+         apply_chart_surface(chart)
+-        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
++        # 全寬甜甜圈：圖例置右以填補水平留白，圓餅放大利用空間。
++        chart.legend().setAlignment(Qt.AlignmentFlag.AlignRight)
+         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
+ 
+         view = QChartView(chart)

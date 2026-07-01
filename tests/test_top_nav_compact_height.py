@@ -11,19 +11,24 @@ from ui.main_window import (
     EVENT_PAGE_INDEX,
     STATS_PAGE_INDEX,
     MASTER_PAGE_INDEX,
-    NCR_PAGE_INDEX,
     MainWindow,
 )
-from ui.sidebar_nav import SidebarNav
+from ui.sidebar_nav import PAGE_NCR_PENDING, SidebarNav
 from ui.theme import apply_app_theme
 
 
-# Six sidebar nav labels: 首頁, 事件管理, 異常事件統計, 不合格品追蹤, 不合格品統計分析, 基礎資料.
+# Eleven sidebar nav labels（事件 4 scope + 倉庫 3 workflow pages 升級為一等導覽列）：
+# 首頁 + 單獨異常/訪廠發現異常/訪廠紀錄/已結案 + 異常事件統計 + 建立/待處理/歷史 + 不合格品統計分析 + 基礎資料。
 _EXPECTED_NAV_LABELS = [
     "首頁",
-    "事件管理",
+    "單獨異常",
+    "訪廠發現異常",
+    "訪廠紀錄",
+    "已結案",
     "異常事件統計",
-    "不合格品追蹤",
+    "建立不合格品",
+    "待處理不合格品",
+    "歷史紀錄",
     "不合格品統計分析",
     "基礎資料",
 ]
@@ -78,16 +83,17 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_six_nav_items(self) -> None:
-        # 6 sidebar nav buttons.
-        self.assertEqual(6, len(self.window.sidebar._buttons))
+    def test_sidebar_has_eleven_nav_items(self) -> None:
+        # 11 nav 按鈕：首頁 + 4 事件 scope + 異常事件統計 + 3 倉庫工作頁 + 不合格品統計分析 + 基礎資料。
+        self.assertEqual(11, len(self.window.sidebar._buttons))
 
-    def test_sidebar_groups_use_icons_not_text_labels(self) -> None:
-        # 分組改以「圖示 + 間距」呈現工作流程結構，不再使用分組標題文字或分隔線。
-        self.assertEqual(
-            [], self.window.sidebar.findChildren(QLabel, "SidebarGroupLabelText")
-        )
-        self.assertIsNone(self.window.sidebar.findChild(QLabel, "SidebarGroupLabel"))
+    def test_sidebar_uses_domain_group_headers(self) -> None:
+        # 側欄以三組領域標題（非按鈕 QLabel）分隔：供應商事件 / 倉庫不合格品 / 系統。
+        headers = [
+            label.text()
+            for label in self.window.sidebar.findChildren(QLabel, "SidebarGroupHeader")
+        ]
+        self.assertEqual(["供應商事件", "倉庫不合格品", "系統"], headers)
         # 每個導覽項目都帶有一個非空白的圖示，作為視覺辨識。
         for button in self.window.sidebar._buttons:
             icon_label = button.findChild(QLabel, "NavIcon")
@@ -95,22 +101,23 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertFalse(icon_label.pixmap().isNull())
 
     def test_sidebar_warehouse_badge_is_available(self) -> None:
-        warehouse_button = self.window.sidebar._buttons[NCR_PAGE_INDEX]
-        self.window.sidebar.set_badge(NCR_PAGE_INDEX, 12)
+        action = ("page", PAGE_NCR_PENDING)
+        warehouse_button = self.window.sidebar.button_for_action(action)
+        self.assertIsNotNone(warehouse_button)
+        self.window.sidebar.set_badge(action, 12)
         self.app.processEvents()
         badges = warehouse_button.findChildren(QLabel, "NavBadge")
         self.assertEqual(1, len(badges))
         self.assertEqual("12", badges[0].text())
         self.assertTrue(badges[0].isVisible())
 
-    def test_sidebar_footer_actions_have_distinct_roles(self) -> None:
-        self.assertIsNotNone(self.window.sidebar.findChild(QPushButton, "SidebarQuickCreate"))
-        self.assertIsNotNone(self.window.sidebar.findChild(QPushButton, "SidebarWarehouseQuickCreate"))
-        footer_labels = [
-            label.text()
-            for label in self.window.sidebar.findChildren(QLabel, "SidebarFooterLabel")
-        ]
-        self.assertEqual(["快速建立"], footer_labels)
+    def test_sidebar_footer_quick_create_removed(self) -> None:
+        # 底部「快速建立」兩顆按鈕已移除，改用各頁既有入口（事件管理工具列、建立不合格品側欄列）。
+        self.assertIsNone(self.window.sidebar.findChild(QPushButton, "SidebarQuickCreate"))
+        self.assertIsNone(self.window.sidebar.findChild(QPushButton, "SidebarWarehouseQuickCreate"))
+        self.assertEqual(
+            [], self.window.sidebar.findChildren(QLabel, "SidebarFooterLabel")
+        )
 
     def test_legacy_button_nav_is_removed(self) -> None:
         nav_tabs = [
@@ -133,7 +140,10 @@ class MainWorkflowTabTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(EVENT_PAGE_INDEX, self.window.stack.currentIndex())
         self.assertIs(self.window.stack.currentWidget(), self.window.events_widget)
-        active_btn = self.window.sidebar._buttons[EVENT_PAGE_INDEX]
+        # 事件頁高亮的是「目前 scope」對應的側欄列（預設 = 單獨異常）。
+        scope = self.window.events_widget._filter_event_scope
+        active_btn = self.window.sidebar.button_for_action(("scope", scope))
+        self.assertIsNotNone(active_btn)
         self.assertEqual("true", active_btn.property("nav_active"))
 
 

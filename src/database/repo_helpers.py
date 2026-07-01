@@ -97,14 +97,14 @@ def _gen_id() -> str:
     return uuid.uuid4().hex
 
 
-def _as_int(value: Any, default: int = 0) -> int:
+def _as_int(value: object, default: int = 0) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
         return default
 
 
-def _normalize_date(value: Any, fallback: str | None = None) -> str:
+def _normalize_date(value: object, fallback: str | None = None) -> str:
     if isinstance(value, date):
         return value.isoformat()
     if value is None:
@@ -116,10 +116,10 @@ def _normalize_date(value: Any, fallback: str | None = None) -> str:
 
 
 def _normalize_strict_iso_date(
-    value: Any,
+    value: object,
     *,
     field_name: str,
-    fallback: Any | None = None,
+    fallback: object | None = None,
 ) -> str:
     if value is None:
         if fallback is not None:
@@ -154,7 +154,7 @@ def _ensure_date_not_in_future(value: str, *, field_name: str) -> None:
         raise ValueError(f"{field_name} cannot be in the future")
 
 
-def _normalize_non_negative_int(value: Any, *, field_name: str) -> int:
+def _normalize_non_negative_int(value: object, *, field_name: str) -> int:
     result = _as_int(value, 0)
     if result < 0:
         raise ValueError(f"{field_name} cannot be negative")
@@ -170,14 +170,14 @@ def _normalize_month(yyyymm: str) -> str:
     return text
 
 
-def _month_from_date_value(value: Any | None) -> str | None:
+def _month_from_date_value(value: object | None) -> str | None:
     text = str(value or "").strip()
     if not text:
         return None
     return _normalize_date(text)[:7].replace("-", "")
 
 
-def _normalize_product_stage(value: Any, fallback: str | None = None) -> str:
+def _normalize_product_stage(value: object, fallback: str | None = None) -> str:
     text = str(value or "").strip()
     if not text:
         return fallback or PRODUCT_STAGE_MASS_PRODUCTION
@@ -186,7 +186,7 @@ def _normalize_product_stage(value: Any, fallback: str | None = None) -> str:
     return text
 
 
-def _normalize_product_stage_for_read(value: Any) -> str:
+def _normalize_product_stage_for_read(value: object) -> str:
     try:
         return _normalize_product_stage(
             value,
@@ -197,7 +197,7 @@ def _normalize_product_stage_for_read(value: Any) -> str:
 
 
 # ── Tech-transfer helpers ──────────────────────────────────────────────────
-def _normalize_tech_transfer_state(value: Any) -> str:
+def _normalize_tech_transfer_state(value: object) -> str:
     text = str(value or "").strip().lower()
     if text in TECH_TRANSFER_STATE_VALUES:
         return text
@@ -259,7 +259,7 @@ def get_migration_meta(conn: sqlite3.Connection, key: str) -> str | None:
 
 
 # ── Product lookup helpers ─────────────────────────────────────────────────
-def _normalized_lookup_text(value: Any) -> str:
+def _normalized_lookup_text(value: object) -> str:
     return str(value or "").strip()
 
 

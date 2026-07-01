@@ -1,0 +1,15 @@
+{
+	"$schema": "https://opencode.ai/config.json",
+	"enabledProviders": "auto",
+	"enableToast": true,
+	"tuiSidebarPanel": {
+		"enabled": true
+	},
+	"tuiCompactStatus": {
+		"enabled": false
+	},
+	"maintainerAnnouncements": {
+		"enabled": true,
+		"home": true
+	}
+}

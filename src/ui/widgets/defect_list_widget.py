@@ -135,22 +135,10 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         actions_row.setSpacing(INLINE_SPACING)
 
         if self.mode == "query":
-            if not self.fixed_scope:
-                self.event_scope_tab_bar = QTabBar()
-                self.event_scope_tab_bar.setObjectName("EventQueryScopeTabs")
-                for label, scope, _event_type in EVENT_QUERY_SCOPE_TABS:
-                    if self.fixed_status == "已結案" and scope == event_service.EVENT_SCOPE_VISIT_ONLY:
-                        # Visit records don't have 'closed' status.
-                        continue
-                    index = self.event_scope_tab_bar.addTab(label)
-                    self.event_scope_tab_bar.setTabData(index, scope)
-                apply_clickable_affordance(
-                    self.event_scope_tab_bar,
-                    tooltip="切換事件管理分類",
-                )
-                self.event_scope_tab_bar.currentChanged.connect(self._on_event_scope_tab_changed)
-                control_outer.addWidget(self.event_scope_tab_bar)
-
+            # 事件 scope（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）已升級為側欄一等
+            # 導覽列；此頁不再渲染頁內 scope 分頁列。scope 由側欄 set_event_scope() 或
+            # KPI/統計 apply_quick_filters() 外部設定，目前 scope 由 source_tag_label 呈現。
+            # event_scope_tab_bar 維持 None（filter mixin 已對其缺席做保護）。
             lbl_supplier = QLabel("供應商")
             lbl_supplier.setProperty("role", "helperText")
             self.supplier_filter_input = QLineEdit()
@@ -369,15 +357,15 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             date_item.setData(Qt.ItemDataRole.UserRole, dict(row))
             self.table.setItem(idx, 0, date_item)
             self.table.setItem(idx, 1, QTableWidgetItem(event_type))
-            self.table.setItem(idx, 2, QTableWidgetItem(self._text_or_dash(row.get("supplier_name"))))
-            self.table.setItem(idx, 3, QTableWidgetItem(self._text_or_dash(row.get("product_name"))))
+            self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
+            self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
             self.table.setItem(idx, 4, QTableWidgetItem(self._text_or_dash(row.get("product_code"))))
             self.table.setItem(idx, 5, QTableWidgetItem(self._text_or_dash(row.get("product_stage"))))
             self.table.setItem(idx, 6, QTableWidgetItem(self._text_or_dash(row.get("work_order_no"))))
             self.table.setItem(idx, 7, QTableWidgetItem(self._format_positive_qty(row.get("production_qty"))))
-            self.table.setItem(idx, 8, QTableWidgetItem(self._text_or_dash(row.get("content"))))
+            self.table.setItem(idx, 8, self._text_cell(row.get("content")))
             defect_summary = row.get("defect_note_summary") or row.get("pending_items")
-            self.table.setItem(idx, 9, QTableWidgetItem(self._text_or_dash(defect_summary)))
+            self.table.setItem(idx, 9, self._text_cell(defect_summary))
 
             status_text = str(row.get("status") or "").strip() or "-"
             self.table.setItem(idx, 10, create_status_item(status_text))
@@ -394,6 +382,14 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def _text_or_dash(self, value) -> str:
         text = str(value or "").strip()
         return text or EMPTY_DISPLAY
+
+    def _text_cell(self, value) -> QTableWidgetItem:
+        """Long-text cell whose tooltip shows the full CJK text when elided (§6)."""
+        text = self._text_or_dash(value)
+        item = QTableWidgetItem(text)
+        if text and text != EMPTY_DISPLAY:
+            item.setToolTip(text)
+        return item
 
     def _format_positive_qty(self, value) -> str:
         if value is None:

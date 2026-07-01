@@ -29,16 +29,19 @@ from ui.layout_constants import (
 from ui.popup_i18n import localize_popup_message
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     RequiredFieldLabel,
+    make_inline_error_label,
     mark_button_variant,
     make_paired_form_row,
     set_combo_current_data,
+    set_field_invalid,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class ProductFormDialog(QDialog):
+class ProductFormDialog(DirtyTrackingMixin, QDialog):
     def __init__(
         self,
         suppliers: list[dict],
@@ -57,6 +60,17 @@ class ProductFormDialog(QDialog):
         self.setMaximumWidth(FORM_MAX_WIDTH)
         self._setup_ui()
         self._apply_initial_data()
+        change_signals = [
+            self.product_code_input.textChanged,
+            self.product_name_input.textChanged,
+            self.product_stage_combo.currentTextChanged,
+            self.primary_supplier_combo.currentIndexChanged,
+            self.secondary_supplier_combo.currentIndexChanged,
+        ]
+        self._init_dirty_tracking(change_signals)
+        # Clear field-level errors in real time as soon as the user edits.
+        for signal in change_signals:
+            signal.connect(self._clear_validation)
         fit_dialog_to_available_screen(self, preferred_width=640)
 
     def _setup_ui(self) -> None:
@@ -94,6 +108,9 @@ class ProductFormDialog(QDialog):
         form.addRow(RequiredFieldLabel("主供應商"), self.primary_supplier_combo)
         form.addRow("次要供應商 (2nd source)", self.secondary_supplier_combo)
         layout.addLayout(form)
+
+        self.inline_error = make_inline_error_label()
+        layout.addWidget(self.inline_error)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
@@ -158,21 +175,19 @@ class ProductFormDialog(QDialog):
             self.secondary_supplier_combo.currentData() or ""
         ).strip()
 
+        errors: list[tuple] = []
         if not product_code:
-            QMessageBox.warning(self, "驗證失敗", localize_popup_message("料號為必填"))
-            return
+            errors.append((self.product_code_input, "料號為必填，請輸入料號"))
         if not product_name:
-            QMessageBox.warning(self, "驗證失敗", localize_popup_message("產品名稱為必填"))
-            return
+            errors.append((self.product_name_input, "產品名稱為必填，請輸入品名"))
         if not supplier_id:
-            QMessageBox.warning(self, "驗證失敗", localize_popup_message("供應商為必填"))
-            return
+            errors.append((self.primary_supplier_combo, "請選擇主供應商"))
         if secondary_supplier_id and secondary_supplier_id == supplier_id:
-            QMessageBox.warning(
-                self,
-                "驗證失敗",
-                localize_popup_message("2nd source 不可與主供應商相同"),
+            errors.append(
+                (self.secondary_supplier_combo, "2nd source 不可與主供應商相同，請改選")
             )
+        if errors:
+            self._show_validation_errors(errors)
             return
         previous_stage = normalize_product_stage_ui(self._initial_data.get("product_stage"))
         selected_stage = normalize_product_stage_ui(self.product_stage_combo.currentText())
@@ -209,7 +224,27 @@ class ProductFormDialog(QDialog):
                 )
                 return
 
+        self._dirty = False
         self.accept()
+
+    def _clear_validation(self, *args) -> None:
+        for field in (
+            self.product_code_input,
+            self.product_name_input,
+            self.primary_supplier_combo,
+            self.secondary_supplier_combo,
+        ):
+            set_field_invalid(field, False)
+        self.inline_error.setVisible(False)
+
+    def _show_validation_errors(self, errors) -> None:
+        for field, _ in errors:
+            set_field_invalid(field, True)
+        first_field, first_msg = errors[0]
+        text = first_msg if len(errors) == 1 else f"{first_msg}（共 {len(errors)} 項待修正）"
+        self.inline_error.setText(text)
+        self.inline_error.setVisible(True)
+        first_field.setFocus()
 
     def payload(self) -> dict:
         return {

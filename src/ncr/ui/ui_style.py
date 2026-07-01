@@ -39,6 +39,8 @@ PAGE_MARGIN = 8
 SECTION_SPACING = 22
 FIELD_SPACING_X = 20
 FIELD_SPACING_Y = 16
+FORM_TWO_COLUMN_SPACING = 24
+DEFECT_FORM_CONTENT_MARGINS = (16, 12, 16, 12)
 LABEL_MIN_WIDTH = 92
 LABEL_TEXT_HORIZONTAL_PADDING = 18
 LABEL_WIDTH = LABEL_MIN_WIDTH
@@ -47,6 +49,10 @@ INPUT_HEIGHT = 30
 BUTTON_HEIGHT = 30
 ACTION_BUTTON_MIN_WIDTH = 96
 DIALOG_ACTION_BUTTON_MIN_WIDTH = 112
+# Min width so "yyyy-MM-dd" + the calendar drop-down stay intact at 150% DPI
+# (geometry-audited via qt_visual_probe --scale 1.5; do not lower without re-checking).
+DATE_FIELD_MIN_WIDTH = 150
+QUICK_ADD_BUTTON_MIN_WIDTH = 76
 TABLE_ROW_HEIGHT = 28
 PAGINATION_BUTTON_WIDTH = 36
 DASHBOARD_CHART_CARD_MIN_HEIGHT = 400
@@ -123,35 +129,9 @@ COLOR_SIDEBAR_PANEL = _P["sidebar_panel"]
 COLOR_SIDEBAR_TEXT = _P["sidebar_text"]
 COLOR_SIDEBAR_MUTED = _P["sidebar_muted"]
 
-# Chart palette tokens — keep dashboard categorical colors centralized.
-COLOR_CHART_SCRAP = _P["chart_5"]   # 報廢
-COLOR_CHART_RETURN = _P["chart_3"]  # 退貨
-COLOR_CHART_REWORK = _P["accent_cyan"]  # 重工
-COLOR_CHART_PRODUCT = _P["chart_2"]  # 產品 / 預設長條色
-COLOR_CHART_LINE = COLOR_ACCENT
-COLOR_CHART_GRID = COLOR_BORDER_SOFT
-COLOR_CHART_AXIS = COLOR_TEXT_MUTED
-COLOR_CHART_BACKGROUND = COLOR_SURFACE_BASE
-
-SUMMARY_ACCENT_COLORS: dict[str, str] = {
-    "default": COLOR_ACCENT,
-    "info": COLOR_INFO_TEXT,
-    "success": COLOR_SUCCESS_TEXT,
-    "warning": COLOR_WARNING_TEXT,
-    "danger": COLOR_DANGER_TEXT,
-}
-
 STATUS_BADGE_COLORS: dict[str, tuple[str, str, str]] = {
     "處理中": (COLOR_INFO_TEXT, COLOR_INFO_BG, COLOR_INFO_BORDER),
     "已結案": (COLOR_SUCCESS_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_BORDER),
-}
-
-DISPOSITION_CHART_COLORS: dict[str, str] = {
-    "報廢": COLOR_CHART_SCRAP,
-    "退貨": COLOR_CHART_RETURN,
-    "重工": COLOR_CHART_REWORK,
-    "特採": COLOR_WARNING_TEXT,
-    "換料": COLOR_SUCCESS_TEXT,
 }
 
 # Status-bar feedback timeouts (ms). 0 = persist until replaced.
@@ -577,7 +557,7 @@ def app_stylesheet() -> str:
     QComboBox,
     QDateEdit,
     QAbstractSpinBox {{
-        background: {COLOR_SURFACE_MUTED};
+        background: {COLOR_SURFACE_BASE};
         border: 1px solid {COLOR_BORDER_DEFAULT};
         border-radius: 10px;
         selection-background-color: {COLOR_SELECTION_BG};
@@ -924,7 +904,7 @@ def apply_button_icon(button: QPushButton, icon_key: str) -> None:
         button.setIcon(icon)
 
 
-def create_section_title_with_icon(title: str, icon_key: str) -> QWidget:
+def create_section_title_with_icon(title: str, icon_key: str, *, required: bool = False) -> QWidget:
     title_host = QWidget()
     row = QHBoxLayout(title_host)
     row.setContentsMargins(0, 0, 0, 0)
@@ -940,6 +920,10 @@ def create_section_title_with_icon(title: str, icon_key: str) -> QWidget:
 
     title_label = QLabel(title)
     title_label.setProperty("uiRole", "sectionTitle")
+    if required:
+        title_label.setProperty("required", True)
+        title_label.setTextFormat(Qt.TextFormat.RichText)
+        title_label.setText(f'{title}&nbsp;<span style="color:{COLOR_DANGER_TEXT}">*</span>')
     row.addWidget(icon_label, 0)
     row.addWidget(title_label, 1)
     return title_host
@@ -1067,6 +1051,9 @@ def create_form_grid(
     return layout
 
 
+REQUIRED_ASTERISK_WIDTH = 14
+
+
 def add_labeled_field(
     layout: QGridLayout,
     row: int,
@@ -1079,6 +1066,7 @@ def add_labeled_field(
     label_width_override: int | None = None,
     field_minimum_width: int | None = None,
     field_maximum_width: int | None = None,
+    required: bool = False,
 ) -> QLabel:
     label = QLabel(label_text)
     label.setProperty("uiRole", "fieldLabel")
@@ -1088,6 +1076,15 @@ def add_labeled_field(
     else:
         dynamic_width = label.fontMetrics().horizontalAdvance(label_text) + LABEL_TEXT_HORIZONTAL_PADDING
         target_width = max(label_min_width, dynamic_width)
+    if required:
+        # Unify the required marker with the main app's red asterisk (ui-ux-universal §2).
+        # NCR labels carry uiRole="fieldLabel"; render the asterisk inline via RichText using
+        # the shared danger token so we drop the tooltip-only "必填欄位" convention.
+        # setProperty("required", True) keeps it assertable by tests.
+        label.setProperty("required", True)
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setText(f'{label_text}&nbsp;<span style="color:{COLOR_DANGER_TEXT}">*</span>')
+        target_width += REQUIRED_ASTERISK_WIDTH
     label.setFixedWidth(target_width)
     apply_input_style(widget=field, minimum_width=field_minimum_width, maximum_width=field_maximum_width)
     layout.addWidget(label, row, column_offset)

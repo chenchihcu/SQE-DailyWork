@@ -1,4 +1,4 @@
-"""Home daily-cockpit tests: six KPI cards + one read-only backlog (待辦) list.
+"""Home daily-cockpit tests: four KPI cards + one read-only backlog (待辦) list.
 
 The backlog list replaces the former 70%-empty home. It is read-only: it reads
 existing services and routes through existing navigation, with no new write
@@ -108,27 +108,27 @@ class HomeCockpitPanelTests(unittest.TestCase):
     def _label_texts(self) -> list[str]:
         return [label.text() for label in self.widget.findChildren(QLabel)]
 
-    def test_home_renders_six_kpi_cards_plus_backlog_panel(self) -> None:
+    def test_home_renders_four_kpi_cards_plus_backlog_panel(self) -> None:
         labels = self._label_texts()
         self.assertTrue(any(label.startswith("本月品質工作台") for label in labels))
         self.assertNotIn("快速入口", labels)
 
         expected_kpi_titles = {
-            "總異常件數",
-            "已結案",
             "逾期未結",
             "單獨異常",
             "訪廠發現異常",
             "倉庫待處理不合格品",
         }
         self.assertTrue(expected_kpi_titles.issubset(set(labels)))
+        # 已移除「總異常件數」KPI（其導覽由「單獨異常」卡與事件頁 scope 涵蓋）。
+        self.assertNotIn("總異常件數", labels)
 
         kpi_cards = [
             frame
             for frame in self.widget.findChildren(QFrame)
             if frame.property("role") == "kpiCard"
         ]
-        self.assertEqual(6, len(kpi_cards))
+        self.assertEqual(4, len(kpi_cards))
         self.assertIsNotNone(self.widget.findChild(QFrame, "HomeKpiPanel"))
         # Daily cockpit: exactly one read-only backlog panel below the KPI cards.
         self.assertIsNotNone(self.widget.findChild(QFrame, "HomeBacklogPanel"))

@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
@@ -20,20 +19,22 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
     FORM_MAX_WIDTH,
 )
-from ui.popup_i18n import localize_popup_message
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     RequiredFieldLabel,
     apply_clickable_affordance,
     mark_button_variant,
+    make_inline_error_label,
     make_paired_form_row,
+    set_field_invalid,
 )
 from ui.widgets.supplier_contact_manager_dialog import SupplierContactManagerDialog
 
 logger = logging.getLogger(__name__)
 
 
-class SupplierFormDialog(QDialog):
+class SupplierFormDialog(DirtyTrackingMixin, QDialog):
     def __init__(
         self,
         parent=None,
@@ -49,6 +50,14 @@ class SupplierFormDialog(QDialog):
         self.setMaximumWidth(FORM_MAX_WIDTH)
         self._setup_ui()
         self._apply_initial_data()
+        self._init_dirty_tracking([
+            self.supplier_name_input.textChanged,
+            self.contact_name_input.textChanged,
+            self.department_input.textChanged,
+            self.phone_input.textChanged,
+            self.contact_email_input.textChanged,
+        ])
+        self.supplier_name_input.textChanged.connect(self._clear_validation)
         fit_dialog_to_available_screen(self, preferred_width=520)
 
     def _setup_ui(self) -> None:
@@ -100,6 +109,9 @@ class SupplierFormDialog(QDialog):
 
         layout.addLayout(form)
 
+        self.inline_error = make_inline_error_label()
+        layout.addWidget(self.inline_error)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
         )
@@ -144,13 +156,22 @@ class SupplierFormDialog(QDialog):
 
     def _on_submit(self) -> None:
         if not self.supplier_name_input.text().strip():
-            QMessageBox.warning(
-                self,
-                "驗證失敗",
-                localize_popup_message("供應商名稱為必填"),
+            self._show_validation_error(
+                self.supplier_name_input, "供應商名稱為必填，請輸入名稱"
             )
             return
+        self._dirty = False
         self.accept()
+
+    def _clear_validation(self, *args) -> None:
+        set_field_invalid(self.supplier_name_input, False)
+        self.inline_error.setVisible(False)
+
+    def _show_validation_error(self, field, message: str) -> None:
+        set_field_invalid(field, True)
+        self.inline_error.setText(message)
+        self.inline_error.setVisible(True)
+        field.setFocus()
 
     def payload(self) -> dict:
         return {

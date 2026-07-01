@@ -141,19 +141,16 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
     def test_query_scope_tabs_replace_type_filter(self) -> None:
         self.assertIsNone(self.widget.event_type_combo)
-        self.assertIsNotNone(self.widget.event_scope_tab_bar)
-        assert self.widget.event_scope_tab_bar is not None
-        labels = [
-            self.widget.event_scope_tab_bar.tabText(index)
-            for index in range(self.widget.event_scope_tab_bar.count())
-        ]
+        # Stage 2：頁內 scope 分頁列已移除（scope 升級為側欄一等導覽列）。
+        self.assertIsNone(self.widget.event_scope_tab_bar)
+        from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
         self.assertEqual(
             ["單獨異常", "訪廠發現異常", "訪廠紀錄", "已結案"],
-            labels,
+            [label for label, _scope, _t in EVENT_QUERY_SCOPE_TABS],
         )
         self.assertEqual(
             event_service.EVENT_SCOPE_ANOMALY_ONLY,
-            self.widget.event_scope_tab_bar.tabData(0),
+            EVENT_QUERY_SCOPE_TABS[0][1],
         )
         self.assertIsNotNone(self.widget.export_pdf_button)
         assert self.widget.export_pdf_button is not None
@@ -166,8 +163,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
     def test_switching_query_scope_tab_refreshes_with_scope(self) -> None:
         self._list_events.reset_mock()
-        assert self.widget.event_scope_tab_bar is not None
-        self.widget.event_scope_tab_bar.setCurrentIndex(1)
+        self.widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY)
         self._drain_events()
 
         self._list_events.assert_called_once()
@@ -176,9 +172,9 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("ANOMALY", filters["event_type"])
 
     def test_export_pdf_button_stays_available_across_query_scope_tabs(self) -> None:
-        assert self.widget.event_scope_tab_bar is not None
-        for index in range(self.widget.event_scope_tab_bar.count()):
-            self.widget.event_scope_tab_bar.setCurrentIndex(index)
+        from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
+        for _label, scope, _t in EVENT_QUERY_SCOPE_TABS:
+            self.widget.set_event_scope(scope)
             self._drain_events()
             self.assertEqual(11, self.widget.table.columnCount())
             self.assertIsNotNone(self.widget.export_pdf_button)
@@ -202,10 +198,9 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertIn("請先選取", self.widget.export_pdf_button.toolTip())
 
     def test_reset_filters_keeps_current_query_scope(self) -> None:
-        assert self.widget.event_scope_tab_bar is not None
         assert self.widget.status_combo is not None
         assert self.widget.supplier_filter_input is not None
-        self.widget.event_scope_tab_bar.setCurrentIndex(2)
+        self.widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_ONLY)
         self._drain_events()
         self._list_events.reset_mock()
 
@@ -219,8 +214,8 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
         self._list_events.assert_called_once()
         filters = self._list_events.call_args.args[0]
-        self.assertEqual(2, self.widget.event_scope_tab_bar.currentIndex())
-        # Tab index 2 is now 訪廠紀錄 (VISIT_ONLY); reset keeps the current scope.
+        # reset 後仍維持目前 scope（VISIT_ONLY）。
+        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, self.widget._filter_event_scope)
         self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, filters["event_scope"])
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("", filters["supplier"])

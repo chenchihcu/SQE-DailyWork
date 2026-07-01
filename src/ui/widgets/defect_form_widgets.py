@@ -60,6 +60,7 @@ from ui.widgets.common_widgets import (
     safe_ui_operation,
     set_combo_current_data as _set_combo_current_data,
     style_table,
+    text_table_item,
 )
 
 
@@ -327,9 +328,9 @@ class VisitSelectionDialog(QDialog):
             date_item = QTableWidgetItem(v_date)
             date_item.setData(Qt.ItemDataRole.UserRole, v["id"])
             self.table.setItem(idx, 0, date_item)
-            self.table.setItem(idx, 1, QTableWidgetItem(v.get("product_name") or "-"))
+            self.table.setItem(idx, 1, text_table_item(v.get("product_name"), empty="-"))
             self.table.setItem(idx, 2, QTableWidgetItem(v.get("work_order_no") or "-"))
-            self.table.setItem(idx, 3, QTableWidgetItem(v.get("summary") or "-"))
+            self.table.setItem(idx, 3, text_table_item(v.get("summary"), empty="-"))
 
     def _on_accept(self):
         selected = self.table.selectedItems()

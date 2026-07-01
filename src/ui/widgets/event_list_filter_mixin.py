@@ -146,21 +146,26 @@ class _EventListFilterMixin:
 
     # -- Event handlers (called from signals) ---------------------------------
 
-    def _on_event_scope_tab_changed(self, index: int) -> None:
-        if self.mode != "query" or self.event_scope_tab_bar is None:
+    def set_event_scope(self, event_scope: str | None) -> None:
+        """切換事件 scope（取代原頁內 scope 分頁；保留 supplier / 月份篩選）。
+
+        由側欄 scope 導覽列觸發。KPI / 統計下鑽請改用 apply_quick_filters（會一併設定
+        supplier / 月份 / 狀態）。再次選取同一 scope 仍會刷新（導覽語意）。
+        """
+        if self.mode != "query" or self.fixed_scope:
             return
-        scope = self._normalize_event_scope(self.event_scope_tab_bar.tabData(index))
-        if scope is None or scope == self._filter_event_scope:
+        scope = self._normalize_event_scope(event_scope)
+        if scope is None:
             return
-        # Switching scope tabs exits the KPI overdue drill-down lens.
+        # 切換 scope 會離開 KPI 逾期下鑽 lens。
         self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
         if scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
-            # 已結案分頁：狀態固定為已結案、停用狀態下拉。
+            # 已結案：狀態固定為已結案、停用狀態下拉。
             self._filter_status = "已結案"
         elif self._filter_status == "已結案":
-            # 離開已結案分頁時，已結案狀態不再適用於進行中分頁。
+            # 離開已結案時，已結案狀態不再適用於進行中 scope。
             self._filter_status = "ALL"
         self._sync_filter_widgets_from_state()
         self._sync_source_tag()

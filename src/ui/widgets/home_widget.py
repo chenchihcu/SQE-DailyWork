@@ -43,7 +43,15 @@ class _ClickFilter(QObject):
         self._callback = callback
 
     def eventFilter(self, watched, event):  # noqa: N802
-        if event.type() == QEvent.Type.MouseButtonPress:
+        et = event.type()
+        if et == QEvent.Type.MouseButtonPress:
+            self._callback()
+            return True
+        if et == QEvent.Type.KeyPress and event.key() in (
+            Qt.Key.Key_Return,
+            Qt.Key.Key_Enter,
+            Qt.Key.Key_Space,
+        ):
             self._callback()
             return True
         return False
@@ -82,13 +90,13 @@ class HomeWidget(QWidget):
         kpi_grid = QGridLayout()
         kpi_grid.setHorizontalSpacing(GRID_GUTTER)
         kpi_grid.setVerticalSpacing(ROW_GAP)
+        # 四象限 KPI（2×2）：逾期未結 / 單獨異常 / 訪廠發現異常 / 倉庫待處理不合格品。
+        # 已移除「總異常件數」「已結案」兩卡——其導覽分別由「單獨異常」卡與事件頁「已結案」scope 涵蓋。
         row0_defs = [
-            ("anomaly_count", "總異常件數", get_status_palette("異常").chart, "danger"),
-            ("closed_anomaly_count", "已結案", get_status_palette("已結案").chart, "success"),
             ("overdue_open_anomaly_count", "逾期未結", get_status_palette("逾期未結").chart, "danger"),
+            ("standalone_open_anomaly_count", "單獨異常", get_status_palette("單獨異常").chart, "pending"),
         ]
         row1_defs = [
-            ("standalone_open_anomaly_count", "單獨異常", get_status_palette("單獨異常").chart, "pending"),
             ("visit_open_anomaly_count", "訪廠發現異常", get_status_palette("訪廠發現異常").chart, "info"),
             ("defect_open_count", "倉庫待處理不合格品", get_status_palette("異常").chart, "danger"),
         ]
@@ -153,12 +161,12 @@ class HomeWidget(QWidget):
         self._backlog_empty.setVisible(False)
         outer.addWidget(self._backlog_empty)
 
-        # 倉庫待處理彙總列：唯讀導覽捷徑（點擊跳轉倉庫不合格品追蹤頁，不新增寫入）。
+        # 倉庫待處理彙總列：唯讀導覽捷徑（點擊跳轉待處理不合格品頁，不新增寫入）。
         self._warehouse_summary_btn = QPushButton("倉庫待處理不合格品：— 件　→")
         self._warehouse_summary_btn.setObjectName("HomeBacklogWarehouseLink")
         self._warehouse_summary_btn.setProperty("variant", "secondary")
         self._warehouse_summary_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._warehouse_summary_btn.setToolTip("開啟同一視窗內的倉庫不合格品追蹤")
+        self._warehouse_summary_btn.setToolTip("開啟同一視窗內的待處理不合格品")
         self._warehouse_summary_btn.clicked.connect(self._on_defect_kpi_clicked)
         outer.addWidget(self._warehouse_summary_btn)
 
@@ -168,22 +176,6 @@ class HomeWidget(QWidget):
         return QDate.currentDate().toString("yyyyMM")
 
     def _install_kpi_navigation(self) -> None:
-        self._set_kpi_action(
-            "anomaly_count",
-            "開啟本月供應商異常清單",
-            lambda: self._open_event_workbench(
-                event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                status="ALL",
-            ),
-        )
-        self._set_kpi_action(
-            "closed_anomaly_count",
-            "開啟本月已結案供應商異常",
-            lambda: self._open_event_workbench(
-                event_scope=event_service.EVENT_SCOPE_CLOSED_ONLY,
-                status="已結案",
-            ),
-        )
         self._set_kpi_action(
             "overdue_open_anomaly_count",
             "開啟本月逾期未結（待處理且逾期）清單",
@@ -211,7 +203,7 @@ class HomeWidget(QWidget):
         )
         self._set_kpi_action(
             "defect_open_count",
-            "開啟同一主視窗內的倉庫不合格品追蹤",
+            "開啟同一主視窗內的待處理不合格品",
             self._on_defect_kpi_clicked,
         )
 
@@ -222,6 +214,11 @@ class HomeWidget(QWidget):
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setToolTip(tooltip)
         card.setProperty("interactive", True)
+        # Keyboard reachability + screen-reader label (a11y §5): the card is a
+        # plain QFrame, so give it focus and announce its KPI title + action.
+        card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        card.setAccessibleName(card.title_label.text())
+        card.setAccessibleDescription(tooltip)
         click_filter = _ClickFilter(callback, self)
         self._kpi_click_filters[key] = click_filter
         card.installEventFilter(click_filter)

@@ -157,7 +157,7 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         self.app.processEvents()
         query_combo_w = self.window.events_widget.pagination.page_size_combo.width()
 
-        self.assertEqual(84, query_combo_w)
+        self.assertEqual(76, query_combo_w)
 
     def test_master_inline_toolbar_uses_single_row_with_left_query(self) -> None:
         self.window.resize(1100, 740)

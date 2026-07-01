@@ -56,30 +56,38 @@ class ClosedTabCategoriesTests(unittest.TestCase):
         
         widget.close()
 
-    def test_normal_tab_has_all_subtabs(self) -> None:
-        # Initialize normally
+    def test_normal_query_has_no_visible_scope_tabbar(self) -> None:
+        # Stage 2：scope 已升級為側欄一等導覽列，事件頁不再渲染頁內 scope 分頁列。
         widget = EventListWidget(
-            _DummyMainWindow(), 
+            _DummyMainWindow(),
             mode="query"
         )
-        
-        self.assertIsNotNone(widget.event_scope_tab_bar)
-        assert widget.event_scope_tab_bar is not None
-        
-        labels = [
-            widget.event_scope_tab_bar.tabText(i)
-            for i in range(widget.event_scope_tab_bar.count())
-        ]
-        
-        self.assertIn("訪廠紀錄", labels)
-        self.assertIn("訪廠發現異常", labels)
-        self.assertIn("單獨異常", labels)
-        self.assertIn("已結案", labels)
-        self.assertEqual(4, len(labels))
 
-        # Default selected scope is ANOMALY_ONLY (matches the anomaly sidebar badge).
+        self.assertIsNone(widget.event_scope_tab_bar)
+
+        # EVENT_QUERY_SCOPE_TABS 仍是 scope metadata 單一真相（4 個 scope）。
+        from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
+        scopes = [scope for _label, scope, _t in EVENT_QUERY_SCOPE_TABS]
+        self.assertEqual(
+            [
+                event_service.EVENT_SCOPE_ANOMALY_ONLY,
+                event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY,
+                event_service.EVENT_SCOPE_VISIT_ONLY,
+                event_service.EVENT_SCOPE_CLOSED_ONLY,
+            ],
+            scopes,
+        )
+
+        # 預設 scope 為 ANOMALY_ONLY（對應 anomaly 側欄 badge / 單獨異常 列）。
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, widget._filter_event_scope)
-        
+
+        # set_event_scope 可切到任一 scope（保留既有 supplier / 月份篩選）。
+        widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_ONLY)
+        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, widget._filter_event_scope)
+        widget.set_event_scope(event_service.EVENT_SCOPE_CLOSED_ONLY)
+        self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, widget._filter_event_scope)
+        self.assertEqual("已結案", widget._filter_status)
+
         widget.close()
 
 if __name__ == "__main__":

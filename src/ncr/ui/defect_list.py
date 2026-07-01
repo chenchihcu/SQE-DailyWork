@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -249,12 +250,16 @@ class DefectListWidget(QWidget):
         self.filter_notice = make_notice_label("", role="compactNotice")
         self.month_scope_notice.setWordWrap(False)
         self.filter_notice.setWordWrap(False)
+        for _n in (self.month_scope_notice, self.filter_notice):
+            _n.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         action_row.addWidget(self.month_scope_notice)
         action_row.addWidget(self.filter_notice)
 
         # 3. Reset Hint
         hint_label = make_hint_label(HINT_RESET_FILTER)
         hint_label.setWordWrap(False)
+        # 高 DPI 時讓次要重置提示優先讓位，避免右側「匯出 Excel / 刪除選取」動作鈕被擠到裁字
+        hint_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         if self.workflow == "trace":
             action_row.addWidget(self.month_filter_checkbox)
             self.month_filter_checkbox.stateChanged.connect(self.refresh_data)
@@ -273,6 +278,7 @@ class DefectListWidget(QWidget):
             (self.delete_button, "danger", "delete"),
         ]:
             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
+            btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             set_button_role(btn, role)
             apply_button_icon(btn, icon)
             action_row.addWidget(btn)

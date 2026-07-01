@@ -52,7 +52,7 @@ class HomeWidgetLayoutContractTests(unittest.TestCase):
             for frame in widget.findChildren(QFrame)
             if frame.property("role") == "kpiCard"
         ]
-        self.assertEqual(6, len(kpi_cards))
+        self.assertEqual(4, len(kpi_cards))
         widget.close()
 
 

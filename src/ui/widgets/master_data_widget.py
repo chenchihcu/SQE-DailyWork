@@ -35,6 +35,8 @@ from ui.layout_constants import (
 from ui.widgets.common_widgets import apply_clickable_affordance
 from ui.widgets.master_data_product_mixin import _MasterDataProductMixin
 from ui.widgets.master_data_supplier_mixin import _MasterDataSupplierMixin
+from ui.widgets.product_form_dialog import ProductFormDialog
+from ui.widgets.product_stage_log_dialog import ProductStageLogDialog
 
 
 class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixin):

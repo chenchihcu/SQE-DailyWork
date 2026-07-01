@@ -64,7 +64,7 @@ class PaginationBar(QWidget):
         self.page_size_combo = QComboBox()
         for size in self._page_size_options:
             self.page_size_combo.addItem(str(size), size)
-        self.page_size_combo.setFixedWidth(84)
+        self.page_size_combo.setFixedWidth(76)
         self.page_size_combo.setToolTip("調整每頁顯示筆數")
         self.page_size_combo.setStatusTip("調整每頁顯示筆數")
         self.page_size_combo.currentIndexChanged.connect(self._handle_page_size_changed)
@@ -80,6 +80,7 @@ class PaginationBar(QWidget):
         self.first_btn.setProperty("role", "pageBtn")
         self.first_btn.setProperty("variant", "secondary")
         self.first_btn.setToolTip("第一頁")
+        self.first_btn.setAccessibleName("第一頁")
         apply_clickable_affordance(self.first_btn, status_tip="前往第一頁")
         self.first_btn.setMinimumWidth(34)
         self.first_btn.clicked.connect(lambda: self._emit_page_change(1))
@@ -89,6 +90,7 @@ class PaginationBar(QWidget):
         self.prev_btn.setProperty("role", "pageBtn")
         self.prev_btn.setProperty("variant", "secondary")
         self.prev_btn.setToolTip("上一頁")
+        self.prev_btn.setAccessibleName("上一頁")
         apply_clickable_affordance(self.prev_btn, status_tip="前往上一頁")
         self.prev_btn.setMinimumWidth(34)
         self.prev_btn.clicked.connect(lambda: self._emit_page_change(self._current_page - 1))
@@ -104,6 +106,7 @@ class PaginationBar(QWidget):
         self.next_btn.setProperty("role", "pageBtn")
         self.next_btn.setProperty("variant", "secondary")
         self.next_btn.setToolTip("下一頁")
+        self.next_btn.setAccessibleName("下一頁")
         apply_clickable_affordance(self.next_btn, status_tip="前往下一頁")
         self.next_btn.setMinimumWidth(34)
         self.next_btn.clicked.connect(lambda: self._emit_page_change(self._current_page + 1))
@@ -113,6 +116,7 @@ class PaginationBar(QWidget):
         self.last_btn.setProperty("role", "pageBtn")
         self.last_btn.setProperty("variant", "secondary")
         self.last_btn.setToolTip("最後一頁")
+        self.last_btn.setAccessibleName("最後一頁")
         apply_clickable_affordance(self.last_btn, status_tip="前往最後一頁")
         self.last_btn.setMinimumWidth(34)
         self.last_btn.clicked.connect(lambda: self._emit_page_change(self._total_pages_count()))
@@ -128,7 +132,7 @@ class PaginationBar(QWidget):
         self.jump_label_prefix = QLabel("跳至")
         root.addWidget(self.jump_label_prefix)
         self.jump_input = QLineEdit()
-        self.jump_input.setFixedWidth(54)
+        self.jump_input.setFixedWidth(48)
         self.jump_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.jump_input.setPlaceholderText("-")
         self.jump_input.setToolTip("輸入頁碼後按 Enter 跳頁")
@@ -137,6 +141,13 @@ class PaginationBar(QWidget):
         root.addWidget(self.jump_input)
         self.jump_label_suffix = QLabel("頁")
         root.addWidget(self.jump_label_suffix)
+
+        # 分數倍率(1.25x/1.5x)字寬捨入會讓非伸縮文字標籤末字被裁切(共 N→共、每頁→每、跳至→跳)：
+        # 以 sizeHint 為下限(Minimum policy)，靠右側彈性 spacer 吸收差額。
+        for _lbl in self.findChildren(QLabel):
+            _lbl.setSizePolicy(
+                QSizePolicy.Policy.Minimum, _lbl.sizePolicy().verticalPolicy()
+            )
 
     def set_state(
         self, *, total_items: int, current_page: int, page_size: int | None = None

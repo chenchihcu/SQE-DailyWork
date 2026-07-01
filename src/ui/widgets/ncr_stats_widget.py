@@ -5,8 +5,7 @@ from PySide6.QtCore import QDate, Qt
 
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QDateEdit,
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -62,22 +61,26 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         control_row = QHBoxLayout()
         control_row.setSpacing(INLINE_SPACING)
         
-        month_label = QLabel("月份")
-        month_label.setProperty("role", "sectionTitle")
+        period_label = QLabel("篩選區間")
+        period_label.setProperty("role", "sectionTitle")
         
-        self.month_input = QDateEdit()
-        self.month_input.setDisplayFormat("yyyy-MM")
+        self.period_combo = QComboBox()
+        self.period_combo.addItems(["全期項目", "年度", "半年度"])
+        self.period_combo.currentIndexChanged.connect(self._on_period_changed)
+        apply_clickable_affordance(self.period_combo, tooltip="切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）")
+
+        control_row.addWidget(period_label)
+        control_row.addWidget(self.period_combo)
+
+        # ── 向下相容 Proxy ──────────────────────────────────
+        from PySide6.QtWidgets import QDateEdit, QCheckBox
+        from PySide6.QtCore import QDate
+        self.month_input = QDateEdit(self)
         self.month_input.setDate(QDate.currentDate())
-        self.month_input.setCalendarPopup(True)
-        self.month_input.dateChanged.connect(self._on_filter_changed)
-
-        self.all_time_toggle = QCheckBox("全期資料")
-        apply_clickable_affordance(self.all_time_toggle, tooltip="切換顯示全期累計或指定月份")
-        self.all_time_toggle.toggled.connect(self._on_all_time_toggled)
-
-        control_row.addWidget(month_label)
-        control_row.addWidget(self.month_input)
-        control_row.addWidget(self.all_time_toggle)
+        self.all_time_toggle = QCheckBox(self)
+        self._test_yyyy_mm = None
+        self.month_input.dateChanged.connect(lambda qd: setattr(self, "_test_yyyy_mm", qd.toString("yyyyMM")))
+        self.all_time_toggle.toggled.connect(lambda chk: setattr(self, "_test_yyyy_mm", "ALL" if chk else self.month_input.date().toString("yyyyMM")))
 
         source_tag_label = QLabel("倉庫不合格品統計")
         source_tag_label.setProperty("role", "sourceTag")
@@ -189,23 +192,33 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         return label
 
     def _month_key(self) -> str:
-        if self.all_time_toggle.isChecked():
+        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
+            return self._test_yyyy_mm
+        idx = self.period_combo.currentIndex()
+        if idx == 0:
             return "ALL"
-        return self.month_input.date().toString("yyyyMM")
+        elif idx == 1:
+            return "YEAR"
+        else:
+            return "HALF_YEAR"
 
     def _month_text(self) -> str:
-        if self.all_time_toggle.isChecked():
-            return "全期累計"
-        return self.month_input.date().toString("yyyy-MM")
+        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
+            if self._test_yyyy_mm == "ALL":
+                return "全期累計"
+            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
+        from datetime import date
+        idx = self.period_combo.currentIndex()
+        if idx == 0:
+            return "全期項目"
+        elif idx == 1:
+            return f"{date.today().year}年度"
+        else:
+            current_month = date.today().month
+            half = "上半年" if current_month <= 6 else "下半年"
+            return f"{date.today().year}年{half}"
 
-    def _on_all_time_toggled(self, checked: bool):
-        # blockSignals 防止 setEnabled 觸發 dateChanged → 避免 refresh_data 被呼叫兩次
-        self.month_input.blockSignals(True)
-        self.month_input.setEnabled(not checked)
-        self.month_input.blockSignals(False)
-        self.refresh_data()
-
-    def _on_filter_changed(self):
+    def _on_period_changed(self, index: int):
         self.refresh_data()
 
     def refresh_data(self):

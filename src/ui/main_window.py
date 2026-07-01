@@ -31,10 +31,22 @@ from ui.layout_constants import (
     MAIN_WINDOW_MIN_WIDTH,
 )
 from ui.page_header_bar import PageHeaderBar
-from ui.sidebar_nav import SidebarNav
+from ui.sidebar_nav import (
+    PAGE_HOME,
+    PAGE_MASTER,
+    PAGE_NCR,
+    PAGE_NCR_CREATE,
+    PAGE_NCR_HISTORY,
+    PAGE_NCR_PENDING,
+    PAGE_NCR_STATS,
+    PAGE_STATS,
+    SidebarNav,
+)
 from ui.theme import asset_path
 from ui.window_sizing import fit_widget_to_available_screen
-from ui.widgets.defect_form_widget import NewAnomalyDialog, NewVisitDialog
+from ui.widgets.common_widgets import EmptyStateWidget
+from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
+from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.defect_list_widget import EventListWidget
 from ui.widgets.home_widget import HomeWidget
 from ui.widgets.master_data_widget import MasterDataWidget
@@ -44,9 +56,17 @@ from ui.widgets.ncr_stats_widget import NcrStatsWidget
 HOME_PAGE_INDEX = 0
 EVENT_PAGE_INDEX = 1
 STATS_PAGE_INDEX = 2
-NCR_PAGE_INDEX = NCR_PAGE_OFFSET + 0
-NCR_STATS_PAGE_INDEX = 4
-MASTER_PAGE_INDEX = 5
+NCR_PAGE_COUNT = len(NCR_PAGE_SPECS)
+NCR_ENTRY_PAGE_INDEX = NCR_PAGE_OFFSET + 0
+NCR_TRACKING_PAGE_INDEX = NCR_PAGE_OFFSET + 1
+NCR_TRACE_PAGE_INDEX = NCR_PAGE_OFFSET + 2
+NCR_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
+NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
+MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
+
+# Legacy index aliases kept for external callers. The consolidated event-management
+# page (index 1) absorbed the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 pages,
+# which are now scope tabs inside that single page.
 
 # Legacy index aliases kept for external callers. The consolidated event-management
 # page (index 1) absorbed the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 pages,
@@ -60,26 +80,32 @@ STANDALONE_ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
 _PAGE_TITLES = {
     HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
     EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
-    STATS_PAGE_INDEX: ("異常事件統計", "供應商事件統計與倉庫不合格品實物統計"),
-    NCR_STATS_PAGE_INDEX: ("不合格品統計分析", "倉庫實物不合格品統計圖表與比例分析"),
+    STATS_PAGE_INDEX: ("異常事件統計", "供應商事件趨勢、責任人績效與供應商風險"),
+    NCR_STATS_PAGE_INDEX: ("不合格品統計", "倉庫實物不合格品統計圖表與比例分析"),
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
 }
 
-# Embedded warehouse nonconforming-product page occupies stack index 6.
-NCR_PAGE_INDEX = NCR_PAGE_OFFSET + 0
-NCR_PAGE_COUNT = len(NCR_PAGE_SPECS)
-
 # Compatibility aliases kept for external callers
-NCR_HOME_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_ENTRY_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_TRACKING_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_TRACE_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_ANALYSIS_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_PRODUCT_PAGE_INDEX = NCR_PAGE_INDEX
-NCR_SUPPLIER_PAGE_INDEX = NCR_PAGE_INDEX
+NCR_HOME_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
+NCR_ANALYSIS_PAGE_INDEX = NCR_STATS_PAGE_INDEX
+NCR_PRODUCT_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
+NCR_SUPPLIER_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 
 for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
     _PAGE_TITLES[NCR_PAGE_OFFSET + _i] = (_title, _subtitle)
+
+# 側欄 PAGE_KEY ↔ QStackedWidget 索引對應（側欄不耦合堆疊索引，由此處轉換）。
+_PAGE_KEY_TO_INDEX = {
+    PAGE_HOME: HOME_PAGE_INDEX,
+    PAGE_STATS: STATS_PAGE_INDEX,
+    PAGE_NCR: NCR_TRACKING_PAGE_INDEX,
+    PAGE_NCR_CREATE: NCR_ENTRY_PAGE_INDEX,
+    PAGE_NCR_PENDING: NCR_TRACKING_PAGE_INDEX,
+    PAGE_NCR_HISTORY: NCR_TRACE_PAGE_INDEX,
+    PAGE_NCR_STATS: NCR_STATS_PAGE_INDEX,
+    PAGE_MASTER: MASTER_PAGE_INDEX,
+}
+_PAGE_INDEX_TO_KEY = {index: key for key, index in _PAGE_KEY_TO_INDEX.items()}
 
 
 class MainWindow(QMainWindow):
@@ -112,11 +138,7 @@ class MainWindow(QMainWindow):
 
         # ── 左側導覽側欄 ──────────────────────────────────
         self.sidebar = SidebarNav()
-        self.sidebar.page_changed.connect(self._on_sidebar_page_changed)
-        self.sidebar.quick_create_clicked.connect(self.open_new_anomaly_dialog)
-        self.sidebar.warehouse_create_clicked.connect(
-            self.open_warehouse_nonconforming_create
-        )
+        self.sidebar.nav_activated.connect(self._on_nav_activated)
         root.addWidget(self.sidebar)
 
         # ── 右側內容區 ────────────────────────────────────
@@ -145,7 +167,7 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(EVENT_PAGE_INDEX, self.events_widget)
         self.stack.insertWidget(STATS_PAGE_INDEX, self.stats_widget)
 
-        # ── 嵌入倉庫不合格品實物管理模組頁面（索引 3）──
+        # ── 嵌入倉庫不合格品實物管理模組頁面（索引 3/4/5）──
         # NCR 資料庫問題不可拖垮主程式；失敗時以 placeholder 佔位並保持索引對齊。
         try:
             self.ncr = NcrController(self, lazy_load=True)
@@ -155,10 +177,10 @@ class MainWindow(QMainWindow):
             self.ncr = None
             self._insert_ncr_placeholders(str(exc))
 
-        # ── 不合格品統計分析（索引 4）──
+        # ── 不合格品統計分析（索引 6）──
         self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self.ncr_stats_widget)
 
-        # ── 基礎資料（索引 5）──
+        # ── 基礎資料（索引 7）──
         self.stack.insertWidget(MASTER_PAGE_INDEX, self.master_widget)
 
         # Compatibility aliases used by tests / older callers. Every former event
@@ -177,12 +199,13 @@ class MainWindow(QMainWindow):
     def _insert_ncr_placeholders(self, reason: str) -> None:
         """NCR 載入失敗時插入佔位頁，維持側欄索引與嵌入頁對齊。"""
         for offset_idx in range(NCR_PAGE_COUNT):
-            placeholder = QLabel(
-                f"倉庫不合格品追蹤模組暫時無法載入。\n\n{reason}"
+            label = NCR_PAGE_SPECS[offset_idx][0]
+            placeholder = EmptyStateWidget(
+                f"{label}暫時無法載入",
+                f"原因：{reason}\n\n"
+                "請嘗試重新啟動程式；若持續發生，請確認資料庫檔案是否存在或損毀後再試。",
             )
             placeholder.setObjectName("NcrUnavailablePlaceholder")
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            placeholder.setWordWrap(True)
             self.stack.insertWidget(NCR_PAGE_OFFSET + offset_idx, placeholder)
 
     # ── Navigation ──────────────────────────────────────────────────────────
@@ -202,7 +225,7 @@ class MainWindow(QMainWindow):
                 widget.refresh_data()
 
         self.stack.setCurrentIndex(page_index)
-        self.sidebar.set_active(page_index)
+        self._sync_sidebar_active(page_index)
         title, subtitle = _PAGE_TITLES.get(page_index, ("", ""))
         self._header_bar.set_page(title, subtitle)
         if page_index != MASTER_PAGE_INDEX:
@@ -210,17 +233,45 @@ class MainWindow(QMainWindow):
         if self.ncr is not None and self._is_ncr_index(page_index):
             self.ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
 
-    def _on_sidebar_page_changed(self, index: int) -> None:
-        # 離開含未存資料的 NCR 頁面前先確認（NCR 內建髒資料守衛）
-        current = self.stack.currentIndex()
-        if self.ncr is not None and self._is_ncr_index(current):
-            if not self.ncr.confirm_can_leave(current - NCR_PAGE_OFFSET):
-                self.sidebar.set_active(current)  # 還原側欄高亮
-                return
-        if index == MASTER_PAGE_INDEX:
-            self._open_master_data()
+    def _action_target_index(self, action) -> int:
+        kind, value = action
+        if kind == "scope":
+            return EVENT_PAGE_INDEX
+        return _PAGE_KEY_TO_INDEX.get(value, -1)
+
+    def _sync_sidebar_active(self, page_index: int) -> None:
+        """依目前頁面（事件頁則依目前 scope）高亮對應的側欄導覽列。"""
+        if page_index == EVENT_PAGE_INDEX:
+            scope = getattr(self.events_widget, "_filter_event_scope", None)
+            self.sidebar.set_active(("scope", scope))
         else:
-            self._switch_primary_page(index)
+            key = _PAGE_INDEX_TO_KEY.get(page_index)
+            if key is not None:
+                self.sidebar.set_active(("page", key))
+
+    def _on_nav_activated(self, action) -> None:
+        kind, value = action
+        # 離開含未存資料的 NCR 頁面前先確認（NCR 內建髒資料守衛）。
+        current = self.stack.currentIndex()
+        if (
+            self.ncr is not None
+            and self._is_ncr_index(current)
+            and self._action_target_index(action) != current
+            and not self.ncr.confirm_can_leave(current - NCR_PAGE_OFFSET)
+        ):
+            return  # 取消導覽；側欄高亮未變更，無需還原。
+        if kind == "page":
+            page_index = _PAGE_KEY_TO_INDEX.get(value)
+            if page_index is None:
+                return
+            if page_index == MASTER_PAGE_INDEX:
+                self._open_master_data()
+            else:
+                self._switch_primary_page(page_index)
+        elif kind == "scope":
+            self._switch_primary_page(EVENT_PAGE_INDEX)
+            self.events_widget.set_event_scope(value)
+            self._sync_sidebar_active(EVENT_PAGE_INDEX)
 
     def show_ncr_status(self, message: str, timeout_ms: int = 5000) -> None:
         """顯示 NCR 模組的狀態訊息（例如已建立不良單）於主視窗狀態列。"""
@@ -253,6 +304,8 @@ class MainWindow(QMainWindow):
             event_scope=event_scope,
             overdue_only=overdue_only,
         )
+        # apply_quick_filters 更新了 scope，重新同步側欄高亮到對應 scope 列。
+        self._sync_sidebar_active(EVENT_PAGE_INDEX)
 
     # ── Dialogs ─────────────────────────────────────────────────────────────
 
@@ -289,12 +342,12 @@ class MainWindow(QMainWindow):
             self.refresh_all_views()
 
     def open_warehouse_nonconforming_tracker(self) -> None:
-        """切換至嵌入式倉庫不合格品追蹤模組（同一視窗內）。"""
+        """切換至嵌入式倉庫待處理不合格品頁（同一視窗內）。"""
         self._switch_primary_page(NCR_HOME_PAGE_INDEX)
 
     def open_warehouse_nonconforming_create(self) -> None:
         """切換至嵌入式倉庫不合格品建立表單。"""
-        self._switch_primary_page(NCR_HOME_PAGE_INDEX)
+        self._switch_primary_page(NCR_ENTRY_PAGE_INDEX)
         if self.ncr is not None:
             self.ncr.open_create_entry()
 
@@ -315,7 +368,7 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("重新整理事件徽章失敗")
             count = 0
-        self.sidebar.set_badge(EVENT_PAGE_INDEX, count)
+        self.sidebar.set_badge(("scope", event_service.EVENT_SCOPE_ANOMALY_ONLY), count)
         try:
             with get_connection() as conn:
                 warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
@@ -323,7 +376,7 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("重新整理倉庫徽章失敗")
             warehouse_count = 0
-        self.sidebar.set_badge(NCR_PAGE_INDEX, warehouse_count)
+        self.sidebar.set_badge(("page", PAGE_NCR_PENDING), warehouse_count)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

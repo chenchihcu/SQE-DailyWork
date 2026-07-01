@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import re
 import uuid
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timezone
 from typing import Any, TypedDict
 
@@ -12,8 +15,35 @@ from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     PRODUCT_STAGE_OPTIONS,
 )
-from database.repo_helpers import *  # noqa: F403, F401 — re-exported for backward compat
-from database.repo_helpers import (  # noqa: F401, F811 — imported explicitly because import * skips _-prefixed names
+from database.repo_helpers import (
+    # ── Constants (keep in sync with source) ──
+    SUPPLIER_CONSOLIDATION_META_KEY,
+    PRODUCT_STAGE_SYNC_META_KEY,
+    DEFAULT_STAGE_CHANGED_BY,
+    STAGE_SYNC_SCOPE_ALL_HISTORY,
+    VISIT_TECH_TRANSFER_ITEM_COLUMNS,
+    TECH_TRANSFER_STATE_YES,
+    TECH_TRANSFER_STATE_NO,
+    TECH_TRANSFER_STATE_NA,
+    TECH_TRANSFER_STATE_VALUES,
+    VISIT_TECH_TRANSFER_STATE_COLUMNS,
+    EVENT_SCOPE_VISIT_ONLY,
+    EVENT_SCOPE_VISIT_WITH_ANOMALY,
+    EVENT_SCOPE_ANOMALY_ONLY,
+    EVENT_SCOPE_CLOSED_ONLY,
+    EVENT_SCOPE_VALUES,
+    DEFECT_NOTE_IMPROVED,
+    DEFECT_NOTE_PENDING_IMPROVEMENT,
+    # ── TypedDicts ──
+    SupplierDeleteFailure,
+    SupplierDeleteResult,
+    ProductStageSyncReport,
+    ProductStageSyncOnceReport,
+    # ── Functions ──
+    upsert_migration_meta,
+    get_migration_meta,
+    # ── Internal helpers (not re-exported; used only within repository.py) ──
+    _SUPPLIER_SUFFIX_PATTERN,
     _table_exists,
     _table_columns,
     _quote_identifier,
@@ -885,6 +915,7 @@ def recode_anomaly_numbers(
         if started_transaction:
             conn.commit()
     except Exception:
+        logger.exception("recode_anomaly_numbers failed")
         if started_transaction and conn.in_transaction:
             conn.rollback()
         raise
@@ -2006,6 +2037,7 @@ def consolidate_suppliers(
             conn.execute(f"RELEASE SAVEPOINT {savepoint_name}")
         return report
     except Exception:
+        logger.exception("consolidate_suppliers failed")
         try:
             conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
             conn.execute(f"RELEASE SAVEPOINT {savepoint_name}")
@@ -3880,13 +3912,44 @@ def get_dashboard_summary(conn: sqlite3.Connection) -> dict:
 
 
 def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
-    is_all = (yyyymm == "ALL")
-    if is_all:
-        month = "ALL"
+    from datetime import date
+    current_year = date.today().year
+    current_month = date.today().month
+
+    is_dynamic = (yyyymm in ("ALL", "YEAR", "HALF_YEAR"))
+    if is_dynamic:
+        month = yyyymm
         yyyymm_prefix = ""
-        visit_count = int(conn.execute("SELECT COUNT(*) AS c FROM visits").fetchone()["c"])
+        if yyyymm == "ALL":
+            anomaly_where = "1=1"
+            visit_where = "1=1"
+            closed_where = "1=1"
+            anomaly_params = []
+            visit_params = []
+            closed_params = []
+        elif yyyymm == "YEAR":
+            anomaly_where = "substr(anomaly_date, 1, 4) = ?"
+            visit_where = "substr(visit_date, 1, 4) = ?"
+            closed_where = "substr(COALESCE(closed_at, anomaly_date), 1, 4) = ?"
+            anomaly_params = [str(current_year)]
+            visit_params = [str(current_year)]
+            closed_params = [str(current_year)]
+        else: # HALF_YEAR
+            if current_month <= 6:
+                anomaly_where = "substr(anomaly_date, 1, 4) = ? AND cast(substr(anomaly_date, 6, 2) as integer) BETWEEN 1 AND 6"
+                visit_where = "substr(visit_date, 1, 4) = ? AND cast(substr(visit_date, 6, 2) as integer) BETWEEN 1 AND 6"
+                closed_where = "substr(COALESCE(closed_at, anomaly_date), 1, 4) = ? AND cast(substr(COALESCE(closed_at, anomaly_date), 6, 2) as integer) BETWEEN 1 AND 6"
+            else:
+                anomaly_where = "substr(anomaly_date, 1, 4) = ? AND cast(substr(anomaly_date, 6, 2) as integer) BETWEEN 7 AND 12"
+                visit_where = "substr(visit_date, 1, 4) = ? AND cast(substr(visit_date, 6, 2) as integer) BETWEEN 7 AND 12"
+                closed_where = "substr(COALESCE(closed_at, anomaly_date), 1, 4) = ? AND cast(substr(COALESCE(closed_at, anomaly_date), 6, 2) as integer) BETWEEN 7 AND 12"
+            anomaly_params = [str(current_year)]
+            visit_params = [str(current_year)]
+            closed_params = [str(current_year)]
+
+        visit_count = int(conn.execute(f"SELECT COUNT(*) AS c FROM visits WHERE {visit_where}", visit_params).fetchone()["c"])
         row = conn.execute(
-            """
+            f"""
             SELECT
                 COUNT(*) AS anomaly_count,
                 COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
@@ -3895,7 +3958,9 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
                 COUNT(CASE WHEN status = '待處理' AND visit_id IS NOT NULL THEN 1 END) AS visit_open_anomaly_count,
                 COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
             FROM anomalies
-            """
+            WHERE {anomaly_where}
+            """,
+            anomaly_params,
         ).fetchone()
         closed_anomaly_count = int(row["closed_anomaly_count"])
         anomaly_count = int(row["anomaly_count"])
@@ -3905,14 +3970,15 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
         overdue_open_anomaly_count = int(row["overdue_open_anomaly_count"])
         supplier_coverage_count = int(
             conn.execute(
-                """
+                f"""
                 SELECT COUNT(DISTINCT supplier_id) AS c
                 FROM (
-                    SELECT supplier_id FROM anomalies
+                    SELECT supplier_id FROM anomalies WHERE {anomaly_where}
                     UNION
-                    SELECT supplier_id FROM visits
+                    SELECT supplier_id FROM visits WHERE {visit_where}
                 )
-                """
+                """,
+                anomaly_params + visit_params,
             ).fetchone()["c"]
         )
     else:
@@ -4002,14 +4068,14 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             ).fetchone()["c"]
         )
 
-    if is_all:
-        top_sql = """
+    if is_dynamic:
+        top_sql = f"""
             WITH month_suppliers AS (
-                SELECT supplier_id FROM anomalies
+                SELECT supplier_id FROM anomalies WHERE {anomaly_where}
                 UNION
-                SELECT supplier_id FROM visits
+                SELECT supplier_id FROM visits WHERE {visit_where}
                 UNION
-                SELECT supplier_id FROM anomalies WHERE status = '已結案'
+                SELECT supplier_id FROM anomalies WHERE status = '已結案' AND {closed_where}
             ),
             month_anomalies AS (
                 SELECT 
@@ -4017,17 +4083,19 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
                     COUNT(*) AS anomaly_count,
                     AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_resolution_time
                 FROM anomalies
+                WHERE {anomaly_where}
                 GROUP BY supplier_id
             ),
             month_visits AS (
                 SELECT supplier_id, COUNT(*) AS visit_count
                 FROM visits
+                WHERE {visit_where}
                 GROUP BY supplier_id
             ),
             month_closed AS (
                 SELECT supplier_id, COUNT(*) AS closed_anomaly_count
                 FROM anomalies
-                WHERE status = '已結案'
+                WHERE status = '已結案' AND {closed_where}
                 GROUP BY supplier_id
             ),
             month_open AS (
@@ -4037,13 +4105,13 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
                     SUM(CASE WHEN (visit_id IS NULL OR visit_id = '') THEN 1 ELSE 0 END) AS standalone_open_anomaly_count,
                     SUM(CASE WHEN (visit_id IS NOT NULL AND visit_id <> '') THEN 1 ELSE 0 END) AS visit_open_anomaly_count
                 FROM anomalies
-                WHERE status = '待處理'
+                WHERE status = '待處理' AND {anomaly_where}
                 GROUP BY supplier_id
             ),
             month_overdue AS (
                 SELECT supplier_id, COUNT(*) AS overdue_open_anomaly_count
                 FROM anomalies
-                WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime')
+                WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') AND {anomaly_where}
                 GROUP BY supplier_id
             )
             SELECT
@@ -4068,7 +4136,7 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
                 COALESCE(mv.visit_count, 0) DESC,
                 s.supplier_name COLLATE NOCASE ASC
         """
-        top_params = ()
+        top_params = tuple(anomaly_params + visit_params + closed_params + anomaly_params + visit_params + closed_params + anomaly_params + anomaly_params)
     else:
         top_sql = """
             WITH month_suppliers AS (
@@ -4261,10 +4329,22 @@ def get_anomaly_trend(conn: sqlite3.Connection, months: int = 6) -> list[dict]:
 
 def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[dict]:
     """Aggregate anomaly counts and average resolution time by responsible person."""
-    is_all = (yyyymm == "ALL")
-    if is_all:
+    from datetime import date
+    current_year = date.today().year
+    current_month = date.today().month
+
+    if yyyymm == "ALL":
         where_clause = ""
         params = ()
+    elif yyyymm == "YEAR":
+        where_clause = "WHERE substr(anomaly_date, 1, 4) = ?"
+        params = (str(current_year),)
+    elif yyyymm == "HALF_YEAR":
+        if current_month <= 6:
+            where_clause = "WHERE substr(anomaly_date, 1, 4) = ? AND cast(substr(anomaly_date, 6, 2) as integer) BETWEEN 1 AND 6"
+        else:
+            where_clause = "WHERE substr(anomaly_date, 1, 4) = ? AND cast(substr(anomaly_date, 6, 2) as integer) BETWEEN 7 AND 12"
+        params = (str(current_year),)
     else:
         month = _normalize_month(yyyymm)
         yyyymm_prefix = f"{month[:4]}-{month[4:]}"
@@ -5243,6 +5323,7 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
         )
         conn.execute("COMMIT")
     except Exception:
+        logger.exception("_normalize_defect_records_optional_work_order failed")
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
@@ -5309,6 +5390,7 @@ def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
         conn.execute("COMMIT")
         upsert_migration_meta(conn, "event_status_normalized_v1", "1")
     except Exception:
+        logger.exception("_normalize_event_status_tables failed")
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
@@ -5519,6 +5601,7 @@ def _remove_products_spec_desc_column_if_present(conn: sqlite3.Connection) -> No
         conn.execute("COMMIT")
         upsert_migration_meta(conn, "products_spec_desc_removed_v1", "1")
     except Exception:
+        logger.exception("_remove_products_spec_desc_column_if_present failed")
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise

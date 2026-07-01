@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "active_work_id": "ui-ux-quality-improvement-11bf78a6",
+  "works": {
+    "ui-ux-quality-improvement-11bf78a6": {
+      "work_id": "ui-ux-quality-improvement-11bf78a6",
+      "active_plan": "C:\\Users\\user\\Documents\\SQE DailyWork\\.omo\\plans\\ui-ux-quality-improvement.md",
+      "plan_name": "ui-ux-quality-improvement",
+      "status": "active",
+      "started_at": "2026-06-26T15:03:09.124Z",
+      "updated_at": "2026-06-26T15:03:09.124Z",
+      "session_ids": [
+        "opencode:ses_0fbb0cea7ffeF3vXMD9vEeqg6R"
+      ],
+      "session_origins": {
+        "opencode:ses_0fbb0cea7ffeF3vXMD9vEeqg6R": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {}
+    }
+  },
+  "active_plan": "C:\\Users\\user\\Documents\\SQE DailyWork\\.omo\\plans\\ui-ux-quality-improvement.md",
+  "started_at": "2026-06-26T15:03:09.124Z",
+  "status": "active",
+  "updated_at": "2026-06-26T15:03:09.124Z",
+  "session_ids": [
+    "opencode:ses_0fbb0cea7ffeF3vXMD9vEeqg6R"
+  ],
+  "session_origins": {
+    "opencode:ses_0fbb0cea7ffeF3vXMD9vEeqg6R": "direct"
+  },
+  "plan_name": "ui-ux-quality-improvement",
+  "task_sessions": {},
+  "agent": "atlas"
+}

@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
-from ui.widgets.defect_form_widget import NewAnomalyDialog, NewVisitDialog
+from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
+from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.event_actions import build_event_action_menu, ACTION_PREVIEW_ANOMALY, ACTION_PREVIEW_VISIT
 
 class EventPreviewTests(unittest.TestCase):

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 TABLE_COLUMNS = (
@@ -169,6 +172,7 @@ def update_defect(
             raise sqlite3.DatabaseError(f"找不到要更新的資料 ID: {defect_id}")
         conn.commit()
     except Exception:
+        logger.exception("更新缺陷記錄 ID=%s 失敗", defect_id)
         conn.rollback()
         raise
 
@@ -181,6 +185,7 @@ def delete_defect(conn: sqlite3.Connection, defect_id: int) -> None:
             raise sqlite3.DatabaseError(f"找不到要刪除的資料 ID: {defect_id}")
         conn.commit()
     except Exception:
+        logger.exception("刪除缺陷記錄 ID=%s 失敗", defect_id)
         conn.rollback()
         raise
 
@@ -225,6 +230,7 @@ def update_supplier(
             raise sqlite3.DatabaseError(f"找不到要更新的供應商 ID: {supplier_id}")
         conn.commit()
     except Exception:
+        logger.exception("更新供應商 ID=%s 失敗", supplier_id)
         conn.rollback()
         raise
 
@@ -237,6 +243,7 @@ def delete_supplier(conn: sqlite3.Connection, supplier_id: int) -> None:
             raise sqlite3.DatabaseError(f"找不到要刪除的供應商 ID: {supplier_id}")
         conn.commit()
     except Exception:
+        logger.exception("刪除供應商 ID=%s 失敗", supplier_id)
         conn.rollback()
         raise
 
@@ -434,6 +441,7 @@ def update_product(
         )
         conn.commit()
     except Exception:
+        logger.exception("更新產品 ID=%s 失敗", product_id)
         conn.rollback()
         raise
 
@@ -450,6 +458,7 @@ def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
         conn.execute("DELETE FROM product_records WHERE id = ?", (product_id,))
         conn.commit()
     except Exception:
+        logger.exception("刪除產品 ID=%s 失敗", product_id)
         conn.rollback()
         raise
 

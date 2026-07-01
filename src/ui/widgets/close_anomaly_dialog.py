@@ -34,6 +34,7 @@ from ui.widgets.common_widgets import (
     make_paired_form_row as _make_paired_form_row,
     mark_button_variant as _mark_button_variant,
 )
+from ui.widgets.defect_form_widgets import set_text_edit_visible_rows
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,9 @@ class CloseAnomalyDialog(QDialog):
 
         self.improvement_input = QTextEdit()
         self.improvement_input.setPlaceholderText("請輸入改善內容（必填）")
-        self.improvement_input.setFixedHeight(240)
+        # Row-based height keeps the field compact and consistent with the other
+        # long-text inputs (min==max via the shared helper) instead of a fixed 240px.
+        set_text_edit_visible_rows(self.improvement_input, 10)
 
         self.improvement_counter = QLabel(f"0 / {IMPROVEMENT_DESC_MAX_LEN}")
         self.improvement_counter.setProperty("role", "counterText")

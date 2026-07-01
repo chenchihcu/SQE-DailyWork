@@ -67,11 +67,15 @@ from ncr.models.labels import (
 )
 from ncr.services import defect_service, product_service
 from ncr.ui.ui_style import (
+    DATE_FIELD_MIN_WIDTH,
+    DEFECT_FORM_CONTENT_MARGINS,
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
     FIELD_SPACING_Y,
     FORM_COMPACT_FIELD_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
+    FORM_TWO_COLUMN_SPACING,
     INPUT_HEIGHT,
+    QUICK_ADD_BUTTON_MIN_WIDTH,
     SECTION_SPACING,
     STATUS_TIMEOUT_ERROR,
     STATUS_TIMEOUT_PERSIST,
@@ -165,8 +169,8 @@ class QuickProductCreateDialog(QDialog):
         apply_button_icon(self.save_button, "save")
         self.cancel_button.clicked.connect(self.reject)
         self.save_button.clicked.connect(self.create_product)
-        actions.addWidget(self.cancel_button)
         actions.addWidget(self.save_button)
+        actions.addWidget(self.cancel_button)
         layout.addLayout(actions)
 
     def _show_error(self, message: str) -> None:
@@ -238,6 +242,8 @@ class DefectFieldsWidget(QWidget):
         self.event_date_edit = QDateEdit()
         self.event_date_edit.setCalendarPopup(True)
         self.event_date_edit.setDisplayFormat("yyyy-MM-dd")
+        # 確保 yyyy-MM-dd 與日曆鈕在 1.5x DPI 不被裁成 yyyy-MM
+        self.event_date_edit.setMinimumWidth(DATE_FIELD_MIN_WIDTH)
 
         self.return_slip_type_combo = QComboBox()
         self.return_slip_type_combo.addItem("")
@@ -264,8 +270,9 @@ class DefectFieldsWidget(QWidget):
         self.quick_add_product_btn = QPushButton("+ 建立")
         self.quick_add_product_btn.setObjectName("quickAddProductButton")
         self.quick_add_product_btn.setToolTip("快速建立目前料號的產品名稱")
+        self.quick_add_product_btn.setAccessibleName("快速建立產品名稱")
         self.quick_add_product_btn.setVisible(False)
-        self.quick_add_product_btn.setMinimumWidth(76)
+        self.quick_add_product_btn.setMinimumWidth(QUICK_ADD_BUTTON_MIN_WIDTH)
         set_button_role(self.quick_add_product_btn, "utility")
         self.quick_add_product_btn.clicked.connect(self.open_quick_product_create_dialog)
 
@@ -319,41 +326,39 @@ class DefectFieldsWidget(QWidget):
             ]
         )
 
-        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setContentsMargins(*DEFECT_FORM_CONTENT_MARGINS)
         layout.setSpacing(SECTION_SPACING)
 
-        # 1. 基礎資訊
-        form_grid = create_form_grid(field_count=3, horizontal_spacing=24)
+        # 1. 基礎資訊（2 欄佈局：避免最小寬度 / 高 DPI 下第三欄較寬的 combo 切字）
+        form_grid = create_form_grid(field_count=2, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
 
         # Row 0
         self._add_compact_field(form_grid, 0, LABEL_EVENT_DATE, self.event_date_edit, column_offset=0)
-        return_slip_label = self._add_compact_field(
-            form_grid, 0, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo, column_offset=2
+        self._add_compact_field(
+            form_grid, 0, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
+            column_offset=2, required=True,
         )
-        return_slip_label.setToolTip("必填欄位")
-        self.return_slip_type_combo.setToolTip("必填欄位")
-        self._add_compact_field(form_grid, 0, LABEL_CATEGORY, self.category_combo, column_offset=4)
 
         # Row 1
-        qty_label = add_labeled_field(
+        self._add_compact_field(form_grid, 1, LABEL_CATEGORY, self.category_combo, column_offset=0)
+        add_labeled_field(
             form_grid, 1, LABEL_QTY, self.qty_spin,
-            column_offset=0,
+            column_offset=2,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
-        )
-        qty_label.setToolTip("必填欄位")
-        self.qty_spin.setToolTip("必填欄位")
-        self._add_compact_field(
-            form_grid, 1, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=2
-        )
-        self._add_compact_field(
-            form_grid, 1, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=4
+            required=True,
         )
 
         # Row 2
-        item_no_label = self._add_compact_field(form_grid, 2, LABEL_ITEM_NO, self.item_no_input, column_offset=0)
-        item_no_label.setToolTip("必填欄位")
-        self.item_no_input.setToolTip("必填欄位")
+        self._add_compact_field(
+            form_grid, 2, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=0
+        )
+        self._add_compact_field(
+            form_grid, 2, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=2
+        )
+
+        # Row 3
+        self._add_compact_field(form_grid, 3, LABEL_ITEM_NO, self.item_no_input, column_offset=0, required=True)
         self.product_name_input.setToolTip("由系統依料號自動帶出，不可手動輸入")
         product_name_host = QWidget()
         product_name_layout = QHBoxLayout(product_name_host)
@@ -363,20 +368,19 @@ class DefectFieldsWidget(QWidget):
         product_name_layout.addWidget(self.quick_add_product_btn, 0)
         product_name_host.setMinimumWidth(FORM_COMPACT_FIELD_MIN_WIDTH + 84)
         add_labeled_field(
-            form_grid, 2, LABEL_PRODUCT_NAME, product_name_host,
+            form_grid, 3, LABEL_PRODUCT_NAME, product_name_host,
             column_offset=2,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
         )
-        self._add_compact_field(
-            form_grid, 2, LABEL_SUPPLIER_NAME, self.supplier_combo, column_offset=4
-        )
 
-        # Row 3
+        # Row 4
         self._add_compact_field(
-            form_grid, 3, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo, column_offset=0
+            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo, column_offset=0
         )
-        # Empty space for alignment
+        self._add_compact_field(
+            form_grid, 4, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo, column_offset=2
+        )
         layout.addLayout(form_grid)
 
         self.supplier_hint_label = make_notice_label("", role="warningHint")
@@ -387,29 +391,59 @@ class DefectFieldsWidget(QWidget):
 
         # 2. 不良現象紀錄
         layout.addWidget(
-            create_section_title_with_icon(LABEL_DEFECT_DESC, "section_description")
+            create_section_title_with_icon(
+                LABEL_DEFECT_DESC, "section_description", required=True
+            )
         )
-        self.defect_desc_input.setToolTip("必填欄位")
 
         layout.addWidget(self.defect_desc_input)
 
         layout.addSpacing(10)
 
-        # 3. 處理狀態
-        handle_grid = create_form_grid(field_count=3, horizontal_spacing=24)
+        # 3. 處理狀態（2 欄佈局）
+        handle_grid = create_form_grid(field_count=2, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(handle_grid, 0, LABEL_STATUS, self.status_combo, column_offset=0)
         self._add_compact_field(
             handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo, column_offset=2
         )
         self._add_compact_field(
-            handle_grid, 0, LABEL_TRANSFER_SLIP_NO, self.transfer_slip_input, column_offset=4
+            handle_grid, 1, LABEL_TRANSFER_SLIP_NO, self.transfer_slip_input, column_offset=0
         )
         self._add_compact_field(
-            handle_grid, 1, LABEL_RESPONSIBILITY, self.responsibility_combo, column_offset=0
+            handle_grid, 1, LABEL_RESPONSIBILITY, self.responsibility_combo, column_offset=2
         )
         layout.addLayout(handle_grid)
 
         layout.addStretch(1)
+
+        self._setup_tab_order()
+
+    def _setup_tab_order(self) -> None:
+        """Tab follows visual reading order, not widget creation order (a11y §5).
+
+        Several inputs (e.g. transfer_slip_input) are created earlier than they
+        are placed, so without this the focus chain would jump around.
+        """
+        order = [
+            self.event_date_edit,
+            self.return_slip_type_combo,
+            self.category_combo,
+            self.qty_spin,
+            self.work_order_input,
+            self.internal_work_order_input,
+            self.item_no_input,
+            self.product_name_input,
+            self.quick_add_product_btn,
+            self.supplier_combo,
+            self.outsource_supplier_combo,
+            self.defect_desc_input,
+            self.status_combo,
+            self.disposition_combo,
+            self.transfer_slip_input,
+            self.responsibility_combo,
+        ]
+        for earlier, later in zip(order, order[1:]):
+            self.setTabOrder(earlier, later)
 
     def _add_compact_field(
         self,
@@ -419,6 +453,7 @@ class DefectFieldsWidget(QWidget):
         field: QWidget,
         *,
         column_offset: int = 0,
+        required: bool = False,
     ) -> QLabel:
         return add_labeled_field(
             layout,
@@ -428,6 +463,7 @@ class DefectFieldsWidget(QWidget):
             column_offset=column_offset,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
+            required=required,
         )
 
     def _set_defect_desc_height(self) -> None:
@@ -1042,8 +1078,8 @@ class DefectEditDialog(QDialog):
         self.cancel_button.clicked.connect(self.reject)
 
         button_layout.addStretch(1)
-        button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.save_button)
+        button_layout.addWidget(self.cancel_button)
         main_card_layout.addLayout(button_layout)
 
         layout.addWidget(main_card, 1)

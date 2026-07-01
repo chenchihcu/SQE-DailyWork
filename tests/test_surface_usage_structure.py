@@ -56,10 +56,10 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]
         self.assertNotIn("快速入口", texts)
-        self.assertIn("總異常件數", texts)
+        self.assertIn("逾期未結", texts)
 
         kpi_cards = [f for f in frames if f.property("role") == "kpiCard"]
-        self.assertEqual(6, len(kpi_cards))
+        self.assertEqual(4, len(kpi_cards))
 
     def test_query_page_subpanel_structure_and_roles_are_consistent(self) -> None:
         query = self.window.events_widget

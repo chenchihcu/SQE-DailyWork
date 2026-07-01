@@ -23,8 +23,11 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     apply_clickable_affordance,
+    make_inline_error_label,
     mark_button_variant,
+    set_field_invalid,
     style_table,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
@@ -32,7 +35,7 @@ from ui.window_sizing import fit_dialog_to_available_screen
 logger = logging.getLogger(__name__)
 
 
-class SupplierContactManagerDialog(QDialog):
+class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
     def __init__(self, supplier_id: str, supplier_name: str, parent=None):
         super().__init__(parent)
         self.supplier_id = supplier_id
@@ -40,6 +43,15 @@ class SupplierContactManagerDialog(QDialog):
         self.setMinimumWidth(800)
         self._setup_ui()
         self._refresh_list()
+        # Contacts persist per-action; the only unsaved state is a half-typed
+        # new contact row, so dirty tracking watches just those add-row inputs.
+        self._init_dirty_tracking([
+            self.new_name.textChanged,
+            self.new_dept.textChanged,
+            self.new_phone.textChanged,
+            self.new_email.textChanged,
+        ])
+        self.new_name.textChanged.connect(self._clear_validation)
         fit_dialog_to_available_screen(self, preferred_width=900, preferred_height=620)
 
     def _setup_ui(self) -> None:
@@ -79,6 +91,8 @@ class SupplierContactManagerDialog(QDialog):
         form.addWidget(self.new_email)
         form.addWidget(self.btn_add)
         add_layout.addLayout(form)
+        self.inline_error = make_inline_error_label()
+        add_layout.addWidget(self.inline_error)
         layout.addWidget(add_group)
 
         # List of contacts
@@ -128,7 +142,10 @@ class SupplierContactManagerDialog(QDialog):
     def _on_add(self) -> None:
         name = self.new_name.text().strip()
         if not name:
-            QMessageBox.warning(self, "驗證失敗", "姓名為必填")
+            set_field_invalid(self.new_name, True)
+            self.inline_error.setText("姓名為必填，請輸入聯絡人姓名")
+            self.inline_error.setVisible(True)
+            self.new_name.setFocus()
             return
 
         event_service.add_supplier_contact(self.supplier_id, {
@@ -142,7 +159,13 @@ class SupplierContactManagerDialog(QDialog):
         self.new_dept.clear()
         self.new_phone.clear()
         self.new_email.clear()
+        self._clear_validation()
         self._refresh_list()
+        self._dirty = False
+
+    def _clear_validation(self, *args) -> None:
+        set_field_invalid(self.new_name, False)
+        self.inline_error.setVisible(False)
 
     def _on_set_primary(self, contact_id: str) -> None:
         event_service.set_primary_contact(self.supplier_id, contact_id)

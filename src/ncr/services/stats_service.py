@@ -5,6 +5,13 @@ import sqlite3
 _ALLOWED_NAME_FIELDS = frozenset(
     {"product_name", "supplier_name", "outsource_supplier_name"}
 )
+_ALLOWED_GROUP_FIELDS = frozenset({"disposition", "return_slip_type"})
+
+
+def _validate_group_field(field: str) -> str:
+    if field not in _ALLOWED_GROUP_FIELDS:
+        raise ValueError(f"Unsupported group field: {field}")
+    return field
 
 
 def _validate_name_field(name_field: str) -> str:
@@ -197,37 +204,42 @@ def _get_top_entity_stats_filtered(
     conn: sqlite3.Connection, entity_field: str, yyyymm: str | None = None
 ) -> list[sqlite3.Row]:
     _validate_name_field(entity_field)
-    if yyyymm and yyyymm != "ALL":
-        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
-        cursor = conn.execute(
-            f"""
-            SELECT
-                {entity_field},
-                COUNT(*) AS case_count,
-                SUM(qty) AS total_qty
-            FROM defect_records
-            WHERE {entity_field} IS NOT NULL AND {entity_field} <> '' AND {entity_field} <> 'N/A'
-              AND SUBSTR(event_date, 1, 7) = ?
-            GROUP BY {entity_field}
-            ORDER BY total_qty DESC
-            LIMIT 5
-            """,
-            (formatted_month,),
-        )
+    from datetime import date
+    current_year = date.today().year
+    current_month = date.today().month
+
+    if not yyyymm or yyyymm == "ALL":
+        time_clause = "1=1"
+        params = []
+    elif yyyymm == "YEAR":
+        time_clause = "SUBSTR(event_date, 1, 4) = ?"
+        params = [str(current_year)]
+    elif yyyymm == "HALF_YEAR":
+        if current_month <= 6:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 1 AND 6"
+        else:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 7 AND 12"
+        params = [str(current_year)]
     else:
-        cursor = conn.execute(
-            f"""
-            SELECT
-                {entity_field},
-                COUNT(*) AS case_count,
-                SUM(qty) AS total_qty
-            FROM defect_records
-            WHERE {entity_field} IS NOT NULL AND {entity_field} <> '' AND {entity_field} <> 'N/A'
-            GROUP BY {entity_field}
-            ORDER BY total_qty DESC
-            LIMIT 5
-            """
-        )
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        time_clause = "SUBSTR(event_date, 1, 7) = ?"
+        params = [formatted_month]
+
+    cursor = conn.execute(
+        f"""
+        SELECT
+            {entity_field},
+            COUNT(*) AS case_count,
+            SUM(qty) AS total_qty
+        FROM defect_records
+        WHERE {entity_field} IS NOT NULL AND {entity_field} <> '' AND {entity_field} <> 'N/A'
+          AND {time_clause}
+        GROUP BY {entity_field}
+        ORDER BY total_qty DESC
+        LIMIT 5
+        """,
+        params,
+    )
     return list(cursor.fetchall())
 
 
@@ -244,37 +256,51 @@ def get_top_products_stats_filtered(
 
 
 def _get_grouped_stats_filtered(
-    conn: sqlite3.Connection, group_field: str, filter_clause: str, yyyymm: str | None = None
+    conn: sqlite3.Connection,
+    group_field: str,
+    where_values: tuple[str, ...],
+    yyyymm: str | None = None,
 ) -> list[sqlite3.Row]:
-    if yyyymm and yyyymm != "ALL":
-        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
-        cursor = conn.execute(
-            f"""
-            SELECT
-                {group_field},
-                COUNT(*) AS case_count,
-                SUM(qty) AS total_qty
-            FROM defect_records
-            WHERE {filter_clause}
-              AND SUBSTR(event_date, 1, 7) = ?
-            GROUP BY {group_field}
-            ORDER BY total_qty DESC
-            """,
-            (formatted_month,),
-        )
+    _validate_group_field(group_field)
+    placeholders = ", ".join("?" * len(where_values))
+    filter_clause = f"{group_field} IN ({placeholders})"
+    
+    from datetime import date
+    current_year = date.today().year
+    current_month = date.today().month
+
+    if not yyyymm or yyyymm == "ALL":
+        time_clause = "1=1"
+        time_params = []
+    elif yyyymm == "YEAR":
+        time_clause = "SUBSTR(event_date, 1, 4) = ?"
+        time_params = [str(current_year)]
+    elif yyyymm == "HALF_YEAR":
+        if current_month <= 6:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 1 AND 6"
+        else:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 7 AND 12"
+        time_params = [str(current_year)]
     else:
-        cursor = conn.execute(
-            f"""
-            SELECT
-                {group_field},
-                COUNT(*) AS case_count,
-                SUM(qty) AS total_qty
-            FROM defect_records
-            WHERE {filter_clause}
-            GROUP BY {group_field}
-            ORDER BY total_qty DESC
-            """
-        )
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        time_clause = "SUBSTR(event_date, 1, 7) = ?"
+        time_params = [formatted_month]
+
+    params = list(where_values) + time_params
+    cursor = conn.execute(
+        f"""
+        SELECT
+            {group_field},
+            COUNT(*) AS case_count,
+            SUM(qty) AS total_qty
+        FROM defect_records
+        WHERE {filter_clause}
+          AND {time_clause}
+        GROUP BY {group_field}
+        ORDER BY total_qty DESC
+        """,
+        params,
+    )
     return list(cursor.fetchall())
 
 
@@ -282,7 +308,7 @@ def get_scrap_rework_ratio_filtered(
     conn: sqlite3.Connection, yyyymm: str | None = None
 ) -> list[sqlite3.Row]:
     return _get_grouped_stats_filtered(
-        conn, "disposition", "disposition IN ('報廢', '重工')", yyyymm
+        conn, "disposition", ("報廢", "重工"), yyyymm
     )
 
 
@@ -290,7 +316,7 @@ def get_return_slip_ratio_filtered(
     conn: sqlite3.Connection, yyyymm: str | None = None
 ) -> list[sqlite3.Row]:
     return _get_grouped_stats_filtered(
-        conn, "return_slip_type", "return_slip_type IN ('廠內退料', '託外退料')", yyyymm
+        conn, "return_slip_type", ("廠內退料", "託外退料"), yyyymm
     )
 
 
@@ -382,9 +408,6 @@ def get_supplier_processing_preview_rows(conn: sqlite3.Connection) -> list[sqlit
         name_field="supplier_name",
         status="處理中",
     )
-
-
-_YIMED_SUPPLIER_NAME = "醫電鼎眾"
 
 
 def get_outsource_scrap_preview_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:

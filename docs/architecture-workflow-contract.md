@@ -31,19 +31,25 @@ shared master-data area.
 ## UI Entrypoint And Folder Boundaries
 
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
-- The sidebar grouping expresses workflow structure, not data ownership:
-  overview (首頁), supplier events (事件管理), analysis (異常事件統計), master data
-  (基礎資料), and warehouse (不合格品追蹤) — one item per group. Groups are
-  conveyed by per-item icons and spacing (no text section headers). The supplier
-  event views (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) are scope tabs inside
-  the single 事件管理 page, not separate sidebar entries.
+- The sidebar grouping expresses workflow structure, not data ownership: three
+  domain group headers (text labels) — 供應商事件, 倉庫不合格品, 系統 — organize
+  首頁 (overview) plus the supplier-event scopes (單獨異常 / 訪廠發現異常 /
+  訪廠紀錄 / 已結案) and 異常事件統計; 倉庫不合格品 holds 建立不合格品 /
+  待處理不合格品 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. The four
+  supplier-event scopes are first-class sidebar rows (deep-linking into the single
+  事件管理 page and setting its scope via `EventListWidget.set_event_scope`), not
+  an in-page scope tab bar.
+- The sidebar emits `nav_activated(action)` (`("page", PAGE_KEY)` or
+  `("scope", EVENT_SCOPE_*)`); `MainWindow._PAGE_KEY_TO_INDEX` maps PAGE_KEY to the
+  stack index, so the sidebar stays decoupled from stack indexes.
 - Sidebar page indexes and stack routing are `0 首頁 / 1 事件管理 / 2 異常事件統計
-  / 3 基礎資料 / 4 不合格品追蹤` (NCR offset 4). When indexes change, update the
+  / 3 建立不合格品 / 4 待處理不合格品 / 5 歷史紀錄 / 6 不合格品統計分析 /
+  7 基礎資料` (NCR offset 3). When indexes change, update the
   index constants, legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`),
   `ncr.embed.NCR_PAGE_OFFSET`, and the affected tests in the same change.
-- Warehouse nonconforming-product tracking stays under the single embedded
-  `src/ncr/` workflow page. Do not add an outer launcher layer or duplicate
-  warehouse shell pages.
+- Warehouse nonconforming-product tracking stays under the embedded `src/ncr/`
+  workflow and exposes create, pending, and history as first-class shell pages.
+  Do not add an outer launcher layer or duplicate warehouse data workflows.
 - Supplier and warehouse sidebar badges are read-only status indicators. They
   must not create cross-line writes or merge supplier-event and warehouse
   statistics.

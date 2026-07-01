@@ -95,8 +95,8 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         badge = _selector_block(qss, "QLabel#NavBadge")
         self.assertIn(f'background: {TOKENS["status_danger_chart"]};', badge)
 
-        secondary = _selector_block(qss, "QPushButton#SidebarWarehouseQuickCreate")
-        self.assertIn(f'border-left: 4px solid {TOKENS["brand_green"]};', secondary)
+        group_header = _selector_block(qss, "QLabel#SidebarGroupHeader")
+        self.assertIn(f'color: {TOKENS["sidebar_muted"]};', group_header)
 
 
 if __name__ == "__main__":

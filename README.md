@@ -33,18 +33,20 @@ no separate launcher window, and no standalone NCR main window.
   shortcut). Hero/cover content, feature tours, project-structure copy, and
   quick-entry write panels stay retired; the backlog list only reads existing
   services and routes through existing navigation.
-- Sidebar is workflow-first with one item per group (首頁 / 事件管理 /
-  異常事件統計 / 基礎資料 / 不合格品追蹤), conveyed by per-item icons and spacing
-  rather than text section headers. The former 異常一覽表 / 訪廠紀錄一覽表 /
-  異常已結案查詢 entries are now scope tabs (單獨異常 / 訪廠發現異常 / 訪廠紀錄 /
-  已結案) inside the single 事件管理 page.
+- Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (單獨異常 /
+  訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
+  待處理不合格品 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料). The former
+  異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are first-class sidebar
+  scope rows that drive the single 事件管理 page.
 - Supplier event and warehouse nonconforming-product pending work both surface
   as sidebar badges.
 - `登錄訪廠紀錄` and `登錄訪廠缺失` use the visit form.
 - Visit/audit defect notes can be manually confirmed into formal supplier
   anomalies while retaining the `visit_id` link.
-- `不合格品追蹤` opens the embedded warehouse nonconforming-product page inside
-  the same main window.
+- `建立不合格品`, `待處理不合格品`, and `歷史紀錄` open the embedded warehouse
+  nonconforming-product workflow pages inside the same main window.
+- `不合格品統計分析` opens warehouse nonconforming-product statistics charts
+  and proportion analysis.
 - `基礎資料` manages shared suppliers and products. Product import accepts
   Excel/ERP exports for shared `suppliers/products` after preview and backup.
 - Statistics pages keep tab-level scroll guards, visible scrollbars, long-name
@@ -136,8 +138,7 @@ dry run, reconciliation, and focused verification.
 
 - Event PDF export: `src/services/event_pdf_exporter.py`.
 - Monthly Excel export: `src/services/event_service.py`.
-- Weekly PowerPoint report: `src/services/report_service.py` and
-  `scripts/generate_weekly_report.py`.
+- Weekly PowerPoint report: `scripts/generate_weekly_report.py`.
 - Warehouse nonconforming-product exports remain in `src/ncr/services/`.
 
 ## UI Layout And Theme Contract
@@ -169,7 +170,7 @@ present.
 Focused checks should cover:
 
 - One main window entrypoint and no standalone NCR main shell.
-- Embedded warehouse `不合格品追蹤` page.
+- Embedded warehouse `建立不合格品` / `待處理不合格品` / `歷史紀錄` pages.
 - `defect_records` count and migrated NCR business keys.
 - Visit/audit defect conversion into `anomalies.visit_id` without writing
   `defect_records`.

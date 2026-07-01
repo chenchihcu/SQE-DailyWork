@@ -32,6 +32,7 @@ from ui.widgets.common_widgets import (
     create_status_item,
     safe_ui_operation,
     style_table,
+    text_table_item,
 )
 from ui.widgets.supplier_form_dialog import SupplierFormDialog
 from ui.widgets.pagination_bar import PaginationBar
@@ -184,10 +185,10 @@ class _MasterDataSupplierMixin:
         for idx, row in enumerate(page_rows):
             self.supplier_table.insertRow(idx)
             status_text = "啟用" if row["is_active"] else "停用"
-            self.supplier_table.setItem(idx, 0, QTableWidgetItem(row["supplier_name"]))
-            self.supplier_table.setItem(idx, 1, QTableWidgetItem(row.get("contact_name", "")))
-            self.supplier_table.setItem(idx, 2, QTableWidgetItem(row.get("department", "")))
-            self.supplier_table.setItem(idx, 3, QTableWidgetItem(row.get("contact_email", "")))
+            self.supplier_table.setItem(idx, 0, text_table_item(row["supplier_name"], empty=""))
+            self.supplier_table.setItem(idx, 1, text_table_item(row.get("contact_name", ""), empty=""))
+            self.supplier_table.setItem(idx, 2, text_table_item(row.get("department", ""), empty=""))
+            self.supplier_table.setItem(idx, 3, text_table_item(row.get("contact_email", ""), empty=""))
             self.supplier_table.setItem(idx, 4, QTableWidgetItem(row.get("phone", "")))
             status_item = create_status_item(status_text)
             self.supplier_table.setItem(idx, 5, status_item)
