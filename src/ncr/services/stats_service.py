@@ -201,14 +201,22 @@ def get_disposition_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def _get_top_entity_stats_filtered(
-    conn: sqlite3.Connection, entity_field: str, yyyymm: str | None = None
+    conn: sqlite3.Connection,
+    entity_field: str,
+    yyyymm: str | None = None,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[sqlite3.Row]:
     _validate_name_field(entity_field)
     from datetime import date
     current_year = date.today().year
     current_month = date.today().month
 
-    if not yyyymm or yyyymm == "ALL":
+    if start_date and end_date:
+        time_clause = "event_date BETWEEN ? AND ?"
+        params = [start_date, end_date]
+    elif not yyyymm or yyyymm == "ALL":
         time_clause = "1=1"
         params = []
     elif yyyymm == "YEAR":
@@ -260,6 +268,9 @@ def _get_grouped_stats_filtered(
     group_field: str,
     where_values: tuple[str, ...],
     yyyymm: str | None = None,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[sqlite3.Row]:
     _validate_group_field(group_field)
     placeholders = ", ".join("?" * len(where_values))
@@ -269,7 +280,10 @@ def _get_grouped_stats_filtered(
     current_year = date.today().year
     current_month = date.today().month
 
-    if not yyyymm or yyyymm == "ALL":
+    if start_date and end_date:
+        time_clause = "event_date BETWEEN ? AND ?"
+        time_params = [start_date, end_date]
+    elif not yyyymm or yyyymm == "ALL":
         time_clause = "1=1"
         time_params = []
     elif yyyymm == "YEAR":
@@ -416,3 +430,48 @@ def get_outsource_scrap_preview_rows(conn: sqlite3.Connection) -> list[sqlite3.R
         name_field="outsource_supplier_name",
         disposition="報廢",
     )
+
+
+def get_top_suppliers_stats_by_range(
+    conn: sqlite3.Connection, start_date: str, end_date: str
+) -> list[sqlite3.Row]:
+    return _get_top_entity_stats_filtered(conn, "supplier_name", start_date=start_date, end_date=end_date)
+
+
+def get_top_products_stats_by_range(
+    conn: sqlite3.Connection, start_date: str, end_date: str
+) -> list[sqlite3.Row]:
+    return _get_top_entity_stats_filtered(conn, "product_name", start_date=start_date, end_date=end_date)
+
+
+def get_scrap_rework_ratio_by_range(
+    conn: sqlite3.Connection, start_date: str, end_date: str
+) -> list[sqlite3.Row]:
+    return _get_grouped_stats_filtered(
+        conn, "disposition", ("報廢", "重工"), start_date=start_date, end_date=end_date
+    )
+
+
+def get_return_slip_ratio_by_range(
+    conn: sqlite3.Connection, start_date: str, end_date: str
+) -> list[sqlite3.Row]:
+    return _get_grouped_stats_filtered(
+        conn, "return_slip_type", ("廠內退料", "託外退料"), start_date=start_date, end_date=end_date
+    )
+
+
+def get_defects_detail_by_range(
+    conn: sqlite3.Connection, start_date: str, end_date: str
+) -> list[sqlite3.Row]:
+    """取得指定日期範圍內的所有不合格品明細。"""
+    cursor = conn.execute(
+        """
+        SELECT *
+        FROM defect_records
+        WHERE event_date BETWEEN ? AND ?
+        ORDER BY event_date DESC, defect_no DESC
+        """,
+        (start_date, end_date),
+    )
+    return list(cursor.fetchall())
+

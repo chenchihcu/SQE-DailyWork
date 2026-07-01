@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QDialog,
 )
 
 from services import event_service
@@ -41,6 +42,7 @@ from ui.theme import TOKENS
 from ui.widgets.chart_style import apply_chart_surface
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.stats_chart_mixin import _StatsChartMixin
+from ui.widgets.export_range_dialog import ExportRangeDialog
 
 logger = logging.getLogger(__name__)
 
@@ -474,18 +476,89 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
     # ── 匯出 ──────────────────────────────────────────────
 
     def export_monthly_excel(self):
-        month = self._month_key()
-        default_name = f"SQE_Monthly_{month}_{datetime.now().strftime('%H%M%S')}.xlsx"
-        target, _ = QFileDialog.getSaveFileName(
+        # 1. 彈出日期區間對話框
+        dialog = ExportRangeDialog("品質異常統計匯出設定", self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+            
+        start_date, end_date = dialog.get_date_range()
+        
+        # 2. 彈出儲存路徑
+        import os
+        from datetime import datetime
+        default_name = f"SQE_Quality_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "匯出統計",
+            "匯出 Excel 報告",
             default_name,
             "Excel Files (*.xlsx)",
         )
-        if not target:
+        if not file_path:
             return
-        ok, msg = event_service.export_monthly_excel(target, month)
-        if ok:
-            QMessageBox.information(self, "成功", localize_popup_message(msg))
-        else:
-            QMessageBox.critical(self, "失敗", localize_popup_message(msg))
+            
+        # 3. 處理與匯出
+        temp_dir = os.path.dirname(file_path)
+        pid = os.getpid()
+        temp_paths = {
+            "trend": os.path.join(temp_dir, f"temp_evt_trend_{pid}.png"),
+            "responsible": os.path.join(temp_dir, f"temp_evt_responsible_{pid}.png"),
+        }
+        
+        # 確保刪除先前遺留的暫存檔
+        for p in temp_paths.values():
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+        try:
+            # 取得這段時間範圍的數據
+            trend_data = event_service.get_anomaly_trend_by_range(start_date, end_date)
+            resp_stats = event_service.get_responsible_person_stats_by_range(start_date, end_date)
+            events_detail = event_service.list_events_by_range(start_date, end_date)
+            
+            has_data = len(events_detail) > 0
+            
+            # 如果有數據，則在背景繪製圖表並 grab 儲存
+            active_temp_paths = {}
+            if has_data:
+                # 1. Trend chart
+                if trend_data:
+                    v = self._build_trend_chart(trend_data)
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["trend"])
+                    active_temp_paths["trend"] = temp_paths["trend"]
+                    
+                # 2. Responsible chart
+                if resp_stats:
+                    v = self._build_responsible_chart(resp_stats)
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["responsible"])
+                    active_temp_paths["responsible"] = temp_paths["responsible"]
+                    
+            # 呼叫匯出服務
+            ok, msg = event_service.export_events_report(
+                file_path,
+                start_date,
+                end_date,
+                temp_chart_paths=active_temp_paths if has_data else None
+            )
+            
+            if ok:
+                QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+            else:
+                QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
+                
+        except Exception as exc:
+            logger.exception("匯出 Excel 報告出錯")
+            QMessageBox.critical(self, "錯誤", f"匯出過程發生非預期錯誤：{exc}")
+        finally:
+            # 刪除暫存檔
+            for p in temp_paths.values():
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass

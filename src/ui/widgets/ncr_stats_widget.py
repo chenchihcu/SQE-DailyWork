@@ -13,7 +13,15 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
+    QDialog,
 )
+
+from ui.widgets.export_range_dialog import ExportRangeDialog
+import ncr.services.export_service as ncr_export_service
+
 
 from database.connection import get_connection
 import ncr.services.stats_service as ncr_stats_service
@@ -89,6 +97,13 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         source_tag_label.setToolTip("此統計畫面之數據來源僅限於不合格品登記紀錄")
         control_row.addWidget(source_tag_label)
         control_row.addStretch(1)
+
+        self.btn_export = QPushButton("匯出 Excel")
+        self.btn_export.setProperty("variant", "primary")
+        self.btn_export.setMinimumWidth(118)
+        apply_clickable_affordance(self.btn_export, tooltip="匯出自訂日期區間的統計 Excel 報告")
+        self.btn_export.clicked.connect(self.export_ncr_excel)
+        control_row.addWidget(self.btn_export)
 
         top_layout.addLayout(control_row)
         root.addWidget(top_panel)
@@ -374,3 +389,112 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                     f"🔄 <b>退料來源：</b>廠內退料佔 <b>{in_house_pct:.1f}%</b>，託外退料佔 <b>{(100 - in_house_pct):.1f}%</b>。"
                     f"廠內退料涉及內部製程不良，託外退料涉及外協加工品質，請按比例調度改善資源。"
                 )
+
+    def export_ncr_excel(self):
+        # 1. 彈出日期區間對話框
+        dialog = ExportRangeDialog("不合格品統計匯出設定", self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+            
+        start_date, end_date = dialog.get_date_range()
+        
+        # 2. 彈出儲存路徑
+        import os
+        from datetime import datetime
+        default_name = f"SQE_NCR_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "匯出 Excel 報告",
+            default_name,
+            "Excel Files (*.xlsx)",
+        )
+        if not file_path:
+            return
+            
+        # 3. 處理與匯出
+        temp_dir = os.path.dirname(file_path)
+        pid = os.getpid()
+        temp_paths = {
+            "supplier": os.path.join(temp_dir, f"temp_ncr_supplier_{pid}.png"),
+            "product": os.path.join(temp_dir, f"temp_ncr_product_{pid}.png"),
+            "disposition": os.path.join(temp_dir, f"temp_ncr_disposition_{pid}.png"),
+            "return_slip": os.path.join(temp_dir, f"temp_ncr_return_{pid}.png"),
+        }
+        
+        # 確保刪除先前遺留的暫存檔
+        for p in temp_paths.values():
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+        try:
+            with get_connection() as conn:
+                # 取得這段時間範圍的統計與明細
+                top_suppliers = ncr_stats_service.get_top_suppliers_stats_by_range(conn, start_date, end_date)
+                top_products = ncr_stats_service.get_top_products_stats_by_range(conn, start_date, end_date)
+                scrap_rework = ncr_stats_service.get_scrap_rework_ratio_by_range(conn, start_date, end_date)
+                return_slips = ncr_stats_service.get_return_slip_ratio_by_range(conn, start_date, end_date)
+                defects_detail = ncr_stats_service.get_defects_detail_by_range(conn, start_date, end_date)
+                
+            has_data = len(defects_detail) > 0
+            
+            # 如果有數據，則在背景繪製圖表並 grab 儲存
+            active_temp_paths = {}
+            if has_data:
+                # 1. Supplier chart
+                if top_suppliers:
+                    v = self._build_horizontal_bar_chart(top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"])
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["supplier"])
+                    active_temp_paths["supplier"] = temp_paths["supplier"]
+                    
+                # 2. Product chart
+                if top_products:
+                    v = self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6")
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["product"])
+                    active_temp_paths["product"] = temp_paths["product"]
+                    
+                # 3. Scrap/Rework chart
+                if scrap_rework:
+                    v = self._build_donut_chart(scrap_rework, "disposition", "報廢 / 重工 比例佔比", {"報廢": _C_DANGER, "重工": _C_SUCCESS})
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["disposition"])
+                    active_temp_paths["disposition"] = temp_paths["disposition"]
+                    
+                # 4. Return slip chart
+                if return_slips:
+                    v = self._build_donut_chart(return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比", {"廠內退料": _C_INFO, "託外退料": _C_PENDING})
+                    v.resize(600, 400)
+                    v.grab().save(temp_paths["return_slip"])
+                    active_temp_paths["return_slip"] = temp_paths["return_slip"]
+                    
+            # 呼叫匯出服務
+            ok, msg = ncr_export_service.export_ncr_excel_report(
+                file_path,
+                start_date,
+                end_date,
+                defects_detail,
+                temp_chart_paths=active_temp_paths if has_data else None
+            )
+            
+            if ok:
+                QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+            else:
+                QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
+                
+        except Exception as exc:
+            logger.exception("匯出 Excel 報告出錯")
+            QMessageBox.critical(self, "錯誤", f"匯出過程發生非預期錯誤：{exc}")
+        finally:
+            # 刪除暫存檔
+            for p in temp_paths.values():
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+

@@ -57,7 +57,7 @@ _NAV_GROUPS = [
         ("建立不合格品", ("page", PAGE_NCR_CREATE), False, "icons/warehouse.svg"),
         ("待處理不合格品", ("page", PAGE_NCR_PENDING), True, "icons/warehouse.svg"),
         ("歷史紀錄", ("page", PAGE_NCR_HISTORY), False, "icons/closed.svg"),
-        ("不合格品統計分析", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
+        ("不合格品統計", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
     ]),
     ("系統", [
         ("基礎資料", ("page", PAGE_MASTER), False, "icons/master.svg"),

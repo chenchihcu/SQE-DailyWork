@@ -273,10 +273,15 @@ class DefectListWidget(QWidget):
         self.export_button = QPushButton("匯出 Excel")
         self.delete_button = QPushButton("刪除選取")
 
-        for btn, role, icon in [
-            (self.export_button, "secondary", "export"),
-            (self.delete_button, "danger", "delete"),
-        ]:
+        buttons_to_add = []
+        if self.workflow != "trace":
+            buttons_to_add.append((self.export_button, "secondary", "export"))
+        else:
+            self.export_button.hide()
+
+        buttons_to_add.append((self.delete_button, "danger", "delete"))
+
+        for btn, role, icon in buttons_to_add:
             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
             btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             set_button_role(btn, role)

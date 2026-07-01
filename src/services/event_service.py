@@ -814,3 +814,405 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
     except Exception as exc:
         logger.exception("月報匯出失敗")
         return False, f"匯出失敗：{exc}"
+
+
+def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
+    """取得指定日期範圍內的所有異常事件與訪廠事件。"""
+    anomaly_sql = """
+        SELECT
+            a.id AS event_id,
+            a.anomaly_no AS ref_no,
+            a.anomaly_date AS event_date,
+            'ANOMALY' AS event_type,
+            s.supplier_name AS supplier_name,
+            a.problem_desc AS content,
+            a.status AS status,
+            a.category AS category,
+            a.improvement_desc AS improvement_desc,
+            a.closed_at AS closed_at
+        FROM anomalies a
+        JOIN suppliers s ON s.id = a.supplier_id
+        WHERE a.anomaly_date BETWEEN ? AND ?
+    """
+    visit_sql = """
+        SELECT
+            v.id AS event_id,
+            '' AS ref_no,
+            v.visit_date AS event_date,
+            'VISIT' AS event_type,
+            s.supplier_name AS supplier_name,
+            v.summary AS content,
+            '已完成' AS status,
+            '' AS category,
+            '' AS improvement_desc,
+            NULL AS closed_at
+        FROM visits v
+        JOIN suppliers s ON s.id = v.supplier_id
+        WHERE v.visit_date BETWEEN ? AND ?
+    """
+    events = []
+    with get_connection() as conn:
+        for row in conn.execute(anomaly_sql, (start_date, end_date)).fetchall():
+            events.append(dict(row))
+        for row in conn.execute(visit_sql, (start_date, end_date)).fetchall():
+            events.append(dict(row))
+    events.sort(key=lambda x: (x["event_date"], x["event_id"]), reverse=True)
+    return events
+
+
+def export_events_report(
+    file_path: str,
+    start_date: str,
+    end_date: str,
+    temp_chart_paths: dict[str, str] | None = None,
+) -> tuple[bool, str]:
+    """匯出格式優化後的供應商異常事件統計分析報告，包含視覺總覽與明細/排行表格。"""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.drawing.image import Image
+    from collections import defaultdict
+    from datetime import datetime
+
+    try:
+        events = list_events_by_range(start_date, end_date)
+        
+        # 記憶體數據統計
+        total_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY'])
+        total_visits = len([e for e in events if e['event_type'] == 'VISIT'])
+        closed_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '已結案'])
+        open_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '待處理'])
+        close_rate = (closed_anomalies / total_anomalies * 100) if total_anomalies > 0 else 0.0
+        anomaly_visit_ratio = (total_anomalies / total_visits) if total_visits > 0 else 0.0
+        supplier_coverage = len(set(e['supplier_name'] for e in events if e.get('supplier_name')))
+
+        # 供應商排行統計
+        supplier_stats = defaultdict(lambda: {"anomaly_count": 0, "visit_count": 0, "closed_count": 0, "open_count": 0})
+        for e in events:
+            sname = e.get("supplier_name")
+            if not sname:
+                continue
+            if e["event_type"] == "ANOMALY":
+                supplier_stats[sname]["anomaly_count"] += 1
+                if e["status"] == "已結案":
+                    supplier_stats[sname]["closed_count"] += 1
+                else:
+                    supplier_stats[sname]["open_count"] += 1
+            elif e["event_type"] == "VISIT":
+                supplier_stats[sname]["visit_count"] += 1
+
+        ranking_rows = []
+        for sname, s in supplier_stats.items():
+            tot_anom = s["anomaly_count"]
+            cls_anom = s["closed_count"]
+            rate = (cls_anom / tot_anom * 100) if tot_anom > 0 else 0.0
+            ranking_rows.append({
+                "supplier_name": sname,
+                "anomaly_count": tot_anom,
+                "visit_count": s["visit_count"],
+                "closed_anomaly_count": cls_anom,
+                "open_anomaly_count": s["open_count"],
+                "close_rate_pct": rate
+            })
+        ranking_rows.sort(key=lambda x: x["anomaly_count"], reverse=True)
+
+        workbook = Workbook()
+        
+        # 樣式定義
+        FONT_NAME = "Microsoft JhengHei"
+        STYLE_FONT = Font(name=FONT_NAME, size=11)
+        STYLE_FONT_BOLD = Font(name=FONT_NAME, size=11, bold=True)
+        STYLE_HEADER_FONT = Font(name=FONT_NAME, size=11, bold=True, color="FFFFFF")
+        STYLE_TITLE_FONT = Font(name=FONT_NAME, size=18, bold=True, color="1E3A8A")
+        STYLE_SUBTITLE_FONT = Font(name=FONT_NAME, size=10, italic=True, color="6B7280")
+
+        STYLE_FILL_HEADER = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+        STYLE_FILL_ZEBRA = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+        STYLE_FILL_KPI_BG = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
+        STYLE_FILL_TOTAL = PatternFill(start_color="E5E7EB", end_color="E5E7EB", fill_type="solid")
+
+        STYLE_BORDER_THIN = Border(
+            left=Side(style="thin", color="D1D5DB"),
+            right=Side(style="thin", color="D1D5DB"),
+            top=Side(style="thin", color="D1D5DB"),
+            bottom=Side(style="thin", color="D1D5DB")
+        )
+        STYLE_BORDER_TOTAL = Border(
+            top=Side(style="thin", color="9CA3AF"),
+            bottom=Side(style="double", color="111827")
+        )
+
+        ALIGN_LEFT = Alignment(horizontal="left", vertical="center")
+        ALIGN_CENTER = Alignment(horizontal="center", vertical="center")
+        ALIGN_RIGHT = Alignment(horizontal="right", vertical="center")
+
+        def _auto_fit(ws):
+            for col in ws.columns:
+                vals = [str(c.value or "") for c in col]
+                max_len = max((len(v.encode('utf-8')) for v in vals), default=0)
+                col_letter = get_column_letter(col[0].column)
+                ws.column_dimensions[col_letter].width = min(max(max_len + 2, 10), 45)
+
+        # 1. 視覺總覽報告頁
+        report_sheet = workbook.active
+        report_sheet.title = "統計報告"
+        report_sheet.views.sheetView[0].showGridLines = True
+
+        report_sheet.cell(row=1, column=1, value="供應商品質異常事件統計分析報告").font = STYLE_TITLE_FONT
+        report_sheet.row_dimensions[1].height = 30
+        
+        subtitle_text = f"統計區間：{start_date} 至 {end_date}   |   報告生成時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        report_sheet.cell(row=2, column=1, value=subtitle_text).font = STYLE_SUBTITLE_FONT
+
+        # KPI 卡片一 (A4:C5)
+        report_sheet.merge_cells("A4:C4")
+        report_sheet.cell(row=4, column=1, value="📊 異常事件統計總覽").font = STYLE_FONT_BOLD
+        report_sheet.cell(row=4, column=1).alignment = ALIGN_CENTER
+        report_sheet.cell(row=4, column=1).fill = STYLE_FILL_KPI_BG
+        
+        report_sheet.cell(row=5, column=1, value=f"總異常件數: {total_anomalies} 件").font = STYLE_FONT
+        report_sheet.cell(row=5, column=1).alignment = ALIGN_CENTER
+        report_sheet.cell(row=5, column=2, value=f"總訪廠件數: {total_visits} 件").font = STYLE_FONT
+        report_sheet.cell(row=5, column=2).alignment = ALIGN_CENTER
+        report_sheet.cell(row=5, column=3, value=f"異常/訪廠比: {anomaly_visit_ratio:.2f}").font = STYLE_FONT
+        report_sheet.cell(row=5, column=3).alignment = ALIGN_CENTER
+
+        # KPI 卡片二 (E4:G5)
+        report_sheet.merge_cells("E4:G4")
+        report_sheet.cell(row=4, column=5, value="🎯 處理績效與涵蓋率").font = STYLE_FONT_BOLD
+        report_sheet.cell(row=4, column=5).alignment = ALIGN_CENTER
+        report_sheet.cell(row=4, column=5).fill = STYLE_FILL_KPI_BG
+        
+        report_sheet.cell(row=5, column=5, value=f"已結案/未結案: {closed_anomalies} / {open_anomalies}").font = STYLE_FONT
+        report_sheet.cell(row=5, column=5).alignment = ALIGN_CENTER
+        report_sheet.cell(row=5, column=6, value=f"結案率: {close_rate:.1f}%").font = STYLE_FONT
+        report_sheet.cell(row=5, column=6).alignment = ALIGN_CENTER
+        report_sheet.cell(row=5, column=7, value=f"供應商覆蓋數: {supplier_coverage} 家").font = STYLE_FONT
+        report_sheet.cell(row=5, column=7).alignment = ALIGN_CENTER
+
+        for r in [4, 5]:
+            for c in [1, 2, 3, 5, 6, 7]:
+                report_sheet.cell(row=r, column=c).border = STYLE_BORDER_THIN
+
+        # 插入統計圖表 (橫向並排)
+        if temp_chart_paths:
+            chart_placements = [
+                ("trend", "A7"),
+                ("responsible", "I7")
+            ]
+            for key, cell in chart_placements:
+                path = temp_chart_paths.get(key)
+                if path and Path(path).exists():
+                    img = Image(path)
+                    img.width = 460
+                    img.height = 310
+                    report_sheet.add_image(img, cell)
+
+        # 2. 異常事件明細頁
+        detail_sheet = workbook.create_sheet("異常事件明細")
+        detail_sheet.views.sheetView[0].showGridLines = True
+        
+        headers = ["日期", "類型", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期"]
+        detail_sheet.append(headers)
+        for col_idx in range(1, len(headers) + 1):
+            cell = detail_sheet.cell(row=1, column=col_idx)
+            cell.font = STYLE_HEADER_FONT
+            cell.fill = STYLE_FILL_HEADER
+            cell.alignment = ALIGN_CENTER
+            cell.border = STYLE_BORDER_THIN
+        detail_sheet.row_dimensions[1].height = 24
+
+        for r_idx, row in enumerate(events, start=2):
+            data = [
+                row.get("event_date", ""),
+                "異常" if row.get("event_type") == "ANOMALY" else "訪廠",
+                row.get("supplier_name", ""),
+                row.get("content", ""),
+                row.get("status", ""),
+                row.get("category", ""),
+                row.get("improvement_desc", ""),
+                row.get("closed_at", "")
+            ]
+            detail_sheet.append(data)
+            
+            is_even = (r_idx % 2 == 0)
+            for c_idx in range(1, len(headers) + 1):
+                cell = detail_sheet.cell(row=r_idx, column=c_idx)
+                cell.font = STYLE_FONT
+                cell.border = STYLE_BORDER_THIN
+                if is_even:
+                    cell.fill = STYLE_FILL_ZEBRA
+                
+                # 對齊方式
+                if c_idx in (1, 2, 5, 8):
+                    cell.alignment = ALIGN_CENTER
+                else:
+                    cell.alignment = ALIGN_LEFT
+            detail_sheet.row_dimensions[r_idx].height = 20
+        _auto_fit(detail_sheet)
+
+        # 3. 供應商排行榜頁
+        rank_sheet = workbook.create_sheet("供應商排行榜")
+        rank_sheet.views.sheetView[0].showGridLines = True
+        
+        rank_headers = ["排名", "供應商名稱", "異常事件數", "訪廠次數", "已結案數", "未結案數", "結案率(%)"]
+        rank_sheet.append(rank_headers)
+        for col_idx in range(1, len(rank_headers) + 1):
+            cell = rank_sheet.cell(row=1, column=col_idx)
+            cell.font = STYLE_HEADER_FONT
+            cell.fill = STYLE_FILL_HEADER
+            cell.alignment = ALIGN_CENTER
+            cell.border = STYLE_BORDER_THIN
+        rank_sheet.row_dimensions[1].height = 24
+
+        for r_idx, row in enumerate(ranking_rows, start=2):
+            data = [
+                r_idx - 1,
+                row.get("supplier_name", ""),
+                row.get("anomaly_count", 0),
+                row.get("visit_count", 0),
+                row.get("closed_anomaly_count", 0),
+                row.get("open_anomaly_count", 0),
+                f"{row.get('close_rate_pct', 0.0):.1f}%"
+            ]
+            rank_sheet.append(data)
+            
+            is_even = (r_idx % 2 == 0)
+            for c_idx in range(1, len(rank_headers) + 1):
+                cell = rank_sheet.cell(row=r_idx, column=c_idx)
+                cell.font = STYLE_FONT
+                cell.border = STYLE_BORDER_THIN
+                if is_even:
+                    cell.fill = STYLE_FILL_ZEBRA
+                
+                if c_idx == 1:
+                    cell.alignment = ALIGN_CENTER
+                elif c_idx == 2:
+                    cell.alignment = ALIGN_LEFT
+                else:
+                    cell.alignment = ALIGN_RIGHT
+            rank_sheet.row_dimensions[r_idx].height = 20
+
+        # 合計列
+        total_row_idx = len(ranking_rows) + 2
+        if len(ranking_rows) > 0:
+            rank_sheet.cell(row=total_row_idx, column=1, value="合計").font = STYLE_FONT_BOLD
+            rank_sheet.cell(row=total_row_idx, column=1).alignment = ALIGN_CENTER
+            
+            for c_idx in (3, 4, 5, 6):
+                col_letter = get_column_letter(c_idx)
+                sum_formula = f"=SUM({col_letter}2:{col_letter}{total_row_idx - 1})"
+                cell = rank_sheet.cell(row=total_row_idx, column=c_idx, value=sum_formula)
+                cell.font = STYLE_FONT_BOLD
+                cell.alignment = ALIGN_RIGHT
+                cell.number_format = "#,##0"
+
+            # 總體結案率公式 = 總已結案數 / 總異常件數
+            total_closed_cell = f"E{total_row_idx}"
+            total_anomaly_cell = f"C{total_row_idx}"
+            rate_formula = f"=IF({total_anomaly_cell}>0, {total_closed_cell}/{total_anomaly_cell}, 0)"
+            rate_cell = rank_sheet.cell(row=total_row_idx, column=7, value=rate_formula)
+            rate_cell.font = STYLE_FONT_BOLD
+            rate_cell.alignment = ALIGN_RIGHT
+            rate_cell.number_format = "0.0%"
+
+            for c_idx in range(1, len(rank_headers) + 1):
+                cell = rank_sheet.cell(row=total_row_idx, column=c_idx)
+                cell.border = STYLE_BORDER_TOTAL
+                cell.fill = STYLE_FILL_TOTAL
+
+        _auto_fit(rank_sheet)
+
+        output_path = Path(file_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        workbook.save(output_path)
+        return True, f"已匯出至：{output_path}"
+    except Exception as exc:
+        logger.exception("自訂日期區間 Excel 報告匯出出錯")
+        return False, f"匯出報告失敗：{exc}"
+
+
+def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> list[dict]:
+    """計算指定日期範圍內各責任人的異常件數與平均處理時效。"""
+    sql = """
+        SELECT 
+            COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
+            COUNT(*) AS total_count,
+            AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_days
+        FROM anomalies
+        WHERE anomaly_date BETWEEN ? AND ?
+        GROUP BY person
+        ORDER BY total_count DESC, person ASC
+    """
+    with get_connection() as conn:
+        rows = conn.execute(sql, (start_date, end_date)).fetchall()
+    
+    results = []
+    for row in rows:
+        results.append({
+            "responsible_person": row["person"],
+            "total_count": int(row["total_count"]),
+            "avg_resolution_time": round(float(row["avg_days"] or 0), 1)
+        })
+    return results
+
+
+def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
+    """計算指定日期範圍內各月份的異常數、結案數、逾期數及累計積壓趨勢（最多限制 12 個月）。"""
+    from datetime import datetime
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    except Exception:
+        return []
+    
+    months_list = []
+    curr_y, curr_m = start_dt.year, start_dt.month
+    end_y, end_m = end_dt.year, end_dt.month
+    
+    while (curr_y < end_y) or (curr_y == end_y and curr_m <= end_m):
+        months_list.append(f"{curr_y:04d}-{curr_m:02d}")
+        curr_m += 1
+        if curr_m > 12:
+            curr_m = 1
+            curr_y += 1
+            
+    if len(months_list) > 12:
+        months_list = months_list[-12:]
+    elif not months_list:
+        months_list = [start_date[:7]]
+
+    results = []
+    with get_connection() as conn:
+        for yyyymm in months_list:
+            total_row = conn.execute(
+                "SELECT COUNT(*) as c FROM anomalies WHERE substr(anomaly_date, 1, 7) = ?",
+                (yyyymm,)
+            ).fetchone()
+            closed_row = conn.execute(
+                "SELECT COUNT(*) as c FROM anomalies WHERE substr(closed_at, 1, 7) = ?",
+                (yyyymm,)
+            ).fetchone()
+            overdue_row = conn.execute("""
+                SELECT COUNT(*) as c FROM anomalies 
+                WHERE substr(anomaly_date, 1, 7) = ? 
+                AND status = '待處理' 
+                AND due_date <> '' 
+                AND due_date < date('now', 'localtime')
+            """, (yyyymm,)).fetchone()
+            backlog_row = conn.execute("""
+                SELECT COUNT(*) as c
+                FROM anomalies
+                WHERE substr(anomaly_date, 1, 7) <= ?
+                AND (status <> '已結案' OR (closed_at <> '' AND substr(closed_at, 1, 7) > ?))
+            """, (yyyymm, yyyymm)).fetchone()
+            
+            results.append({
+                "yyyymm": yyyymm,
+                "total_count": int(total_row["c"] or 0),
+                "closed_count": int(closed_row["c"] or 0),
+                "overdue_count": int(overdue_row["c"] or 0),
+                "backlog_count": int(backlog_row["c"] or 0)
+            })
+    return results
+
