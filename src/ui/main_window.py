@@ -81,7 +81,7 @@ _PAGE_TITLES = {
     HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
     EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
     STATS_PAGE_INDEX: ("異常事件統計", "供應商事件趨勢、責任人績效與供應商風險"),
-    NCR_STATS_PAGE_INDEX: ("不合格品統計", "倉庫實物不合格品統計圖表與比例分析"),
+    NCR_STATS_PAGE_INDEX: ("不合格品統計分析", "倉庫實物不合格品統計圖表與比例分析"),
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
 }
 

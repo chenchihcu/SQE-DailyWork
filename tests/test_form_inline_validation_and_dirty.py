@@ -28,6 +28,7 @@ class InlineValidationAndDirtyTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         initialize_database()
         cls.app = QApplication.instance() or QApplication([])
+        DirtyTrackingMixin._confirm_discard = lambda self: True
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -122,6 +123,7 @@ class InlineValidationAndDirtyTests(unittest.TestCase):
     # ── SupplierContactManagerDialog (light guard) ───────────────────────
     def test_contact_manager_light_dirty_and_inline(self) -> None:
         dialog = SupplierContactManagerDialog("missing-supplier", "測試供應商")
+        dialog._confirm_discard = lambda: True
         self.addCleanup(dialog.close)
         self.assertIsInstance(dialog, DirtyTrackingMixin)
         self.assertFalse(dialog._dirty)

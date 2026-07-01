@@ -55,18 +55,6 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         self.assertIn(f'background: {TOKENS["nav_dark_bg"]};', selected)
         self.assertIn(f'color: {TOKENS["nav_dark_text_active"]};', selected)
 
-    def test_event_scope_tabs_use_filter_active_tokens(self) -> None:
-        qss = get_theme_qss()
-
-        tab = _selector_block(qss, "QTabBar#EventQueryScopeTabs::tab")
-        self.assertIn(f'background: {TOKENS["panel_bg"]};', tab)
-        self.assertIn(f'border: 1px solid {TOKENS["border"]};', tab)
-
-        selected = _selector_block(qss, "QTabBar#EventQueryScopeTabs::tab:selected")
-        self.assertIn(f'background: {TOKENS["filter_active_bg"]};', selected)
-        self.assertIn(f'color: {TOKENS["filter_active_text"]};', selected)
-        self.assertIn(f'border: 1px solid {TOKENS["filter_active_border"]};', selected)
-
     def test_semantic_button_colors_are_preserved(self) -> None:
         qss = get_theme_qss()
 

@@ -67,3 +67,19 @@ Root cause: Prior integration removed the visible launcher path without making d
 Fix: Promote the two-line workflow contract into docs, tests, compatibility wrappers, and UI/UX verification.
 Harness update needed: yes
 Destination: `AGENTS.md`, `README.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `src/ncr/README.md`, focused unittest coverage
+
+## Qt UI Removal And Compatibility Widgets Entry
+
+Date: 2026-07-01
+Task: Reduce repeated UI cleanup regressions after statistics dashboard fixes.
+Changes: Added repo guidance for UI removal semantics, compatibility-only Qt widgets, and visual probe routing; updated relevant reusable Qt and chart UI skills.
+Impact: Future PySide6 UI cleanup should remove unwanted cards/tabs from the real layout/object tree, catch parented-but-unmanaged dummy widgets, and avoid visual probes that toggle hidden compatibility proxies.
+Verification: Run `scripts\harness_check.ps1`; run focused grep/diff checks for the new guidance.
+Residual risk: Existing unrelated dirty UI files remain in the worktree; this entry only governs future implementation behavior.
+Next action: Apply the same removal semantics when cleaning any remaining compatibility widgets.
+Debug/RCA (when applicable):
+Observed: A compatibility `QTabWidget` floated at the top-left because it was parented but not laid out or hidden; decision-summary cards were first hidden before the user clarified they should be removed.
+Root cause: Existing guidance required native visual checks but did not explicitly audit parented-but-unmanaged Qt widgets or distinguish "hidden for compatibility" from "removed per user request".
+Fix: Promote removal semantics and compatibility-widget scans into repo harness docs/rules and reusable Qt skill guidance.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `qt-desktop-layout-theme`, `spc-chart-ui`

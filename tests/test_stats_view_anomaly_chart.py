@@ -6,10 +6,17 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCharts import QBarCategoryAxis, QChartView, QHorizontalStackedBarSeries, QValueAxis
+from PySide6.QtCharts import (
+    QBarCategoryAxis,
+    QChartView,
+    QHorizontalStackedBarSeries,
+    QLineSeries,
+    QScatterSeries,
+    QValueAxis,
+)
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QScrollArea, QSizePolicy
 
 from services import event_service
 from ui.layout_constants import SCROLLBAR_WIDTH
@@ -166,6 +173,17 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         assert widget._rank_month_label is not None
         self.assertEqual("月份：2026-04", widget._rank_month_label.text())
         self.assertTrue(widget._chart.legend().isVisible())
+
+        self.assertFalse(
+            any(isinstance(series, QLineSeries) for series in widget._chart.series())
+        )
+        self.assertTrue(
+            any(
+                isinstance(series, QScatterSeries)
+                and series.name() == "平均處理時效 (天)"
+                for series in widget._chart.series()
+            )
+        )
         labels = [label.text() for label in widget.findChildren(QLabel)]
         self.assertIn("供應商事件風險堆疊圖", labels)
         self.assertEqual(
@@ -327,7 +345,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             host.quick_filter_calls,
         )
 
-    def test_stats_decision_summary_buttons_route_to_decision_lists(self) -> None:
+    def test_stats_view_does_not_render_decision_summary_cards(self) -> None:
         summary = {
             "anomaly_count": 6,
             "visit_count": 2,
@@ -354,36 +372,12 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             trend_data=trend_data,
         )
 
-        # 倉庫去重複後，決策摘要只剩供應商事件三鈕（risk / overdue / trend）。
-        self.assertEqual(
-            {"risk", "overdue", "trend"},
-            set(widget._summary_buttons),
-        )
         buttons = widget.findChildren(QPushButton)
-        self.assertTrue(any(button.property("role") == "decisionSummary" for button in buttons))
-        self.assertIn("Supplier-Risk", widget._summary_buttons["risk"].text())
-
-        widget._summary_buttons["risk"].click()
-        widget._summary_buttons["overdue"].click()
-        widget._summary_buttons["trend"].click()
-
-        self.assertEqual(
-            {
-                "event_type": "ANOMALY",
-                "supplier_keyword": "Supplier-Risk",
-                "yyyymm": "202611",
-                "status": "待處理",
-                "event_scope": event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                "overdue_only": False,
-            },
-            host.quick_filter_calls[0],
-        )
-        self.assertEqual("待處理", host.quick_filter_calls[1]["status"])
-        self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, host.quick_filter_calls[1]["event_scope"])
-        # overdue 摘要按鈕下鑽要帶 overdue_only=True
-        self.assertIs(True, host.quick_filter_calls[1]["overdue_only"])
-        self.assertEqual("已結案", host.quick_filter_calls[2]["status"])
-        self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, host.quick_filter_calls[2]["event_scope"])
+        self.assertFalse(hasattr(widget, "_summary_buttons"))
+        self.assertFalse(hasattr(widget, "decision_summary"))
+        self.assertIsNone(widget.findChild(QFrame, "StatsDecisionSummary"))
+        self.assertFalse(any(button.property("role") == "decisionSummary" for button in buttons))
+        self.assertEqual([], host.quick_filter_calls)
 
     def test_stats_view_visual_stress_keeps_scroll_guards_and_compact_width(self) -> None:
         long_supplier = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -444,6 +438,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertFalse(hasattr(widget, "defect_container"))
         self.assertEqual("StatsView", widget.objectName())
         self.assertEqual("StatsTabs", widget.tabs.objectName())
+        self.assertFalse(widget.tabs.isVisible())
+        self.assertIsNone(widget.findChild(QFrame, "StatsDecisionSummary"))
         self.assertGreaterEqual(SCROLLBAR_WIDTH, 8)
 
         scrolls = {scroll.objectName(): scroll for scroll in widget.findChildren(QScrollArea)}
@@ -458,12 +454,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         for scroll in scrolls.values():
             self.assertEqual(Qt.ScrollBarPolicy.ScrollBarAsNeeded, scroll.verticalScrollBarPolicy())
             self.assertEqual(Qt.ScrollBarPolicy.ScrollBarAlwaysOff, scroll.horizontalScrollBarPolicy())
-
-        for button in widget._summary_buttons.values():
-            self.assertEqual(QSizePolicy.Policy.Ignored, button.sizePolicy().horizontalPolicy())
-
-        self.assertIn(long_supplier, widget._summary_buttons["risk"].toolTip())
-        self.assertLess(len(widget._summary_buttons["risk"].text()), len(long_supplier) + 12)
 
         for chart_view in widget.findChildren(QChartView):
             for axis in chart_view.chart().axes():

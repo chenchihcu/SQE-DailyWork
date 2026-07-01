@@ -727,6 +727,25 @@ def get_responsible_person_stats(yyyymm: str | None = None) -> list[dict]:
         return repository.get_responsible_person_stats(conn, month)
 
 
+def _stats_period_label(yyyymm: str) -> str:
+    period_key = str(yyyymm or "").strip().upper()
+    today = date.today()
+    if period_key == "ALL":
+        return "全期項目"
+    if period_key == "YEAR":
+        return f"{today.year} 年度"
+    if period_key == "HALF_YEAR":
+        half_label = "上半年" if today.month <= 6 else "下半年"
+        return f"{today.year} {half_label}"
+
+    month = str(yyyymm or _month_now()).strip()
+    if len(month) == 7 and "-" in month:
+        month = month.replace("-", "")
+    if len(month) == 6 and month.isdigit():
+        return f"{month[:4]}-{month[4:]}"
+    return month
+
+
 def list_product_stage_change_logs(
     *, product_id: str | None = None, limit: int = 200
 ) -> list[dict]:
@@ -747,7 +766,7 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
         summary_df = pd.DataFrame(
             [
                 {
-                    "月份": f"{month[:4]}-{month[4:]}",
+                    "月份": _stats_period_label(month),
                     "本月異常數": stats["anomaly_count"],
                     "訪廠數": stats["visit_count"],
                     "結案數": stats["closed_anomaly_count"],

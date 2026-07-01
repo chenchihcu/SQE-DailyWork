@@ -69,8 +69,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._chart_total_values: list[int] = []
         self._chart_avg_time_values: list[float] = []
         self._last_supplier_data: list[dict] = []
-        self._summary_buttons: dict[str, QPushButton] = {}
-        self._decision_summary_context: dict[str, str | None] = {}
         self._setup_ui()
         self._has_loaded = False
         if not lazy_load:
@@ -93,9 +91,12 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         month_row.setSpacing(INLINE_SPACING)
         period_label = QLabel("篩選區間")
         period_label.setProperty("role", "sectionTitle")
+        period_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         
         self.period_combo = QComboBox()
         self.period_combo.addItems(["全期項目", "年度", "半年度"])
+        self.period_combo.setMinimumWidth(112)
+        self.period_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.period_combo.currentIndexChanged.connect(self._on_period_changed)
         apply_clickable_affordance(self.period_combo, tooltip="切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）")
 
@@ -108,35 +109,28 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self.month_input = QDateEdit(self)
         self.month_input.setDate(QDate.currentDate())
         self.all_time_toggle = QCheckBox(self)
+        self.month_input.hide()
+        self.all_time_toggle.hide()
         self._test_yyyy_mm = None
-        self.month_input.dateChanged.connect(lambda qd: setattr(self, "_test_yyyy_mm", qd.toString("yyyyMM")))
-        self.all_time_toggle.toggled.connect(lambda chk: setattr(self, "_test_yyyy_mm", "ALL" if chk else self.month_input.date().toString("yyyyMM")))
+        self.month_input.dateChanged.connect(self._on_month_input_changed)
+        self.all_time_toggle.toggled.connect(self._on_all_time_toggle_changed)
 
         self.source_tag_label = QLabel("供應商事件統計")
         self.source_tag_label.setProperty("role", "sourceTag")
+        self.source_tag_label.setMinimumWidth(126)
+        self.source_tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.source_tag_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計」頁")
         month_row.addWidget(self.source_tag_label)
         month_row.addStretch(1)
 
         btn_export = QPushButton("匯出 Excel")
         btn_export.setProperty("variant", "primary")
+        btn_export.setMinimumWidth(118)
         apply_clickable_affordance(btn_export, tooltip="匯出目前篩選統計 Excel")
         btn_export.clicked.connect(self.export_monthly_excel)
         month_row.addWidget(btn_export)
         top_layout.addLayout(month_row)
-
-        self.decision_summary = QFrame()
-        self.decision_summary.setObjectName("StatsDecisionSummary")
-        self.decision_summary.setProperty("role", "summaryStrip")
-        summary_layout = QGridLayout(self.decision_summary)
-        summary_layout.setContentsMargins(0, 0, 0, 0)
-        summary_layout.setSpacing(INLINE_SPACING)
-        for index, key in enumerate(("risk", "overdue", "trend")):
-            button = self._create_summary_button(key)
-            self._summary_buttons[key] = button
-            summary_layout.addWidget(button, 0, index)
-            summary_layout.setColumnStretch(index, 1)
-        top_layout.addWidget(self.decision_summary)
 
         root.addWidget(top_panel)
 
@@ -151,22 +145,22 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         scroll_content = QWidget()
         scroll_content.setObjectName("StatsScrollContent")
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setContentsMargins(*RANK_PANEL_MARGINS)
         scroll_layout.setSpacing(12)
 
-        # 2x2 網格佈局容器
-        chart_container = QFrame()
-        chart_container.setProperty("role", "panel")
-        chart_layout = QVBoxLayout(chart_container)
-        chart_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        chart_layout.setSpacing(INLINE_TIGHT_SPACING)
+        self.info_banner = self._create_info_banner(
+            "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；圖表只呈現供應商事件，不包含倉庫不合格品。",
+            "協助 SQE 追蹤月度趨勢、責任人負荷與高風險供應商，並將倉庫統計維持在「不合格品統計分析」頁。"
+        )
+        scroll_layout.addWidget(self.info_banner)
 
+        # 2x2 網格佈局；外層裝飾 panel 已移除，保留每個圖表的語意 panel。
         self.grid_layout = QGridLayout()
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
         self.grid_layout.setSpacing(16)
         self.grid_layout.setColumnStretch(0, 1)
         self.grid_layout.setColumnStretch(1, 1)
-        chart_layout.addLayout(self.grid_layout)
+        scroll_layout.addLayout(self.grid_layout)
 
         # 1. 供應商事件趨勢 Panel
         trend_panel = QFrame()
@@ -178,12 +172,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         trend_title = QLabel("供應商事件趨勢分析 (過去 6 個月)")
         trend_title.setProperty("role", "sectionTitle")
         trend_layout.addWidget(trend_title)
-
-        trend_info = self._create_info_banner(
-            "柱狀圖為當月新增與結案數；折線圖為全期累計尚未結案之積壓總數。",
-            "監控月度解決效率，並預警歷史積壓是否持續擴大，確保系統負荷正常。"
-        )
-        trend_layout.addWidget(trend_info)
 
         self._trend_content_layout = QVBoxLayout()
         self._trend_content_layout.setSpacing(4)
@@ -200,12 +188,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         resp_title = QLabel("供應商事件責任人績效 (總件數 vs 平均處理時效)")
         resp_title.setProperty("role", "sectionTitle")
         responsible_layout.addWidget(resp_title)
-
-        resp_info = self._create_info_banner(
-            "柱狀圖為個人負責案件總數；折線圖為該人員之平均處理天數。",
-            "評估團隊工作量分佈均衡度與處理效率，輔助人力資源調度。"
-        )
-        responsible_layout.addWidget(resp_info)
 
         self._resp_content_layout = QVBoxLayout()
         self._resp_content_layout.setSpacing(4)
@@ -229,18 +211,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         title_row.addWidget(self._rank_month_label)
         rank_layout.addLayout(title_row)
 
-        rank_info = self._create_info_banner(
-            "X 軸為異常件數，Y 軸為平均時效 (天)；虛線代表全體平均基準。",
-            "定位「高頻次且處理緩慢」的高風險廠商，作為優先輔導與稽核之依據。"
-        )
-        rank_layout.addWidget(rank_info)
-
         self._chart_content_layout = QVBoxLayout()
         self._chart_content_layout.setSpacing(4)
         rank_layout.addLayout(self._chart_content_layout, 1)
         self.grid_layout.addWidget(rank_panel, 1, 0, 1, 2)
 
-        scroll_layout.addWidget(chart_container)
         scroll.setWidget(scroll_content)
         root.addWidget(scroll, 1)
 
@@ -254,24 +229,17 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self.tabs.addTab(QWidget(), "供應商事件趨勢")
         self.tabs.addTab(QWidget(), "事件責任人績效")
         self.tabs.addTab(QWidget(), "供應商事件風險")
+        self.tabs.hide()
         
         # 2. Dummy QScrollArea
         self.d2 = QScrollArea(self)
         self.d2.setObjectName("StatsResponsibleScrollArea")
+        self.d2.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.d2.hide()
         self.d3 = QScrollArea(self)
         self.d3.setObjectName("StatsSupplierRiskScrollArea")
+        self.d3.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.d3.hide()
-
-    def _create_summary_button(self, key: str) -> QPushButton:
-        button = QPushButton("暫無資料")
-        button.setObjectName(f"DecisionSummary_{key}")
-        button.setProperty("role", "decisionSummary")
-        button.setMinimumWidth(0)
-        button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(lambda _checked=False, action_key=key: self._on_decision_summary_clicked(action_key))
-        return button
 
     def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
         """建立統一格式的統計說明區塊。"""
@@ -375,6 +343,17 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         prefix = "統計範圍：" if is_all else "月份："
         self._rank_month_label.setText(f"{prefix}{self._month_text()}")
 
+    def _on_month_input_changed(self, qdate):
+        self._test_yyyy_mm = qdate.toString("yyyyMM")
+        self._update_rank_month_subtitle()
+        self.refresh_data()
+
+    def _on_all_time_toggle_changed(self, checked):
+        self._test_yyyy_mm = "ALL" if checked else self.month_input.date().toString("yyyyMM")
+        self.month_input.setEnabled(not checked)
+        self._update_rank_month_subtitle()
+        self.refresh_data()
+
     def _on_period_changed(self, index: int):
         self._update_rank_month_subtitle()
         self.refresh_data()
@@ -396,7 +375,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 )
                 resp_stats = []
 
-            self._refresh_decision_summary(summary, trend_data)
             self._render_charts(
                 summary.get("top_suppliers_by_anomaly", []),
                 trend_data,
@@ -404,121 +382,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._refresh_decision_summary({}, [])
             self._render_charts([], [], error_message=localize_exception(exc))
-
-    # ── 決策摘要 ──────────────────────────────────────────
-
-    def _summary_button_available(self) -> bool:
-        return self.main_window is not None
-
-    def _set_summary_button(
-        self,
-        key: str,
-        *,
-        text: str,
-        tooltip: str,
-        enabled: bool,
-    ) -> None:
-        button = self._summary_buttons.get(key)
-        if button is None:
-            return
-        button.setText(text)
-        button.setToolTip(tooltip)
-        button.setStatusTip(tooltip)
-        button.setEnabled(enabled and self._summary_button_available())
-
-    def _refresh_decision_summary(self, summary: dict, trend_data: list[dict]) -> None:
-        rows = list(summary.get("top_suppliers_by_anomaly") or [])
-        risk_row = next(
-            (
-                row
-                for row in rows
-                if int(row.get("overdue_open_anomaly_count") or 0) > 0
-            ),
-            rows[0] if rows else None,
-        )
-        risk_supplier = str(risk_row.get("supplier_name") or "").strip() if risk_row else ""
-        risk_overdue = int(risk_row.get("overdue_open_anomaly_count") or 0) if risk_row else 0
-        risk_supplier_label = self._short_supplier_label(risk_supplier, max_len=14)
-        self._decision_summary_context["risk_supplier"] = risk_supplier or None
-        self._set_summary_button(
-            "risk",
-            text=(
-                f"最高風險：{risk_supplier_label} / 逾期 {risk_overdue} 件"
-                if risk_supplier
-                else "最高風險：暫無資料"
-            ),
-            tooltip=(
-                f"跳到該供應商待處理異常清單：{risk_supplier}"
-                if risk_supplier
-                else "目前沒有供應商風險資料"
-            ),
-            enabled=bool(risk_supplier),
-        )
-
-        has_event_summary = bool(summary)
-        overdue_count = int(summary.get("overdue_open_anomaly_count") or 0)
-        open_count = int(summary.get("open_anomaly_count") or 0)
-        self._set_summary_button(
-            "overdue",
-            text=(
-                f"逾期未結：{overdue_count} 件 / 待處理 {open_count} 件"
-                if has_event_summary
-                else "逾期未結：暫無資料"
-            ),
-            tooltip="跳到待處理供應商異常清單",
-            enabled=has_event_summary,
-        )
-
-        latest = trend_data[-1] if trend_data else None
-        if latest:
-            total_count = int(latest.get("total_count") or 0)
-            closed_count = int(latest.get("closed_count") or 0)
-            close_rate = (closed_count / total_count * 100) if total_count else 0.0
-            latest_text = (
-                f"最新月份：{latest.get('yyyymm', '-')}"
-                f" / 新增 {total_count} / 結案率 {close_rate:.1f}%"
-            )
-        else:
-            latest_text = "最新月份：暫無資料"
-        self._set_summary_button(
-            "trend",
-            text=latest_text,
-            tooltip="跳到已結案供應商事件清單",
-            enabled=latest is not None,
-        )
-
-    def _on_decision_summary_clicked(self, key: str) -> None:
-        if self.main_window is None:
-            return
-        open_filters = getattr(self.main_window, "open_event_query_with_filters", None)
-        if not callable(open_filters):
-            return
-        month_key = self._month_key()
-        if key == "risk":
-            open_filters(
-                event_type="ANOMALY",
-                supplier_keyword=self._decision_summary_context.get("risk_supplier") or "",
-                yyyymm=month_key,
-                status="待處理",
-                event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-            )
-        elif key == "overdue":
-            open_filters(
-                event_type="ANOMALY",
-                yyyymm=month_key,
-                status="待處理",
-                event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                overdue_only=True,
-            )
-        elif key == "trend":
-            open_filters(
-                event_type="ANOMALY",
-                yyyymm=month_key,
-                status="已結案",
-                event_scope=event_service.EVENT_SCOPE_CLOSED_ONLY,
-            )
 
     # ── 圖表協調 ──────────────────────────────────────────
 

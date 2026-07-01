@@ -20,6 +20,7 @@ from PySide6.QtCharts import (
     QBarSet,
     QChart,
     QChartView,
+    QHorizontalBarSeries,
     QHorizontalStackedBarSeries,
     QLineSeries,
     QScatterSeries,
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 SUPPLIER_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
 CHART_AXIS_TITLE_POINT_SIZE = 11
-CHART_AXIS_LABEL_ANGLE = 65
+CHART_AXIS_LABEL_ANGLE = 0
 CHART_OPEN_PALETTE = get_status_palette("待處理")
 CHART_CLOSED_PALETTE = get_status_palette("已結案")
 CHART_OVERDUE_PALETTE = get_status_palette("逾期未結")
@@ -88,6 +89,13 @@ class _StatsChartMixin:
         width = len(str(len(labels)))
         return [f"{index + 1:0{width}d}. {label}" for index, label in enumerate(labels)]
 
+    def _format_month_axis_label(self, yyyymm: str) -> str:
+        raw = str(yyyymm or "")
+        digits = raw.replace("-", "")
+        if len(digits) == 6 and digits.isdigit():
+            return f"{digits[2:4]}/{digits[4:]}"
+        return raw
+
     def _clear_top_suppliers(self):
         if any(l is None for l in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout)):
             return
@@ -133,10 +141,11 @@ class _StatsChartMixin:
         closed_set = QBarSet("已結案")
         closed_set.setColor(CHART_CLOSED_COLOR)
 
-        line_series = QLineSeries()
-        line_series.setName("平均處理時效 (天)")
-        line_series.setColor(QColor(TOKENS.get("info", "#2196f3")))
-        line_series.setPointsVisible(True)
+        time_points = QScatterSeries()
+        time_points.setName("平均處理時效 (天)")
+        time_points.setMarkerSize(7)
+        time_points.setColor(QColor(TOKENS.get("info", "#2196f3")))
+        time_points.setBorderColor(QColor(TOKENS.get("info", "#2196f3")).darker(115))
 
         for i, r in enumerate(data):
             total_open = int(r.get("open_anomaly_count") or 0)
@@ -147,7 +156,7 @@ class _StatsChartMixin:
             overdue_set.append(overdue)
             ongoing_set.append(ongoing)
             closed_set.append(closed)
-            line_series.append(float(r.get("avg_resolution_time") or 0), i)
+            time_points.append(float(r.get("avg_resolution_time") or 0), i)
 
         bar_series = QHorizontalStackedBarSeries()
         bar_series.append(overdue_set)
@@ -157,10 +166,10 @@ class _StatsChartMixin:
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.addSeries(line_series)
+        chart.addSeries(time_points)
         chart.setTitle("供應商品質風險堆疊分析")
         apply_chart_surface(chart)
-        chart.setMargins(QMargins(10, 10, 10, 10))
+        chart.setMargins(QMargins(12, 8, 12, 10))
 
         app_font_family = QApplication.font().family()
         axis_font = QFont(app_font_family, CHART_AXIS_LABEL_POINT_SIZE)
@@ -176,7 +185,7 @@ class _StatsChartMixin:
         axis_y.setTitleVisible(False)
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         bar_series.attachAxis(axis_y)
-        line_series.attachAxis(axis_y)
+        time_points.attachAxis(axis_y)
 
         axis_x_count = QValueAxis()
         axis_x_count.setTitleText("異常件數")
@@ -191,14 +200,14 @@ class _StatsChartMixin:
 
         axis_x_time = QValueAxis()
         axis_x_time.setTitleText("平均處理時效 (天)")
-        axis_x_time.setLabelFormat("%.1f")
+        axis_x_time.setLabelFormat("%.0f")
         axis_x_time.setLabelsFont(axis_font)
         axis_x_time.setLabelsColor(QColor(TOKENS.get("info", "#2196f3")))
         axis_x_time.setGridLineVisible(False)
         max_time = max((float(r.get("avg_resolution_time") or 0) for r in data), default=10)
         axis_x_time.setRange(0, max_time + 5)
         chart.addAxis(axis_x_time, Qt.AlignmentFlag.AlignTop)
-        line_series.attachAxis(axis_x_time)
+        time_points.attachAxis(axis_x_time)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
@@ -278,7 +287,10 @@ class _StatsChartMixin:
         if not trend_data:
             return None
 
-        categories = [d["yyyymm"] for d in trend_data]
+        data = trend_data[-6:]
+        categories = []
+        for d in data:
+            categories.append(self._format_month_axis_label(d["yyyymm"]))
 
         new_set = QBarSet("新增異常")
         new_set.setColor(CHART_OPEN_COLOR)
@@ -288,7 +300,7 @@ class _StatsChartMixin:
         closed_set.setColor(CHART_CLOSED_COLOR)
         closed_set.setBorderColor(CHART_CLOSED_COLOR.darker(110))
 
-        for d in trend_data:
+        for d in data:
             new_set.append(d["total_count"])
             closed_set.append(d["closed_count"])
 
@@ -308,7 +320,7 @@ class _StatsChartMixin:
         backlog_points.setColor(QColor(TOKENS.get("warning", "#ffc107")))
         backlog_points.setBorderColor(QColor("white"))
 
-        for i, d in enumerate(trend_data):
+        for i, d in enumerate(data):
             backlog_series.append(i, d["backlog_count"])
             backlog_points.append(i, d["backlog_count"])
 
@@ -328,13 +340,13 @@ class _StatsChartMixin:
         apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
 
-        axis_label_font = QFont(app_font_family)
-        axis_label_font.setPointSize(CHART_AXIS_LABEL_POINT_SIZE)
+        axis_label_font = QFont(app_font_family, 9)
         axis_title_font = QFont(app_font_family)
         axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
 
         axis_x = QBarCategoryAxis()
         axis_x.append(categories)
+        axis_x.setLabelsAngle(0)
         axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_x.setLabelsFont(axis_label_font)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
@@ -342,7 +354,7 @@ class _StatsChartMixin:
         backlog_series.attachAxis(axis_x)
         backlog_points.attachAxis(axis_x)
 
-        max_bar = max([d["total_count"] for d in trend_data] + [d["closed_count"] for d in trend_data], default=5)
+        max_bar = max([d["total_count"] for d in data] + [d["closed_count"] for d in data], default=5)
         axis_y_count = QValueAxis()
         axis_y_count.setTitleText("當月件數")
         axis_y_count.setLabelFormat("%i")
@@ -354,7 +366,7 @@ class _StatsChartMixin:
         chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignLeft)
         bar_series.attachAxis(axis_y_count)
 
-        max_backlog = max([d["backlog_count"] for d in trend_data], default=5)
+        max_backlog = max([d["backlog_count"] for d in data], default=5)
         axis_y_backlog = QValueAxis()
         axis_y_backlog.setTitleText("累積積壓數")
         axis_y_backlog.setLabelFormat("%i")
@@ -377,8 +389,8 @@ class _StatsChartMixin:
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
 
-        bar_series.hovered.connect(lambda status, idx, bs: self._on_trend_bar_hovered(status, idx, trend_data))
-        backlog_points.hovered.connect(lambda pt, state: self._on_trend_line_hovered(state, pt, trend_data))
+        bar_series.hovered.connect(lambda status, idx, bs: self._on_trend_bar_hovered(status, idx, data))
+        backlog_points.hovered.connect(lambda pt, state: self._on_trend_line_hovered(state, pt, data))
 
         return chart_view
 
@@ -430,7 +442,8 @@ class _StatsChartMixin:
         if not rows:
             return None
 
-        data = rows[:15]
+        data = list(rows[:12])
+        data.reverse()
         categories = self._dedupe_chart_labels([
             self._short_supplier_label(r["responsible_person"], max_len=10)
             for r in data
@@ -440,47 +453,43 @@ class _StatsChartMixin:
         bar_set.setColor(CHART_OPEN_COLOR)
         bar_set.setBorderColor(CHART_OPEN_COLOR.darker(110))
 
-        line_series = QLineSeries()
-        line_series.setName("平均處理時效 (天)")
-        line_series.setColor(QColor(TOKENS["info"]))
-        line_series.setPointsVisible(True)
+        time_points = QScatterSeries()
+        time_points.setName("平均處理時效 (天)")
+        time_points.setMarkerSize(7)
+        time_points.setColor(QColor(TOKENS["info"]))
+        time_points.setBorderColor(QColor(TOKENS["info"]).darker(115))
 
         for i, row in enumerate(data):
             bar_set.append(row["total_count"])
-            line_series.append(i, row["avg_resolution_time"])
+            time_points.append(row["avg_resolution_time"], i)
 
         app_font_family = QApplication.font().family()
 
         label_font = QFont(app_font_family, 9)
-        line_series.setPointLabelsVisible(True)
-        line_series.setPointLabelsFormat("@yPoint d")
-        line_series.setPointLabelsFont(label_font)
-        line_series.setPointLabelsColor(QColor(TOKENS["info"]))
-
-        bar_series = QBarSeries()
+        bar_series = QHorizontalBarSeries()
         bar_series.append(bar_set)
         bar_series.setLabelsVisible(True)
-        bar_series.setLabelsPosition(QBarSeries.LabelsPosition.LabelsOutsideEnd)
+        bar_series.setLabelsPosition(QHorizontalBarSeries.LabelsPosition.LabelsInsideEnd)
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.addSeries(line_series)
+        chart.addSeries(time_points)
         apply_chart_surface(chart)
-        chart.setMargins(QMargins(8, 8, 8, 8))
+        chart.setMargins(QMargins(12, 8, 12, 10))
 
-        axis_label_font = QFont(app_font_family)
-        axis_label_font.setPointSize(CHART_AXIS_LABEL_POINT_SIZE)
+        axis_label_font = QFont(app_font_family, 9)
         axis_title_font = QFont(app_font_family)
         axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
 
-        axis_x = QBarCategoryAxis()
-        axis_x.append(categories)
-        axis_x.setLabelsAngle(CHART_AXIS_LABEL_ANGLE)
-        axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_x.setLabelsFont(axis_label_font)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        bar_series.attachAxis(axis_x)
-        line_series.attachAxis(axis_x)
+        axis_y = QBarCategoryAxis()
+        axis_y.append(categories)
+        axis_y.setLabelsAngle(0)
+        axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_y.setLabelsFont(axis_label_font)
+        axis_y.setTruncateLabels(False)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        bar_series.attachAxis(axis_y)
+        time_points.attachAxis(axis_y)
 
         axis_y_count = QValueAxis()
         axis_y_count.setTitleText("總件數")
@@ -491,19 +500,20 @@ class _StatsChartMixin:
         max_count = max((r["total_count"] for r in data), default=10)
         axis_y_count.setRange(0, max_count + 1)
         axis_y_count.applyNiceNumbers()
-        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignLeft)
+        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignBottom)
         bar_series.attachAxis(axis_y_count)
 
-        axis_y_rate = QValueAxis()
-        axis_y_rate.setTitleText("平均處理時效 (天)")
+        axis_time = QValueAxis()
+        axis_time.setTitleText("平均處理時效 (天)")
         max_time = max((r["avg_resolution_time"] for r in data), default=10)
-        axis_y_rate.setRange(0, max_time + 5)
-        axis_y_rate.setLabelFormat("%.1f")
-        axis_y_rate.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_y_rate.setLabelsFont(axis_label_font)
-        axis_y_rate.setTitleFont(axis_title_font)
-        chart.addAxis(axis_y_rate, Qt.AlignmentFlag.AlignRight)
-        line_series.attachAxis(axis_y_rate)
+        axis_time.setRange(0, max_time + 5)
+        axis_time.setLabelFormat("%.0f")
+        axis_time.setLabelsColor(QColor(TOKENS["info"]))
+        axis_time.setLabelsFont(axis_label_font)
+        axis_time.setTitleFont(axis_title_font)
+        axis_time.setGridLineVisible(False)
+        chart.addAxis(axis_time, Qt.AlignmentFlag.AlignTop)
+        time_points.attachAxis(axis_time)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         if TOKENS.get("chart_axis_text"):
@@ -511,7 +521,7 @@ class _StatsChartMixin:
 
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        calc_h = (len(data) * 18) + 240
+        calc_h = (len(data) * 28) + 150
         chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, calc_h))
 
         bar_series.hovered.connect(lambda status, idx, bs: self._on_resp_hovered(status, idx, data))

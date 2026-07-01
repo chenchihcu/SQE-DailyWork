@@ -17,6 +17,7 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         base_tmp_dir = Path("scratch")
         base_tmp_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = base_tmp_dir / f"sqe_monthly_stats_{uuid4().hex}.db"
+        self.export_path = base_tmp_dir / f"monthly_all_export_{uuid4().hex}.xlsx"
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys=ON")
@@ -26,6 +27,8 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         self.conn.close()
         if self.db_path.exists():
             self.db_path.unlink()
+        if self.export_path.exists():
+            self.export_path.unlink()
 
     def _create_supplier(self, name: str) -> str:
         return repository.create_supplier_record(self.conn, supplier_name=name)
@@ -178,6 +181,25 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
 
         self.assertEqual(1, len(rows))
         self.assertTrue(all(row["event_type"] == "ANOMALY" for row in rows))
+
+    def test_export_monthly_excel_accepts_all_period_from_stats_page(self) -> None:
+        supplier_id = self._create_supplier("Supplier-A")
+        self._create_anomaly(supplier_id, "2026-04-02")
+        self._create_visit(supplier_id, "2026-05-06")
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            ok, msg = event_service.export_monthly_excel(str(self.export_path), "ALL")
+
+        self.assertTrue(ok, msg)
+        self.assertTrue(self.export_path.exists())
+
+        with pd.ExcelFile(self.export_path) as workbook:
+            summary_df = pd.read_excel(workbook, sheet_name="月統計")
+            detail_df = pd.read_excel(workbook, sheet_name="明細")
+
+        self.assertEqual("全期項目", summary_df.loc[0, "月份"])
+        self.assertEqual(2, len(detail_df))
+        self.assertEqual({"異常", "訪廠"}, set(detail_df["類型"]))
 
 
 class MonthlyStatsExpansionExportTests(unittest.TestCase):

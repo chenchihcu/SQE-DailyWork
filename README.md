@@ -28,8 +28,9 @@ no separate launcher window, and no standalone NCR main window.
 
 ## UI Workbench
 
-- Home is a daily cockpit: six operational KPI cards plus one read-only backlog
-  (待辦) list (open/overdue anomalies, overdue first, with a warehouse pending
+- Home is a daily cockpit: four operational KPI cards (`逾期未結`, `單獨異常`,
+  `訪廠發現異常`, `倉庫待處理不合格品`) plus one read-only backlog (待辦)
+  list (open/overdue anomalies, overdue first, with a warehouse pending
   shortcut). Hero/cover content, feature tours, project-structure copy, and
   quick-entry write panels stay retired; the backlog list only reads existing
   services and routes through existing navigation.
@@ -49,9 +50,10 @@ no separate launcher window, and no standalone NCR main window.
   and proportion analysis.
 - `基礎資料` manages shared suppliers and products. Product import accepts
   Excel/ERP exports for shared `suppliers/products` after preview and backup.
-- Statistics pages keep tab-level scroll guards, visible scrollbars, long-name
-  tooltips, color-readable chart/status roles, and native dense-chart visual
-  checks.
+- Statistics pages keep scroll guards, visible scrollbars, long-name tooltips,
+  color-readable chart/status roles, and native dense-chart visual checks.
+  `異常事件統計` is a dashboard view without visible page tabs or
+  decision-summary cards.
 
 ## Runtime Architecture
 

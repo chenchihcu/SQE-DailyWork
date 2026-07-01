@@ -506,6 +506,7 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
     from unittest.mock import patch
 
     from PySide6.QtCore import QDate
+    from PySide6.QtWidgets import QScrollArea
 
     from ui.widgets.stats_view_widget import StatsViewWidget
 
@@ -570,14 +571,13 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         app.processEvents()
         output.parent.mkdir(parents=True, exist_ok=True)
         try:
-            for index, suffix in enumerate(
-                (
-                    "stats-trend",
-                    "stats-responsible",
-                    "stats-supplier-risk",
-                )
-            ):
-                widget.tabs.setCurrentIndex(index)
+            scroll = widget.findChild(QScrollArea, "StatsTrendScrollArea")
+            capture_points = (("stats-overview", 0), ("stats-risk", "bottom"))
+            for suffix, position in capture_points:
+                if scroll is not None:
+                    bar = scroll.verticalScrollBar()
+                    target_value = bar.maximum() if position == "bottom" else int(position)
+                    bar.setValue(target_value)
                 app.processEvents()
                 target = _target_output_path(output, suffix)
                 widget.grab().save(str(target))

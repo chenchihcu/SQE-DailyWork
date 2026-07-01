@@ -3713,6 +3713,25 @@ def list_visits_by_supplier(conn: sqlite3.Connection, supplier_id: str) -> list[
     return [dict(row) for row in rows]
 
 
+def _event_period_filter(date_column: str, yyyymm: str | None) -> tuple[str, list[Any]]:
+    period_key = str(yyyymm or "").strip().upper()
+    if not period_key or period_key == "ALL":
+        return "", []
+    if period_key == "YEAR":
+        return f" AND substr({date_column}, 1, 4) = ?", [str(date.today().year)]
+    if period_key == "HALF_YEAR":
+        current_month = date.today().month
+        start_month, end_month = (1, 6) if current_month <= 6 else (7, 12)
+        return (
+            f" AND substr({date_column}, 1, 4) = ?"
+            f" AND cast(substr({date_column}, 6, 2) as integer) BETWEEN ? AND ?",
+            [str(date.today().year), start_month, end_month],
+        )
+
+    month = _normalize_month(period_key)
+    return f" AND replace(substr({date_column}, 1, 7), '-', '') = ?", [month]
+
+
 def list_events(
     conn: sqlite3.Connection,
     *,
@@ -3726,7 +3745,14 @@ def list_events(
 ) -> list[dict]:
     events: list[dict] = []
     keyword = (supplier_keyword or "").strip().lower()
-    month = _normalize_month(yyyymm) if yyyymm else None
+    anomaly_period_sql, anomaly_period_params = _event_period_filter(
+        "a.anomaly_date",
+        yyyymm,
+    )
+    visit_period_sql, visit_period_params = _event_period_filter(
+        "v.visit_date",
+        yyyymm,
+    )
     event_type_key = str(event_type or "ALL").strip().upper()
     scope = str(event_scope or "").strip().upper()
     if scope not in EVENT_SCOPE_VALUES:
@@ -3803,9 +3829,8 @@ def list_events(
         if keyword:
             anomaly_sql += " AND lower(s.supplier_name) LIKE ?"
             anomaly_params.append(f"%{keyword}%")
-        if month:
-            anomaly_sql += " AND replace(substr(a.anomaly_date, 1, 7), '-', '') = ?"
-            anomaly_params.append(month)
+        anomaly_sql += anomaly_period_sql
+        anomaly_params.extend(anomaly_period_params)
 
         for row in conn.execute(anomaly_sql, anomaly_params).fetchall():
             events.append(dict(row))
@@ -3863,9 +3888,8 @@ def list_events(
         if keyword:
             visit_sql += " AND lower(s.supplier_name) LIKE ?"
             visit_params.append(f"%{keyword}%")
-        if month:
-            visit_sql += " AND replace(substr(v.visit_date, 1, 7), '-', '') = ?"
-            visit_params.append(month)
+        visit_sql += visit_period_sql
+        visit_params.extend(visit_period_params)
         for row in conn.execute(visit_sql, visit_params).fetchall():
             visit_row = dict(row)
             visit_id = str(visit_row.get("event_id") or "").strip()
@@ -4545,6 +4569,7 @@ def _resolve_product_selection(
         str(product.get("product_name") or normalized_name),
         _normalize_product_stage_for_read(product.get("product_stage")),
     )
+_STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _normalize_optional_iso_date(value: Any, *, field_name: str) -> str:

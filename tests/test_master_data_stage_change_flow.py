@@ -15,7 +15,8 @@ class MasterDataStageChangeFlowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-
+        from ui.widgets.common_widgets import DirtyTrackingMixin
+        DirtyTrackingMixin._confirm_discard = lambda self: True
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -49,7 +50,7 @@ class MasterDataStageChangeFlowTests(unittest.TestCase):
         with patch.object(
             QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
         ), patch(
-            "ui.widgets.master_data_widget.QInputDialog.getMultiLineText",
+            "ui.widgets.product_form_dialog.QInputDialog.getMultiLineText",
             return_value=("", True),
         ), patch.object(
             QMessageBox, "warning"
@@ -69,7 +70,7 @@ class MasterDataStageChangeFlowTests(unittest.TestCase):
         with patch.object(
             QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
         ), patch(
-            "ui.widgets.master_data_widget.QInputDialog.getMultiLineText",
+            "ui.widgets.product_form_dialog.QInputDialog.getMultiLineText",
             return_value=("客訴回流重開試產", True),
         ):
             dialog._on_submit()

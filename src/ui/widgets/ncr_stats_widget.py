@@ -78,9 +78,11 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         self.month_input = QDateEdit(self)
         self.month_input.setDate(QDate.currentDate())
         self.all_time_toggle = QCheckBox(self)
+        self.month_input.hide()
+        self.all_time_toggle.hide()
         self._test_yyyy_mm = None
-        self.month_input.dateChanged.connect(lambda qd: setattr(self, "_test_yyyy_mm", qd.toString("yyyyMM")))
-        self.all_time_toggle.toggled.connect(lambda chk: setattr(self, "_test_yyyy_mm", "ALL" if chk else self.month_input.date().toString("yyyyMM")))
+        self.month_input.dateChanged.connect(self._on_month_input_changed)
+        self.all_time_toggle.toggled.connect(self._on_all_time_toggle_changed)
 
         source_tag_label = QLabel("倉庫不合格品統計")
         source_tag_label.setProperty("role", "sourceTag")
@@ -217,6 +219,15 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             current_month = date.today().month
             half = "上半年" if current_month <= 6 else "下半年"
             return f"{date.today().year}年{half}"
+
+    def _on_month_input_changed(self, qdate):
+        self._test_yyyy_mm = qdate.toString("yyyyMM")
+        self.refresh_data()
+
+    def _on_all_time_toggle_changed(self, checked):
+        self._test_yyyy_mm = "ALL" if checked else self.month_input.date().toString("yyyyMM")
+        self.month_input.setEnabled(not checked)
+        self.refresh_data()
 
     def _on_period_changed(self, index: int):
         self.refresh_data()

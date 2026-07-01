@@ -30,6 +30,12 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 - Run `scripts\qt_visual_probe.py` when visual evidence is needed; it forces native Windows Qt unless `--allow-offscreen` is explicitly passed.
 - If only offscreen output is available, report it as structural evidence, not as a visual UI finding.
 
+## Qt UI Removal And Compatibility Widgets
+
+- For "remove / do not show" UI requests, verify the element is absent from the visible layout and not only visually obscured.
+- Compatibility-only Qt widgets must be explicitly hidden, removed, or inserted into the intended layout; parented-but-unmanaged widgets can float over the page.
+- Native visual probes should drive visible routes, controls, and scroll positions, not hidden proxy widgets.
+
 ## Non-goals
 
 - This harness does not change schema, migration behavior, UI behavior, export contracts, or SQE workflow.
