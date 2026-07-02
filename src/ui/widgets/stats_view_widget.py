@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt
 from PySide6.QtCharts import QChart, QChartView, QHorizontalStackedBarSeries
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -40,16 +40,18 @@ from ui.widgets.stats_dashboard_helpers import (
     StatsInfoBanner,
     build_temp_chart_paths,
     cleanup_temp_files,
-    create_hidden_month_controls,
     create_insight_label,
     create_period_label,
     create_stats_grid_layout,
     create_stats_scroll_area,
-    period_month_key,
-    period_month_text,
+    create_year_month_range_selectors,
+    normalize_range_keys,
+    range_display_text,
+    range_iso_dates,
+    range_month_span,
+    range_month_window,
     render_chart_to_png,
     short_chart_label,
-    create_year_month_selectors,
 )
 from ui.widgets.stats_chart_mixin import _StatsChartMixin
 from ui.widgets.export_range_dialog import ExportRangeDialog
@@ -67,10 +69,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         super().__init__()
         self.setObjectName("StatsView")
         self.main_window = main_window
-        self._rank_month_label: QLabel | None = None
+        self.insight_label: QLabel | None = None
         self._chart_content_layout: QVBoxLayout | None = None
         self._trend_content_layout: QVBoxLayout | None = None
         self._resp_content_layout: QVBoxLayout | None = None
+        self._category_content_layout: QVBoxLayout | None = None
         self._chart_view: QChartView | None = None
         self._chart: QChart | None = None
         self._chart_series: QHorizontalStackedBarSeries | None = None
@@ -102,24 +105,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         month_row = QHBoxLayout()
         month_row.setSpacing(INLINE_SPACING)
         period_label = create_period_label()
-        self.year_combo, self.year_suffix, self.month_combo, self.month_suffix = create_year_month_selectors(
-            self._on_selector_changed,
-            parent=self
+        self.range_selectors = create_year_month_range_selectors(
+            self._on_range_changed,
+            parent=self,
         )
 
         month_row.addWidget(period_label)
-        month_row.addWidget(self.year_combo)
-        month_row.addWidget(self.year_suffix)
-        month_row.addWidget(self.month_combo)
-        month_row.addWidget(self.month_suffix)
-
-        # ── 向下相容 Proxy ──────────────────────────────────
-        self.month_input, self.all_time_toggle = create_hidden_month_controls(
-            self,
-            self._on_month_input_changed,
-            self._on_all_time_toggle_changed,
-        )
-        self._test_yyyy_mm = None
+        for widget in self.range_selectors.widgets():
+            month_row.addWidget(widget)
 
         self.source_tag_label = QLabel("供應商事件統計")
         self.source_tag_label.setProperty("role", "sourceTag")
@@ -151,7 +144,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         scroll, scroll_layout = create_stats_scroll_area(
             scroll_object_name="StatsTrendScrollArea",
             content_object_name="StatsScrollContent",
-            margins=RANK_PANEL_MARGINS,
+            margins=(0, 0, 0, 0),
         )
 
         self.info_banner = self._create_info_banner(
@@ -160,70 +153,23 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         )
         scroll_layout.addWidget(self.info_banner)
 
-        # 2x2 網格佈局；外層裝飾 panel 已移除，保留每個圖表的語意 panel。
-        self.grid_layout = create_stats_grid_layout()
-        scroll_layout.addLayout(self.grid_layout)
+        chart_panel = QFrame()
+        chart_panel.setObjectName("StatsFourPhaseChartPanel")
+        chart_panel.setProperty("role", "panel")
+        chart_layout = QVBoxLayout(chart_panel)
+        chart_layout.setContentsMargins(*RANK_PANEL_MARGINS)
+        chart_layout.setSpacing(INLINE_TIGHT_SPACING)
 
-        # 1. 供應商事件趨勢 Panel
-        trend_panel = QFrame()
-        trend_panel.setProperty("role", "panel")
-        trend_layout = QVBoxLayout(trend_panel)
-        trend_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        trend_layout.setSpacing(INLINE_TIGHT_SPACING)
+        self.grid_layout = create_stats_grid_layout(equal_rows=True)
+        chart_layout.addLayout(self.grid_layout)
+        scroll_layout.addWidget(chart_panel)
 
-        trend_title = QLabel("供應商事件趨勢分析 (過去 6 個月)")
-        trend_title.setProperty("role", "sectionTitle")
-        trend_layout.addWidget(trend_title)
-
-        self._trend_content_layout = QVBoxLayout()
-        self._trend_content_layout.setSpacing(4)
-        trend_layout.addLayout(self._trend_content_layout, 1)
-        self.grid_layout.addWidget(trend_panel, 0, 0)
-
-        # 2. 事件責任人績效 Panel
-        responsible_panel = QFrame()
-        responsible_panel.setProperty("role", "panel")
-        responsible_layout = QVBoxLayout(responsible_panel)
-        responsible_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        responsible_layout.setSpacing(INLINE_TIGHT_SPACING)
-
-        resp_title = QLabel("供應商訪廠與訪廠異常趨勢分析 (過去 6 個月)")
-        resp_title.setProperty("role", "sectionTitle")
-        responsible_layout.addWidget(resp_title)
-
-        self._resp_content_layout = QVBoxLayout()
-        self._resp_content_layout.setSpacing(4)
-        responsible_layout.addLayout(self._resp_content_layout, 1)
-        self.grid_layout.addWidget(responsible_panel, 0, 1)
-
-        # 3. 供應商事件風險 Panel (跨兩欄)
-        rank_panel = QFrame()
-        rank_panel.setProperty("role", "panel")
-        rank_layout = QVBoxLayout(rank_panel)
-        rank_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        rank_layout.setSpacing(INLINE_TIGHT_SPACING)
-
-        title_row = QHBoxLayout()
-        rank_title = QLabel("責任人事件統計 (已結案 vs 未結案)")
-        rank_title.setProperty("role", "sectionTitle")
-        title_row.addWidget(rank_title)
-        title_row.addStretch(1)
-        self._rank_month_label = QLabel("")
-        self._rank_month_label.setProperty("role", "helperText")
-        title_row.addWidget(self._rank_month_label)
-        rank_layout.addLayout(title_row)
-
-        self._chart_content_layout = QVBoxLayout()
-        self._chart_content_layout.setSpacing(4)
-        rank_layout.addLayout(self._chart_content_layout, 1)
-        self.grid_layout.addWidget(rank_panel, 1, 0, 1, 2)
-
-        # 加上 stretch 吸收剩餘垂直空間，防止圖表長寬比在拉大時嚴重變形
-        scroll_layout.addStretch(1)
+        self.insight_label = self._create_insight_label("載入中...")
+        self.insight_label.setMinimumHeight(40)
+        scroll_layout.addWidget(self.insight_label)
 
         root.addWidget(scroll, 1)
 
-        self._update_rank_month_subtitle()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
@@ -244,59 +190,37 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
     # ── 日期 / 導覽方法 ──────────────────────────────────
 
-    def _month_key(self) -> str:
-        if getattr(self, "_test_yyyy_mm", None) is not None:
-            return self._test_yyyy_mm
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        return f"{year}{month}"
+    def _range_keys(self) -> tuple[str, str]:
+        return normalize_range_keys(
+            self.range_selectors.start_key(),
+            self.range_selectors.end_key(),
+        )
 
-    def _month_text(self) -> str:
-        if getattr(self, "_test_yyyy_mm", None) is not None:
-            if self._test_yyyy_mm == "ALL":
-                return "全期累計"
-            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        return f"{year}-{month}"
+    def _range_text(self) -> str:
+        start_key, end_key = self._range_keys()
+        return range_display_text(start_key, end_key)
 
-    def _update_rank_month_subtitle(self):
-        if self._rank_month_label is None:
-            return
-        is_all = (getattr(self, "_test_yyyy_mm", None) == "ALL")
-        prefix = "統計範圍：" if is_all else "月份："
-        self._rank_month_label.setText(f"{prefix}{self._month_text()}")
-
-    def _on_month_input_changed(self, qdate):
-        self._test_yyyy_mm = qdate.toString("yyyyMM")
-        year_str = qdate.toString("yyyy")
-        month_str = qdate.toString("MM")
-        self.year_combo.blockSignals(True)
-        self.month_combo.blockSignals(True)
-        self.year_combo.setCurrentText(year_str)
-        self.month_combo.setCurrentText(month_str)
-        self.year_combo.blockSignals(False)
-        self.month_combo.blockSignals(False)
-        self._update_rank_month_subtitle()
+    def set_range(self, start_key: str, end_key: str) -> None:
+        """公開掛鉤（測試 / 視覺探針用）：操作真實可見下拉後刷新。"""
+        self.range_selectors.set_range(start_key, end_key)
+        self._update_range_labels()
         self.refresh_data()
 
-    def _on_all_time_toggle_changed(self, checked):
-        self._test_yyyy_mm = "ALL" if checked else f"{self.year_combo.currentText()}{self.month_combo.currentText()}"
-        self.month_input.setEnabled(not checked)
-        self.year_combo.setEnabled(not checked)
-        self.month_combo.setEnabled(not checked)
-        self._update_rank_month_subtitle()
-        self.refresh_data()
+    def _update_range_labels(self):
+        # 圖表標題由 chart builder 根據實際資料區間生成；這裡保留公開掛鉤
+        # 讓測試/視覺探針呼叫 set_range 時不用分支。
+        return
 
-    def _on_selector_changed(self):
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        qdate = QDate(int(year), int(month), 1)
-        self.month_input.blockSignals(True)
-        self.month_input.setDate(qdate)
-        self.month_input.blockSignals(False)
-        self._test_yyyy_mm = f"{year}{month}"
-        self._update_rank_month_subtitle()
+    def _on_range_changed(self, source: str):
+        # 「碰到的控件優先」夾限：改起始使其超過迄則把迄拖到起始，反之亦然
+        start_key = self.range_selectors.start_key()
+        end_key = self.range_selectors.end_key()
+        if start_key > end_key:
+            if source == "start":
+                self.range_selectors.set_range(start_key, start_key)
+            else:
+                self.range_selectors.set_range(end_key, end_key)
+        self._update_range_labels()
         self.refresh_data()
 
     # ── 資料刷新 ──────────────────────────────────────────
@@ -304,73 +228,119 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
     def refresh_data(self):
         self._has_loaded = True
         try:
-            yyyymm = self._month_key()
-            # 保持此呼叫以觸發 monthly_stats_cache 刷新與向下相容 side-effects
-            _ = event_service.get_monthly_stats(yyyymm)
+            start_key, end_key = self._range_keys()
+            # 保留此呼叫以觸發 monthly_stats_cache 刷新（回傳值不使用），錨定迄月
+            _ = event_service.get_monthly_stats(end_key)
 
-            trend_data = event_service.get_anomaly_trend(months=6)
-            visit_trend_data = event_service.get_visit_trend(months=6)
+            # 趨勢圖窗口 = 使用者選定的起迄區間（服務端上限 12 個月）
+            trend_start, trend_end = range_month_window(start_key, end_key)
+            trend_data = event_service.get_anomaly_trend_by_range(trend_start, trend_end)
+            visit_trend_data = event_service.get_visit_trend_by_range(trend_start, trend_end)
+            iso_start, iso_end = range_iso_dates(start_key, end_key)
             try:
-                resp_stats = event_service.get_responsible_person_stats(yyyymm)
+                resp_stats = event_service.get_responsible_person_stats_by_range(
+                    iso_start, iso_end
+                )
             except Exception:
                 logger.exception(
-                    "get_responsible_person_stats failed for %s", yyyymm
+                    "get_responsible_person_stats_by_range failed for %s ~ %s",
+                    iso_start, iso_end,
                 )
                 resp_stats = []
+            try:
+                category_pareto_data = event_service.get_anomaly_category_pareto_by_range(
+                    iso_start, iso_end
+                )
+            except Exception:
+                logger.exception(
+                    "get_anomaly_category_pareto_by_range failed for %s ~ %s",
+                    iso_start,
+                    iso_end,
+                )
+                category_pareto_data = []
 
             self._render_charts(
                 trend_data=trend_data,
                 visit_trend_data=visit_trend_data,
-                resp_stats=resp_stats
+                resp_stats=resp_stats,
+                category_pareto_data=category_pareto_data,
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._render_charts([], [], [], error_message=localize_exception(exc))
+            self._render_charts([], [], [], [], error_message=localize_exception(exc))
 
     # ── 圖表協調 ──────────────────────────────────────────
 
-    def _render_charts(self, trend_data: list[dict], visit_trend_data: list[dict], resp_stats: list[dict], *, error_message: str | None = None):
-        self._clear_top_suppliers()
-        if any(l is None for l in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout)):
+    def _clear_chart_grid(self) -> None:
+        while self.grid_layout.count() > 0:
+            item = self.grid_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        self._chart = None
+        self._chart_view = None
+        self._chart_series = None
+        self._chart_supplier_names = []
+        self._chart_ongoing_values = []
+        self._chart_overdue_values = []
+        self._chart_closed_values = []
+        self._chart_total_values = []
+        self._chart_avg_time_values = []
+
+    def _set_insights(self, insights: list[str]) -> None:
+        if self.insight_label is None:
             return
+        self.insight_label.setText(
+            "\n".join(insights) if insights else "暫無可用數據以生成管理建議。"
+        )
+
+    def _render_charts(
+        self,
+        trend_data: list[dict],
+        visit_trend_data: list[dict],
+        resp_stats: list[dict],
+        category_pareto_data: list[dict],
+        *,
+        error_message: str | None = None,
+    ):
+        self._clear_chart_grid()
 
         if error_message:
-            for layout in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout):
-                lbl = QLabel(f"錯誤：{error_message}")
-                lbl.setProperty("role", "errorText")
-                layout.addWidget(lbl)
+            lbl = QLabel(f"錯誤：{error_message}")
+            lbl.setProperty("role", "errorText")
+            self.grid_layout.addWidget(lbl, 0, 0, 2, 2)
+            self._set_insights([f"載入統計資料時發生錯誤：{error_message}"])
             return
 
-        if not trend_data and not visit_trend_data and not resp_stats:
-            empty = EmptyStateWidget("暫無數據", "尚無供應商事件統計記錄")
-            self._chart_content_layout.addWidget(empty)
-            return
+        insights: list[str] = []
 
         # 1. Trend Chart
         if trend_data:
             trend_view = self._build_trend_chart(trend_data)
             if trend_view:
-                self._trend_content_layout.addWidget(trend_view, 1)
+                self.grid_layout.addWidget(trend_view, 0, 0)
 
                 last_month = trend_data[-1] if trend_data else None
                 if last_month:
                     backlog_status = "積壓上升" if len(trend_data) > 1 and last_month["backlog_count"] > trend_data[-2]["backlog_count"] else "積壓穩定"
                     rate = (last_month["closed_count"] / last_month["total_count"] * 100) if last_month["total_count"] > 0 else 0
                     rate_status = "效率良好" if rate >= 80 else "效率待提升"
-
-                    insight = self._create_insight_label(
+                    insights.append(
                         f"目前狀態：{backlog_status} | 結案效率：{rate_status}\n"
-                        f"最新月份積壓總數：{last_month['backlog_count']} 件；當月結案率：{rate:.1f}%"
+                        f"區間末月（{last_month['yyyymm']}）積壓總數：{last_month['backlog_count']} 件；當月結案率：{rate:.1f}%"
                     )
-                    self._trend_content_layout.addWidget(insight)
+            else:
+                self.grid_layout.addWidget(EmptyStateWidget("暫無趨勢數據"), 0, 0)
         else:
-            self._trend_content_layout.addWidget(EmptyStateWidget("暫無趨勢數據"))
+            self.grid_layout.addWidget(EmptyStateWidget("暫無趨勢數據"), 0, 0)
 
         # 2. Visit Trend Chart
         if visit_trend_data:
             visit_view = self._build_visit_trend_chart(visit_trend_data)
             if visit_view:
-                self._resp_content_layout.addWidget(visit_view, 1)
+                self.grid_layout.addWidget(visit_view, 0, 1)
 
                 last_month_visit = visit_trend_data[-1] if visit_trend_data else None
                 if last_month_visit:
@@ -378,19 +348,39 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     total_anomalies = last_month_visit["visit_anomaly_count"]
                     ratio = total_anomalies / total_visits if total_visits > 0 else 0
                     ratio_status = "發現異常比例偏高" if ratio >= 1.5 else "發現異常比例正常"
-                    insight = self._create_insight_label(
-                        f"最新月份：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
+                    insights.append(
+                        f"區間末月（{last_month_visit['yyyymm']}）：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
                         f"訪廠評估：{ratio_status}，請持續追蹤供應商改善進度。"
                     )
-                    self._resp_content_layout.addWidget(insight)
+            else:
+                self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
         else:
-            self._resp_content_layout.addWidget(EmptyStateWidget("暫無訪廠數據"))
+            self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
 
-        # 3. Responsible Person Stacked Chart
+        # 3. Category Pareto Chart
+        if category_pareto_data:
+            category_view = self._build_category_pareto_chart(category_pareto_data)
+            if category_view:
+                self.grid_layout.addWidget(category_view, 1, 0)
+
+                primary_category = category_pareto_data[0]
+                top_three_total = sum(int(row.get("count", 0) or 0) for row in category_pareto_data[:3])
+                total_count = sum(int(row.get("count", 0) or 0) for row in category_pareto_data)
+                top_three_ratio = (top_three_total / total_count * 100) if total_count else 0.0
+                insights.append(
+                    f"主要異常類別：{primary_category['category']} {primary_category['count']} 件，占 {primary_category['percent']:.1f}%。\n"
+                    f"前三大類別累積 {top_three_total} 件，占全部異常 {top_three_ratio:.1f}%，可優先投入改善資源。"
+                )
+            else:
+                self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
+        else:
+            self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
+
+        # 4. Responsible Person Stacked Chart
         if resp_stats:
             resp_view = self._build_responsible_stacked_chart(resp_stats)
             if resp_view:
-                self._chart_content_layout.addWidget(resp_view)
+                self.grid_layout.addWidget(resp_view, 1, 1)
 
                 open_cases_stats = [r for r in resp_stats if r.get("open_count", 0) > 0]
                 if open_cases_stats:
@@ -404,22 +394,21 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         if len(digits) >= 6 and digits[:6].isdigit():
                             return f"{digits[:4]}/{digits[4:6]}"
                         return str(d)
-                        
-                    insight = self._create_insight_label(
+
+                    insights.append(
                         f"責任人負載分析：目前全期未結案共 {total_open} 件。\n"
                         f"重點關注：{most_backlogged['responsible_person']} 目前有 {most_backlogged['open_count']} 件未結案，其最早未結案件累計自 {format_long_m(most_backlogged['min_open_date'])}。"
                     )
-                    self._chart_content_layout.addWidget(insight)
                 else:
-                    self._chart_content_layout.addWidget(self._create_insight_label("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。"))
+                    insights.append("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。")
+            else:
+                self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
         else:
-            self._chart_content_layout.addWidget(EmptyStateWidget("暫無責任人數據"))
+            self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
         
+        self._set_insights(insights)
+
         # 強制 Layout 重新佈局與刷新
-        for layout in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout):
-            if layout is not None:
-                layout.activate()
-                layout.update()
         if self.grid_layout is not None:
             self.grid_layout.activate()
             self.grid_layout.update()
@@ -452,7 +441,12 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         # 3. 處理與匯出
         temp_dir = os.path.dirname(file_path)
         pid = os.getpid()
-        temp_paths = build_temp_chart_paths(temp_dir, pid, ["trend", "visit_anomaly", "responsible"], "temp_evt")
+        temp_paths = build_temp_chart_paths(
+            temp_dir,
+            pid,
+            ["trend", "visit_anomaly", "responsible", "category_pareto"],
+            "temp_evt",
+        )
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
 
         try:
@@ -460,6 +454,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             trend_data = event_service.get_anomaly_trend_by_range(start_date, end_date)
             visit_trend_data = event_service.get_visit_trend_by_range(start_date, end_date)
             resp_stats = event_service.get_responsible_person_stats_by_range(start_date, end_date)
+            category_pareto_data = event_service.get_anomaly_category_pareto_by_range(start_date, end_date)
             events_detail = event_service.list_events_by_range(start_date, end_date)
 
             has_data = len(events_detail) > 0
@@ -484,6 +479,13 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     lambda: self._build_responsible_stacked_chart(resp_stats), temp_paths["responsible"]
                 ):
                     active_temp_paths["responsible"] = temp_paths["responsible"]
+
+                # 4. Category Pareto chart
+                if category_pareto_data and render_chart_to_png(
+                    lambda: self._build_category_pareto_chart(category_pareto_data),
+                    temp_paths["category_pareto"],
+                ):
+                    active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
 
             # 呼叫匯出服務
             ok, msg = event_service.export_events_report(

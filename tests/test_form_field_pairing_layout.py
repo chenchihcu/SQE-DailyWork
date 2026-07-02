@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTextEdit
 
 from database.connection import initialize_database
 from ui.layout_constants import FORM_MAX_WIDTH
+from ui.widgets.defect_form_widgets import ROOT_CAUSE_PARETO_OPTIONS
 from ui.widgets.defect_form_widget import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
@@ -114,6 +115,15 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self._assert_row_contains(row, dialog.closer_input, dialog.root_cause_combo)
         self.assertFalse(row.isAncestorOf(dialog.improvement_input))
         self.assertFalse(row.isAncestorOf(dialog.attachment_editor))
+
+    def test_close_anomaly_cause_options_match_pareto_taxonomy(self) -> None:
+        dialog = self._show_dialog(CloseAnomalyDialog("missing-id", "測試問題描述"))
+
+        options = [
+            dialog.root_cause_combo.itemText(i)
+            for i in range(dialog.root_cause_combo.count())
+        ]
+        self.assertEqual(ROOT_CAUSE_PARETO_OPTIONS, options)
 
     def test_supplier_dialog_pairs_contact_fields(self) -> None:
         dialog = self._show_dialog(SupplierFormDialog())

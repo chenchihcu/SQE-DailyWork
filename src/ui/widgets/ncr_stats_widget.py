@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from PySide6.QtCore import QDate
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QFrame,
@@ -33,15 +32,15 @@ from ui.widgets.stats_dashboard_helpers import (
     StatsInfoBanner,
     build_temp_chart_paths,
     cleanup_temp_files,
-    create_hidden_month_controls,
     create_insight_label,
     create_period_label,
     create_stats_grid_layout,
     create_stats_scroll_area,
-    period_month_key,
-    period_month_text,
+    create_year_month_range_selectors,
+    normalize_range_keys,
+    range_display_text,
+    range_iso_dates,
     render_chart_to_png,
-    create_year_month_selectors,
 )
 from ui.widgets.ncr_stats_chart_mixin import (
     _NcrStatsChartMixin,
@@ -79,24 +78,14 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         control_row.setSpacing(INLINE_SPACING)
         
         period_label = create_period_label()
-        self.year_combo, self.year_suffix, self.month_combo, self.month_suffix = create_year_month_selectors(
-            self._on_selector_changed,
-            parent=self
+        self.range_selectors = create_year_month_range_selectors(
+            self._on_range_changed,
+            parent=self,
         )
 
         control_row.addWidget(period_label)
-        control_row.addWidget(self.year_combo)
-        control_row.addWidget(self.year_suffix)
-        control_row.addWidget(self.month_combo)
-        control_row.addWidget(self.month_suffix)
-
-        # ── 向下相容 Proxy ──────────────────────────────────
-        self.month_input, self.all_time_toggle = create_hidden_month_controls(
-            self,
-            self._on_month_input_changed,
-            self._on_all_time_toggle_changed,
-        )
-        self._test_yyyy_mm = None
+        for widget in self.range_selectors.widgets():
+            control_row.addWidget(widget)
 
         source_tag_label = QLabel("倉庫不合格品統計")
         source_tag_label.setProperty("role", "sourceTag")
@@ -167,49 +156,30 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
     def _create_insight_label(self, text: str) -> QLabel:
         return create_insight_label(text, minimum_height=40)
 
-    def _month_key(self) -> str:
-        if getattr(self, "_test_yyyy_mm", None) is not None:
-            return self._test_yyyy_mm
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        return f"{year}{month}"
+    def _range_keys(self) -> tuple[str, str]:
+        return normalize_range_keys(
+            self.range_selectors.start_key(),
+            self.range_selectors.end_key(),
+        )
 
-    def _month_text(self) -> str:
-        if getattr(self, "_test_yyyy_mm", None) is not None:
-            if self._test_yyyy_mm == "ALL":
-                return "全期累計"
-            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        return f"{year}-{month}"
+    def _range_text(self) -> str:
+        start_key, end_key = self._range_keys()
+        return range_display_text(start_key, end_key)
 
-    def _on_month_input_changed(self, qdate):
-        self._test_yyyy_mm = qdate.toString("yyyyMM")
-        year_str = qdate.toString("yyyy")
-        month_str = qdate.toString("MM")
-        self.year_combo.blockSignals(True)
-        self.month_combo.blockSignals(True)
-        self.year_combo.setCurrentText(year_str)
-        self.month_combo.setCurrentText(month_str)
-        self.year_combo.blockSignals(False)
-        self.month_combo.blockSignals(False)
+    def set_range(self, start_key: str, end_key: str) -> None:
+        """公開掛鉤（測試 / 視覺探針用）：操作真實可見下拉後刷新。"""
+        self.range_selectors.set_range(start_key, end_key)
         self.refresh_data()
 
-    def _on_all_time_toggle_changed(self, checked):
-        self._test_yyyy_mm = "ALL" if checked else f"{self.year_combo.currentText()}{self.month_combo.currentText()}"
-        self.month_input.setEnabled(not checked)
-        self.year_combo.setEnabled(not checked)
-        self.month_combo.setEnabled(not checked)
-        self.refresh_data()
-
-    def _on_selector_changed(self):
-        year = self.year_combo.currentText()
-        month = self.month_combo.currentText()
-        qdate = QDate(int(year), int(month), 1)
-        self.month_input.blockSignals(True)
-        self.month_input.setDate(qdate)
-        self.month_input.blockSignals(False)
-        self._test_yyyy_mm = f"{year}{month}"
+    def _on_range_changed(self, source: str):
+        # 「碰到的控件優先」夾限：改起始使其超過迄則把迄拖到起始，反之亦然
+        start_key = self.range_selectors.start_key()
+        end_key = self.range_selectors.end_key()
+        if start_key > end_key:
+            if source == "start":
+                self.range_selectors.set_range(start_key, start_key)
+            else:
+                self.range_selectors.set_range(end_key, end_key)
         self.refresh_data()
 
     def refresh_data(self):
@@ -223,14 +193,15 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 widget.setParent(None)
                 widget.deleteLater()
 
-        yyyymm = self._month_key()
+        start_key, end_key = self._range_keys()
+        iso_start, iso_end = range_iso_dates(start_key, end_key)
 
         try:
             with get_connection() as conn:
-                top_suppliers = ncr_stats_service.get_top_suppliers_stats_filtered(conn, yyyymm)
-                top_products = ncr_stats_service.get_top_products_stats_filtered(conn, yyyymm)
-                scrap_rework = ncr_stats_service.get_scrap_rework_ratio_filtered(conn, yyyymm)
-                return_slips = ncr_stats_service.get_return_slip_ratio_filtered(conn, yyyymm)
+                top_suppliers = ncr_stats_service.get_top_suppliers_stats_by_range(conn, iso_start, iso_end)
+                top_products = ncr_stats_service.get_top_products_stats_by_range(conn, iso_start, iso_end)
+                scrap_rework = ncr_stats_service.get_scrap_rework_ratio_by_range(conn, iso_start, iso_end)
+                return_slips = ncr_stats_service.get_return_slip_ratio_by_range(conn, iso_start, iso_end)
         except Exception as exc:
             logger.exception("載入 NCR 統計數據失敗")
             err_lbl = QLabel(f"無法載入統計數據：{exc}")
@@ -242,7 +213,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         has_data = any((top_suppliers, top_products, scrap_rework, return_slips))
 
         if not has_data:
-            empty = EmptyStateWidget("暫無數據", f"在所選期間 ({self._month_text()}) 尚無不合格品資料")
+            empty = EmptyStateWidget("暫無數據", f"在所選期間 ({self._range_text()}) 尚無不合格品資料")
             self.grid_layout.addWidget(empty, 0, 0, 1, 2)
             self.insight_label.setText("暫無可用數據以生成管理建議。")
             return

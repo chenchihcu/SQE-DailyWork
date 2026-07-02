@@ -47,10 +47,10 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         mock_rs = return_slips if return_slips is not None else []
 
         with (
-            patch("ncr.services.stats_service.get_top_suppliers_stats_filtered", return_value=mock_sup),
-            patch("ncr.services.stats_service.get_top_products_stats_filtered", return_value=mock_prod),
-            patch("ncr.services.stats_service.get_scrap_rework_ratio_filtered", return_value=mock_sr),
-            patch("ncr.services.stats_service.get_return_slip_ratio_filtered", return_value=mock_rs),
+            patch("ncr.services.stats_service.get_top_suppliers_stats_by_range", return_value=mock_sup),
+            patch("ncr.services.stats_service.get_top_products_stats_by_range", return_value=mock_prod),
+            patch("ncr.services.stats_service.get_scrap_rework_ratio_by_range", return_value=mock_sr),
+            patch("ncr.services.stats_service.get_return_slip_ratio_by_range", return_value=mock_rs),
         ):
             widget = NcrStatsWidget(lazy_load=False)
             widget.show()
@@ -112,10 +112,12 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         self.assertEqual(1, grid_layout.columnStretch(1))
         
         # 驗證每個圖表 view 的 size policy 均為 Expanding
+        from ui.widgets.chart_style import StableChartView
         chart_views = widget.findChildren(QChartView)
         for view in chart_views:
             self.assertEqual(QSizePolicy.Policy.Expanding, view.sizePolicy().horizontalPolicy())
             self.assertEqual(QSizePolicy.Policy.Expanding, view.sizePolicy().verticalPolicy())
+            self.assertIsInstance(view, StableChartView)
 
     def test_donut_chart_uses_qpieslice_label_outside(self) -> None:
         scrap_rework = [
@@ -157,34 +159,38 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
             # 確保 label 顯示在外面以避免重疊
             self.assertEqual(QPieSlice.LabelPosition.LabelOutside, slice_obj.labelPosition())
 
-    def test_all_time_checkbox_signal_blocking(self) -> None:
+    def test_range_selector_refresh_and_clamp(self) -> None:
         widget = self._build_widget()
-        
-        # 測試切換 "全期資料"
-        checkbox = widget.all_time_toggle
-        month_edit = widget.month_input
-        
-        # 設置 mock 刷新函式
+        widget.set_range("202601", "202603")
+
+        # 改迄月 → 恰好一次 refresh_data
         with patch.object(widget, "refresh_data") as mock_refresh:
-            # 勾選 "全期資料"
-            checkbox.setChecked(True)
+            widget.range_selectors.end_month.setCurrentText("05")
             self.app.processEvents()
-            
-            # month_edit 應該會被 disable
-            self.assertFalse(month_edit.isEnabled())
-            # 必須調用一次 refresh_data
             mock_refresh.assert_called_once()
-            
-            mock_refresh.reset_mock()
-            
-            # 取消勾選 "全期資料"
-            checkbox.setChecked(False)
+        self.assertEqual(("202601", "202605"), widget._range_keys())
+
+        # 把迄改到早於起始 → 起始被拖到迄（碰到的控件優先），仍恰好一次 refresh
+        with patch.object(widget, "refresh_data") as mock_refresh:
+            widget.range_selectors.end_year.setCurrentText("2025")
             self.app.processEvents()
-            
-            # month_edit 應該恢復啟用
-            self.assertTrue(month_edit.isEnabled())
-            # 必須調用一次 refresh_data
             mock_refresh.assert_called_once()
+        self.assertEqual(("202505", "202505"), widget._range_keys())
+
+    def test_range_queries_use_first_and_last_day_of_months(self) -> None:
+        with (
+            patch("ncr.services.stats_service.get_top_suppliers_stats_by_range", return_value=[]) as mock_sup,
+            patch("ncr.services.stats_service.get_top_products_stats_by_range", return_value=[]),
+            patch("ncr.services.stats_service.get_scrap_rework_ratio_by_range", return_value=[]),
+            patch("ncr.services.stats_service.get_return_slip_ratio_by_range", return_value=[]) as mock_rs,
+        ):
+            widget = NcrStatsWidget(lazy_load=True)
+            self.widgets.append(widget)
+            widget.set_range("202602", "202604")
+
+        # 引數：(conn, iso_start, iso_end)；迄取當月最後一天
+        self.assertEqual(("2026-02-01", "2026-04-30"), tuple(mock_sup.call_args.args[1:]))
+        self.assertEqual(("2026-02-01", "2026-04-30"), tuple(mock_rs.call_args.args[1:]))
 
     def test_insights_generation_with_empty_and_normal_data(self) -> None:
         # 1. 測試空數據

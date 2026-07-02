@@ -114,6 +114,24 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         ]
         self.assertEqual(self.category_options, options)
 
+    def test_category_dropdown_uses_root_cause_pareto_taxonomy(self) -> None:
+        self.assertEqual(
+            [
+                "",
+                "製程條件/參數未受控",
+                "文件/SOP/規格資料缺口",
+                "檢驗/量測/出貨把關不足",
+                "設計/圖面/組裝匹配風險",
+                "治具/設備/工具能力不足",
+                "包裝/搬運防護不足",
+                "物料/來料品質異常",
+                "作業方法/訓練執行落差",
+                "供應商回覆/改善管理不足",
+                "其他/待釐清",
+            ],
+            self.category_options,
+        )
+
     def test_edit_mode_keeps_custom_category_text(self) -> None:
         dialog = self.NewAnomalyDialog(
             anomaly_id="anomaly-1",

@@ -18,7 +18,7 @@ from PySide6.QtCharts import (
 from ui.design_tokens import PALETTE
 from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.theme import TOKENS
-from ui.widgets.chart_style import apply_chart_surface
+from ui.widgets.chart_style import apply_chart_surface, StableChartView
 from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 # Chart colour aliases sourced from shared design_tokens so theme updates propagate.
@@ -87,7 +87,7 @@ class _NcrStatsChartMixin:
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 
-        view = QChartView(chart)
+        view = StableChartView(chart)
         view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         view.setMinimumHeight(CHART_MIN_HEIGHT)
         # 垂直方向使用 Expanding 而非 Fixed，確保 QGridLayout 的 setRowStretch 能生效
@@ -119,7 +119,7 @@ class _NcrStatsChartMixin:
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
 
-        view = QChartView(chart)
+        view = StableChartView(chart)
         view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         view.setMinimumHeight(CHART_MIN_HEIGHT)
         # 垂直方向使用 Expanding 而非 Fixed，確保環形圖不被壓縮至高度 0

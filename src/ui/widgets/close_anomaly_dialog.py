@@ -30,6 +30,7 @@ from ui.widgets.common_widgets import (
     make_paired_form_row,
 )
 from ui.widgets.defect_form_widgets import (
+    ROOT_CAUSE_PARETO_OPTIONS,
     apply_dialog_layout,
     set_text_edit_visible_rows,
     set_tone,
@@ -39,17 +40,7 @@ from ui.widgets.defect_form_widgets import (
 logger = logging.getLogger(__name__)
 
 # ── Constants ──────────────────────────────────────────────────────────────
-ROOT_CAUSE_CATEGORY_OPTIONS = [
-    "",
-    "設計缺陷",
-    "製程參數異常",
-    "物料/來料問題",
-    "人為操作疏失",
-    "設備/治具異常",
-    "環境因素",
-    "文件/SOP 不足",
-    "其他",
-]
+ROOT_CAUSE_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
 
 IMPROVEMENT_DESC_MAX_LEN = 1000
 

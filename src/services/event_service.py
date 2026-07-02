@@ -728,16 +728,6 @@ def get_monthly_stats(yyyymm: str | None = None) -> dict:
         return repository.get_monthly_stats(conn, month)
 
 
-def get_anomaly_trend(months: int = 6) -> list[dict]:
-    with get_connection() as conn:
-        return repository.get_anomaly_trend(conn, months)
-
-
-def get_visit_trend(months: int = 6) -> list[dict]:
-    with get_connection() as conn:
-        return repository.get_visit_trend(conn, months)
-
-
 def get_responsible_person_stats(yyyymm: str | None = None) -> list[dict]:
     month = yyyymm or _month_now()
     with get_connection() as conn:
@@ -845,6 +835,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             a.problem_desc AS content,
             a.status AS status,
             a.category AS category,
+            a.root_cause_category AS root_cause_category,
             a.improvement_desc AS improvement_desc,
             a.closed_at AS closed_at
         FROM anomalies a
@@ -861,6 +852,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             v.summary AS content,
             '已完成' AS status,
             '' AS category,
+            '' AS root_cause_category,
             '' AS improvement_desc,
             NULL AS closed_at
         FROM visits v
@@ -932,6 +924,76 @@ def summarize_range_events(events: list[dict]) -> tuple[dict, list[dict]]:
     return totals, ranking_rows
 
 
+def _normalized_anomaly_category(value: object) -> str:
+    text = str(value or "").strip()
+    return text or "未分類"
+
+
+def _build_category_pareto_rows(category_counts: dict[str, int]) -> list[dict]:
+    total = sum(category_counts.values())
+    if total <= 0:
+        return []
+
+    rows = []
+    cumulative_count = 0
+    sorted_items = sorted(
+        category_counts.items(),
+        key=lambda item: (-item[1], item[0] == "未分類", item[0]),
+    )
+    for rank, (category, count) in enumerate(sorted_items, start=1):
+        cumulative_count += count
+        rows.append({
+            "rank": rank,
+            "category": category,
+            "count": int(count),
+            "percent": round(count / total * 100, 1),
+            "cumulative_percent": round(cumulative_count / total * 100, 1),
+        })
+    rows[-1]["cumulative_percent"] = 100.0
+    return rows
+
+
+def summarize_anomaly_category_pareto(events: list[dict]) -> list[dict]:
+    """Summarize opened-in-range anomaly events by root-cause Pareto category."""
+    from collections import defaultdict
+
+    category_counts = defaultdict(int)
+    for event in events:
+        if event.get("event_type") != "ANOMALY":
+            continue
+        category = event.get("root_cause_category") or event.get("category")
+        category_counts[_normalized_anomaly_category(category)] += 1
+    return _build_category_pareto_rows(dict(category_counts))
+
+
+def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list[dict]:
+    """Return root-cause Pareto rows for anomalies opened in a date range."""
+    sql = """
+        SELECT
+            COALESCE(
+                NULLIF(TRIM(root_cause_category), ''),
+                NULLIF(TRIM(category), ''),
+                '未分類'
+            ) AS category,
+            COUNT(*) AS count
+        FROM anomalies
+        WHERE anomaly_date BETWEEN ? AND ?
+        GROUP BY COALESCE(
+            NULLIF(TRIM(root_cause_category), ''),
+            NULLIF(TRIM(category), ''),
+            '未分類'
+        )
+        ORDER BY count DESC, category ASC
+    """
+    with get_connection() as conn:
+        rows = conn.execute(sql, (start_date, end_date)).fetchall()
+    category_counts = {
+        _normalized_anomaly_category(row["category"]): int(row["count"] or 0)
+        for row in rows
+    }
+    return _build_category_pareto_rows(category_counts)
+
+
 def export_events_report(
     file_path: str,
     start_date: str,
@@ -949,6 +1011,7 @@ def export_events_report(
         events = list_events_by_range(start_date, end_date)
 
         totals, ranking_rows = summarize_range_events(events)
+        category_pareto_rows = summarize_anomaly_category_pareto(events)
         total_anomalies = totals["total_anomalies"]
         total_visits = totals["total_visits"]
         closed_anomalies = totals["closed_anomalies"]
@@ -1040,7 +1103,8 @@ def export_events_report(
             chart_placements = [
                 ("trend", "A7"),
                 ("visit_anomaly", "I7"),
-                ("responsible", "A23")
+                ("responsible", "A23"),
+                ("category_pareto", "I23"),
             ]
             for key, cell in chart_placements:
                 path = temp_chart_paths.get(key)
@@ -1050,7 +1114,47 @@ def export_events_report(
                     img.height = 310
                     report_sheet.add_image(img, cell)
 
-        # 2. 異常事件明細頁
+        # 2. 異常類別柏拉圖資料頁
+        category_sheet = workbook.create_sheet("異常類別柏拉圖")
+        category_sheet.views.sheetView[0].showGridLines = True
+
+        category_headers = ["排名", "異常類別", "件數", "佔比(%)", "累積佔比(%)"]
+        category_sheet.append(category_headers)
+        for col_idx in range(1, len(category_headers) + 1):
+            cell = category_sheet.cell(row=1, column=col_idx)
+            cell.font = STYLE_HEADER_FONT
+            cell.fill = STYLE_FILL_HEADER
+            cell.alignment = ALIGN_CENTER
+            cell.border = STYLE_BORDER_THIN
+        category_sheet.row_dimensions[1].height = 24
+
+        for r_idx, row in enumerate(category_pareto_rows, start=2):
+            data = [
+                row.get("rank", 0),
+                row.get("category", ""),
+                row.get("count", 0),
+                row.get("percent", 0.0),
+                row.get("cumulative_percent", 0.0),
+            ]
+            category_sheet.append(data)
+
+            is_even = (r_idx % 2 == 0)
+            for c_idx in range(1, len(category_headers) + 1):
+                cell = category_sheet.cell(row=r_idx, column=c_idx)
+                cell.font = STYLE_FONT
+                cell.border = STYLE_BORDER_THIN
+                if is_even:
+                    cell.fill = STYLE_FILL_ZEBRA
+                if c_idx == 2:
+                    cell.alignment = ALIGN_LEFT
+                else:
+                    cell.alignment = ALIGN_RIGHT
+                if c_idx in (4, 5):
+                    cell.number_format = "0.0"
+            category_sheet.row_dimensions[r_idx].height = 20
+        _auto_fit(category_sheet)
+
+        # 3. 異常事件明細頁
         detail_sheet = workbook.create_sheet("異常事件明細")
         detail_sheet.views.sheetView[0].showGridLines = True
         
@@ -1093,7 +1197,7 @@ def export_events_report(
             detail_sheet.row_dimensions[r_idx].height = 20
         _auto_fit(detail_sheet)
 
-        # 3. 供應商排行榜頁
+        # 4. 供應商排行榜頁
         rank_sheet = workbook.create_sheet("供應商排行榜")
         rank_sheet.views.sheetView[0].showGridLines = True
         

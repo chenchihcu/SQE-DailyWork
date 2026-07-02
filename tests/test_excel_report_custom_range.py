@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QApplication
+from openpyxl import load_workbook
 
 from ui.widgets.export_range_dialog import ExportRangeDialog
 from ncr.services import export_service as ncr_export_service
@@ -89,6 +90,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "content": "進料不合格",
                 "status": "已結案",
                 "category": "進料品質",
+                "root_cause_category": "物料/來料品質異常",
                 "improvement_desc": "已要求廠商重工",
                 "closed_at": "2026-06-12"
             },
@@ -101,6 +103,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "content": "例行訪廠交流",
                 "status": "已完成",
                 "category": "",
+                "root_cause_category": "",
                 "improvement_desc": "",
                 "closed_at": None
             }
@@ -113,9 +116,20 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 file_path=file_path,
                 start_date="2026-06-01",
                 end_date="2026-06-30",
-                temp_chart_paths=None
+                temp_chart_paths={"category_pareto": os.path.join(tmp_dir, "missing_pareto.png")}
             )
             
             self.assertTrue(ok)
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
+
+            workbook = load_workbook(file_path)
+            self.assertIn("異常類別柏拉圖", workbook.sheetnames)
+            sheet = workbook["異常類別柏拉圖"]
+            self.assertEqual(
+                ["排名", "異常類別", "件數", "佔比(%)", "累積佔比(%)"],
+                [sheet.cell(row=1, column=col).value for col in range(1, 6)],
+            )
+            self.assertEqual([1, "物料/來料品質異常", 1, 100.0, 100.0], [
+                sheet.cell(row=2, column=col).value for col in range(1, 6)
+            ])

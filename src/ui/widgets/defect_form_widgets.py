@@ -66,22 +66,21 @@ from ui.widgets.common_widgets import (
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-ANOMALY_CATEGORY_OPTIONS = [
+ROOT_CAUSE_PARETO_OPTIONS = [
     "",
-    "來料品質不良",
-    "尺寸/規格不符",
-    "外觀不良",
-    "功能異常",
-    "製程參數異常",
-    "材料異常",
-    "組裝不良",
-    "包裝/標示異常",
-    "文件/追溯異常",
-    "數量異常",
-    "交期異常",
-    "安全/法規風險",
-    "其他",
+    "製程條件/參數未受控",
+    "文件/SOP/規格資料缺口",
+    "檢驗/量測/出貨把關不足",
+    "設計/圖面/組裝匹配風險",
+    "治具/設備/工具能力不足",
+    "包裝/搬運防護不足",
+    "物料/來料品質異常",
+    "作業方法/訓練執行落差",
+    "供應商回覆/改善管理不足",
+    "其他/待釐清",
 ]
+
+ANOMALY_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
 
 VISIT_TECH_TRANSFER_ITEMS = [
     ("tech_transfer_doc", "作業標準書"),

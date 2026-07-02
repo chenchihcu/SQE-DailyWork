@@ -12,8 +12,11 @@ ad-hoc, so the figure/plot separation is defined in one place.
 
 from __future__ import annotations
 
+from PySide6.QtCharts import QChartView
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QBrush, QColor
 
+from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.theme import TOKENS
 
 
@@ -23,3 +26,15 @@ def apply_chart_surface(chart) -> None:
     # Plot area gets its own semantic token so it reads as a separate layer.
     chart.setPlotAreaBackgroundBrush(QBrush(QColor(TOKENS["chart_plot_bg"])))
     chart.setPlotAreaBackgroundVisible(True)
+
+
+class StableChartView(QChartView):
+    """sizeHint 不跟隨 sceneRect(即當前尺寸)成長的 QChartView。
+
+    QGraphicsView.sizeHint() 以 sceneRect 為準,而 QChart 會隨 view resize
+    撐大 scene;放進 widgetResizable QScrollArea 會形成高度正回饋迴圈
+    (每次 relayout 高度遞增)。固定回報 minimumHeight 作為 preferred 高度,
+    高度分配交由 QGridLayout 的 row stretch 決定。
+    """
+    def sizeHint(self) -> QSize:
+        return QSize(600, max(self.minimumHeight(), CHART_MIN_HEIGHT))

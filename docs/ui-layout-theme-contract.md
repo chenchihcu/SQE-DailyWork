@@ -99,11 +99,12 @@
   points: the event toolbar `新增異常` / `新增訪廠`, and the 倉庫不合格品 sidebar
   `建立不合格品` row. Do not reintroduce a global quick-create footer.
 - Statistics (異常事件統計) is supplier-event only: a dashboard-style page with
-  one control row, one explanation banner, and chart panels for 趨勢 / 責任人績效 /
-  供應商風險. The removed risk / overdue / latest decision-summary cards must not
-  be recreated as visible or hidden page widgets. Warehouse nonconforming-product
-  statistics live solely on the 不合格品統計分析 page (no duplicate warehouse tab
-  here). Missing
+  one control row, one explanation banner, one shared chart panel, a 2x2
+  four-phase chart grid, and one bottom insight strip. The four phases are
+  供應商事件趨勢, 訪廠與訪廠異常趨勢, 異常類別柏拉圖, and 責任人事件統計. The removed
+  risk / overdue / latest decision-summary cards must not be recreated as
+  visible or hidden page widgets. Warehouse nonconforming-product statistics
+  live solely on the 不合格品統計分析 page (no duplicate warehouse tab here). Missing
   data displays `暫無資料`; no statistics table, cache, migration, or
   cross-workflow write path is allowed.
 - Master-list update, disable, delete, and stage-log actions remain disabled
@@ -198,6 +199,12 @@
   risk/overdue/latest summary cards, one shared explanation banner, flattened
   chart grid container, and supplier-risk timing rendered as discrete points
   instead of a cross-supplier trend line.
+- Supplier statistics four-phase Pareto update - 2026-07-02: `異常事件統計`
+  uses the same chart topology as `不合格品統計分析`: one chart panel containing
+  a 2x2 grid. The four cells are event trend, visit/anomaly trend,
+  root-cause/Pareto category, and responsible-person load. Pareto aggregation
+  uses `root_cause_category` first and falls back to `category` only when root
+  cause is blank.
 - Qt layout cleanup - 2026-07-01: `異常事件統計` no longer keeps hidden
   `StatsTabs` / chart-scroll proxy widgets after the visible dashboard grid
   became the source of truth. Warehouse `待處理不合格品` and `歷史紀錄`
@@ -213,7 +220,12 @@
   Retired standalone NCR tab selectors such as `workflowTabs`, `analysisTabs`,
   `homeSubTabs`, and `trackingOverviewTabs` should stay out of live QSS unless
   a real visible tab host is reintroduced with tests.
+- Chart sizeHint stability check - 2026-07-02: To prevent QGraphicsView
+  sizeHint height loops inside a widgetResizable QScrollArea (where resizing
+  stretches the scene and feedback increases sizeHint), charts must use
+  StableChartView instead of QChartView to ensure height stability on refresh.
 - Verify with `scripts/qt_visual_probe.py --target main` and `--target stats-stress`,
   plus `tests/test_top_nav_compact_height`, `tests/test_ncr_embedding_smoke`,
   `tests/test_closed_tab_categories`, `tests/test_event_list_widget_render_stability`,
-  `tests/test_home_recent_events_panel`, and `tests/test_stats_view_anomaly_chart`.
+  `tests/test_home_recent_events_panel`, `tests/test_stats_view_anomaly_chart`,
+  and `tests/test_stats_refresh_height_stability`.

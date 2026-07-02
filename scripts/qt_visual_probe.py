@@ -505,7 +505,6 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
 def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     from unittest.mock import patch
 
-    from PySide6.QtCore import QDate
     from PySide6.QtWidgets import QScrollArea
 
     from ui.widgets.stats_view_widget import StatsViewWidget
@@ -547,9 +546,20 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         {
             "responsible_person": f"責任人員-{index:02d}-VeryLongName",
             "total_count": index + 2,
+            "closed_count": index % 4,
+            "open_count": (index % 5) + 1,
             "avg_resolution_time": index / 2 + 1,
+            "min_open_date": "2026-01-15",
+            "max_open_date": "2026-12-15",
         }
         for index in range(25)
+    ]
+    category_pareto = [
+        {"rank": 1, "category": "超長異常類別名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ", "count": 42, "percent": 42.0, "cumulative_percent": 42.0},
+        {"rank": 2, "category": "來料品質不良", "count": 25, "percent": 25.0, "cumulative_percent": 67.0},
+        {"rank": 3, "category": "尺寸/規格不符", "count": 16, "percent": 16.0, "cumulative_percent": 83.0},
+        {"rank": 4, "category": "外觀不良", "count": 10, "percent": 10.0, "cumulative_percent": 93.0},
+        {"rank": 5, "category": "未分類", "count": 7, "percent": 7.0, "cumulative_percent": 100.0},
     ]
     class _StatsProbeHost:
         def open_event_query_with_filters(self, **_kwargs):
@@ -561,22 +571,35 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
     screenshots: list[str] = []
     with (
         patch("services.event_service.get_monthly_stats", return_value=summary),
-        patch("services.event_service.get_anomaly_trend", return_value=trend_data),
-        patch("services.event_service.get_responsible_person_stats", return_value=resp_stats),
+        patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data),
+        patch("services.event_service.get_visit_trend_by_range", return_value=[]),
+        patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_stats),
+        patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=category_pareto),
     ):
         widget = StatsViewWidget(main_window=_StatsProbeHost())
-        widget.month_input.setDate(QDate(2026, 6, 1))
+        # 操作真實可見的起迄下拉（AGENTS §3：探針不得驅動隱藏代理）；
+        # 區間與 mock trend_data 的 12 個月一致，面板標題與圖內標題才會相符
+        widget.set_range("202601", "202612")
         widget.resize(*(size or (1024, 680)))
         widget.show()
         app.processEvents()
         output.parent.mkdir(parents=True, exist_ok=True)
         try:
             scroll = widget.findChild(QScrollArea, "StatsTrendScrollArea")
-            capture_points = (("stats-overview", 0), ("stats-risk", "bottom"))
+            capture_points = (
+                ("stats-overview", 0),
+                ("stats-pareto", "pareto"),
+                ("stats-risk", "bottom"),
+            )
             for suffix, position in capture_points:
                 if scroll is not None:
                     bar = scroll.verticalScrollBar()
-                    target_value = bar.maximum() if position == "bottom" else int(position)
+                    if position == "bottom":
+                        target_value = bar.maximum()
+                    elif position == "pareto":
+                        target_value = bar.maximum() // 2
+                    else:
+                        target_value = int(position)
                     bar.setValue(target_value)
                 app.processEvents()
                 target = _target_output_path(output, suffix)
@@ -615,19 +638,19 @@ def _capture_ncr_stats(output: Path, app: "QApplication", size: tuple[int, int] 
     screenshots: list[str] = []
     with (
         patch(
-            "ncr.services.stats_service.get_top_suppliers_stats_filtered",
+            "ncr.services.stats_service.get_top_suppliers_stats_by_range",
             return_value=_MOCK_SUPPLIERS,
         ),
         patch(
-            "ncr.services.stats_service.get_top_products_stats_filtered",
+            "ncr.services.stats_service.get_top_products_stats_by_range",
             return_value=_MOCK_PRODUCTS,
         ),
         patch(
-            "ncr.services.stats_service.get_scrap_rework_ratio_filtered",
+            "ncr.services.stats_service.get_scrap_rework_ratio_by_range",
             return_value=_MOCK_SCRAP_REWORK,
         ),
         patch(
-            "ncr.services.stats_service.get_return_slip_ratio_filtered",
+            "ncr.services.stats_service.get_return_slip_ratio_by_range",
             return_value=_MOCK_RETURN_SLIPS,
         ),
     ):

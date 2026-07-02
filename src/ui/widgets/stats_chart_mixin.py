@@ -7,7 +7,7 @@
 ===================
 - 混合(Mixin)方法僅存取 self 上由主 Widget 提供的屬性/方法
 - 不持有 QWidget 子類別的狀態  —  狀態一律由主 Widget 管理
-- Duck Typing：self._month_key()、self._chart_content_layout 等會於執行期由主 Widget 滿足
+- Duck Typing：self._range_keys()、self._chart_content_layout 等會於執行期由主 Widget 滿足
 """
 
 from __future__ import annotations
@@ -34,13 +34,14 @@ from ui.layout_constants import CHART_BAR_HEIGHT, CHART_HEADER_FOOTER_OFFSET, CH
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
 from services import event_service
-from ui.widgets.chart_style import apply_chart_surface
+from ui.widgets.chart_style import apply_chart_surface, StableChartView
 from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 logger = logging.getLogger(__name__)
 
 # ── 圖表常數 ──────────────────────────────────────────────
 SUPPLIER_LABEL_MAX_LEN = 12
+PARETO_CATEGORY_LABEL_MAX_LEN = 10
 CHART_AXIS_LABEL_POINT_SIZE = 11
 CHART_AXIS_TITLE_POINT_SIZE = 11
 CHART_AXIS_LABEL_ANGLE = 0
@@ -50,6 +51,8 @@ CHART_OVERDUE_PALETTE = get_status_palette("逾期未結")
 CHART_OPEN_COLOR = QColor(CHART_OPEN_PALETTE.chart)
 CHART_CLOSED_COLOR = QColor(CHART_CLOSED_PALETTE.chart)
 CHART_OVERDUE_COLOR = QColor(CHART_OVERDUE_PALETTE.chart)
+PARETO_BAR_COLOR = QColor(TOKENS.get("primary_btn", "#1F6FEB"))
+PARETO_LINE_COLOR = QColor(TOKENS.get("brand_green", "#1FA85B"))
 
 
 class _StatsChartMixin:
@@ -64,12 +67,21 @@ class _StatsChartMixin:
     - self._chart_content_layout    (set in _setup_ui)
     - self._trend_content_layout    (set in _setup_ui)
     - self._resp_content_layout     (set in _setup_ui)
-    - self._month_key()             (provided by widget)
-    - self._month_text()            (provided by widget)
+    - self._range_keys()            (provided by widget)
+    - self._range_text()            (provided by widget)
     - self._create_insight_label()  (provided by widget)
     """
 
     # ── 輔助方法 ──────────────────────────────────────────
+
+    def _trend_chart_title(self, base: str, data: list[dict]) -> str:
+        """由趨勢資料本身推導區間標題（頁面篩選與匯出對話框兩種來源都正確）。"""
+        first = str(data[0].get("yyyymm", "")) if data else ""
+        last = str(data[-1].get("yyyymm", "")) if data else ""
+        if not first and not last:
+            return base
+        range_text = first if first == last else f"{first} 至 {last}"
+        return f"{base} ({range_text})"
 
     def _format_month_axis_label(self, yyyymm: str) -> str:
         raw = str(yyyymm or "")
@@ -79,9 +91,15 @@ class _StatsChartMixin:
         return raw
 
     def _clear_top_suppliers(self):
-        if any(l is None for l in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout)):
+        layouts = (
+            self._chart_content_layout,
+            self._trend_content_layout,
+            self._resp_content_layout,
+            getattr(self, "_category_content_layout", None),
+        )
+        if any(l is None for l in layouts):
             return
-        for layout in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout):
+        for layout in layouts:
             while layout.count() > 0:
                 item = layout.takeAt(0)
                 widget = item.widget()
@@ -166,7 +184,7 @@ class _StatsChartMixin:
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
 
-        chart_view = QChartView(chart)
+        chart_view = StableChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, len(categories) * 28 + 150))
         chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -216,12 +234,124 @@ class _StatsChartMixin:
             self
         )
 
+    # ── 異常類別柏拉圖 ────────────────────────────────────────
+
+    def _build_category_pareto_chart(self, rows: list[dict]) -> QChartView | None:
+        if not rows:
+            return None
+
+        data = list(rows)
+        categories = dedupe_chart_labels([
+            short_chart_label(row["category"], max_len=PARETO_CATEGORY_LABEL_MAX_LEN)
+            for row in data
+        ])
+
+        count_set = QBarSet("件數")
+        count_set.setColor(PARETO_BAR_COLOR)
+        count_set.setBorderColor(PARETO_BAR_COLOR.darker(110))
+
+        cumulative_series = QLineSeries()
+        cumulative_series.setName("累積佔比")
+        cumulative_series.setColor(PARETO_LINE_COLOR)
+        cumulative_pen = QPen(PARETO_LINE_COLOR, 3)
+        cumulative_series.setPen(cumulative_pen)
+        cumulative_series.setPointsVisible(True)
+
+        for index, row in enumerate(data):
+            count_set.append(int(row.get("count") or 0))
+            cumulative_series.append(index, float(row.get("cumulative_percent") or 0.0))
+
+        bar_series = QBarSeries()
+        bar_series.append(count_set)
+        bar_series.setLabelsVisible(True)
+        bar_series.setLabelsPosition(QBarSeries.LabelsPosition.LabelsOutsideEnd)
+
+        chart = QChart()
+        chart.addSeries(bar_series)
+        chart.addSeries(cumulative_series)
+        chart.setTitle(f"異常類別柏拉圖分析 ({self._range_text()})")
+        apply_chart_surface(chart)
+        chart.setMargins(QMargins(8, 8, 8, 8))
+
+        app_font_family = QApplication.font().family()
+        axis_label_font = QFont(app_font_family, 9)
+        axis_title_font = QFont(app_font_family)
+        axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
+
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_x.setLabelsAngle(-45 if len(categories) > 4 else 0)
+        axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_x.setLabelsFont(axis_label_font)
+        axis_x.setTruncateLabels(False)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        bar_series.attachAxis(axis_x)
+        cumulative_series.attachAxis(axis_x)
+
+        max_count = max((int(row.get("count") or 0) for row in data), default=5)
+        axis_y_count = QValueAxis()
+        axis_y_count.setTitleText("件數")
+        axis_y_count.setLabelFormat("%i")
+        axis_y_count.setRange(0, max_count + 1)
+        axis_y_count.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_y_count.setLabelsFont(axis_label_font)
+        axis_y_count.setTitleFont(axis_title_font)
+        axis_y_count.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
+        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignLeft)
+        bar_series.attachAxis(axis_y_count)
+
+        axis_y_percent = QValueAxis()
+        axis_y_percent.setTitleText("累積佔比")
+        axis_y_percent.setLabelFormat("%.0f%%")
+        axis_y_percent.setRange(0, 100)
+        axis_y_percent.setTickCount(6)
+        axis_y_percent.setLabelsColor(PARETO_LINE_COLOR)
+        axis_y_percent.setTitleBrush(PARETO_LINE_COLOR)
+        axis_y_percent.setLabelsFont(axis_label_font)
+        axis_y_percent.setTitleFont(axis_title_font)
+        axis_y_percent.setGridLineVisible(False)
+        chart.addAxis(axis_y_percent, Qt.AlignmentFlag.AlignRight)
+        cumulative_series.attachAxis(axis_y_percent)
+
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+        if TOKENS.get("chart_axis_text"):
+            chart.legend().setLabelColor(QColor(TOKENS["chart_axis_text"]))
+
+        chart_view = StableChartView(chart)
+        chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        chart_view.setMinimumHeight(CHART_MIN_HEIGHT + 48)
+        chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        bar_series.hovered.connect(
+            lambda status, idx, bs: self._on_category_pareto_hovered(status, idx, data)
+        )
+
+        return chart_view
+
+    def _on_category_pareto_hovered(self, status: bool, index: int, data: list[dict]):
+        if not status or index < 0 or index >= len(data):
+            QToolTip.hideText()
+            return
+
+        row = data[index]
+        QToolTip.showText(
+            QCursor.pos(),
+            (
+                f"異常類別：{row['category']}\n"
+                f"件數：{row['count']} 件\n"
+                f"佔比：{row['percent']:.1f}%\n"
+                f"累積佔比：{row['cumulative_percent']:.1f}%"
+            ),
+            self
+        )
+
 
     def _build_trend_chart(self, trend_data: list[dict]) -> QChartView | None:
         if not trend_data:
             return None
 
-        data = trend_data[-6:]
+        # 服務端已將範圍上限為 12 個月；此處同步防禦，避免超長區間壓縮長條圖
+        data = trend_data[-12:]
         categories = []
         for d in data:
             categories.append(self._format_month_axis_label(d["yyyymm"]))
@@ -252,7 +382,7 @@ class _StatsChartMixin:
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.setTitle("供應商事件處理效率趨勢分析 (過去 6 個月)")
+        chart.setTitle(self._trend_chart_title("供應商事件處理效率趨勢分析", data))
         apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
 
@@ -263,9 +393,13 @@ class _StatsChartMixin:
 
         axis_x = QBarCategoryAxis()
         axis_x.append(categories)
-        axis_x.setLabelsAngle(0)
+        # 超過 8 個月時類別變窄：改垂直標籤，避免相鄰月份黏在一起
+        # 或首尾標籤因超出繪圖區邊緣被 Qt 整個隱藏
+        axis_x.setLabelsAngle(-90 if len(categories) > 8 else 0)
         axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_x.setLabelsFont(axis_label_font)
+        # Qt 預設會把窄類別的「26/01」截成「2...」；標籤已極短，關閉截斷
+        axis_x.setTruncateLabels(False)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         bar_series.attachAxis(axis_x)
 
@@ -290,7 +424,7 @@ class _StatsChartMixin:
         if TOKENS.get("chart_axis_text"):
             chart.legend().setLabelColor(QColor(TOKENS["chart_axis_text"]))
 
-        chart_view = QChartView(chart)
+        chart_view = StableChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
         chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -327,7 +461,8 @@ class _StatsChartMixin:
         if not visit_data:
             return None
 
-        data = visit_data[-6:]
+        # 服務端已將範圍上限為 12 個月；此處同步防禦，避免超長區間壓縮長條圖
+        data = visit_data[-12:]
         categories = []
         for d in data:
             categories.append(self._format_month_axis_label(d["yyyymm"]))
@@ -358,7 +493,7 @@ class _StatsChartMixin:
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.setTitle("供應商訪廠與訪廠異常趨勢分析 (過去 6 個月)")
+        chart.setTitle(self._trend_chart_title("供應商訪廠與訪廠異常趨勢分析", data))
         apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
 
@@ -369,9 +504,13 @@ class _StatsChartMixin:
 
         axis_x = QBarCategoryAxis()
         axis_x.append(categories)
-        axis_x.setLabelsAngle(0)
+        # 超過 8 個月時類別變窄：改垂直標籤，避免相鄰月份黏在一起
+        # 或首尾標籤因超出繪圖區邊緣被 Qt 整個隱藏
+        axis_x.setLabelsAngle(-90 if len(categories) > 8 else 0)
         axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_x.setLabelsFont(axis_label_font)
+        # Qt 預設會把窄類別的「26/01」截成「2...」；標籤已極短，關閉截斷
+        axis_x.setTruncateLabels(False)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         bar_series.attachAxis(axis_x)
 
@@ -391,7 +530,7 @@ class _StatsChartMixin:
         if TOKENS.get("chart_axis_text"):
             chart.legend().setLabelColor(QColor(TOKENS["chart_axis_text"]))
 
-        chart_view = QChartView(chart)
+        chart_view = StableChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
         chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)

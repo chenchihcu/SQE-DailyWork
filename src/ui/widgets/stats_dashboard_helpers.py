@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import calendar
 import os
 from datetime import date
 from collections.abc import Callable
+from typing import NamedTuple
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
-    QDateEdit,
     QFrame,
     QGridLayout,
     QLabel,
@@ -49,93 +49,180 @@ def create_period_combo(
     return combo
 
 
-def create_year_month_selectors(
-    on_changed: Callable[[], None],
+# ── 起迄年月範圍：純函式（無 QApplication 也可單元測試） ──────────────
+
+YEAR_OPTIONS = ("2025", "2026", "2027", "2028", "2029", "2030")
+
+
+def _parse_month_key(month_key: str) -> tuple[int, int]:
+    """解析 yyyyMM 鍵為 (year, month)；非法鍵回退今天所在月份。"""
+    key = str(month_key or "").strip()
+    if len(key) == 6 and key.isdigit() and 1 <= int(key[4:]) <= 12:
+        return int(key[:4]), int(key[4:])
+    today = date.today()
+    return today.year, today.month
+
+
+def normalize_range_keys(start_key: str, end_key: str) -> tuple[str, str]:
+    """確保起始不晚於結束；start > end 時交換（yyyyMM 字串比較即字典序）。"""
+    s_y, s_m = _parse_month_key(start_key)
+    e_y, e_m = _parse_month_key(end_key)
+    start = f"{s_y:04d}{s_m:02d}"
+    end = f"{e_y:04d}{e_m:02d}"
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def range_month_window(start_key: str, end_key: str) -> tuple[str, str]:
+    """把起迄 yyyyMM 鍵換算成趨勢查詢窗口 (start_date, end_date)，
+    兩端都取當月 1 日的 ISO 日期（趨勢 *_by_range 以月字串比對，日不影響）。"""
+    start_key, end_key = normalize_range_keys(start_key, end_key)
+    return (
+        f"{start_key[:4]}-{start_key[4:]}-01",
+        f"{end_key[:4]}-{end_key[4:]}-01",
+    )
+
+
+def range_iso_dates(start_key: str, end_key: str) -> tuple[str, str]:
+    """把起迄 yyyyMM 鍵換算成 ISO 日期範圍：起月 1 日到迄月最後一天，
+    供以 `date BETWEEN ? AND ?` 比對完整日期的範圍查詢使用。"""
+    start_key, end_key = normalize_range_keys(start_key, end_key)
+    end_year, end_month = int(end_key[:4]), int(end_key[4:])
+    last_day = calendar.monthrange(end_year, end_month)[1]
+    return (
+        f"{start_key[:4]}-{start_key[4:]}-01",
+        f"{end_year:04d}-{end_month:02d}-{last_day:02d}",
+    )
+
+
+def range_display_text(start_key: str, end_key: str) -> str:
+    """區間顯示文字：「2026-02 至 2026-07」；起迄同月退化為「2026-07」。"""
+    start_key, end_key = normalize_range_keys(start_key, end_key)
+    start_text = f"{start_key[:4]}-{start_key[4:]}"
+    end_text = f"{end_key[:4]}-{end_key[4:]}"
+    if start_text == end_text:
+        return end_text
+    return f"{start_text} 至 {end_text}"
+
+
+def range_month_span(start_key: str, end_key: str) -> int:
+    """回傳含首尾的月份數（例如 2026-02 至 2026-07 為 6）。"""
+    start_key, end_key = normalize_range_keys(start_key, end_key)
+    s_total = int(start_key[:4]) * 12 + int(start_key[4:])
+    e_total = int(end_key[:4]) * 12 + int(end_key[4:])
+    return e_total - s_total + 1
+
+
+def default_range_keys(span_months: int = 6) -> tuple[str, str]:
+    """預設區間：迄 = 今年今月（夾限於 YEAR_OPTIONS 範圍），起 = 迄往前
+    span_months - 1 個月（夾限於最早選項年 1 月）。"""
+    today = date.today()
+    min_year, max_year = int(YEAR_OPTIONS[0]), int(YEAR_OPTIONS[-1])
+    end_year, end_month = today.year, today.month
+    if end_year < min_year:
+        end_year, end_month = min_year, 1
+    elif end_year > max_year:
+        end_year, end_month = max_year, 12
+    start_total = end_year * 12 + (end_month - 1) - (span_months - 1)
+    start_year, start_month_index = divmod(start_total, 12)
+    start_month = start_month_index + 1
+    if start_year < min_year:
+        start_year, start_month = min_year, 1
+    return f"{start_year:04d}{start_month:02d}", f"{end_year:04d}{end_month:02d}"
+
+
+# ── 起迄年月範圍選擇器（widget 工廠） ─────────────────────────────────
+
+
+class YearMonthRangeSelectors(NamedTuple):
+    """起迄年月選擇器的 widget 束（依版面順序排列）。"""
+
+    start_year: QComboBox
+    start_year_label: QLabel
+    start_month: QComboBox
+    start_month_label: QLabel
+    to_label: QLabel
+    end_year: QComboBox
+    end_year_label: QLabel
+    end_month: QComboBox
+    end_month_label: QLabel
+
+    def widgets(self) -> tuple[QWidget, ...]:
+        return tuple(self)
+
+    def start_key(self) -> str:
+        return f"{self.start_year.currentText()}{self.start_month.currentText()}"
+
+    def end_key(self) -> str:
+        return f"{self.end_year.currentText()}{self.end_month.currentText()}"
+
+    def set_range(self, start_key: str, end_key: str) -> None:
+        """程式化設定四個下拉（blockSignals，不觸發 on_changed）。"""
+        start_key, end_key = normalize_range_keys(start_key, end_key)
+        pairs = (
+            (self.start_year, start_key[:4]),
+            (self.start_month, start_key[4:]),
+            (self.end_year, end_key[:4]),
+            (self.end_month, end_key[4:]),
+        )
+        for combo, text in pairs:
+            combo.blockSignals(True)
+            combo.setCurrentText(text)
+            combo.blockSignals(False)
+
+
+def _create_suffix_label(text: str, parent: QWidget | None) -> QLabel:
+    label = QLabel(text, parent)
+    label.setProperty("role", "sectionTitle")
+    label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    return label
+
+
+def create_year_month_range_selectors(
+    on_changed: Callable[[str], None],
     *,
     parent: QWidget | None = None,
-) -> tuple[QComboBox, QLabel, QComboBox, QLabel]:
-    """建立年份與月份下拉選單，選單後加上年與月字樣。"""
-    # Year options: 2025 to 2030
-    year_combo = QComboBox(parent)
-    year_combo.addItems(["2025", "2026", "2027", "2028", "2029", "2030"])
-    
-    year_label = QLabel("年", parent)
-    year_label.setProperty("role", "sectionTitle")
-    year_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    
-    # Month options: 01 to 12
-    month_combo = QComboBox(parent)
-    month_combo.addItems([f"{m:02d}" for m in range(1, 13)])
-    
-    month_label = QLabel("月", parent)
-    month_label.setProperty("role", "sectionTitle")
-    month_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    
-    # Default to current year and month
-    from datetime import date
-    current_year = str(date.today().year)
-    current_month = f"{date.today().month:02d}"
-    
-    if current_year in ["2025", "2026", "2027", "2028", "2029", "2030"]:
-        year_combo.setCurrentText(current_year)
-    else:
-        year_combo.setCurrentText("2026") # fallback
-    month_combo.setCurrentText(current_month)
-    
-    # Connect signals after setting default values to prevent early triggering during construction
-    year_combo.currentIndexChanged.connect(lambda: on_changed())
-    month_combo.currentIndexChanged.connect(lambda: on_changed())
-    
-    apply_clickable_affordance(year_combo, tooltip="選擇統計年份")
-    apply_clickable_affordance(month_combo, tooltip="選擇統計月份")
-    
-    return year_combo, year_label, month_combo, month_label
+    default_span_months: int = 6,
+) -> YearMonthRangeSelectors:
+    """建立起迄年月下拉選單組：起[年][月] 至 迄[年][月]。
 
+    on_changed 收到 "start" 或 "end"，表示使用者動到哪一端。
+    預設值先設定、訊號後連接（避免建構期間提前觸發，見 b1f0580）。"""
+    month_items = [f"{m:02d}" for m in range(1, 13)]
 
-def create_hidden_month_controls(
-    parent: QWidget,
-    on_month_changed: Callable[[QDate], None],
-    on_all_time_toggled: Callable[[bool], None],
-) -> tuple[QDateEdit, QCheckBox]:
-    month_input = QDateEdit(parent)
-    month_input.setDate(QDate.currentDate())
-    all_time_toggle = QCheckBox(parent)
-    month_input.hide()
-    all_time_toggle.hide()
-    month_input.dateChanged.connect(on_month_changed)
-    all_time_toggle.toggled.connect(on_all_time_toggled)
-    return month_input, all_time_toggle
+    def _make_pair(role: str) -> tuple[QComboBox, QLabel, QComboBox, QLabel]:
+        year_combo = QComboBox(parent)
+        year_combo.addItems(list(YEAR_OPTIONS))
+        year_label = _create_suffix_label("年", parent)
+        month_combo = QComboBox(parent)
+        month_combo.addItems(month_items)
+        month_label = _create_suffix_label("月", parent)
+        tip_role = "起始" if role == "start" else "結束"
+        apply_clickable_affordance(year_combo, tooltip=f"選擇統計{tip_role}年份")
+        apply_clickable_affordance(month_combo, tooltip=f"選擇統計{tip_role}月份")
+        return year_combo, year_label, month_combo, month_label
 
+    start_year, start_year_label, start_month, start_month_label = _make_pair("start")
+    end_year, end_year_label, end_month, end_month_label = _make_pair("end")
+    to_label = _create_suffix_label("至", parent)
 
-def period_month_key(period_combo: QComboBox, test_yyyy_mm: str | None) -> str:
-    if test_yyyy_mm is not None:
-        return test_yyyy_mm
-    index = period_combo.currentIndex()
-    if index == 0:
-        return "ALL"
-    if index == 1:
-        return "YEAR"
-    return "HALF_YEAR"
+    selectors = YearMonthRangeSelectors(
+        start_year, start_year_label, start_month, start_month_label,
+        to_label,
+        end_year, end_year_label, end_month, end_month_label,
+    )
 
+    # 先設預設值（blockSignals 內部處理），再連訊號
+    default_start, default_end = default_range_keys(default_span_months)
+    selectors.set_range(default_start, default_end)
 
-def period_month_text(period_combo: QComboBox, test_yyyy_mm: str | None) -> str:
-    if test_yyyy_mm is not None:
-        if test_yyyy_mm == "ALL":
-            return "全期累計"
-        if test_yyyy_mm == "YEAR":
-            return f"{date.today().year}年度"
-        if test_yyyy_mm == "HALF_YEAR":
-            half = "上半年" if date.today().month <= 6 else "下半年"
-            return f"{date.today().year}年{half}"
-        return f"{test_yyyy_mm[:4]}-{test_yyyy_mm[4:]}"
+    start_year.currentIndexChanged.connect(lambda: on_changed("start"))
+    start_month.currentIndexChanged.connect(lambda: on_changed("start"))
+    end_year.currentIndexChanged.connect(lambda: on_changed("end"))
+    end_month.currentIndexChanged.connect(lambda: on_changed("end"))
 
-    index = period_combo.currentIndex()
-    if index == 0:
-        return "全期項目"
-    if index == 1:
-        return f"{date.today().year}年度"
-    half = "上半年" if date.today().month <= 6 else "下半年"
-    return f"{date.today().year}年{half}"
+    return selectors
 
 
 def create_stats_scroll_area(
