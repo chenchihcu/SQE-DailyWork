@@ -663,32 +663,42 @@ def default_event_pdf_filename(row: dict) -> str:
     return event_pdf_exporter.default_event_pdf_filename(row, detail)
 
 
-def export_event_pdf(path: str, row: dict) -> tuple[bool, str]:
+def _run_event_pdf_export(
+    path: str,
+    row: dict,
+    delegate,
+    *,
+    failure_log: str,
+    failure_prefix: str,
+) -> tuple[bool, str]:
+    """Shared payload-resolve → delegate → exception-to-(False, msg) wrapper
+    for the full/brief PDF export entry points (audit finding D17)."""
     try:
         detail, linked_visit = _event_pdf_payload(row)
-        return event_pdf_exporter.export_event_pdf(
-            path,
-            row,
-            detail,
-            linked_visit=linked_visit,
-        )
+        return delegate(path, row, detail, linked_visit=linked_visit)
     except Exception as exc:
-        logger.exception("PDF 匯出失敗")
-        return False, f"匯出失敗：{exc}"
+        logger.exception(failure_log)
+        return False, f"{failure_prefix}{exc}"
+
+
+def export_event_pdf(path: str, row: dict) -> tuple[bool, str]:
+    return _run_event_pdf_export(
+        path,
+        row,
+        event_pdf_exporter.export_event_pdf,
+        failure_log="PDF 匯出失敗",
+        failure_prefix="匯出失敗：",
+    )
 
 
 def export_brief_event_pdf(path: str, row: dict) -> tuple[bool, str]:
-    try:
-        detail, linked_visit = _event_pdf_payload(row)
-        return event_pdf_exporter.export_brief_event_pdf(
-            path,
-            row,
-            detail,
-            linked_visit=linked_visit,
-        )
-    except Exception as exc:
-        logger.exception("精簡版 PDF 匯出失敗")
-        return False, f"匯出精簡版失敗：{exc}"
+    return _run_event_pdf_export(
+        path,
+        row,
+        event_pdf_exporter.export_brief_event_pdf,
+        failure_log="精簡版 PDF 匯出失敗",
+        failure_prefix="匯出精簡版失敗：",
+    )
 
 
 def render_brief_event_image(row: dict) -> "QImage | None":
@@ -860,6 +870,61 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
     return events
 
 
+def summarize_range_events(events: list[dict]) -> tuple[dict, list[dict]]:
+    """依日期區間明細彙總 (整體 KPI, 供應商排行)。
+
+    口徑：opened-in-range cohort 的「現況」統計（結案數 = 區間內發生且目前
+    已結案），與 get_monthly_stats 的固定月份口徑（結案數 = 當月結案，跨
+    cohort）刻意不同 — 兩者不可互相替換（audit finding D18：抽成具名純函
+    式讓此口徑可獨立測試，而非埋在匯出流程內）。
+    """
+    from collections import defaultdict
+
+    total_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY'])
+    total_visits = len([e for e in events if e['event_type'] == 'VISIT'])
+    closed_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '已結案'])
+    open_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '待處理'])
+    totals = {
+        "total_anomalies": total_anomalies,
+        "total_visits": total_visits,
+        "closed_anomalies": closed_anomalies,
+        "open_anomalies": open_anomalies,
+        "close_rate": (closed_anomalies / total_anomalies * 100) if total_anomalies > 0 else 0.0,
+        "anomaly_visit_ratio": (total_anomalies / total_visits) if total_visits > 0 else 0.0,
+        "supplier_coverage": len(set(e['supplier_name'] for e in events if e.get('supplier_name'))),
+    }
+
+    supplier_stats = defaultdict(lambda: {"anomaly_count": 0, "visit_count": 0, "closed_count": 0, "open_count": 0})
+    for e in events:
+        sname = e.get("supplier_name")
+        if not sname:
+            continue
+        if e["event_type"] == "ANOMALY":
+            supplier_stats[sname]["anomaly_count"] += 1
+            if e["status"] == "已結案":
+                supplier_stats[sname]["closed_count"] += 1
+            else:
+                supplier_stats[sname]["open_count"] += 1
+        elif e["event_type"] == "VISIT":
+            supplier_stats[sname]["visit_count"] += 1
+
+    ranking_rows = []
+    for sname, s in supplier_stats.items():
+        tot_anom = s["anomaly_count"]
+        cls_anom = s["closed_count"]
+        rate = (cls_anom / tot_anom * 100) if tot_anom > 0 else 0.0
+        ranking_rows.append({
+            "supplier_name": sname,
+            "anomaly_count": tot_anom,
+            "visit_count": s["visit_count"],
+            "closed_anomaly_count": cls_anom,
+            "open_anomaly_count": s["open_count"],
+            "close_rate_pct": rate
+        })
+    ranking_rows.sort(key=lambda x: x["anomaly_count"], reverse=True)
+    return totals, ranking_rows
+
+
 def export_events_report(
     file_path: str,
     start_date: str,
@@ -871,50 +936,19 @@ def export_events_report(
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
     from openpyxl.drawing.image import Image
-    from collections import defaultdict
     from datetime import datetime
 
     try:
         events = list_events_by_range(start_date, end_date)
-        
-        # 記憶體數據統計
-        total_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY'])
-        total_visits = len([e for e in events if e['event_type'] == 'VISIT'])
-        closed_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '已結案'])
-        open_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '待處理'])
-        close_rate = (closed_anomalies / total_anomalies * 100) if total_anomalies > 0 else 0.0
-        anomaly_visit_ratio = (total_anomalies / total_visits) if total_visits > 0 else 0.0
-        supplier_coverage = len(set(e['supplier_name'] for e in events if e.get('supplier_name')))
 
-        # 供應商排行統計
-        supplier_stats = defaultdict(lambda: {"anomaly_count": 0, "visit_count": 0, "closed_count": 0, "open_count": 0})
-        for e in events:
-            sname = e.get("supplier_name")
-            if not sname:
-                continue
-            if e["event_type"] == "ANOMALY":
-                supplier_stats[sname]["anomaly_count"] += 1
-                if e["status"] == "已結案":
-                    supplier_stats[sname]["closed_count"] += 1
-                else:
-                    supplier_stats[sname]["open_count"] += 1
-            elif e["event_type"] == "VISIT":
-                supplier_stats[sname]["visit_count"] += 1
-
-        ranking_rows = []
-        for sname, s in supplier_stats.items():
-            tot_anom = s["anomaly_count"]
-            cls_anom = s["closed_count"]
-            rate = (cls_anom / tot_anom * 100) if tot_anom > 0 else 0.0
-            ranking_rows.append({
-                "supplier_name": sname,
-                "anomaly_count": tot_anom,
-                "visit_count": s["visit_count"],
-                "closed_anomaly_count": cls_anom,
-                "open_anomaly_count": s["open_count"],
-                "close_rate_pct": rate
-            })
-        ranking_rows.sort(key=lambda x: x["anomaly_count"], reverse=True)
+        totals, ranking_rows = summarize_range_events(events)
+        total_anomalies = totals["total_anomalies"]
+        total_visits = totals["total_visits"]
+        closed_anomalies = totals["closed_anomalies"]
+        open_anomalies = totals["open_anomalies"]
+        close_rate = totals["close_rate"]
+        anomaly_visit_ratio = totals["anomaly_visit_ratio"]
+        supplier_coverage = totals["supplier_coverage"]
 
         workbook = Workbook()
         

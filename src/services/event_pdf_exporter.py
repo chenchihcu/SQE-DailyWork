@@ -57,6 +57,41 @@ def default_event_pdf_filename(
     return f"SQE_異常單_{ref_no}_{supplier}.pdf"
 
 
+def _event_report_context(
+    row: dict, detail: dict, exported_at: datetime | None
+) -> tuple[str, str, str, object]:
+    """Resolve the (event_type, issued_at_text, reference_no, status_value)
+    preamble shared by the full and brief report builders, which previously
+    each re-derived it inline (audit finding D16)."""
+    event_type = _event_type(row)
+    issued_at = exported_at or datetime.now()
+    return (
+        event_type,
+        issued_at.strftime("%Y-%m-%d %H:%M:%S"),
+        _report_reference(row, detail, event_type),
+        detail.get("status") or row.get("status"),
+    )
+
+
+def _closing_info_section(
+    detail: dict, status_value: object, fields: list[tuple[str, object]]
+) -> str | None:
+    """Return the 結案資訊 section when the anomaly is closed (or carries an
+    improvement note); each builder supplies its own field list."""
+    if str(status_value or "").strip() == "已結案" or detail.get("improvement_desc"):
+        return _section("結案資訊", fields)
+    return None
+
+
+def _assemble_report_body(issued_at_text: str, sections: list[str]) -> str:
+    return "".join(
+        [
+            _summary_panel([("列印時間", issued_at_text, "text")]),
+            *sections,
+        ]
+    )
+
+
 def build_event_pdf_html(
     row: dict,
     detail: dict,
@@ -64,11 +99,9 @@ def build_event_pdf_html(
     linked_visit: dict | None = None,
     exported_at: datetime | None = None,
 ) -> str:
-    event_type = _event_type(row)
-    issued_at = exported_at or datetime.now()
-    issued_at_text = issued_at.strftime("%Y-%m-%d %H:%M:%S")
-    reference_no = _report_reference(row, detail, event_type)
-    status_value = detail.get("status") or row.get("status")
+    event_type, issued_at_text, reference_no, status_value = _event_report_context(
+        row, detail, exported_at
+    )
 
     if event_type == "VISIT":
         title = "供應商訪廠紀錄報告"
@@ -141,35 +174,54 @@ def build_event_pdf_html(
                 _text_section("確認事項", detail.get("pending_items"))
             )
 
-        if str(status_value or "").strip() == "已結案" or detail.get("improvement_desc"):
-            sections.append(
-                _section(
-                    "結案資訊",
-                    [
-                        ("結案日", detail.get("closed_at")),
-                        ("結案人員", detail.get("closed_by")),
-                        ("原因分類", detail.get("root_cause_category")),
-                        ("改善說明", detail.get("improvement_desc")),
-                    ],
-                )
-            )
+        closing_section = _closing_info_section(
+            detail,
+            status_value,
+            [
+                ("結案日", detail.get("closed_at")),
+                ("結案人員", detail.get("closed_by")),
+                ("原因分類", detail.get("root_cause_category")),
+                ("改善說明", detail.get("improvement_desc")),
+            ],
+        )
+        if closing_section:
+            sections.append(closing_section)
         attachment_html = _anomaly_attachment_block(
             detail.get("id") or row.get("id")
         )
         if attachment_html:
             sections.append(attachment_html)
 
-    body = "".join(
-        [
-            _summary_panel(
-                [
-                    ("列印時間", issued_at_text, "text"),
-                ]
-            ),
-            *sections,
-        ]
-    )
+    body = _assemble_report_body(issued_at_text, sections)
     return _html_document(title, body, _preferred_pdf_font_family(), meta_lines)
+
+
+def _export_html_pdf(
+    path: str | Path,
+    build_html,
+    *,
+    success_prefix: str,
+    failure_log: str,
+    failure_prefix: str,
+    missing_msg: str,
+) -> tuple[bool, str]:
+    """Shared normalize-suffix → mkdir → render → write → verify pipeline for
+    the full and brief PDF exports, which previously copy-pasted it with only
+    the HTML builder and message texts differing (audit finding D17)."""
+    try:
+        output = Path(path)
+        if output.suffix.lower() != ".pdf":
+            output = output.with_suffix(".pdf")
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        html = build_html()
+        _write_html_pdf(html, output)
+        if not output.exists() or output.stat().st_size <= 0:
+            raise RuntimeError(missing_msg)
+        return True, f"{success_prefix}{output}"
+    except Exception as exc:
+        logger.exception(failure_log)
+        return False, f"{failure_prefix}{exc}"
 
 
 def export_event_pdf(
@@ -179,20 +231,14 @@ def export_event_pdf(
     *,
     linked_visit: dict | None = None,
 ) -> tuple[bool, str]:
-    try:
-        output = Path(path)
-        if output.suffix.lower() != ".pdf":
-            output = output.with_suffix(".pdf")
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-        html = build_event_pdf_html(row, detail, linked_visit=linked_visit)
-        _write_html_pdf(html, output)
-        if not output.exists() or output.stat().st_size <= 0:
-            raise RuntimeError("PDF 檔案未產生")
-        return True, f"已匯出至：{output}"
-    except Exception as exc:
-        logger.exception("PDF 匯出失敗")
-        return False, f"匯出失敗：{exc}"
+    return _export_html_pdf(
+        path,
+        lambda: build_event_pdf_html(row, detail, linked_visit=linked_visit),
+        success_prefix="已匯出至：",
+        failure_log="PDF 匯出失敗",
+        failure_prefix="匯出失敗：",
+        missing_msg="PDF 檔案未產生",
+    )
 
 
 def _report_reference(row: dict, detail: dict, event_type: str) -> str:
@@ -428,11 +474,9 @@ def build_brief_event_pdf_html(
     linked_visit: dict | None = None,
     exported_at: datetime | None = None,
 ) -> str:
-    event_type = _event_type(row)
-    issued_at = exported_at or datetime.now()
-    issued_at_text = issued_at.strftime("%Y-%m-%d %H:%M:%S")
-    reference_no = _report_reference(row, detail, event_type)
-    status_value = detail.get("status") or row.get("status")
+    event_type, issued_at_text, reference_no, status_value = _event_report_context(
+        row, detail, exported_at
+    )
 
     if event_type == "VISIT":
         title = "供應商訪廠精簡報告"
@@ -477,27 +521,18 @@ def build_brief_event_pdf_html(
             _text_section("問題描述", detail.get("problem_desc") or row.get("content")),
         ]
 
-        if str(status_value or "").strip() == "已結案" or detail.get("improvement_desc"):
-            sections.append(
-                _section(
-                    "結案資訊",
-                    [
-                        ("結案日", detail.get("closed_at")),
-                        ("改善說明", detail.get("improvement_desc")),
-                    ],
-                )
-            )
+        closing_section = _closing_info_section(
+            detail,
+            status_value,
+            [
+                ("結案日", detail.get("closed_at")),
+                ("改善說明", detail.get("improvement_desc")),
+            ],
+        )
+        if closing_section:
+            sections.append(closing_section)
 
-    body = "".join(
-        [
-            _summary_panel(
-                [
-                    ("列印時間", issued_at_text, "text"),
-                ]
-            ),
-            *sections,
-        ]
-    )
+    body = _assemble_report_body(issued_at_text, sections)
     return _brief_html_document(title, body, _preferred_pdf_font_family(), meta_lines)
 
 
@@ -508,20 +543,14 @@ def export_brief_event_pdf(
     *,
     linked_visit: dict | None = None,
 ) -> tuple[bool, str]:
-    try:
-        output = Path(path)
-        if output.suffix.lower() != ".pdf":
-            output = output.with_suffix(".pdf")
-        output.parent.mkdir(parents=True, exist_ok=True)
-
-        html = build_brief_event_pdf_html(row, detail, linked_visit=linked_visit)
-        _write_html_pdf(html, output)
-        if not output.exists() or output.stat().st_size <= 0:
-            raise RuntimeError("精簡版 PDF 檔案未產生")
-        return True, f"已匯出精簡版至：{output}"
-    except Exception as exc:
-        logger.exception("精簡版 PDF 匯出失敗")
-        return False, f"匯出精簡版失敗：{exc}"
+    return _export_html_pdf(
+        path,
+        lambda: build_brief_event_pdf_html(row, detail, linked_visit=linked_visit),
+        success_prefix="已匯出精簡版至：",
+        failure_log="精簡版 PDF 匯出失敗",
+        failure_prefix="匯出精簡版失敗：",
+        missing_msg="精簡版 PDF 檔案未產生",
+    )
 
 
 def render_brief_event_to_image(
