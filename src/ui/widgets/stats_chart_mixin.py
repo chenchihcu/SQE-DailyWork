@@ -35,6 +35,7 @@ from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
 from services import event_service
 from ui.widgets.chart_style import apply_chart_surface
+from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 logger = logging.getLogger(__name__)
 
@@ -69,25 +70,6 @@ class _StatsChartMixin:
     """
 
     # ── 輔助方法 ──────────────────────────────────────────
-
-    def _short_supplier_label(self, supplier_name: str, *, max_len: int = SUPPLIER_LABEL_MAX_LEN) -> str:
-        text = str(supplier_name or "").strip() or "-"
-        if max_len <= 1:
-            return text[:max_len]
-        if len(text) <= max_len:
-            return text
-        body_len = max_len - 1
-        head_len = (body_len + 1) // 2
-        tail_len = body_len // 2
-        head = text[:head_len]
-        tail = text[-tail_len:] if tail_len > 0 else ""
-        return f"{head}…{tail}"
-
-    def _dedupe_chart_labels(self, labels: list[str]) -> list[str]:
-        if len(labels) == len(set(labels)):
-            return labels
-        width = len(str(len(labels)))
-        return [f"{index + 1:0{width}d}. {label}" for index, label in enumerate(labels)]
 
     def _format_month_axis_label(self, yyyymm: str) -> str:
         raw = str(yyyymm or "")
@@ -127,8 +109,8 @@ class _StatsChartMixin:
         data = rows[:15]
         data.reverse()
         self._last_supplier_data = list(data)
-        categories = self._dedupe_chart_labels([
-            self._short_supplier_label(r["supplier_name"], max_len=SUPPLIER_LABEL_MAX_LEN)
+        categories = dedupe_chart_labels([
+            short_chart_label(r["supplier_name"], max_len=SUPPLIER_LABEL_MAX_LEN)
             for r in data
         ])
 
@@ -444,8 +426,8 @@ class _StatsChartMixin:
 
         data = list(rows[:12])
         data.reverse()
-        categories = self._dedupe_chart_labels([
-            self._short_supplier_label(r["responsible_person"], max_len=10)
+        categories = dedupe_chart_labels([
+            short_chart_label(r["responsible_person"], max_len=10)
             for r in data
         ])
 

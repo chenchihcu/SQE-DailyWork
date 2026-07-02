@@ -42,7 +42,7 @@ TOKENS = {
     "brand_primary": _P["primary_hover"],
     "brand_navy": _P["hero_start"],
     "brand_cyan": _P["accent_cyan"],
-    "brand_steel": _P["steel"],
+    "accent_report": _P["accent_report"],
     "page_bg": _P["app_bg"],
     "panel_bg": _P["surface"],
     "panel_alt_bg": _P["surface_alt"],

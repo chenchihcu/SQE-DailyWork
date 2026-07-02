@@ -1182,37 +1182,78 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     elif not months_list:
         months_list = [start_date[:7]]
 
-    results = []
+    earliest_month = months_list[0]
+    latest_month = months_list[-1]
+
     with get_connection() as conn:
-        for yyyymm in months_list:
-            total_row = conn.execute(
-                "SELECT COUNT(*) as c FROM anomalies WHERE substr(anomaly_date, 1, 7) = ?",
-                (yyyymm,)
-            ).fetchone()
-            closed_row = conn.execute(
-                "SELECT COUNT(*) as c FROM anomalies WHERE substr(closed_at, 1, 7) = ?",
-                (yyyymm,)
-            ).fetchone()
-            overdue_row = conn.execute("""
-                SELECT COUNT(*) as c FROM anomalies 
-                WHERE substr(anomaly_date, 1, 7) = ? 
-                AND status = '待處理' 
-                AND due_date <> '' 
-                AND due_date < date('now', 'localtime')
-            """, (yyyymm,)).fetchone()
-            backlog_row = conn.execute("""
-                SELECT COUNT(*) as c
-                FROM anomalies
-                WHERE substr(anomaly_date, 1, 7) <= ?
-                AND (status <> '已結案' OR (closed_at <> '' AND substr(closed_at, 1, 7) > ?))
-            """, (yyyymm, yyyymm)).fetchone()
-            
-            results.append({
-                "yyyymm": yyyymm,
-                "total_count": int(total_row["c"] or 0),
-                "closed_count": int(closed_row["c"] or 0),
-                "overdue_count": int(overdue_row["c"] or 0),
-                "backlog_count": int(backlog_row["c"] or 0)
-            })
+        # total + overdue per month in one grouped query (both keyed off
+        # anomaly_date; overdue's "now" cutoff doesn't depend on the month
+        # being reported, so it groups cleanly alongside total). Replaces
+        # what used to be 2 of the 4 per-month queries (audit finding E1).
+        total_overdue_rows = conn.execute(
+            """
+            SELECT
+                substr(anomaly_date, 1, 7) AS yyyymm,
+                COUNT(*) AS total_count,
+                SUM(
+                    CASE WHEN status = '待處理' AND due_date <> ''
+                              AND due_date < date('now', 'localtime')
+                         THEN 1 ELSE 0 END
+                ) AS overdue_count
+            FROM anomalies
+            WHERE substr(anomaly_date, 1, 7) BETWEEN ? AND ?
+            GROUP BY yyyymm
+            """,
+            (earliest_month, latest_month),
+        ).fetchall()
+        total_by_month = {r["yyyymm"]: int(r["total_count"] or 0) for r in total_overdue_rows}
+        overdue_by_month = {r["yyyymm"]: int(r["overdue_count"] or 0) for r in total_overdue_rows}
+
+        # closed per month, grouped by closed_at (a different column than
+        # anomaly_date, so it needs its own query).
+        closed_rows = conn.execute(
+            """
+            SELECT substr(closed_at, 1, 7) AS yyyymm, COUNT(*) AS closed_count
+            FROM anomalies
+            WHERE closed_at <> '' AND substr(closed_at, 1, 7) BETWEEN ? AND ?
+            GROUP BY yyyymm
+            """,
+            (earliest_month, latest_month),
+        ).fetchall()
+        closed_by_month = {r["yyyymm"]: int(r["closed_count"] or 0) for r in closed_rows}
+
+        # backlog: whether a row counts as "still open as of yyyymm" depends
+        # on yyyymm itself (not a fixed cutoff), so it can't be grouped in
+        # one pass -- fetch every candidate row once and re-apply the
+        # original per-month condition in Python instead of re-scanning the
+        # table once per month (was up to 12 additional full-table scans).
+        all_rows = conn.execute(
+            "SELECT anomaly_date, status, closed_at FROM anomalies "
+            "WHERE substr(anomaly_date, 1, 7) <= ?",
+            (latest_month,),
+        ).fetchall()
+
+    results = []
+    for yyyymm in months_list:
+        backlog_count = 0
+        for row in all_rows:
+            row_month = str(row["anomaly_date"] or "")[:7]
+            if row_month > yyyymm:
+                continue
+            status = row["status"]
+            closed_at = row["closed_at"] or ""
+            is_open_as_of_month = (
+                status != "已結案"
+                or (closed_at != "" and closed_at[:7] > yyyymm)
+            )
+            if is_open_as_of_month:
+                backlog_count += 1
+        results.append({
+            "yyyymm": yyyymm,
+            "total_count": total_by_month.get(yyyymm, 0),
+            "closed_count": closed_by_month.get(yyyymm, 0),
+            "overdue_count": overdue_by_month.get(yyyymm, 0),
+            "backlog_count": backlog_count,
+        })
     return results
 

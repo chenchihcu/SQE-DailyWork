@@ -623,7 +623,15 @@ def apply_product_master_import(
                 added_count += 1
                 continue
 
-            existing = _product_by_code(conn, row.product_code, supplier_id=supplier_id)
+            # A row whose supplier was newly created didn't exist at preview
+            # time either, so preview looked it up with supplier_id=None
+            # (matching any supplier). Looking it up here with the
+            # freshly-minted supplier_id would never match the existing row
+            # (whose supplier_id is still NULL/different), spuriously
+            # raising "Product disappeared" and rolling back the whole
+            # import (audit finding A2). Mirror preview's lookup condition.
+            lookup_supplier_id = None if row.will_create_supplier else supplier_id
+            existing = _product_by_code(conn, row.product_code, supplier_id=lookup_supplier_id)
             if existing is None:
                 raise sqlite3.IntegrityError(f"Product disappeared: {row.product_code}")
             conn.execute(

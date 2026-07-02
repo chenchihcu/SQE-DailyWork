@@ -9,12 +9,9 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
-    QSizePolicy,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -23,18 +20,21 @@ from PySide6.QtWidgets import (
 
 from services import event_service
 from ui.layout_constants import (
-    DIALOG_MIN_HEIGHT,
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
-from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     RequiredFieldLabel,
-    make_paired_form_row as _make_paired_form_row,
-    mark_button_variant as _mark_button_variant,
+    make_paired_form_row,
 )
-from ui.widgets.defect_form_widgets import set_text_edit_visible_rows
+from ui.widgets.defect_form_widgets import (
+    apply_dialog_layout,
+    set_text_edit_visible_rows,
+    set_tone,
+    style_dialog_buttons,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,59 +54,8 @@ ROOT_CAUSE_CATEGORY_OPTIONS = [
 IMPROVEMENT_DESC_MAX_LEN = 1000
 
 
-# ── Layout helpers (duplicated from defect_form_widget to avoid circular imports) ──
-def _set_tone(widget: QWidget, tone: str) -> None:
-    widget.setProperty("tone", tone)
-    style = widget.style()
-    style.unpolish(widget)
-    style.polish(widget)
-
-
-def _style_dialog_buttons(buttons: QDialogButtonBox) -> QPushButton:
-    save_button = buttons.button(QDialogButtonBox.StandardButton.Save)
-    cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
-    _mark_button_variant(save_button, "primary")
-    _mark_button_variant(cancel_button, "secondary")
-    if save_button:
-        save_button.setText("儲存")
-    if cancel_button:
-        cancel_button.setText("取消")
-    return save_button
-
-
-def _apply_dialog_layout(
-    dialog: QDialog,
-    content: QWidget,
-    button_box: QDialogButtonBox,
-) -> None:
-    """Standardize dialog layout with a fixed bottom button row."""
-    outer = QVBoxLayout(dialog)
-    outer.setContentsMargins(0, 0, 0, 0)
-    outer.setSpacing(0)
-    outer.addWidget(content, 1)
-
-    bar = QWidget()
-    bar_layout = QHBoxLayout(bar)
-    bar_layout.setContentsMargins(
-        DIALOG_OUTER_MARGINS[0], 8, DIALOG_OUTER_MARGINS[2], DIALOG_OUTER_MARGINS[3]
-    )
-    bar_layout.addStretch(1)
-    bar_layout.addWidget(button_box)
-    bar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-    outer.addWidget(bar)
-    dialog.setSizeGripEnabled(True)
-    hint = dialog.sizeHint()
-    fit_dialog_to_available_screen(
-        dialog,
-        preferred_width=hint.width(),
-        preferred_height=hint.height() + 20,
-        minimum_height=DIALOG_MIN_HEIGHT,
-    )
-
-
-
 # ── CloseAnomalyDialog ─────────────────────────────────────────────────────
-class CloseAnomalyDialog(QDialog):
+class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
     def __init__(self, anomaly_id: str, problem_desc: str, parent=None):
         super().__init__(parent)
         self.anomaly_id = anomaly_id
@@ -118,7 +67,6 @@ class CloseAnomalyDialog(QDialog):
         self.attachment_editor.load_existing_attachments(self.anomaly_id)
         self._update_validation()
 
-        self._dirty = False
         self._connect_dirty_signals()
 
     def _setup_ui(self):
@@ -159,7 +107,7 @@ class CloseAnomalyDialog(QDialog):
         form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
         form.addRow("", self.improvement_counter)
         form.addRow(
-            _make_paired_form_row(
+            make_paired_form_row(
                 "CloseAnomalyCloserCauseRow",
                 RequiredFieldLabel("結案人員"),
                 self.closer_input,
@@ -183,39 +131,23 @@ class CloseAnomalyDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
         )
-        self._save_button = _style_dialog_buttons(buttons)
+        self._save_button = style_dialog_buttons(buttons)
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
 
-        _apply_dialog_layout(self, self.tabs, buttons)
+        apply_dialog_layout(self, self.tabs, buttons)
 
         self.improvement_input.textChanged.connect(self._update_validation)
         self.closer_input.textChanged.connect(self._update_validation)
 
-    def _mark_dirty(self) -> None:
-        self._dirty = True
-
-    def _confirm_discard(self) -> bool:
-        return QMessageBox.question(
-            self,
-            "未儲存變更",
-            "有未儲存的變更，確定要放棄嗎？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes
-
-    def closeEvent(self, event):
-        if self._dirty and not self._confirm_discard():
-            event.ignore()
-            return
-        event.accept()
-
     def _connect_dirty_signals(self) -> None:
-        self.improvement_input.textChanged.connect(self._mark_dirty)
-        self.closer_input.textChanged.connect(self._mark_dirty)
-        self.root_cause_combo.currentTextChanged.connect(self._mark_dirty)
-        self.attachment_editor.add_button.clicked.connect(self._mark_dirty)
-        self.attachment_editor.remove_button.clicked.connect(self._mark_dirty)
+        self._init_dirty_tracking([
+            self.improvement_input.textChanged,
+            self.closer_input.textChanged,
+            self.root_cause_combo.currentTextChanged,
+            self.attachment_editor.add_button.clicked,
+            self.attachment_editor.remove_button.clicked,
+        ])
 
     def _update_validation(self) -> None:
         text = self.improvement_input.toPlainText()
@@ -224,7 +156,7 @@ class CloseAnomalyDialog(QDialog):
         self.improvement_counter.setText(
             f"{length} / {IMPROVEMENT_DESC_MAX_LEN}"
         )
-        _set_tone(self.improvement_counter, "danger" if over_limit else "normal")
+        set_tone(self.improvement_counter, "danger" if over_limit else "normal")
         valid = (
             bool(text.strip())
             and not over_limit
@@ -245,6 +177,13 @@ class CloseAnomalyDialog(QDialog):
                 root_cause_category=root_cause,
             )
             self.attachment_editor.save_to_anomaly(self.anomaly_id)
+            if self.attachment_editor._last_rename_failures:
+                QMessageBox.warning(
+                    self,
+                    "附件改名失敗",
+                    "以下附件改名未成功，檔名可能維持原狀：\n"
+                    + "\n".join(self.attachment_editor._last_rename_failures),
+                )
             QMessageBox.information(self, "成功", localize_popup_message("異常已結案"))
             self._dirty = False
             self.accept()

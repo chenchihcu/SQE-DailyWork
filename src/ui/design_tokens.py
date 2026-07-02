@@ -44,7 +44,7 @@ PALETTE: dict[str, object] = {
     "selection_bg": "#CFE2FD",
     "accent_cyan": "#2BA6E0",
     "brand_green": "#1FA85B",
-    "steel": "#5E7184",
+    "accent_report": "#5E7184",
     "accent_overlay": "rgba(31, 111, 235, 0.10)",
     "accent_overlay_hover": "rgba(31, 111, 235, 0.16)",
 
@@ -109,8 +109,3 @@ PALETTE: dict[str, object] = {
     "radius_md": 6,
     "radius_lg": 8,
 }
-
-
-def color(name: str) -> object:
-    """Return a palette colour by name (raises KeyError if missing — fail fast)."""
-    return PALETTE[name]

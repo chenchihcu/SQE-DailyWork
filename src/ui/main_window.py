@@ -9,7 +9,6 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QStackedWidget,
@@ -64,19 +63,6 @@ NCR_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
 MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
 
-# Legacy index aliases kept for external callers. The consolidated event-management
-# page (index 1) absorbed the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 pages,
-# which are now scope tabs inside that single page.
-
-# Legacy index aliases kept for external callers. The consolidated event-management
-# page (index 1) absorbed the former 異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 pages,
-# which are now scope tabs inside that single page.
-ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
-VISIT_PAGE_INDEX = EVENT_PAGE_INDEX
-CLOSED_PAGE_INDEX = EVENT_PAGE_INDEX
-VISIT_ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
-STANDALONE_ANOMALY_PAGE_INDEX = EVENT_PAGE_INDEX
-
 _PAGE_TITLES = {
     HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
     EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
@@ -85,11 +71,8 @@ _PAGE_TITLES = {
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
 }
 
-# Compatibility aliases kept for external callers
+# Compatibility alias kept for external callers
 NCR_HOME_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
-NCR_ANALYSIS_PAGE_INDEX = NCR_STATS_PAGE_INDEX
-NCR_PRODUCT_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
-NCR_SUPPLIER_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 
 for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
     _PAGE_TITLES[NCR_PAGE_OFFSET + _i] = (_title, _subtitle)
@@ -122,7 +105,6 @@ class MainWindow(QMainWindow):
             maximum_width=MAIN_WINDOW_MAX_WIDTH,
             maximum_height=MAIN_WINDOW_MAX_HEIGHT,
         )
-        self._last_non_master_index = HOME_PAGE_INDEX
         self.ncr: NcrController | None = None
         self._setup_ui()
         self._refresh_sidebar_badge()
@@ -218,18 +200,20 @@ class MainWindow(QMainWindow):
         if page_index < 0 or page_index >= count:
             return
         
-        # 觸發延遲載入 (Lazy loading)
+        # 觸發延遲載入 (Lazy loading) 與統計頁面強制整理
         widget = self.stack.widget(page_index)
-        if widget is not None and hasattr(widget, "_has_loaded") and not getattr(widget, "_has_loaded", False):
-            if hasattr(widget, "refresh_data"):
-                widget.refresh_data()
+        if widget is not None:
+            if page_index in (STATS_PAGE_INDEX, NCR_STATS_PAGE_INDEX):
+                if hasattr(widget, "refresh_data"):
+                    widget.refresh_data()
+            elif hasattr(widget, "_has_loaded") and not getattr(widget, "_has_loaded", False):
+                if hasattr(widget, "refresh_data"):
+                    widget.refresh_data()
 
         self.stack.setCurrentIndex(page_index)
         self._sync_sidebar_active(page_index)
         title, subtitle = _PAGE_TITLES.get(page_index, ("", ""))
         self._header_bar.set_page(title, subtitle)
-        if page_index != MASTER_PAGE_INDEX:
-            self._last_non_master_index = page_index
         if self.ncr is not None and self._is_ncr_index(page_index):
             self.ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
 

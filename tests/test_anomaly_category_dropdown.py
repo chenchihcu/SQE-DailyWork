@@ -547,7 +547,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         dialog.tech_transfer_check.setChecked(False)
         self.assertFalse(dialog.tech_transfer_check.isChecked())
         for key, _label in self.widget_module.VISIT_TECH_TRANSFER_ITEMS:
-            self.assertFalse(dialog._get_tech_transfer_item(key))
+            self.assertNotEqual(
+                self.widget_module.TECH_TRANSFER_STATE_YES,
+                dialog._get_tech_transfer_state(key),
+            )
 
     def test_visit_dialog_edit_mode_applies_item_flags(self) -> None:
         dialog = self.NewVisitDialog(
@@ -567,8 +570,14 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.addCleanup(dialog.close)
 
         self.assertTrue(dialog.tech_transfer_check.isChecked())
-        self.assertTrue(dialog._get_tech_transfer_item("functional_test"))
-        self.assertFalse(dialog._get_tech_transfer_item("carrier_requirement"))
+        self.assertEqual(
+            self.widget_module.TECH_TRANSFER_STATE_YES,
+            dialog._get_tech_transfer_state("functional_test"),
+        )
+        self.assertNotEqual(
+            self.widget_module.TECH_TRANSFER_STATE_YES,
+            dialog._get_tech_transfer_state("carrier_requirement"),
+        )
 
     def test_visit_dialog_tech_transfer_cards_use_right_side_dot_indicator_style(self) -> None:
         dialog = self.NewVisitDialog()

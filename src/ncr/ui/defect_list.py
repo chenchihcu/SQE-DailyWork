@@ -28,6 +28,7 @@ from ncr.ui.supplier_combo_utils import (
     SUPPLIER_CATEGORY_FORMAL,
     SUPPLIER_CATEGORY_OUTSOURCE,
     apply_supplier_exclusion_lock,
+    block_signals,
     load_supplier_names_by_category,
 )
 from ncr.models.defect import LIST_FIELD_ORDER, LIST_HEADERS, STATUS_OPTIONS
@@ -51,6 +52,8 @@ from ncr.services import export_service
 from ncr.ui.defect_form import DefectEditDialog
 from ncr.ui.ui_style import (
     ACTION_BUTTON_MIN_WIDTH,
+    FILTER_BUTTON_MAX_WIDTH,
+    FILTER_BUTTON_MIN_WIDTH,
     EMPTY_PLACEHOLDER,
     add_labeled_field,
     align_table_header_left,
@@ -68,13 +71,10 @@ from ncr.ui.ui_style import (
     PaginationWidget,
     ITEMS_PER_PAGE,
     create_table_item,
-    status_badge_colors,
 )
 
 
-def get_status_colors(status: str) -> tuple[str, str]:
-    fg_color, bg_color, _border_color = status_badge_colors(status)
-    return fg_color, bg_color
+VALID_WORKFLOWS = {"combined", "tracking", "trace"}
 
 
 BASE_DIR = Path(__file__).resolve().parents[3] / "Outputs"
@@ -109,11 +109,17 @@ class DefectListWidget(QWidget):
         workflow: str = "combined",
     ):
         super().__init__(parent)
+        if workflow not in VALID_WORKFLOWS:
+            raise ValueError(
+                f"Unsupported DefectListWidget workflow: {workflow!r}. "
+                f"Expected one of: {', '.join(sorted(VALID_WORKFLOWS))}."
+            )
         self.conn = conn
         self.workflow = workflow
         self.open_results: list[sqlite3.Row] = []
         self.closed_results: list[sqlite3.Row] = []
         self.current_page = 1
+        self.tabs: QTabWidget | None = None
         self._build_ui()
         self.refresh_data()
 
@@ -214,8 +220,8 @@ class DefectListWidget(QWidget):
             (self.reset_button, "reset", "reset"),
             (self.search_button, "primary", "search"),
         ]:
-            btn.setMinimumWidth(90)
-            btn.setMaximumWidth(110)
+            btn.setMinimumWidth(FILTER_BUTTON_MIN_WIDTH)
+            btn.setMaximumWidth(FILTER_BUTTON_MAX_WIDTH)
             set_button_role(btn, role)
             apply_button_icon(btn, icon)
 
@@ -302,10 +308,6 @@ class DefectListWidget(QWidget):
         self.result_notice = make_notice_label("", role="warningHint")
         main_layout.addWidget(self.result_notice)
 
-        # Tabs Section
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-
         self.open_table = QTableWidget(0, len(LIST_HEADERS))
         self.open_table.setHorizontalHeaderLabels(LIST_HEADERS)
         align_table_header_left(self.open_table)
@@ -324,25 +326,24 @@ class DefectListWidget(QWidget):
         self._setup_table_headers(self.closed_table)
         self.closed_table.setMinimumHeight(370)
 
-        self.tabs.addTab(self.open_table, "未結案")
-        self.tabs.addTab(self.closed_table, "已結案")
-        if self.workflow == "tracking":
-            self.tabs.clear()
-            self.tabs.addTab(self.open_table, "待處理")
-            self.tabs.tabBar().hide()
-        elif self.workflow == "trace":
-            self.tabs.clear()
-            self.tabs.addTab(self.closed_table, "已結案/溯源")
-            self.tabs.tabBar().hide()
-
-        main_layout.addWidget(self.tabs)
+        if self.workflow == "combined":
+            self.tabs = QTabWidget()
+            self.tabs.setDocumentMode(True)
+            self.tabs.addTab(self.open_table, "未結案")
+            self.tabs.addTab(self.closed_table, "已結案")
+            main_layout.addWidget(self.tabs)
+        elif self.workflow == "tracking":
+            main_layout.addWidget(self.open_table)
+        else:
+            main_layout.addWidget(self.closed_table)
         
         self.pagination = PaginationWidget()
         self.pagination.pageChanged.connect(self._on_page_changed)
         main_layout.addWidget(self.pagination)
 
         # Connect after initial construction to avoid currentChanged firing before pagination exists.
-        self.tabs.currentChanged.connect(self._on_tab_changed)
+        if self.tabs is not None:
+            self.tabs.currentChanged.connect(self._on_tab_changed)
 
         content_layout.addWidget(main_card, 1)
 
@@ -456,6 +457,7 @@ class DefectListWidget(QWidget):
         elif self.workflow == "trace":
             self.populate_table(self.closed_table, self.closed_results, is_active=True)
         else:
+            assert self.tabs is not None
             self.populate_table(
                 self.open_table,
                 self.open_results,
@@ -484,6 +486,7 @@ class DefectListWidget(QWidget):
             return self.open_results
         if self.workflow == "trace":
             return self.closed_results
+        assert self.tabs is not None
         if self.tabs.currentIndex() == 0:
             return self.open_results
         return self.closed_results
@@ -493,6 +496,7 @@ class DefectListWidget(QWidget):
             return self.open_table
         if self.workflow == "trace":
             return self.closed_table
+        assert self.tabs is not None
         if self.tabs.currentIndex() == 0:
             return self.open_table
         return self.closed_table
@@ -508,7 +512,7 @@ class DefectListWidget(QWidget):
                 )
             else:
                 self.month_scope_notice.setText(HINT_CLOSED_CASES_SCOPE)
-        elif self.tabs.currentIndex() == 0:
+        elif self.tabs is not None and self.tabs.currentIndex() == 0:
             # Open Cases Tab
             self.month_scope_notice.setText(HINT_OPEN_CASES_SCOPE)
         else:
@@ -548,9 +552,8 @@ class DefectListWidget(QWidget):
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
                     )
                     table.setItem(row_index, column_index, placeholder)
-                    fg_color, bg_color = get_status_colors(display_value)
                     table.setCellWidget(
-                        row_index, column_index, create_status_badge(display_value, fg_color, bg_color)
+                        row_index, column_index, create_status_badge(display_value)
                     )
                     continue
 
@@ -565,24 +568,22 @@ class DefectListWidget(QWidget):
         # 更新供應商選單
         curr_supplier = self.supplier_combo.currentText()
         suppliers = load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_FORMAL)
-        self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
-        self.supplier_combo.addItem("")
-        self.supplier_combo.addItems(suppliers)
-        self.supplier_combo.setCurrentText(curr_supplier)
-        self.supplier_combo.blockSignals(False)
+        with block_signals(self.supplier_combo):
+            self.supplier_combo.clear()
+            self.supplier_combo.addItem("")
+            self.supplier_combo.addItems(suppliers)
+            self.supplier_combo.setCurrentText(curr_supplier)
 
         # 更新委外供應商選單
         curr_outsource = self.outsource_supplier_combo.currentText()
         outsources = load_supplier_names_by_category(
             self.conn, SUPPLIER_CATEGORY_OUTSOURCE
         )
-        self.outsource_supplier_combo.blockSignals(True)
-        self.outsource_supplier_combo.clear()
-        self.outsource_supplier_combo.addItem("")
-        self.outsource_supplier_combo.addItems(outsources)
-        self.outsource_supplier_combo.setCurrentText(curr_outsource)
-        self.outsource_supplier_combo.blockSignals(False)
+        with block_signals(self.outsource_supplier_combo):
+            self.outsource_supplier_combo.clear()
+            self.outsource_supplier_combo.addItem("")
+            self.outsource_supplier_combo.addItems(outsources)
+            self.outsource_supplier_combo.setCurrentText(curr_outsource)
         self._sync_filter_lock_state()
 
     def _sync_filter_lock_state(self) -> None:
@@ -599,17 +600,15 @@ class DefectListWidget(QWidget):
     def _handle_supplier_selection(self, index: int) -> None:
         """若選擇了供應商，則停用委外供應商欄位並顯示提示。"""
         if index > 0:
-            self.outsource_supplier_combo.blockSignals(True)
-            self.outsource_supplier_combo.setCurrentIndex(0)
-            self.outsource_supplier_combo.blockSignals(False)
+            with block_signals(self.outsource_supplier_combo):
+                self.outsource_supplier_combo.setCurrentIndex(0)
         self._sync_filter_lock_state()
 
     def _handle_outsource_selection(self, index: int) -> None:
         """若選擇了委外供應商，則停用正式供應商欄位並顯示提示。"""
         if index > 0:
-            self.supplier_combo.blockSignals(True)
-            self.supplier_combo.setCurrentIndex(0)
-            self.supplier_combo.blockSignals(False)
+            with block_signals(self.supplier_combo):
+                self.supplier_combo.setCurrentIndex(0)
         self._sync_filter_lock_state()
 
 
@@ -637,7 +636,12 @@ class DefectListWidget(QWidget):
         results = self._get_active_results()
         actual_index = (self.current_page - 1) * ITEMS_PER_PAGE + row
         defect_id = int(results[actual_index]["id"])
-        dialog = DefectEditDialog(self.conn, defect_id, self)
+        try:
+            dialog = DefectEditDialog(self.conn, defect_id, self)
+        except ValueError:
+            QMessageBox.warning(self, "提示", "此筆資料已不存在，可能已被刪除，將重新整理列表。")
+            self.refresh_data()
+            return
         if dialog.exec():
             self.refresh_data()
             self.changed.emit()

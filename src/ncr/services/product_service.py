@@ -6,6 +6,7 @@ from typing import Any
 
 from ncr.db import crud
 from ncr.models.labels import VALIDATION_REQUIRED, LABEL_ITEM_NO, LABEL_PRODUCT_NAME
+from ncr.services.service_helpers import unique_violation_as_value_error
 
 
 def validate_product_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -26,24 +27,16 @@ def validate_product_data(data: dict[str, Any]) -> dict[str, Any]:
 def create_product(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
     normalized = validate_product_data(data)
     normalized["created_at"] = datetime.now().isoformat(timespec="seconds")
-    try:
+    with unique_violation_as_value_error(f"料號 '{normalized['item_no']}' 已存在。"):
         return crud.insert_product(conn, normalized)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise ValueError(f"料號 '{normalized['item_no']}' 已存在。") from exc
-        raise
 
 
 def update_product(
     conn: sqlite3.Connection, product_id: int, data: dict[str, Any]
 ) -> None:
     normalized = validate_product_data(data)
-    try:
+    with unique_violation_as_value_error(f"料號 '{normalized['item_no']}' 已存在。"):
         crud.update_product(conn, product_id, normalized)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise ValueError(f"料號 '{normalized['item_no']}' 已存在。") from exc
-        raise
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:

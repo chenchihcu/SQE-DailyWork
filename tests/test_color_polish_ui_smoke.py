@@ -18,7 +18,7 @@ from ui.widgets.defect_form_widget import (
     TECH_TRANSFER_STATE_YES,
     TechTransferCard,
 )
-from ui.widgets.common_widgets import create_status_badge
+from ncr.ui.ui_style import create_status_badge as create_ncr_status_badge
 
 
 class ColorPolishUiSmokeTests(unittest.TestCase):
@@ -76,14 +76,11 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
         finally:
             card.deleteLater()
 
-    def test_status_badge_uses_theme_role_and_tone(self) -> None:
-        badge = create_status_badge("待處理")
+    def test_ncr_status_badge_uses_shared_role_and_tone(self) -> None:
+        badge = create_ncr_status_badge("處理中")
         try:
-            label = badge.findChild(QLabel)
-            self.assertIsNotNone(label)
-            assert label is not None
-            self.assertEqual(label.property("role"), "statusBadge")
-            self.assertEqual(label.property("tone"), "pending")
+            self.assertEqual(badge.property("role"), "statusBadge")
+            self.assertEqual(badge.property("tone"), "pending")
         finally:
             badge.deleteLater()
 

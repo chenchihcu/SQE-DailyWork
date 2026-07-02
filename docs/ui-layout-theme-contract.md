@@ -198,6 +198,21 @@
   risk/overdue/latest summary cards, one shared explanation banner, flattened
   chart grid container, and supplier-risk timing rendered as discrete points
   instead of a cross-supplier trend line.
+- Qt layout cleanup - 2026-07-01: `異常事件統計` no longer keeps hidden
+  `StatsTabs` / chart-scroll proxy widgets after the visible dashboard grid
+  became the source of truth. Warehouse `待處理不合格品` and `歷史紀錄`
+  pages render their single result table directly instead of wrapping one table
+  in a hidden `QTabWidget`; only the legacy `combined` warehouse list mode keeps
+  a real two-tab table host.
+- Shared UI helper cleanup - 2026-07-01: supplier-event statistics and
+  warehouse statistics share `src/ui/widgets/stats_dashboard_helpers.py` for
+  period controls, hidden compatibility month controls, scroll/grid scaffolding,
+  info banners, and insight labels. Their data sources, chart builders, and
+  export services remain separate. Event create/visit/close dialogs use the
+  shared dirty-tracking contract; NCR status badges use shared status tones.
+  Retired standalone NCR tab selectors such as `workflowTabs`, `analysisTabs`,
+  `homeSubTabs`, and `trackingOverviewTabs` should stay out of live QSS unless
+  a real visible tab host is reintroduced with tests.
 - Verify with `scripts/qt_visual_probe.py --target main` and `--target stats-stress`,
   plus `tests/test_top_nav_compact_height`, `tests/test_ncr_embedding_smoke`,
   `tests/test_closed_tab_categories`, `tests/test_event_list_widget_render_stability`,

@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QListView
 
 from ui.theme import apply_app_theme
-from ui.widgets import defect_form_widget
+from ui.widgets import anomaly_attachment_editor
 from ui.widgets.defect_form_widget import (
     ATTACHMENT_ITEM_SIZE,
     AttachmentEditor,
@@ -48,13 +48,13 @@ class AttachmentEditorPreviewTests(unittest.TestCase):
         pixmap.fill(QColor("#0274BE"))
         self.assertTrue(pixmap.save(str(source), "PNG"))
         editor = AttachmentEditor()
-        original_get_open_file_names = defect_form_widget.QFileDialog.getOpenFileNames
+        original_get_open_file_names = anomaly_attachment_editor.QFileDialog.getOpenFileNames
 
         def fake_get_open_file_names(*_args: object) -> tuple[list[str], str]:
             return [str(source)], "Images (*.png)"
 
         try:
-            defect_form_widget.QFileDialog.getOpenFileNames = fake_get_open_file_names
+            anomaly_attachment_editor.QFileDialog.getOpenFileNames = fake_get_open_file_names
             editor._pick()
 
             self.assertEqual(QListView.ViewMode.IconMode, editor.list_widget.viewMode())
@@ -65,7 +65,7 @@ class AttachmentEditorPreviewTests(unittest.TestCase):
             preview = item.icon().pixmap(editor.list_widget.iconSize())
             self.assertFalse(preview.isNull())
         finally:
-            defect_form_widget.QFileDialog.getOpenFileNames = original_get_open_file_names
+            anomaly_attachment_editor.QFileDialog.getOpenFileNames = original_get_open_file_names
             editor.close()
 
 

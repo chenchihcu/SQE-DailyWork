@@ -201,9 +201,14 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
             return True
         except OSError:
             if temp_path.exists():
-                try: temp_path.rename(old_path)
+                try:
+                    temp_path.rename(old_path)
                 except OSError:
-                    logger.warning("rename rollback failed: %s -> %s", temp_path, old_path)
+                    logger.error(
+                        "Attachment rename rollback failed, orphaned temp file "
+                        "left at %s (original was %s); manual cleanup required.",
+                        temp_path, old_path,
+                    )
             return False
 
     # Normal rename

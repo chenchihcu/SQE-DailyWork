@@ -44,9 +44,9 @@ from ui.layout_constants import (
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.close_anomaly_dialog import AttachmentEditor
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     RequiredFieldLabel,
     SupplierProductFormMixin,
-    set_combo_current_data,
 )
 from ui.widgets.anomaly_visit_sync_mixin import _AnomalyVisitSyncMixin
 from ui.widgets.defect_form_widgets import (
@@ -65,7 +65,7 @@ from ui.widgets.defect_form_widgets import (
 logger = logging.getLogger(__name__)
 
 
-class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin):
+class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin):
     def __init__(
         self,
         parent=None,
@@ -98,7 +98,6 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin
         if self._read_only:
             self._apply_read_only()
 
-        self._dirty = False
         if not self._read_only:
             self._connect_dirty_signals()
 
@@ -409,46 +408,29 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin
         if cancel_btn:
             cancel_btn.setVisible(False)
 
-    def _mark_dirty(self) -> None:
-        self._dirty = True
-
-    def _confirm_discard(self) -> bool:
-        """Override in tests to skip the modal confirmation."""
-        return QMessageBox.question(
-            self,
-            "未儲存變更",
-            "有未儲存的變更，確定要放棄嗎？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes
-
-    def closeEvent(self, event):
-        if self._dirty and not self._confirm_discard():
-            event.ignore()
-            return
-        event.accept()
-
     def _connect_dirty_signals(self) -> None:
-        self.date_edit.dateChanged.connect(self._mark_dirty)
-        self.supplier_combo.currentIndexChanged.connect(self._mark_dirty)
-        self.product_combo.currentIndexChanged.connect(self._mark_dirty)
-        self.product_stage_combo.currentTextChanged.connect(self._mark_dirty)
-        self.outsource_work_order_input.textChanged.connect(self._mark_dirty)
-        self.batch_qty_input.textChanged.connect(self._mark_dirty)
-        self.responsible_person_input.textChanged.connect(self._mark_dirty)
-        self.due_date_check.toggled.connect(self._mark_dirty)
-        self.due_date_edit.dateChanged.connect(self._mark_dirty)
-        self.is_tech_transfer_check.toggled.connect(self._mark_dirty)
-        self.category_input.currentTextChanged.connect(self._mark_dirty)
-        self.problem_input.textChanged.connect(self._mark_dirty)
-        self.pending_items_input.textChanged.connect(self._mark_dirty)
-        self.rc_supplier_inv_combo.currentTextChanged.connect(self._mark_dirty)
-        self.rc_supplier_wip_combo.currentTextChanged.connect(self._mark_dirty)
-        self.rc_in_transit_combo.currentTextChanged.connect(self._mark_dirty)
-        self.rc_internal_inv_combo.currentTextChanged.connect(self._mark_dirty)
-        self.sync_visit_check.toggled.connect(self._mark_dirty)
-        self.attachment_editor.add_button.clicked.connect(self._mark_dirty)
-        self.attachment_editor.remove_button.clicked.connect(self._mark_dirty)
+        self._init_dirty_tracking([
+            self.date_edit.dateChanged,
+            self.supplier_combo.currentIndexChanged,
+            self.product_combo.currentIndexChanged,
+            self.product_stage_combo.currentTextChanged,
+            self.outsource_work_order_input.textChanged,
+            self.batch_qty_input.textChanged,
+            self.responsible_person_input.textChanged,
+            self.due_date_check.toggled,
+            self.due_date_edit.dateChanged,
+            self.is_tech_transfer_check.toggled,
+            self.category_input.currentTextChanged,
+            self.problem_input.textChanged,
+            self.pending_items_input.textChanged,
+            self.rc_supplier_inv_combo.currentTextChanged,
+            self.rc_supplier_wip_combo.currentTextChanged,
+            self.rc_in_transit_combo.currentTextChanged,
+            self.rc_internal_inv_combo.currentTextChanged,
+            self.sync_visit_check.toggled,
+            self.attachment_editor.add_button.clicked,
+            self.attachment_editor.remove_button.clicked,
+        ])
 
     def _on_date_changed(self, _date: QDate | None = None) -> None:
         self._update_anomaly_no_preview()
@@ -556,21 +538,18 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin
 
         supplier_id = str(self._initial_data.get("supplier_id") or "").strip()
         supplier_name = str(self._initial_data.get("supplier_name") or "").strip()
-        if supplier_id and not set_combo_current_data(self.supplier_combo, supplier_id):
-            self.supplier_combo.addItem(f"{supplier_name or supplier_id}（目前值）", supplier_id)
-            set_combo_current_data(self.supplier_combo, supplier_id)
+        self._apply_existing_combo_value(self.supplier_combo, supplier_id, supplier_name)
         self._on_supplier_changed()
 
         product_id = str(self._initial_data.get("product_id") or "").strip()
         product_name = str(self._initial_data.get("product_name") or "").strip()
         product_code = str(self._initial_data.get("product_code") or "").strip()
-        if product_id and not set_combo_current_data(self.product_combo, product_id):
+        injected = self._apply_existing_combo_value(self.product_combo, product_id, product_name)
+        if injected:
             self._product_stage_by_id[product_id] = normalize_product_stage_ui(
                 self._initial_data.get("product_stage")
             )
             self._product_code_by_id[product_id] = product_code
-            self.product_combo.addItem(f"{product_name or product_id}（目前值）", product_id)
-            set_combo_current_data(self.product_combo, product_id)
 
         if product_id:
             # Sync product code display
@@ -674,12 +653,14 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin
             if self._is_edit:
                 event_service.update_anomaly(self._anomaly_id, payload)
                 self.attachment_editor.save_to_anomaly(self._anomaly_id)
+                self._warn_if_attachment_rename_failures()
                 QMessageBox.information(self, "成功", localize_popup_message("異常資料已更新"))
             else:
                 result = event_service.create_anomaly_with_visit_link(payload)
                 anomaly_id = str(result.get("anomaly_id") or "").strip()
                 if anomaly_id:
                     self.attachment_editor.save_to_anomaly(anomaly_id)
+                    self._warn_if_attachment_rename_failures()
                 visit_action = result.get("visit_action", "none")
                 if visit_action == "created":
                     visit_text = "訪廠已新建"
@@ -702,4 +683,13 @@ class NewAnomalyDialog(QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin
                 self,
                 "錯誤",
                 localize_popup_message(f"建立異常失敗：{localize_exception(exc)}"),
+            )
+
+    def _warn_if_attachment_rename_failures(self) -> None:
+        failures = self.attachment_editor._last_rename_failures
+        if failures:
+            QMessageBox.warning(
+                self,
+                "附件改名失敗",
+                "以下附件改名未成功，檔名可能維持原狀：\n" + "\n".join(failures),
             )

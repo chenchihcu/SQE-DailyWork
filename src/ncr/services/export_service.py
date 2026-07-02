@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
-import sqlite3
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -17,6 +17,8 @@ from ncr.models.defect import (
     STATS_SECTION_DEFINITIONS,
     build_stats_headers,
 )
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parents[3] / "Outputs"
 
@@ -53,8 +55,6 @@ def _normalize_rows(rows: Iterable) -> list[dict]:
     for row in rows:
         if isinstance(row, dict):
             normalized.append(row)
-        elif isinstance(row, sqlite3.Row):
-            normalized.append(dict(row))
         else:
             normalized.append(dict(row))
     return normalized
@@ -358,6 +358,7 @@ def export_ncr_excel_report(
         workbook.save(output_path)
         return True, f"已匯出至：{output_path}"
     except Exception as exc:
+        logger.exception("匯出不合格品 Excel 報表失敗")
         return False, f"匯出不合格品 Excel 報表失敗：{exc}"
 
 

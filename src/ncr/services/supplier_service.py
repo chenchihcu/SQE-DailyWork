@@ -7,6 +7,7 @@ from typing import Any
 from ncr.db import crud
 from ncr.models.defect import SUPPLIER_CATEGORY_OPTIONS
 from ncr.models.labels import VALIDATION_OPTION_INVALID, VALIDATION_REQUIRED, LABEL_SUPPLIER_NAME, LABEL_SUPPLIER_TYPE
+from ncr.services.service_helpers import unique_violation_as_value_error
 
 
 def validate_supplier_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -31,24 +32,16 @@ def validate_supplier_data(data: dict[str, Any]) -> dict[str, Any]:
 def create_supplier(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
     normalized = validate_supplier_data(data)
     normalized["created_at"] = datetime.now().isoformat(timespec="seconds")
-    try:
+    with unique_violation_as_value_error(f"供應商名稱 '{normalized['name']}' 已存在。"):
         return crud.insert_supplier(conn, normalized)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise ValueError(f"供應商名稱 '{normalized['name']}' 已存在。") from exc
-        raise
 
 
 def update_supplier(
     conn: sqlite3.Connection, supplier_id: int, data: dict[str, Any]
 ) -> None:
     normalized = validate_supplier_data(data)
-    try:
+    with unique_violation_as_value_error(f"供應商名稱 '{normalized['name']}' 已存在。"):
         crud.update_supplier(conn, supplier_id, normalized)
-    except sqlite3.IntegrityError as exc:
-        if "UNIQUE constraint failed" in str(exc):
-            raise ValueError(f"供應商名稱 '{normalized['name']}' 已存在。") from exc
-        raise
 
 
 def delete_supplier(conn: sqlite3.Connection, supplier_id: int) -> None:

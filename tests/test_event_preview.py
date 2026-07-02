@@ -40,7 +40,7 @@ class EventPreviewTests(unittest.TestCase):
         preview_action = [a for a in menu.actions() if a.text() == "預覽內容"][0]
         self.assertEqual(action_map[preview_action], ACTION_PREVIEW_VISIT)
 
-    @patch("ui.widgets.defect_form_widget.event_service.list_active_suppliers", return_value=[])
+    @patch("services.event_service.list_active_suppliers", return_value=[])
     def test_anomaly_dialog_read_only_mode(self, mock_suppliers):
         dialog = NewAnomalyDialog(read_only=True)
         # Check some key widgets
@@ -50,7 +50,7 @@ class EventPreviewTests(unittest.TestCase):
         self.assertEqual(dialog.save_button.text(), "關閉")
         self.assertFalse(dialog.attachment_editor.add_button.isEnabled())
 
-    @patch("ui.widgets.defect_form_widget.event_service.list_active_suppliers", return_value=[])
+    @patch("services.event_service.list_active_suppliers", return_value=[])
     def test_visit_dialog_read_only_mode(self, mock_suppliers):
         dialog = NewVisitDialog(read_only=True)
         self.assertFalse(dialog.date_edit.isEnabled())

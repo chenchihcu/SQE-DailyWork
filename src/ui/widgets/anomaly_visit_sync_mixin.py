@@ -14,7 +14,7 @@ from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from services import event_service
-from ui.widgets.common_widgets import set_combo_current_data
+from ui.widgets.common_widgets import safe_ui_operation, set_combo_current_data
 from ui.widgets.defect_form_widgets import VisitSelectionDialog, set_tone
 
 
@@ -171,16 +171,19 @@ class _AnomalyVisitSyncMixin:
         if ans != QMessageBox.StandardButton.Yes:
             return
 
-        try:
+        def _unlink() -> None:
             event_service.update_anomaly_link(self._anomaly_id, None)
             self._initial_data["visit_id"] = None
             self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
             self._linked_visit_label.setVisible(False)
             self.unlink_visit_button.setVisible(False)
-            QMessageBox.information(self, "成功", "已取消連結訪廠紀錄")
-        except Exception as exc:
-            logger.exception("Failed to unlink visit")
-            QMessageBox.critical(self, "錯誤", f"取消連結失敗：{exc}")
+
+        safe_ui_operation(
+            self,
+            _unlink,
+            success_msg="已取消連結訪廠紀錄",
+            logger_msg="Failed to unlink visit",
+        )
 
     # ── 關聯訪廠 ─────────────────────────────────────────
 
@@ -198,7 +201,7 @@ class _AnomalyVisitSyncMixin:
             visit_id = dialog.selected_visit_id
             visit_date = dialog.selected_visit_date
 
-            try:
+            def _link() -> None:
                 # 1. Update linkage in DB
                 event_service.update_anomaly_link(self._anomaly_id, visit_id)
 
@@ -249,7 +252,9 @@ class _AnomalyVisitSyncMixin:
                     self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
                     self._linked_visit_label.setVisible(False)
 
-                QMessageBox.information(self, "成功", "已成功關聯訪廠紀錄")
-            except Exception as exc:
-                logger.exception("Failed to update anomaly link")
-                QMessageBox.critical(self, "錯誤", f"關聯失敗：{exc}")
+            safe_ui_operation(
+                self,
+                _link,
+                success_msg="已成功關聯訪廠紀錄",
+                logger_msg="Failed to update anomaly link",
+            )

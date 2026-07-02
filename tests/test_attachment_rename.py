@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 from services import attachment_manager
 
 def test_rename_attachment(tmp_path, monkeypatch):
@@ -90,3 +93,42 @@ def test_clear_caption_on_rename(tmp_path, monkeypatch):
     captions = attachment_manager.get_anomaly_captions(anomaly_id)
     assert "new.jpg" not in captions
     assert not captions
+
+
+def test_rename_rollback_failure_logs_error_not_warning(tmp_path, monkeypatch, caplog):
+    """Regression test for audit finding A12: if the case-only-rename
+    rollback itself fails, this must be logged at ERROR (not WARNING) so it
+    surfaces in default log filtering, and it must still return False."""
+    monkeypatch.setattr(attachment_manager, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(
+        attachment_manager, "ANOMALY_ATTACHMENT_ROOT", tmp_path / "attachments" / "anomaly"
+    )
+
+    anomaly_id = "test_rollback_failure"
+    src_img = tmp_path / "UPPER.JPG"
+    src_img.write_bytes(b"data")
+    attachment_manager.import_anomaly_attachments(anomaly_id, [src_img])
+
+    real_rename = Path.rename
+    call_count = {"n": 0}
+
+    def _flaky_rename(self, target):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # First rename (old -> temp) succeeds normally.
+            return real_rename(self, target)
+        # Every rename after that (temp -> new, and the rollback attempt
+        # temp -> old) fails, forcing the rollback-failure branch.
+        raise OSError("simulated failure")
+
+    monkeypatch.setattr(Path, "rename", _flaky_rename)
+
+    with caplog.at_level(logging.ERROR, logger=attachment_manager.__name__):
+        success = attachment_manager.rename_anomaly_attachment(
+            anomaly_id, "UPPER.JPG", "upper.jpg"
+        )
+
+    assert success is False
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_records, "rollback failure must be logged at ERROR level"
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)

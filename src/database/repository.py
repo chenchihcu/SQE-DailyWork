@@ -8,8 +8,9 @@ import re
 import uuid
 
 logger = logging.getLogger(__name__)
-from datetime import date, datetime, timezone
-from typing import Any, TypedDict
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Any
 
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
@@ -462,10 +463,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "visits", "dispensing_process", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "visits", "functional_test", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "visits", "packaging_requirement", "INTEGER NOT NULL DEFAULT 0")
-    for legacy_col, state_col in zip(
-        VISIT_TECH_TRANSFER_ITEM_COLUMNS,
-        VISIT_TECH_TRANSFER_STATE_COLUMNS,
-    ):
+    for state_col in VISIT_TECH_TRANSFER_STATE_COLUMNS:
         _ensure_column(conn, "visits", state_col, "TEXT NOT NULL DEFAULT 'no'")
     if get_migration_meta(conn, "tech_transfer_state_backfill_v1") != "1":
         for legacy_col, state_col in zip(
@@ -1216,11 +1214,10 @@ def list_suppliers(conn: sqlite3.Connection, *, include_inactive: bool = True) -
         SELECT id, supplier_name, contact_name, department, phone, contact_email, is_active, created_at, updated_at
         FROM suppliers
     """
-    params: list[Any] = []
     if not include_inactive:
         sql += " WHERE is_active = 1"
     sql += " ORDER BY supplier_name COLLATE NOCASE, created_at"
-    rows = conn.execute(sql, params).fetchall()
+    rows = conn.execute(sql).fetchall()
     items: list[dict] = []
     for row in rows:
         item = dict(row)
@@ -2046,38 +2043,51 @@ def consolidate_suppliers(
         raise
 
 
-def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) -> list[dict]:
-    product_stage_sql = (
+def _product_select_fragments(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Shared SELECT/JOIN fragments for product-stage and secondary-supplier
+    columns, used by list_products / get_product / list_active_products_for_supplier.
+    Centralizes the _has_column probing so schema-migration state is checked
+    once per call site instead of being re-derived independently in each
+    function (audit finding D2)."""
+    stage_sql = (
         "p.product_stage"
         if _has_column(conn, "products", "product_stage")
         else "'量產'"
     )
-    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
-    secondary_supplier_select_sql = (
-        "p.secondary_supplier_id"
-        if has_secondary_supplier_id
-        else "NULL"
+    has_secondary = _has_column(conn, "products", "secondary_supplier_id")
+    secondary_select_sql = "p.secondary_supplier_id" if has_secondary else "NULL"
+    secondary_name_sql = "ss.supplier_name" if has_secondary else "NULL"
+    join_sql = (
+        " LEFT JOIN suppliers ss ON ss.id = p.secondary_supplier_id"
+        if has_secondary
+        else ""
     )
-    secondary_supplier_name_select_sql = (
-        "ss.supplier_name"
-        if has_secondary_supplier_id
-        else "NULL"
-    )
+    return {
+        "stage_sql": stage_sql,
+        "has_secondary": has_secondary,
+        "secondary_select_sql": secondary_select_sql,
+        "secondary_name_sql": secondary_name_sql,
+        "join_sql": join_sql,
+    }
+
+
+def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) -> list[dict]:
+    frag = _product_select_fragments(conn)
     sql = """
         SELECT
             p.id AS id,
             p.product_code AS product_code,
             p.product_name AS product_name,
             """
-    sql += f"{product_stage_sql} AS product_stage,"
+    sql += f"{frag['stage_sql']} AS product_stage,"
     sql += """
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
             """
-    sql += f"{secondary_supplier_select_sql} AS secondary_supplier_id,"
+    sql += f"{frag['secondary_select_sql']} AS secondary_supplier_id,"
     sql += """
             """
-    sql += f"{secondary_supplier_name_select_sql} AS secondary_supplier_name,"
+    sql += f"{frag['secondary_name_sql']} AS secondary_supplier_name,"
     sql += """
             p.is_active AS is_active,
             p.created_at AS created_at,
@@ -2085,8 +2095,7 @@ def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) ->
         FROM products p
         LEFT JOIN suppliers s ON s.id = p.supplier_id
     """
-    if has_secondary_supplier_id:
-        sql += " LEFT JOIN suppliers ss ON ss.id = p.secondary_supplier_id"
+    sql += frag["join_sql"]
     params: list[Any] = []
     if not include_inactive:
         sql += " WHERE p.is_active = 1"
@@ -2107,39 +2116,24 @@ def get_product(conn: sqlite3.Connection, product_id: str) -> dict | None:
     product_key = (product_id or "").strip()
     if not product_key:
         return None
-    product_stage_sql = (
-        "p.product_stage"
-        if _has_column(conn, "products", "product_stage")
-        else "'量產'"
-    )
-    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
-    secondary_supplier_select_sql = (
-        "p.secondary_supplier_id"
-        if has_secondary_supplier_id
-        else "NULL"
-    )
-    secondary_supplier_name_select_sql = (
-        "ss.supplier_name"
-        if has_secondary_supplier_id
-        else "NULL"
-    )
+    frag = _product_select_fragments(conn)
     row = conn.execute(
         f"""
         SELECT
             p.id AS id,
             p.product_code AS product_code,
             p.product_name AS product_name,
-            {product_stage_sql} AS product_stage,
+            {frag['stage_sql']} AS product_stage,
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
-            {secondary_supplier_select_sql} AS secondary_supplier_id,
-            {secondary_supplier_name_select_sql} AS secondary_supplier_name,
+            {frag['secondary_select_sql']} AS secondary_supplier_id,
+            {frag['secondary_name_sql']} AS secondary_supplier_name,
             p.is_active AS is_active,
             p.created_at AS created_at,
             p.updated_at AS updated_at
         FROM products p
         LEFT JOIN suppliers s ON s.id = p.supplier_id
-        {'LEFT JOIN suppliers ss ON ss.id = p.secondary_supplier_id' if has_secondary_supplier_id else ''}
+        {frag['join_sql']}
         WHERE p.id = ?
         LIMIT 1
         """,
@@ -2472,41 +2466,26 @@ def list_active_products_for_supplier(
     normalized_supplier_id = (supplier_id or "").strip()
     if not normalized_supplier_id:
         return []
-    product_stage_sql = (
-        "p.product_stage"
-        if _has_column(conn, "products", "product_stage")
-        else "'量產'"
-    )
-    has_secondary_supplier_id = _has_column(conn, "products", "secondary_supplier_id")
-    secondary_supplier_select_sql = (
-        "p.secondary_supplier_id"
-        if has_secondary_supplier_id
-        else "NULL"
-    )
-    secondary_supplier_name_select_sql = (
-        "ss.supplier_name"
-        if has_secondary_supplier_id
-        else "NULL"
-    )
+    frag = _product_select_fragments(conn)
+    has_secondary_supplier_id = frag["has_secondary"]
     sql = """
         SELECT
             p.id AS id,
             p.product_code AS product_code,
             p.product_name AS product_name,
             """
-    sql += f"{product_stage_sql} AS product_stage,"
+    sql += f"{frag['stage_sql']} AS product_stage,"
     sql += """
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
             """
-    sql += f"{secondary_supplier_select_sql} AS secondary_supplier_id,"
-    sql += f"{secondary_supplier_name_select_sql} AS secondary_supplier_name"
+    sql += f"{frag['secondary_select_sql']} AS secondary_supplier_id,"
+    sql += f"{frag['secondary_name_sql']} AS secondary_supplier_name"
     sql += """
         FROM products p
         LEFT JOIN suppliers s ON s.id = p.supplier_id
     """
-    if has_secondary_supplier_id:
-        sql += " LEFT JOIN suppliers ss ON ss.id = p.secondary_supplier_id"
+    sql += frag["join_sql"]
     sql += " WHERE p.is_active = 1"
     params: list[Any] = []
     if has_secondary_supplier_id:
@@ -2570,29 +2549,31 @@ def ensure_supplier(
     return generated_id
 
 
-def create_anomaly(
+@dataclass
+class _AnomalyInputs:
+    normalized_supplier_id: str
+    normalized_date: str
+    resolved_product_id: str | None
+    resolved_product_name: str
+    normalized_product_stage: str
+    normalized_batch_qty: int
+
+
+def _prepare_anomaly_inputs(
     conn: sqlite3.Connection,
     *,
-    anomaly_date: str,
     supplier_id: str,
     problem_desc: str,
-    category: str = "",
-    product_lot_no: str = "",
-    product_id: str | None = None,
-    product_name: str = "",
-    product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
-    outsource_work_order: str = "",
-    batch_qty: int = 0,
-    visit_id: str | None = None,
-    pending_items: str = "",
-    responsible_person: str = "",
-    due_date: str = "",
-    rc_supplier_inventory: str = "unconfirmed",
-    rc_supplier_wip: str = "unconfirmed",
-    rc_in_transit: str = "unconfirmed",
-    rc_internal_inventory: str = "unconfirmed",
-    is_tech_transfer: bool = False,
-) -> str:
+    anomaly_date: str,
+    product_id: str | None,
+    product_name: str,
+    product_stage: str,
+    batch_qty: int,
+) -> _AnomalyInputs:
+    """Shared validation + normalization for create_anomaly and
+    create_anomaly_with_visit_link (audit finding D1). Both callers
+    previously duplicated this block verbatim; consolidating it here keeps
+    validation order and error messages identical across both entry points."""
     if not (problem_desc or "").strip():
         raise ValueError("Problem description is required")
     normalized_supplier_id = (supplier_id or "").strip()
@@ -2620,18 +2601,61 @@ def create_anomaly(
         batch_qty,
         field_name="Batch quantity",
     )
+    return _AnomalyInputs(
+        normalized_supplier_id=normalized_supplier_id,
+        normalized_date=normalized_date,
+        resolved_product_id=resolved_product_id,
+        resolved_product_name=resolved_product_name,
+        normalized_product_stage=normalized_product_stage,
+        normalized_batch_qty=normalized_batch_qty,
+    )
+
+
+def create_anomaly(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_date: str,
+    supplier_id: str,
+    problem_desc: str,
+    category: str = "",
+    product_lot_no: str = "",
+    product_id: str | None = None,
+    product_name: str = "",
+    product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
+    outsource_work_order: str = "",
+    batch_qty: int = 0,
+    visit_id: str | None = None,
+    pending_items: str = "",
+    responsible_person: str = "",
+    due_date: str = "",
+    rc_supplier_inventory: str = "unconfirmed",
+    rc_supplier_wip: str = "unconfirmed",
+    rc_in_transit: str = "unconfirmed",
+    rc_internal_inventory: str = "unconfirmed",
+    is_tech_transfer: bool = False,
+) -> str:
+    inputs = _prepare_anomaly_inputs(
+        conn,
+        supplier_id=supplier_id,
+        problem_desc=problem_desc,
+        anomaly_date=anomaly_date,
+        product_id=product_id,
+        product_name=product_name,
+        product_stage=product_stage,
+        batch_qty=batch_qty,
+    )
     anomaly_no = _insert_anomaly_row(
         conn,
-        anomaly_date=normalized_date,
-        supplier_id=normalized_supplier_id,
+        anomaly_date=inputs.normalized_date,
+        supplier_id=inputs.normalized_supplier_id,
         problem_desc=problem_desc,
         category=category,
         product_lot_no=product_lot_no,
-        product_id=resolved_product_id,
-        product_name=resolved_product_name,
-        product_stage=normalized_product_stage,
+        product_id=inputs.resolved_product_id,
+        product_name=inputs.resolved_product_name,
+        product_stage=inputs.normalized_product_stage,
         outsource_work_order=outsource_work_order,
-        batch_qty=normalized_batch_qty,
+        batch_qty=inputs.normalized_batch_qty,
         visit_id=visit_id,
         pending_items=pending_items,
         responsible_person=responsible_person,
@@ -2643,7 +2667,7 @@ def create_anomaly(
         is_tech_transfer=is_tech_transfer,
     )
     conn.commit()
-    refresh_monthly_cache(conn, normalized_date[:7].replace("-", ""))
+    refresh_monthly_cache(conn, inputs.normalized_date[:7].replace("-", ""))
     return anomaly_no
 
 
@@ -3479,33 +3503,22 @@ def create_anomaly_with_visit_link(
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
 ) -> dict[str, str | None]:
-    if not (problem_desc or "").strip():
-        raise ValueError("Problem description is required")
-    normalized_supplier_id = (supplier_id or "").strip()
-    if not normalized_supplier_id:
-        raise ValueError("Supplier is required")
-    if get_supplier(conn, normalized_supplier_id) is None:
-        raise ValueError("Supplier not found")
-
-    normalized_date = _normalize_strict_iso_date(
-        anomaly_date,
-        field_name="Anomaly date",
-    )
-    _ensure_date_not_in_future(normalized_date, field_name="Anomaly date")
-    resolved_product_id, resolved_product_name, resolved_product_stage = _resolve_product_selection(
+    inputs = _prepare_anomaly_inputs(
         conn,
-        supplier_id=normalized_supplier_id,
+        supplier_id=supplier_id,
+        problem_desc=problem_desc,
+        anomaly_date=anomaly_date,
         product_id=product_id,
-        fallback_name=product_name,
+        product_name=product_name,
+        product_stage=product_stage,
+        batch_qty=batch_qty,
     )
-    normalized_product_stage = _normalize_product_stage(
-        resolved_product_stage,
-        fallback=PRODUCT_STAGE_MASS_PRODUCTION,
-    )
-    normalized_batch_qty = _normalize_non_negative_int(
-        batch_qty,
-        field_name="Batch quantity",
-    )
+    normalized_supplier_id = inputs.normalized_supplier_id
+    normalized_date = inputs.normalized_date
+    resolved_product_id = inputs.resolved_product_id
+    resolved_product_name = inputs.resolved_product_name
+    normalized_product_stage = inputs.normalized_product_stage
+    normalized_batch_qty = inputs.normalized_batch_qty
     anomaly_no = _next_anomaly_no(conn, normalized_date)
 
     linked_visit_id: str | None = None
@@ -3936,14 +3949,12 @@ def get_dashboard_summary(conn: sqlite3.Connection) -> dict:
 
 
 def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
-    from datetime import date
     current_year = date.today().year
     current_month = date.today().month
 
     is_dynamic = (yyyymm in ("ALL", "YEAR", "HALF_YEAR"))
     if is_dynamic:
         month = yyyymm
-        yyyymm_prefix = ""
         if yyyymm == "ALL":
             anomaly_where = "1=1"
             visit_where = "1=1"
@@ -3970,278 +3981,139 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             anomaly_params = [str(current_year)]
             visit_params = [str(current_year)]
             closed_params = [str(current_year)]
-
-        visit_count = int(conn.execute(f"SELECT COUNT(*) AS c FROM visits WHERE {visit_where}", visit_params).fetchone()["c"])
-        row = conn.execute(
-            f"""
-            SELECT
-                COUNT(*) AS anomaly_count,
-                COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
-                COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_anomaly_count,
-                COUNT(CASE WHEN status = '待處理' AND visit_id IS NULL THEN 1 END) AS standalone_open_anomaly_count,
-                COUNT(CASE WHEN status = '待處理' AND visit_id IS NOT NULL THEN 1 END) AS visit_open_anomaly_count,
-                COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
-            FROM anomalies
-            WHERE {anomaly_where}
-            """,
-            anomaly_params,
-        ).fetchone()
-        closed_anomaly_count = int(row["closed_anomaly_count"])
-        anomaly_count = int(row["anomaly_count"])
-        open_anomaly_count = int(row["open_anomaly_count"])
-        standalone_open_anomaly_count = int(row["standalone_open_anomaly_count"])
-        visit_open_anomaly_count = int(row["visit_open_anomaly_count"])
-        overdue_open_anomaly_count = int(row["overdue_open_anomaly_count"])
-        supplier_coverage_count = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(DISTINCT supplier_id) AS c
-                FROM (
-                    SELECT supplier_id FROM anomalies WHERE {anomaly_where}
-                    UNION
-                    SELECT supplier_id FROM visits WHERE {visit_where}
-                )
-                """,
-                anomaly_params + visit_params,
-            ).fetchone()["c"]
-        )
     else:
         month = _normalize_month(yyyymm)
         refresh_monthly_cache(conn, month)
         yyyymm_prefix = f"{month[:4]}-{month[4:]}"
-        row = conn.execute(
-            """
-            SELECT yyyymm, visit_count, closed_anomaly_count
-            FROM monthly_stats_cache
-            WHERE yyyymm = ?
-            """,
-            (month,),
-        ).fetchone()
-        if row is None:
-            visit_count = 0
-            closed_anomaly_count = 0
-        else:
-            visit_count = int(row["visit_count"])
-            closed_anomaly_count = int(row["closed_anomaly_count"])
+        anomaly_where = "substr(anomaly_date, 1, 7) = ?"
+        visit_where = "substr(visit_date, 1, 7) = ?"
+        closed_where = "substr(COALESCE(closed_at, anomaly_date), 1, 7) = ?"
+        anomaly_params = [yyyymm_prefix]
+        visit_params = [yyyymm_prefix]
+        closed_params = [yyyymm_prefix]
 
-        anomaly_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM anomalies
-                WHERE substr(anomaly_date, 1, 7) = ?
-                """,
-                (yyyymm_prefix,),
-            ).fetchone()["c"]
-        )
-        open_anomaly_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM anomalies
-                WHERE status = '待處理'
-                  AND substr(anomaly_date, 1, 7) = ?
-                """,
-                (yyyymm_prefix,),
-            ).fetchone()["c"]
-        )
-        standalone_open_anomaly_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM anomalies
-                WHERE status = '待處理' AND visit_id IS NULL
-                  AND substr(anomaly_date, 1, 7) = ?
-                """,
-                (yyyymm_prefix,),
-            ).fetchone()["c"]
-        )
-        visit_open_anomaly_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM anomalies
-                WHERE status = '待處理' AND visit_id IS NOT NULL
-                  AND substr(anomaly_date, 1, 7) = ?
-                """,
-                (yyyymm_prefix,),
-            ).fetchone()["c"]
-        )
-        overdue_open_anomaly_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(*) AS c
-                FROM anomalies
-                WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime')
-                  AND substr(anomaly_date, 1, 7) = ?
-                """,
-                (yyyymm_prefix,),
-            ).fetchone()["c"]
-        )
-        supplier_coverage_count = int(
-            conn.execute(
-                """
-                SELECT COUNT(DISTINCT supplier_id) AS c
-                FROM (
-                    SELECT supplier_id FROM anomalies WHERE substr(anomaly_date, 1, 7) = ?
-                    UNION
-                    SELECT supplier_id FROM visits WHERE substr(visit_date, 1, 7) = ?
-                ) month_suppliers
-                """,
-                (yyyymm_prefix, yyyymm_prefix),
-            ).fetchone()["c"]
-        )
-
+    # Shared count block: both branches previously duplicated these queries
+    # with hardcoded vs. fragment-built WHERE clauses (audit finding D9).
+    visit_count = int(conn.execute(f"SELECT COUNT(*) AS c FROM visits WHERE {visit_where}", visit_params).fetchone()["c"])
+    row = conn.execute(
+        f"""
+        SELECT
+            COUNT(*) AS anomaly_count,
+            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' AND visit_id IS NULL THEN 1 END) AS standalone_open_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' AND visit_id IS NOT NULL THEN 1 END) AS visit_open_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
+        FROM anomalies
+        WHERE {anomaly_where}
+        """,
+        anomaly_params,
+    ).fetchone()
+    anomaly_count = int(row["anomaly_count"])
+    open_anomaly_count = int(row["open_anomaly_count"])
+    standalone_open_anomaly_count = int(row["standalone_open_anomaly_count"])
+    visit_open_anomaly_count = int(row["visit_open_anomaly_count"])
+    overdue_open_anomaly_count = int(row["overdue_open_anomaly_count"])
+    # closed_anomaly_count deliberately keeps its historical per-branch
+    # semantics: fixed months count anomalies CLOSED in the month (the
+    # monthly_stats_cache / KPI contract, cross-cohort close rate), while
+    # dynamic ranges count closures within the opened-in-range cohort.
+    # Do not unify these without a data-contract decision.
     if is_dynamic:
-        top_sql = f"""
-            WITH month_suppliers AS (
+        closed_anomaly_count = int(row["closed_anomaly_count"])
+    else:
+        closed_anomaly_count = int(
+            conn.execute(
+                f"SELECT COUNT(*) AS c FROM anomalies WHERE status = '已結案' AND {closed_where}",
+                closed_params,
+            ).fetchone()["c"]
+        )
+    supplier_coverage_count = int(
+        conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT supplier_id) AS c
+            FROM (
                 SELECT supplier_id FROM anomalies WHERE {anomaly_where}
                 UNION
                 SELECT supplier_id FROM visits WHERE {visit_where}
-                UNION
-                SELECT supplier_id FROM anomalies WHERE status = '已結案' AND {closed_where}
-            ),
-            month_anomalies AS (
-                SELECT 
-                    supplier_id, 
-                    COUNT(*) AS anomaly_count,
-                    AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_resolution_time
-                FROM anomalies
-                WHERE {anomaly_where}
-                GROUP BY supplier_id
-            ),
-            month_visits AS (
-                SELECT supplier_id, COUNT(*) AS visit_count
-                FROM visits
-                WHERE {visit_where}
-                GROUP BY supplier_id
-            ),
-            month_closed AS (
-                SELECT supplier_id, COUNT(*) AS closed_anomaly_count
-                FROM anomalies
-                WHERE status = '已結案' AND {closed_where}
-                GROUP BY supplier_id
-            ),
-            month_open AS (
-                SELECT 
-                    supplier_id, 
-                    COUNT(*) AS open_anomaly_count,
-                    SUM(CASE WHEN (visit_id IS NULL OR visit_id = '') THEN 1 ELSE 0 END) AS standalone_open_anomaly_count,
-                    SUM(CASE WHEN (visit_id IS NOT NULL AND visit_id <> '') THEN 1 ELSE 0 END) AS visit_open_anomaly_count
-                FROM anomalies
-                WHERE status = '待處理' AND {anomaly_where}
-                GROUP BY supplier_id
-            ),
-            month_overdue AS (
-                SELECT supplier_id, COUNT(*) AS overdue_open_anomaly_count
-                FROM anomalies
-                WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') AND {anomaly_where}
-                GROUP BY supplier_id
             )
+            """,
+            anomaly_params + visit_params,
+        ).fetchone()["c"]
+    )
+
+    top_sql = f"""
+        WITH month_suppliers AS (
+            SELECT supplier_id FROM anomalies WHERE {anomaly_where}
+            UNION
+            SELECT supplier_id FROM visits WHERE {visit_where}
+            UNION
+            SELECT supplier_id FROM anomalies WHERE status = '已結案' AND {closed_where}
+        ),
+        month_anomalies AS (
             SELECT
-                s.supplier_name AS supplier_name,
-                COALESCE(ma.anomaly_count, 0) AS anomaly_count,
-                COALESCE(mv.visit_count, 0) AS visit_count,
-                COALESCE(mc.closed_anomaly_count, 0) AS closed_anomaly_count,
-                COALESCE(mo.open_anomaly_count, 0) AS open_anomaly_count,
-                COALESCE(mod.overdue_open_anomaly_count, 0) AS overdue_open_anomaly_count,
-                COALESCE(mo.standalone_open_anomaly_count, 0) AS standalone_open_anomaly_count,
-                COALESCE(mo.visit_open_anomaly_count, 0) AS visit_open_anomaly_count,
-                COALESCE(ma.avg_resolution_time, 0) AS avg_resolution_time
-            FROM month_suppliers ms
-            JOIN suppliers s ON s.id = ms.supplier_id
-            LEFT JOIN month_anomalies ma ON ma.supplier_id = ms.supplier_id
-            LEFT JOIN month_visits mv ON mv.supplier_id = ms.supplier_id
-            LEFT JOIN month_closed mc ON mc.supplier_id = ms.supplier_id
-            LEFT JOIN month_open mo ON mo.supplier_id = ms.supplier_id
-            LEFT JOIN month_overdue mod ON mod.supplier_id = ms.supplier_id
-            ORDER BY
-                COALESCE(ma.anomaly_count, 0) DESC,
-                COALESCE(mv.visit_count, 0) DESC,
-                s.supplier_name COLLATE NOCASE ASC
-        """
-        top_params = tuple(anomaly_params + visit_params + closed_params + anomaly_params + visit_params + closed_params + anomaly_params + anomaly_params)
-    else:
-        top_sql = """
-            WITH month_suppliers AS (
-                SELECT supplier_id FROM anomalies WHERE substr(anomaly_date, 1, 7) = ?
-                UNION
-                SELECT supplier_id FROM visits WHERE substr(visit_date, 1, 7) = ?
-                UNION
-                SELECT supplier_id FROM anomalies WHERE status = '已結案' AND substr(COALESCE(closed_at, anomaly_date), 1, 7) = ?
-            ),
-            month_anomalies AS (
-                SELECT 
-                    supplier_id, 
-                    COUNT(*) AS anomaly_count,
-                    AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_resolution_time
-                FROM anomalies
-                WHERE substr(anomaly_date, 1, 7) = ?
-                GROUP BY supplier_id
-            ),
-            month_visits AS (
-                SELECT supplier_id, COUNT(*) AS visit_count
-                FROM visits
-                WHERE substr(visit_date, 1, 7) = ?
-                GROUP BY supplier_id
-            ),
-            month_closed AS (
-                SELECT supplier_id, COUNT(*) AS closed_anomaly_count
-                FROM anomalies
-                WHERE status = '已結案'
-                  AND substr(COALESCE(closed_at, anomaly_date), 1, 7) = ?
-                GROUP BY supplier_id
-            ),
-            month_open AS (
-                SELECT 
-                    supplier_id, 
-                    COUNT(*) AS open_anomaly_count,
-                    SUM(CASE WHEN (visit_id IS NULL OR visit_id = '') THEN 1 ELSE 0 END) AS standalone_open_anomaly_count,
-                    SUM(CASE WHEN (visit_id IS NOT NULL AND visit_id <> '') THEN 1 ELSE 0 END) AS visit_open_anomaly_count
-                FROM anomalies
-                WHERE status = '待處理'
-                  AND substr(anomaly_date, 1, 7) = ?
-                GROUP BY supplier_id
-            ),
-            month_overdue AS (
-                SELECT supplier_id, COUNT(*) AS overdue_open_anomaly_count
-                FROM anomalies
-                WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime')
-                  AND substr(anomaly_date, 1, 7) = ?
-                GROUP BY supplier_id
-            )
+                supplier_id,
+                COUNT(*) AS anomaly_count,
+                AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_resolution_time
+            FROM anomalies
+            WHERE {anomaly_where}
+            GROUP BY supplier_id
+        ),
+        month_visits AS (
+            SELECT supplier_id, COUNT(*) AS visit_count
+            FROM visits
+            WHERE {visit_where}
+            GROUP BY supplier_id
+        ),
+        month_closed AS (
+            SELECT supplier_id, COUNT(*) AS closed_anomaly_count
+            FROM anomalies
+            WHERE status = '已結案' AND {closed_where}
+            GROUP BY supplier_id
+        ),
+        month_open AS (
             SELECT
-                s.supplier_name AS supplier_name,
-                COALESCE(ma.anomaly_count, 0) AS anomaly_count,
-                COALESCE(mv.visit_count, 0) AS visit_count,
-                COALESCE(mc.closed_anomaly_count, 0) AS closed_anomaly_count,
-                COALESCE(mo.open_anomaly_count, 0) AS open_anomaly_count,
-                COALESCE(mod.overdue_open_anomaly_count, 0) AS overdue_open_anomaly_count,
-                COALESCE(mo.standalone_open_anomaly_count, 0) AS standalone_open_anomaly_count,
-                COALESCE(mo.visit_open_anomaly_count, 0) AS visit_open_anomaly_count,
-                COALESCE(ma.avg_resolution_time, 0) AS avg_resolution_time
-            FROM month_suppliers ms
-            JOIN suppliers s ON s.id = ms.supplier_id
-            LEFT JOIN month_anomalies ma ON ma.supplier_id = ms.supplier_id
-            LEFT JOIN month_visits mv ON mv.supplier_id = ms.supplier_id
-            LEFT JOIN month_closed mc ON mc.supplier_id = ms.supplier_id
-            LEFT JOIN month_open mo ON mo.supplier_id = ms.supplier_id
-            LEFT JOIN month_overdue mod ON mod.supplier_id = ms.supplier_id
-            ORDER BY
-                COALESCE(ma.anomaly_count, 0) DESC,
-                COALESCE(mv.visit_count, 0) DESC,
-                s.supplier_name COLLATE NOCASE ASC
-        """
-        top_params = (
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
-            yyyymm_prefix,
+                supplier_id,
+                COUNT(*) AS open_anomaly_count,
+                SUM(CASE WHEN (visit_id IS NULL OR visit_id = '') THEN 1 ELSE 0 END) AS standalone_open_anomaly_count,
+                SUM(CASE WHEN (visit_id IS NOT NULL AND visit_id <> '') THEN 1 ELSE 0 END) AS visit_open_anomaly_count
+            FROM anomalies
+            WHERE status = '待處理' AND {anomaly_where}
+            GROUP BY supplier_id
+        ),
+        month_overdue AS (
+            SELECT supplier_id, COUNT(*) AS overdue_open_anomaly_count
+            FROM anomalies
+            WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') AND {anomaly_where}
+            GROUP BY supplier_id
         )
+        SELECT
+            s.supplier_name AS supplier_name,
+            COALESCE(ma.anomaly_count, 0) AS anomaly_count,
+            COALESCE(mv.visit_count, 0) AS visit_count,
+            COALESCE(mc.closed_anomaly_count, 0) AS closed_anomaly_count,
+            COALESCE(mo.open_anomaly_count, 0) AS open_anomaly_count,
+            COALESCE(mod.overdue_open_anomaly_count, 0) AS overdue_open_anomaly_count,
+            COALESCE(mo.standalone_open_anomaly_count, 0) AS standalone_open_anomaly_count,
+            COALESCE(mo.visit_open_anomaly_count, 0) AS visit_open_anomaly_count,
+            COALESCE(ma.avg_resolution_time, 0) AS avg_resolution_time
+        FROM month_suppliers ms
+        JOIN suppliers s ON s.id = ms.supplier_id
+        LEFT JOIN month_anomalies ma ON ma.supplier_id = ms.supplier_id
+        LEFT JOIN month_visits mv ON mv.supplier_id = ms.supplier_id
+        LEFT JOIN month_closed mc ON mc.supplier_id = ms.supplier_id
+        LEFT JOIN month_open mo ON mo.supplier_id = ms.supplier_id
+        LEFT JOIN month_overdue mod ON mod.supplier_id = ms.supplier_id
+        ORDER BY
+            COALESCE(ma.anomaly_count, 0) DESC,
+            COALESCE(mv.visit_count, 0) DESC,
+            s.supplier_name COLLATE NOCASE ASC
+    """
+    top_params = tuple(
+        anomaly_params + visit_params + closed_params
+        + anomaly_params + visit_params + closed_params
+        + anomaly_params + anomaly_params
+    )
 
     top_supplier_rows = conn.execute(top_sql, top_params).fetchall()
     top_suppliers_by_anomaly: list[dict] = []
@@ -4353,7 +4225,6 @@ def get_anomaly_trend(conn: sqlite3.Connection, months: int = 6) -> list[dict]:
 
 def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[dict]:
     """Aggregate anomaly counts and average resolution time by responsible person."""
-    from datetime import date
     current_year = date.today().year
     current_month = date.today().month
 
@@ -4615,7 +4486,6 @@ def _insert_anomaly_row(
         field_name="Anomaly date",
     )
     _ensure_date_not_in_future(normalized_date, field_name="Anomaly date")
-    resolved_anomaly_no = anomaly_no or _next_anomaly_no(conn, normalized_date)
     normalized_product_stage = _normalize_product_stage(product_stage)
     normalized_batch_qty = _normalize_non_negative_int(
         batch_qty,
@@ -4624,44 +4494,70 @@ def _insert_anomaly_row(
     normalized_due_date = _normalize_optional_iso_date(
         due_date, field_name="Due date"
     )
-    conn.execute(
-        """
-        INSERT INTO anomalies(
-            id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
-            category, product_lot_no, product_name, product_stage, outsource_work_order, batch_qty,
-            status, improvement_desc, closed_at, created_at, updated_at,
-            pending_items, responsible_person, due_date,
-            rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
-            is_tech_transfer
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            _gen_id(),
-            resolved_anomaly_no,
-            normalized_date,
-            supplier_id,
-            visit_id,
-            (product_id or "").strip() or None,
-            problem_desc.strip(),
-            (category or "").strip(),
-            (product_lot_no or "").strip(),
-            (product_name or "").strip(),
-            normalized_product_stage,
-            (outsource_work_order or "").strip(),
-            normalized_batch_qty,
-            _now_iso(),
-            _now_iso(),
-            (pending_items or "").strip(),
-            (responsible_person or "").strip(),
-            normalized_due_date,
-            (rc_supplier_inventory or "unconfirmed").strip(),
-            (rc_supplier_wip or "unconfirmed").strip(),
-            (rc_in_transit or "unconfirmed").strip(),
-            (rc_internal_inventory or "unconfirmed").strip(),
-            1 if is_tech_transfer else 0,
-        ),
-    )
-    return resolved_anomaly_no
+
+    def _do_insert(resolved_no: str) -> None:
+        conn.execute(
+            """
+            INSERT INTO anomalies(
+                id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
+                category, product_lot_no, product_name, product_stage, outsource_work_order, batch_qty,
+                status, improvement_desc, closed_at, created_at, updated_at,
+                pending_items, responsible_person, due_date,
+                rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
+                is_tech_transfer
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _gen_id(),
+                resolved_no,
+                normalized_date,
+                supplier_id,
+                visit_id,
+                (product_id or "").strip() or None,
+                problem_desc.strip(),
+                (category or "").strip(),
+                (product_lot_no or "").strip(),
+                (product_name or "").strip(),
+                normalized_product_stage,
+                (outsource_work_order or "").strip(),
+                normalized_batch_qty,
+                _now_iso(),
+                _now_iso(),
+                (pending_items or "").strip(),
+                (responsible_person or "").strip(),
+                normalized_due_date,
+                (rc_supplier_inventory or "unconfirmed").strip(),
+                (rc_supplier_wip or "unconfirmed").strip(),
+                (rc_in_transit or "unconfirmed").strip(),
+                (rc_internal_inventory or "unconfirmed").strip(),
+                1 if is_tech_transfer else 0,
+            ),
+        )
+
+    if anomaly_no:
+        # Caller already reserved this number (e.g. create_anomaly_with_visit_link
+        # embeds it into a visit summary text before reaching here), so a
+        # collision here is a genuine caller bug, not a race -- retrying with a
+        # different number would desync it from that already-written text.
+        _do_insert(anomaly_no)
+        return anomaly_no
+
+    # No anomaly_no supplied (create_anomaly's direct path): generate + insert
+    # with retry-on-collision, mirroring _apply_key_updates' UNIQUE-collision
+    # retry pattern (audit finding A7).
+    max_retries = 3
+    last_exc: sqlite3.IntegrityError | None = None
+    for _attempt in range(max_retries):
+        resolved_anomaly_no = _next_anomaly_no(conn, normalized_date)
+        try:
+            _do_insert(resolved_anomaly_no)
+            return resolved_anomaly_no
+        except sqlite3.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc) and "anomaly_no" in str(exc):
+                last_exc = exc
+                continue
+            raise
+    raise last_exc
 
 
 def _normalize_visit_product_sections(

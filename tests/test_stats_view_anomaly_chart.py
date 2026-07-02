@@ -16,7 +16,15 @@ from PySide6.QtCharts import (
 )
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QTabWidget,
+)
 
 from services import event_service
 from ui.layout_constants import SCROLLBAR_WIDTH
@@ -185,15 +193,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             )
         )
         labels = [label.text() for label in widget.findChildren(QLabel)]
+        self.assertIn("供應商事件趨勢分析 (過去 6 個月)", labels)
+        self.assertIn("供應商事件責任人績效 (總件數 vs 平均處理時效)", labels)
         self.assertIn("供應商事件風險堆疊圖", labels)
-        self.assertEqual(
-            [
-                "供應商事件趨勢",
-                "事件責任人績效",
-                "供應商事件風險",
-            ],
-            [widget.tabs.tabText(index) for index in range(widget.tabs.count())],
-        )
+        self.assertEqual([], widget.findChildren(QTabWidget))
+        self.assertEqual("statsInfoBanner", widget.info_banner.property("role"))
 
     def test_stats_view_shortens_long_supplier_labels_and_disables_axis_truncation(self) -> None:
         summary = {
@@ -277,13 +281,10 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         widget, _host = self._build_widget(summary, month=QDate(2026, 8, 1))
 
         self.assertEqual(
-            {
-                "StatsTrendScrollArea",
-                "StatsResponsibleScrollArea",
-                "StatsSupplierRiskScrollArea",
-            },
+            {"StatsTrendScrollArea"},
             {scroll.objectName() for scroll in widget.findChildren(QScrollArea)},
         )
+        self.assertEqual([], widget.findChildren(QTabWidget))
 
         value_axis = next(
             axis
@@ -436,19 +437,15 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertLessEqual(widget.minimumSizeHint().width(), 1024)
         self.assertLessEqual(widget.minimumSizeHint().height(), 680)
         self.assertFalse(hasattr(widget, "defect_container"))
+        self.assertFalse(hasattr(widget, "tabs"))
         self.assertEqual("StatsView", widget.objectName())
-        self.assertEqual("StatsTabs", widget.tabs.objectName())
-        self.assertFalse(widget.tabs.isVisible())
+        self.assertEqual([], widget.findChildren(QTabWidget))
         self.assertIsNone(widget.findChild(QFrame, "StatsDecisionSummary"))
         self.assertGreaterEqual(SCROLLBAR_WIDTH, 8)
 
         scrolls = {scroll.objectName(): scroll for scroll in widget.findChildren(QScrollArea)}
         self.assertEqual(
-            {
-                "StatsTrendScrollArea",
-                "StatsResponsibleScrollArea",
-                "StatsSupplierRiskScrollArea",
-            },
+            {"StatsTrendScrollArea"},
             set(scrolls),
         )
         for scroll in scrolls.values():

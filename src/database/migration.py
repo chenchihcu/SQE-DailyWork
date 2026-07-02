@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from database.product_stage import normalize_product_stage_ui
+from database.repo_helpers import _as_int, _table_exists
 from database.repository import (
     count_rows,
     create_schema,
@@ -21,17 +22,10 @@ from database.repository import (
 )
 
 
-def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
-        (name,),
-    ).fetchone()
-    return row is not None
-
-
 def _pick(row: sqlite3.Row, *keys: str, default: Any = "") -> Any:
+    row_keys = row.keys()
     for key in keys:
-        if key in row.keys():
+        if key in row_keys:
             value = row[key]
             if value is not None and str(value).strip() != "":
                 return value
@@ -52,13 +46,6 @@ def _as_bool_int(value: Any) -> int:
         return 1 if value else 0
     text = str(value).strip().lower()
     return 1 if text in {"1", "true", "yes", "y"} else 0
-
-
-def _as_int(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _legacy_visit_product_id(v2_conn: sqlite3.Connection, row: sqlite3.Row) -> str | None:

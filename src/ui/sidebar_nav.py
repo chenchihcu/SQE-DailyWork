@@ -65,6 +65,20 @@ _NAV_GROUPS = [
 ]
 
 
+def _tint_pixmap(base: QPixmap, color: str) -> QPixmap:
+    """Recolor every opaque pixel of ``base`` to ``color`` via SourceIn
+    compositing. Shared by the SVG nav-icon tint and the PNG logo whitening,
+    which previously each hand-rolled this sequence (audit finding D19)."""
+    tinted = QPixmap(base.size())
+    tinted.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(tinted)
+    painter.drawPixmap(0, 0, base)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(tinted.rect(), QColor(color))
+    painter.end()
+    return tinted
+
+
 @lru_cache(maxsize=32)
 def _render_tinted_nav_icon(
     asset_name: str, color: str, size: int = _NAV_ICON_SIZE
@@ -77,14 +91,7 @@ def _render_tinted_nav_icon(
         painter = QPainter(base)
         renderer.render(painter, QRectF(0, 0, size, size))
         painter.end()
-    tinted = QPixmap(base.size())
-    tinted.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(tinted)
-    painter.drawPixmap(0, 0, base)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(tinted.rect(), QColor(color))
-    painter.end()
-    return tinted
+    return _tint_pixmap(base, color)
 
 
 class _NavButton(QPushButton):
@@ -245,14 +252,7 @@ class SidebarNav(QFrame):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        white = QPixmap(scaled.size())
-        white.fill(Qt.GlobalColor.transparent)
-        p = QPainter(white)
-        p.drawPixmap(0, 0, scaled)
-        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-        p.fillRect(white.rect(), QColor("#FFFFFF"))
-        p.end()
-        return white
+        return _tint_pixmap(scaled, "#FFFFFF")
 
     def _build_logo_section(self) -> QWidget:
         section = QWidget()

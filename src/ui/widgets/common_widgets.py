@@ -78,14 +78,6 @@ def safe_ui_operation(
     return None
 
 
-def create_page_shell(parent: QWidget | None = None) -> QWidget:
-    shell = QWidget(parent)
-    layout = QVBoxLayout(shell)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(22)
-    return shell
-
-
 def create_section_card(parent: QWidget | None = None) -> QFrame:
     card = QFrame(parent)
     card.setProperty("role", "panel")
@@ -93,27 +85,6 @@ def create_section_card(parent: QWidget | None = None) -> QFrame:
     layout.setContentsMargins(*PANEL_MARGINS)
     layout.setSpacing(12)
     return card
-
-
-def create_form_grid() -> QGridLayout:
-    grid = QGridLayout()
-    grid.setHorizontalSpacing(GRID_GUTTER)
-    grid.setVerticalSpacing(ROW_GAP)
-    return grid
-
-
-def set_button_role(button: QPushButton, role: str) -> None:
-    role_to_variant = {
-        "primary": "primary",
-        "secondary": "secondary",
-        "reset": "secondary",
-        "danger": "danger",
-    }
-    button.setProperty("variant", role_to_variant.get(role, role))
-    style = button.style()
-    style.unpolish(button)
-    style.polish(button)
-    apply_clickable_affordance(button)
 
 
 class _ClickableCursorFilter(QObject):
@@ -184,15 +155,6 @@ def align_table_header_left(table: QTableWidget) -> None:
     )
 
 
-def display_text(value: object) -> str:
-    text = str(value or "").strip()
-    return text or EMPTY_DISPLAY
-
-
-def create_status_badge(status: str) -> "StatusBadge":
-    return StatusBadge(status)
-
-
 def create_status_item(status: str) -> QTableWidgetItem:
     text = str(status or "").strip() or EMPTY_DISPLAY
     palette = get_status_palette(text)
@@ -256,25 +218,6 @@ class KpiCard(QFrame):
 
     def set_value(self, value: str | int):
         self.value_label.setText(str(value))
-
-
-class StatusBadge(QWidget):
-    """Pill-style status badge for table cells. Container is transparent so row colors show through."""
-
-    def __init__(self, status_text: str, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAutoFillBackground(False)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 3, 0, 3)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        label = QLabel(status_text or "—")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setProperty("role", "statusBadge")
-        label.setProperty("tone", get_status_tone(status_text))
-        layout.addWidget(label)
 
 
 class RequiredFieldLabel(QLabel):
@@ -556,3 +499,20 @@ class SupplierProductFormMixin:
 
     def _on_product_changed_post(self) -> None:
         pass
+
+    def _apply_existing_combo_value(
+        self, combo: QComboBox, item_id: str, label: str
+    ) -> bool:
+        """Ensure combo currently selects item_id, injecting a synthetic
+        "<label>（目前值）" entry if item_id isn't among the combo's loaded
+        options (e.g. the linked supplier/product was later deactivated).
+        Returns True if a synthetic entry was injected, so callers know
+        whether they need to populate related per-id caches like
+        _product_stage_by_id for that id (audit finding D6)."""
+        if not item_id:
+            return False
+        if set_combo_current_data(combo, item_id):
+            return False
+        combo.addItem(f"{label or item_id}（目前值）", item_id)
+        set_combo_current_data(combo, item_id)
+        return True

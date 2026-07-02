@@ -60,6 +60,7 @@ _STATUS_TONE_MAP = {
     "停用": "danger",
     "INACTIVE": "danger",
     "待處理": "pending",
+    "處理中": "pending",
     "OPEN": "pending",
     "已結案": "success",
     "已完成": "success",

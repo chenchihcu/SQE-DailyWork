@@ -290,7 +290,7 @@ def _build_product_lookup_by_supplier_and_name(
             secondary_supplier_id,
             trim(product_name) AS product_name
         FROM products
-        WHERE trim(product_name) <> ''
+        WHERE trim(product_name) <> '' AND is_active = 1
         """
     ).fetchall()
     lookup: dict[tuple[str, str], str | None] = {}

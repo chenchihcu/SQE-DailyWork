@@ -55,6 +55,20 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         self.assertIn(f'background: {TOKENS["nav_dark_bg"]};', selected)
         self.assertIn(f'color: {TOKENS["nav_dark_text_active"]};', selected)
 
+    def test_retired_stats_tabs_qss_is_not_reintroduced(self) -> None:
+        qss = get_theme_qss()
+        self.assertNotIn("StatsTabs", qss)
+
+    def test_stats_dashboard_shared_roles_are_styled(self) -> None:
+        qss = get_theme_qss()
+        banner = _selector_block(qss, 'QFrame[role="statsInfoBanner"]')
+        self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', banner)
+        self.assertIn(f'border: 1px solid {TOKENS["border"]};', banner)
+
+        insight = _selector_block(qss, 'QLabel[role="insight"]')
+        self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', insight)
+        self.assertIn(f'border-left: 4px solid {TOKENS["info"]};', insight)
+
     def test_semantic_button_colors_are_preserved(self) -> None:
         qss = get_theme_qss()
 

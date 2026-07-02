@@ -19,6 +19,7 @@ from ui.design_tokens import PALETTE
 from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.theme import TOKENS
 from ui.widgets.chart_style import apply_chart_surface
+from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 # Chart colour aliases sourced from shared design_tokens so theme updates propagate.
 _C_DANGER = QColor(PALETTE["danger_chart"])       # 報廢 / 高風險
@@ -27,26 +28,12 @@ _C_INFO = QColor(PALETTE["info_chart"])            # 廠內退料 / Top 供應�
 _C_PENDING = QColor(PALETTE["pending_chart"])      # 託外退料
 _C_NA = QColor(PALETTE["na_chart"])               # 未分類 / 預設
 
-SUPPLIER_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
 CHART_AXIS_TITLE_POINT_SIZE = 11
 
 
 class _NcrStatsChartMixin:
     """Mixin providing chart-building methods for NCR statistics widgets."""
-
-    @staticmethod
-    def _short_label(label: str, max_len: int = SUPPLIER_LABEL_MAX_LEN) -> str:
-        text = str(label or "").strip() or "-"
-        if len(text) <= max_len:
-            return text
-        return text[:max_len - 1] + "…"
-
-    @staticmethod
-    def _dedupe_labels(labels: list[str]) -> list[str]:
-        if len(labels) == len(set(labels)):
-            return labels
-        return [f"{i + 1}. {label}" for i, label in enumerate(labels)]
 
     def _build_horizontal_bar_chart(
         self, rows: list[dict], name_key: str, title: str, color_hex: str
@@ -63,12 +50,12 @@ class _NcrStatsChartMixin:
         for r in data:
             name = r[name_key] or "未命名"
             qty = int(r["total_qty"] or 0)
-            categories.append(self._short_label(name, max_len=14))
+            categories.append(short_chart_label(name, max_len=14))
             bar_set.append(qty)
             if qty > max_qty:
                 max_qty = qty
 
-        categories = self._dedupe_labels(categories)
+        categories = dedupe_chart_labels(categories)
 
         series = QHorizontalBarSeries()
         series.append(bar_set)

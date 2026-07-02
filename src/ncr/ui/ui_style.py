@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -33,6 +33,7 @@ from PySide6.QtWidgets import QStyledItemDelegate
 # Single source of truth for the CJK font fallback chain lives in ui.theme; the NCR
 # module reuses it instead of maintaining a second, divergent list.
 from ui.theme import CJK_FONT_FAMILY_CSS, PREFERRED_CJK_FONT_FAMILIES
+from ui.status_colors import get_status_tone
 
 
 PAGE_MARGIN = 8
@@ -41,6 +42,9 @@ FIELD_SPACING_X = 20
 FIELD_SPACING_Y = 16
 FORM_TWO_COLUMN_SPACING = 24
 DEFECT_FORM_CONTENT_MARGINS = (16, 12, 16, 12)
+# Edit-dialog main-card inner padding; slightly roomier than the embedded
+# form card (audit finding D15: was hardcoded inline in DefectEditDialog).
+EDIT_DIALOG_CARD_MARGINS = (18, 16, 18, 16)
 LABEL_MIN_WIDTH = 92
 LABEL_TEXT_HORIZONTAL_PADDING = 18
 LABEL_WIDTH = LABEL_MIN_WIDTH
@@ -49,6 +53,11 @@ INPUT_HEIGHT = 30
 BUTTON_HEIGHT = 30
 ACTION_BUTTON_MIN_WIDTH = 96
 DIALOG_ACTION_BUTTON_MIN_WIDTH = 112
+# Filter-toolbar buttons (重置/查詢) are narrower than action buttons and get a
+# max width so the filter row stays compact (audit finding D14: was hardcoded
+# per-widget in defect_list.py).
+FILTER_BUTTON_MIN_WIDTH = 90
+FILTER_BUTTON_MAX_WIDTH = 110
 # Min width so "yyyy-MM-dd" + the calendar drop-down stay intact at 150% DPI
 # (geometry-audited via qt_visual_probe --scale 1.5; do not lower without re-checking).
 DATE_FIELD_MIN_WIDTH = 150
@@ -128,11 +137,6 @@ COLOR_SIDEBAR_BG = _P["sidebar_bg"]
 COLOR_SIDEBAR_PANEL = _P["sidebar_panel"]
 COLOR_SIDEBAR_TEXT = _P["sidebar_text"]
 COLOR_SIDEBAR_MUTED = _P["sidebar_muted"]
-
-STATUS_BADGE_COLORS: dict[str, tuple[str, str, str]] = {
-    "處理中": (COLOR_INFO_TEXT, COLOR_INFO_BG, COLOR_INFO_BORDER),
-    "已結案": (COLOR_SUCCESS_TEXT, COLOR_SUCCESS_BG, COLOR_SUCCESS_BORDER),
-}
 
 # Status-bar feedback timeouts (ms). 0 = persist until replaced.
 STATUS_TIMEOUT_NORMAL = 3000
@@ -335,51 +339,6 @@ def app_stylesheet() -> str:
         border-top: 2px solid {COLOR_ACCENT};
         font-weight: 700;
     }}
-    QTabWidget#workflowTabs QTabBar::tab {{
-        padding: 9px 18px;
-    }}
-    QTabWidget#workflowTabs QTabBar::tab:selected {{
-        border-top: 2px solid {COLOR_ACCENT};
-    }}
-    QTabWidget#analysisTabs::pane,
-    QTabWidget#homeSubTabs::pane,
-    QTabWidget#trackingOverviewTabs::pane,
-    QTabWidget#masterDataTabs::pane,
-    QTabWidget#statusSubTabs::pane,
-    QTabWidget#supplierSubTabs::pane,
-    QTabWidget#supplierCategoryTabs::pane {{
-        border-color: {COLOR_BORDER_SOFT};
-        border-radius: 8px;
-    }}
-    QTabWidget#analysisTabs QTabBar::tab,
-    QTabWidget#homeSubTabs QTabBar::tab,
-    QTabWidget#trackingOverviewTabs QTabBar::tab,
-    QTabWidget#masterDataTabs QTabBar::tab,
-    QTabWidget#statusSubTabs QTabBar::tab,
-    QTabWidget#supplierSubTabs QTabBar::tab,
-    QTabWidget#supplierCategoryTabs QTabBar::tab {{
-        background: {COLOR_SURFACE_MUTED};
-        color: {COLOR_TEXT_MUTED};
-        padding: 6px 12px;
-        border: 1px solid {COLOR_BORDER_SOFT};
-        border-bottom-color: {COLOR_BORDER_DEFAULT};
-        border-top-left-radius: 8px;
-        border-top-right-radius: 8px;
-        font-weight: 700;
-    }}
-    QTabWidget#analysisTabs QTabBar::tab:selected,
-    QTabWidget#homeSubTabs QTabBar::tab:selected,
-    QTabWidget#trackingOverviewTabs QTabBar::tab:selected,
-    QTabWidget#masterDataTabs QTabBar::tab:selected,
-    QTabWidget#statusSubTabs QTabBar::tab:selected,
-    QTabWidget#supplierSubTabs QTabBar::tab:selected,
-    QTabWidget#supplierCategoryTabs QTabBar::tab:selected {{
-        background: {COLOR_ACCENT_FAINT};
-        color: {COLOR_INFO_TEXT};
-        border-color: {COLOR_INFO_BORDER};
-        border-bottom-color: {COLOR_ACCENT_FAINT};
-        font-weight: 700;
-    }}
     QLabel[uiRole="pageTitle"] {{
         font-size: {PAGE_TITLE_TEXT_PX}px;
         font-weight: 700;
@@ -457,6 +416,40 @@ def app_stylesheet() -> str:
         border-radius: 10px;
         padding: 10px 14px;
         font-size: {SECONDARY_TEXT_PX}px;
+    }}
+    QLabel[role="statusBadge"] {{
+        background: {COLOR_SURFACE_MUTED};
+        color: {COLOR_TEXT_SECONDARY};
+        border: 1px solid {COLOR_BORDER_SOFT};
+        border-radius: 9px;
+        padding: 1px 6px;
+        font-weight: 700;
+        font-size: {MONOSPACE_TEXT_PX}px;
+    }}
+    QLabel[role="statusBadge"][tone="pending"] {{
+        background: {COLOR_WARNING_BG};
+        color: {COLOR_WARNING_TEXT};
+        border: 1px solid {COLOR_WARNING_BORDER};
+    }}
+    QLabel[role="statusBadge"][tone="success"] {{
+        background: {COLOR_SUCCESS_BG};
+        color: {COLOR_SUCCESS_TEXT};
+        border: 1px solid {COLOR_SUCCESS_BORDER};
+    }}
+    QLabel[role="statusBadge"][tone="danger"] {{
+        background: {COLOR_DANGER_BG_HOVER};
+        color: {COLOR_DANGER_TEXT};
+        border: 1px solid {COLOR_DANGER_BORDER};
+    }}
+    QLabel[role="statusBadge"][tone="info"] {{
+        background: {COLOR_INFO_BG};
+        color: {COLOR_INFO_TEXT};
+        border: 1px solid {COLOR_INFO_BORDER};
+    }}
+    QLabel[role="statusBadge"][tone="na"] {{
+        background: {COLOR_SURFACE_MUTED};
+        color: {COLOR_TEXT_MUTED};
+        border: 1px solid {COLOR_BORDER_SOFT};
     }}
     QLabel[uiRole="emptyStateTitle"] {{
         color: {COLOR_TEXT_SECONDARY};
@@ -939,6 +932,12 @@ def apply_input_style(widget: QWidget, *, minimum_width: int | None = None, maxi
     if isinstance(widget, QTextEdit):
         widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         widget.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        # Honor explicit width overrides before the early return so the
+        # signature's contract holds for QTextEdit too (audit finding A15).
+        if minimum_width is not None:
+            widget.setMinimumWidth(minimum_width)
+        if maximum_width is not None:
+            widget.setMaximumWidth(maximum_width)
         return
     if isinstance(widget, (QLineEdit, QComboBox, QDateEdit, QAbstractSpinBox)):
         widget.setMinimumHeight(INPUT_HEIGHT)
@@ -1151,32 +1150,11 @@ def is_empty_display(text: str) -> bool:
     return text == EMPTY_PLACEHOLDER
 
 
-def status_badge_colors(status: str) -> tuple[str, str, str]:
-    return STATUS_BADGE_COLORS.get(
-        status,
-        (COLOR_TEXT_SECONDARY, COLOR_SURFACE_MUTED, COLOR_BORDER_SOFT),
-    )
-
-
-def create_status_badge(
-    text: str,
-    fg_color: str | None = None,
-    bg_color: str | None = None,
-    border_color: str | None = None,
-) -> QLabel:
-    resolved_fg, resolved_bg, resolved_border = status_badge_colors(text)
+def create_status_badge(text: str) -> QLabel:
     label = QLabel(text or EMPTY_PLACEHOLDER)
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    label.setStyleSheet(
-        "QLabel {"
-        f"color: {fg_color or resolved_fg};"
-        f"background: {bg_color or resolved_bg};"
-        f"border: 1px solid {border_color or resolved_border};"
-        "border-radius: 999px;"
-        "padding: 4px 10px;"
-        "font-weight: 700;"
-        "}"
-    )
+    label.setProperty("role", "statusBadge")
+    label.setProperty("tone", get_status_tone(text))
     return label
 
 
@@ -1260,14 +1238,16 @@ class PaginationWidget(QWidget):
         self._build_ui()
 
     def _build_ui(self):
-        self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(16, 10, 16, 10)
-        self.layout.setSpacing(8)
+        # Named _layout (not layout) to avoid shadowing QWidget.layout()
+        # (audit finding A16).
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(16, 10, 16, 10)
+        self._layout.setSpacing(8)
 
         self.status_label = QLabel()
         self.status_label.setProperty("uiRole", "paginationStatus")
-        self.layout.addWidget(self.status_label)
-        self.layout.addStretch(1)
+        self._layout.addWidget(self.status_label)
+        self._layout.addStretch(1)
 
         self.btn_first = QPushButton("«")
         self.btn_prev = QPushButton("‹")
@@ -1283,18 +1263,19 @@ class PaginationWidget(QWidget):
         self.btn_next.clicked.connect(lambda: self.change_page(self.current_page + 1))
         self.btn_last.clicked.connect(lambda: self.change_page(self.total_pages))
 
-        self.layout.addWidget(self.btn_first)
-        self.layout.addWidget(self.btn_prev)
+        self._layout.addWidget(self.btn_first)
+        self._layout.addWidget(self.btn_prev)
 
         self.page_buttons_layout = QHBoxLayout()
         self.page_buttons_layout.setSpacing(4)
-        self.layout.addLayout(self.page_buttons_layout)
+        self._layout.addLayout(self.page_buttons_layout)
 
-        self.layout.addWidget(self.btn_next)
-        self.layout.addWidget(self.btn_last)
+        self._layout.addWidget(self.btn_next)
+        self._layout.addWidget(self.btn_last)
 
     def update_state(self, total_items: int, items_per_page: int, current_page: int):
         self.total_items = total_items
+        items_per_page = max(1, items_per_page)
         self.items_per_page = items_per_page
         self.total_pages = max(1, (total_items + items_per_page - 1) // items_per_page)
         self.current_page = max(1, min(current_page, self.total_pages))

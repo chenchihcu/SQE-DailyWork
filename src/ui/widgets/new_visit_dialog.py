@@ -44,10 +44,10 @@ from ui.layout_constants import (
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
     RequiredFieldLabel,
     SupplierProductFormMixin,
     make_paired_form_row,
-    set_combo_current_data,
 )
 from ui.widgets.defect_form_widgets import (
     TECH_TRANSFER_STATE_NA,
@@ -70,7 +70,7 @@ from ui.widgets.visit_tech_transfer_mixin import _VisitTechTransferMixin
 logger = logging.getLogger(__name__)
 
 
-class NewVisitDialog(QDialog, SupplierProductFormMixin, _VisitTechTransferMixin):
+class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _VisitTechTransferMixin):
     def __init__(
         self,
         parent=None,
@@ -109,7 +109,6 @@ class NewVisitDialog(QDialog, SupplierProductFormMixin, _VisitTechTransferMixin)
         if self._read_only:
             self._apply_read_only()
 
-        self._dirty = False
         if not self._read_only:
             self._connect_dirty_signals()
 
@@ -340,45 +339,28 @@ class NewVisitDialog(QDialog, SupplierProductFormMixin, _VisitTechTransferMixin)
         if cancel_btn:
             cancel_btn.setVisible(False)
 
-    def _mark_dirty(self) -> None:
-        self._dirty = True
-
-    def _confirm_discard(self) -> bool:
-        """Override in tests to skip the modal confirmation."""
-        return QMessageBox.question(
-            self,
-            "未儲存變更",
-            "有未儲存的變更，確定要放棄嗎？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes
-
-    def closeEvent(self, event):
-        if self._dirty and not self._confirm_discard():
-            event.ignore()
-            return
-        event.accept()
-
     def _connect_dirty_signals(self) -> None:
-        self.date_edit.dateChanged.connect(self._mark_dirty)
-        self.supplier_combo.currentIndexChanged.connect(self._mark_dirty)
-        self.product_combo.currentIndexChanged.connect(self._mark_dirty)
-        self.product_stage_combo.currentTextChanged.connect(self._mark_dirty)
-        self.visitor_input.textChanged.connect(self._mark_dirty)
-        self.summary_input.textChanged.connect(self._mark_dirty)
-        self.work_order_input.textChanged.connect(self._mark_dirty)
-        self.time_slot_input.textChanged.connect(self._mark_dirty)
-        self.qty_input.textChanged.connect(self._mark_dirty)
-        self.tech_transfer_check.toggled.connect(self._mark_dirty)
-        self.confirm_supplier_anomaly_check.toggled.connect(self._mark_dirty)
-        self._btn_add_visit_defect.clicked.connect(self._mark_dirty)
-        self._btn_remove_visit_defect.clicked.connect(self._mark_dirty)
-        self._btn_add_primary_defect.clicked.connect(self._mark_dirty)
-        self._btn_remove_primary_defect.clicked.connect(self._mark_dirty)
-        self._btn_add_section.clicked.connect(self._mark_dirty)
-        self._btn_remove_section.clicked.connect(self._mark_dirty)
-        self.visit_defect_table.itemChanged.connect(self._mark_dirty)
-        self.primary_defect_table.itemChanged.connect(self._mark_dirty)
+        self._init_dirty_tracking([
+            self.date_edit.dateChanged,
+            self.supplier_combo.currentIndexChanged,
+            self.product_combo.currentIndexChanged,
+            self.product_stage_combo.currentTextChanged,
+            self.visitor_input.textChanged,
+            self.summary_input.textChanged,
+            self.work_order_input.textChanged,
+            self.time_slot_input.textChanged,
+            self.qty_input.textChanged,
+            self.tech_transfer_check.toggled,
+            self.confirm_supplier_anomaly_check.toggled,
+            self._btn_add_visit_defect.clicked,
+            self._btn_remove_visit_defect.clicked,
+            self._btn_add_primary_defect.clicked,
+            self._btn_remove_primary_defect.clicked,
+            self._btn_add_section.clicked,
+            self._btn_remove_section.clicked,
+            self.visit_defect_table.itemChanged,
+            self.primary_defect_table.itemChanged,
+        ])
 
     def _add_extra_product_section(self, data: dict | None = None) -> ProductSectionEditor:
         editor = ProductSectionEditor(f"產品區段 {len(self._extra_section_editors) + 2}", self)
@@ -436,21 +418,18 @@ class NewVisitDialog(QDialog, SupplierProductFormMixin, _VisitTechTransferMixin)
 
         supplier_id = str(self._initial_data.get("supplier_id") or "").strip()
         supplier_name = str(self._initial_data.get("supplier_name") or "").strip()
-        if supplier_id and not set_combo_current_data(self.supplier_combo, supplier_id):
-            self.supplier_combo.addItem(f"{supplier_name or supplier_id}（目前值）", supplier_id)
-            set_combo_current_data(self.supplier_combo, supplier_id)
+        self._apply_existing_combo_value(self.supplier_combo, supplier_id, supplier_name)
         self._on_supplier_changed()
 
         product_id = str(self._initial_data.get("product_id") or "").strip()
         product_name = str(self._initial_data.get("product_name") or "").strip()
         product_code = str(self._initial_data.get("product_code") or "").strip()
-        if product_id and not set_combo_current_data(self.product_combo, product_id):
+        injected = self._apply_existing_combo_value(self.product_combo, product_id, product_name)
+        if injected:
             self._product_stage_by_id[product_id] = normalize_product_stage_ui(
                 self._initial_data.get("product_stage")
             )
             self._product_code_by_id[product_id] = product_code
-            self.product_combo.addItem(f"{product_name or product_id}（目前值）", product_id)
-            set_combo_current_data(self.product_combo, product_id)
 
         if product_id:
             self.product_code_input.setText(self._product_code_by_id.get(product_id, product_code))

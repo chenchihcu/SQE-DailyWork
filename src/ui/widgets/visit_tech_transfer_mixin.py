@@ -48,10 +48,6 @@ class _VisitTechTransferMixin:
         if card is not None:
             card.set_state(state)
 
-    def _get_tech_transfer_item(self, field_key: str) -> bool:
-        """Legacy bool getter for any caller that still expects True/False."""
-        return self._get_tech_transfer_state(field_key) == TECH_TRANSFER_STATE_YES
-
     def _get_tech_transfer_state(self, field_key: str) -> str:
         card = self._tech_transfer_cards.get(field_key)
         if card is not None:

@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import logging
-from PySide6.QtCore import QDate, Qt
 
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
     QPushButton,
@@ -32,8 +28,21 @@ from ui.layout_constants import (
     INLINE_TIGHT_SPACING,
     RANK_PANEL_MARGINS,
 )
-from ui.theme import TOKENS
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
+from ui.widgets.stats_dashboard_helpers import (
+    StatsInfoBanner,
+    build_temp_chart_paths,
+    cleanup_temp_files,
+    create_hidden_month_controls,
+    create_insight_label,
+    create_period_combo,
+    create_period_label,
+    create_stats_grid_layout,
+    create_stats_scroll_area,
+    period_month_key,
+    period_month_text,
+    render_chart_to_png,
+)
 from ui.widgets.ncr_stats_chart_mixin import (
     _NcrStatsChartMixin,
     _C_DANGER,
@@ -69,34 +78,36 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         control_row = QHBoxLayout()
         control_row.setSpacing(INLINE_SPACING)
         
-        period_label = QLabel("篩選區間")
-        period_label.setProperty("role", "sectionTitle")
-        
-        self.period_combo = QComboBox()
-        self.period_combo.addItems(["全期項目", "年度", "半年度"])
-        self.period_combo.currentIndexChanged.connect(self._on_period_changed)
-        apply_clickable_affordance(self.period_combo, tooltip="切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）")
+        period_label = create_period_label()
+        self.period_combo = create_period_combo(
+            self._on_period_changed,
+            minimum_width=None,
+            fixed_size=False,
+        )
 
         control_row.addWidget(period_label)
         control_row.addWidget(self.period_combo)
 
         # ── 向下相容 Proxy ──────────────────────────────────
-        from PySide6.QtWidgets import QDateEdit, QCheckBox
-        from PySide6.QtCore import QDate
-        self.month_input = QDateEdit(self)
-        self.month_input.setDate(QDate.currentDate())
-        self.all_time_toggle = QCheckBox(self)
-        self.month_input.hide()
-        self.all_time_toggle.hide()
+        self.month_input, self.all_time_toggle = create_hidden_month_controls(
+            self,
+            self._on_month_input_changed,
+            self._on_all_time_toggle_changed,
+        )
         self._test_yyyy_mm = None
-        self.month_input.dateChanged.connect(self._on_month_input_changed)
-        self.all_time_toggle.toggled.connect(self._on_all_time_toggle_changed)
 
         source_tag_label = QLabel("倉庫不合格品統計")
         source_tag_label.setProperty("role", "sourceTag")
         source_tag_label.setToolTip("此統計畫面之數據來源僅限於不合格品登記紀錄")
         control_row.addWidget(source_tag_label)
         control_row.addStretch(1)
+
+        btn_refresh = QPushButton("重新整理")
+        btn_refresh.setProperty("variant", "secondary")
+        btn_refresh.setMinimumWidth(100)
+        apply_clickable_affordance(btn_refresh, tooltip="重新整理統計數據")
+        btn_refresh.clicked.connect(self.refresh_data)
+        control_row.addWidget(btn_refresh)
 
         self.btn_export = QPushButton("匯出 Excel")
         self.btn_export.setProperty("variant", "primary")
@@ -109,18 +120,11 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         root.addWidget(top_panel)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
-        scroll = QScrollArea()
-        scroll.setObjectName("NcrStatsScrollArea")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        scroll_content = QWidget()
-        scroll_content.setObjectName("NcrStatsScrollContent")
-        self.scroll_layout = QVBoxLayout(scroll_content)
-        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.scroll_layout.setSpacing(12)
+        scroll, self.scroll_layout = create_stats_scroll_area(
+            scroll_object_name="NcrStatsScrollArea",
+            content_object_name="NcrStatsScrollContent",
+            margins=(0, 0, 0, 0),
+        )
 
         # 管理建議 / 說明橫幅
         self.info_banner = self._create_info_banner(
@@ -136,14 +140,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         chart_layout.setContentsMargins(*RANK_PANEL_MARGINS)
         chart_layout.setSpacing(INLINE_TIGHT_SPACING)
 
-        self.grid_layout = QGridLayout()
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(16)
-        # 強制兩欄等寬、兩列等高，確保 2x2 網格正確分佈
-        self.grid_layout.setColumnStretch(0, 1)
-        self.grid_layout.setColumnStretch(1, 1)
-        self.grid_layout.setRowStretch(0, 1)
-        self.grid_layout.setRowStretch(1, 1)
+        self.grid_layout = create_stats_grid_layout(equal_rows=True)
         chart_layout.addLayout(self.grid_layout)
 
         self.scroll_layout.addWidget(chart_panel)
@@ -152,88 +149,27 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         self.insight_label = self._create_insight_label("載入中...")
         self.scroll_layout.addWidget(self.insight_label)
 
-        scroll.setWidget(scroll_content)
         root.addWidget(scroll, 1)
 
     def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
-        banner = QFrame()
-        banner.setObjectName("ncrStatsInfoBanner")
-        bg_color = TOKENS["panel_alt_bg"]
-        border_color = TOKENS["border"]
-        text_color = TOKENS["text_muted"]
-
-        banner.setStyleSheet(f"""
-            QFrame#ncrStatsInfoBanner {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 6px;
-            }}
-            QLabel {{
-                background-color: transparent;
-                border: none;
-                color: {text_color};
-            }}
-        """)
-        layout = QVBoxLayout(banner)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(4)
-
-        formula_label = QLabel(f"<b>統計說明：</b>{formula}")
-        purpose_label = QLabel(f"<b>管理目的：</b>{purpose}")
-        formula_label.setWordWrap(True)
-        purpose_label.setWordWrap(True)
-
-        layout.addWidget(formula_label)
-        layout.addWidget(purpose_label)
-        return banner
+        return StatsInfoBanner(
+            formula,
+            purpose,
+            formula_prefix="統計說明",
+            purpose_prefix="管理目的",
+            object_name="ncrStatsInfoBanner",
+            margins=(12, 8, 12, 8),
+            spacing=4,
+        )
 
     def _create_insight_label(self, text: str) -> QLabel:
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setMinimumHeight(40)
-        
-        bg_color = TOKENS["panel_alt_bg"]
-        border_color = TOKENS["info"]
-        text_color = TOKENS["text_primary"]
-
-        label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {bg_color};
-                border-left: 4px solid {border_color};
-                padding: 10px 14px;
-                color: {text_color};
-                border-top-right-radius: 4px;
-                border-bottom-right-radius: 4px;
-            }}
-        """)
-        return label
+        return create_insight_label(text, minimum_height=40)
 
     def _month_key(self) -> str:
-        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
-            return self._test_yyyy_mm
-        idx = self.period_combo.currentIndex()
-        if idx == 0:
-            return "ALL"
-        elif idx == 1:
-            return "YEAR"
-        else:
-            return "HALF_YEAR"
+        return period_month_key(self.period_combo, getattr(self, "_test_yyyy_mm", None))
 
     def _month_text(self) -> str:
-        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
-            if self._test_yyyy_mm == "ALL":
-                return "全期累計"
-            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
-        from datetime import date
-        idx = self.period_combo.currentIndex()
-        if idx == 0:
-            return "全期項目"
-        elif idx == 1:
-            return f"{date.today().year}年度"
-        else:
-            current_month = date.today().month
-            half = "上半年" if current_month <= 6 else "下半年"
-            return f"{date.today().year}年{half}"
+        return period_month_text(self.period_combo, getattr(self, "_test_yyyy_mm", None))
 
     def _on_month_input_changed(self, qdate):
         self._test_yyyy_mm = qdate.toString("yyyyMM")
@@ -415,20 +351,10 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         # 3. 處理與匯出
         temp_dir = os.path.dirname(file_path)
         pid = os.getpid()
-        temp_paths = {
-            "supplier": os.path.join(temp_dir, f"temp_ncr_supplier_{pid}.png"),
-            "product": os.path.join(temp_dir, f"temp_ncr_product_{pid}.png"),
-            "disposition": os.path.join(temp_dir, f"temp_ncr_disposition_{pid}.png"),
-            "return_slip": os.path.join(temp_dir, f"temp_ncr_return_{pid}.png"),
-        }
-        
-        # 確保刪除先前遺留的暫存檔
-        for p in temp_paths.values():
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+        temp_paths = build_temp_chart_paths(
+            temp_dir, pid, ["supplier", "product", "disposition", "return_slip"], "temp_ncr"
+        )
+        cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
 
         try:
             with get_connection() as conn:
@@ -438,40 +364,40 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 scrap_rework = ncr_stats_service.get_scrap_rework_ratio_by_range(conn, start_date, end_date)
                 return_slips = ncr_stats_service.get_return_slip_ratio_by_range(conn, start_date, end_date)
                 defects_detail = ncr_stats_service.get_defects_detail_by_range(conn, start_date, end_date)
-                
+
             has_data = len(defects_detail) > 0
-            
+
             # 如果有數據，則在背景繪製圖表並 grab 儲存
             active_temp_paths = {}
             if has_data:
                 # 1. Supplier chart
-                if top_suppliers:
-                    v = self._build_horizontal_bar_chart(top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"])
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["supplier"])
+                if top_suppliers and render_chart_to_png(
+                    lambda: self._build_horizontal_bar_chart(top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"]),
+                    temp_paths["supplier"],
+                ):
                     active_temp_paths["supplier"] = temp_paths["supplier"]
-                    
+
                 # 2. Product chart
-                if top_products:
-                    v = self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6")
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["product"])
+                if top_products and render_chart_to_png(
+                    lambda: self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6"),
+                    temp_paths["product"],
+                ):
                     active_temp_paths["product"] = temp_paths["product"]
-                    
+
                 # 3. Scrap/Rework chart
-                if scrap_rework:
-                    v = self._build_donut_chart(scrap_rework, "disposition", "報廢 / 重工 比例佔比", {"報廢": _C_DANGER, "重工": _C_SUCCESS})
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["disposition"])
+                if scrap_rework and render_chart_to_png(
+                    lambda: self._build_donut_chart(scrap_rework, "disposition", "報廢 / 重工 比例佔比", {"報廢": _C_DANGER, "重工": _C_SUCCESS}),
+                    temp_paths["disposition"],
+                ):
                     active_temp_paths["disposition"] = temp_paths["disposition"]
-                    
+
                 # 4. Return slip chart
-                if return_slips:
-                    v = self._build_donut_chart(return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比", {"廠內退料": _C_INFO, "託外退料": _C_PENDING})
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["return_slip"])
+                if return_slips and render_chart_to_png(
+                    lambda: self._build_donut_chart(return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比", {"廠內退料": _C_INFO, "託外退料": _C_PENDING}),
+                    temp_paths["return_slip"],
+                ):
                     active_temp_paths["return_slip"] = temp_paths["return_slip"]
-                    
+
             # 呼叫匯出服務
             ok, msg = ncr_export_service.export_ncr_excel_report(
                 file_path,
@@ -480,21 +406,15 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 defects_detail,
                 temp_chart_paths=active_temp_paths if has_data else None
             )
-            
+
             if ok:
                 QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
-                
+
         except Exception as exc:
             logger.exception("匯出 Excel 報告出錯")
             QMessageBox.critical(self, "錯誤", f"匯出過程發生非預期錯誤：{exc}")
         finally:
-            # 刪除暫存檔
-            for p in temp_paths.values():
-                if os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except Exception:
-                        pass
+            cleanup_temp_files(temp_paths)
 

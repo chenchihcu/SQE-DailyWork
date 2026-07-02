@@ -221,6 +221,72 @@ class ProductMasterImportServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_apply_updates_existing_product_when_supplier_is_newly_created(
+        self,
+    ) -> None:
+        """Regression test for audit finding A2: a product that already
+        exists with no supplier assigned, imported under a brand-new
+        supplier name (absent from the DB at preview time), must be
+        updated rather than raising "Product disappeared" and rolling back
+        the whole batch."""
+        conn = self.create_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO products(
+                    id, product_code, product_name, product_stage, supplier_id,
+                    is_active, created_at, updated_at
+                ) VALUES (
+                    'product-orphan', 'ERP-ITEM-005', 'Old Name', '量產',
+                    NULL, 1, '2026-06-04', '2026-06-04'
+                )
+                """
+            )
+            conn.commit()
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("ERP-ITEM-005", "New Name From ERP", "Brand New Supplier", "量產")],
+                )
+
+                preview = master_import_service.preview_product_master_import(
+                    conn,
+                    workbook_path,
+                )
+                self.assertTrue(preview.can_import)
+                self.assertEqual(preview.error_count, 0)
+                self.assertEqual(preview.update_count, 1)
+                self.assertEqual(preview.supplier_create_count, 1)
+
+                # Before the A2 fix, this raised sqlite3.IntegrityError and
+                # rolled back the whole batch.
+                result = master_import_service.apply_product_master_import(
+                    conn,
+                    preview,
+                    source_file=workbook_path,
+                )
+
+                self.assertEqual(1, result.updated_count)
+                self.assertEqual(1, result.supplier_created_count)
+                product = conn.execute(
+                    "SELECT product_name, supplier_id FROM products WHERE product_code = ?",
+                    ("ERP-ITEM-005",),
+                ).fetchone()
+                self.assertIsNotNone(product)
+                assert product is not None
+                self.assertEqual("New Name From ERP", product["product_name"])
+                supplier = conn.execute(
+                    "SELECT id FROM suppliers WHERE supplier_name = ?",
+                    ("Brand New Supplier",),
+                ).fetchone()
+                self.assertIsNotNone(supplier)
+                assert supplier is not None
+                self.assertEqual(supplier["id"], product["supplier_id"])
+        finally:
+            conn.close()
+
     def test_no_write_import_records_skipped_batch(self) -> None:
         conn = self.create_connection()
         try:

@@ -198,6 +198,12 @@ def get_theme_qss() -> str:
             color: {TOKENS["status_pending_fg"]};
         }}
 
+        QFrame[role="statsInfoBanner"] {{
+            background: {TOKENS["panel_alt_bg"]};
+            border: 1px solid {TOKENS["border"]};
+            border-radius: {TOKENS["radius_md"]}px;
+        }}
+
         QLabel[role="statsInfoText"] {{
             background: transparent;
             border: none;
@@ -206,7 +212,13 @@ def get_theme_qss() -> str:
         }}
 
         QLabel[role="insight"] {{
+            background: {TOKENS["panel_alt_bg"]};
+            border-left: 4px solid {TOKENS["info"]};
+            border-top-right-radius: {TOKENS["radius_sm"]}px;
+            border-bottom-right-radius: {TOKENS["radius_sm"]}px;
+            color: {TOKENS["text_primary"]};
             font-size: {TYPOGRAPHY["body_small"]}px;
+            padding: 6px 10px;
         }}
 
         QLabel[role="errorText"] {{
@@ -336,51 +348,6 @@ def get_theme_qss() -> str:
 
         QWidget#StatsView {{
             background: {TOKENS["page_bg"]};
-        }}
-
-        QTabWidget#StatsTabs {{
-            background: {TOKENS["panel_bg"]};
-        }}
-
-        QTabWidget#StatsTabs::tab-bar {{
-            background: {TOKENS["panel_bg"]};
-        }}
-
-        QTabWidget#StatsTabs::pane {{
-            border: 1px solid {TOKENS["border_soft"]};
-            border-radius: {TOKENS["radius_sm"]}px;
-            top: -1px;
-            background: {TOKENS["panel_bg"]};
-        }}
-
-        QTabWidget#StatsTabs QTabBar {{
-            background: {TOKENS["panel_bg"]};
-        }}
-
-        QTabWidget#StatsTabs QTabBar::tab {{
-            min-width: 132px;
-            min-height: {TAB_BAR_TAB_MIN_HEIGHT}px;
-            background: {TOKENS["page_bg"]};
-            color: {TOKENS["text_secondary"]};
-            border: 1px solid {TOKENS["border_soft"]};
-            border-top-left-radius: {TOKENS["radius_sm"]}px;
-            border-top-right-radius: {TOKENS["radius_sm"]}px;
-            padding: {TAB_BAR_TAB_PADDING_VERTICAL}px 14px;
-            margin-right: 3px;
-            font-weight: 400;
-        }}
-
-        QTabWidget#StatsTabs QTabBar::tab:selected {{
-            background: {TOKENS["panel_bg"]};
-            color: {TOKENS["primary_btn"]};
-            border-color: {TOKENS["border"]};
-            border-bottom: 1px solid {TOKENS["panel_bg"]};
-            font-weight: 700;
-        }}
-
-        QTabWidget#StatsTabs QTabBar::tab:hover:!selected {{
-            background: {TOKENS["surface_hover"]};
-            color: {TOKENS["text_primary"]};
         }}
 
         QTabWidget#MasterDataTabs QTabBar::tab {{
@@ -586,13 +553,13 @@ def get_theme_qss() -> str:
         QPushButton[role="quickActionButton"][tone="report"] {{
             background: {TOKENS["panel_bg"]};
             border: 1px solid {TOKENS["border_strong"]};
-            border-left: 6px solid {TOKENS["brand_steel"]};
+            border-left: 6px solid {TOKENS["accent_report"]};
             color: {TOKENS["text_secondary"]};
         }}
 
         QPushButton[role="quickActionButton"][tone="report"]:hover {{
             background: {TOKENS["surface_hover"]};
-            border-color: {TOKENS["brand_steel"]};
+            border-color: {TOKENS["accent_report"]};
             color: {TOKENS["text_primary"]};
         }}
 
@@ -1370,7 +1337,6 @@ def get_theme_qss() -> str:
             font-weight: 700;
             background: transparent;
             min-width: 24px;
-            min-height: 24px;
             border: none;
             border-bottom: 2px solid {TOKENS["overdue_banner_border"]};
             min-height: 48px;

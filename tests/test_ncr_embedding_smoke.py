@@ -67,6 +67,12 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.assertEqual("trace", history_widget.workflow)
         for page in (create_page, pending_page, history_page):
             self.assertIsNone(page.findChild(QTabWidget, "defectTrackerTabs"))
+        for widget in (pending_widget, history_widget):
+            self.assertEqual([], widget.findChildren(QTabWidget))
+
+    def test_ncr_list_rejects_unknown_workflow(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported DefectListWidget workflow"):
+            DefectListWidget(self.window.ncr.conn, workflow="tracked")
 
     def test_can_switch_into_every_ncr_page(self) -> None:
         actions = [

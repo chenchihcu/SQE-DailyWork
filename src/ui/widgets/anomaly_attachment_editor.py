@@ -43,6 +43,7 @@ class AttachmentEditor(QWidget):
         self._pending_captions: dict[str, str] = {}
         self._existing_attachments: list[Path] = []
         self._deleted_attachments: list[str] = []
+        self._last_rename_failures: list[str] = []
 
         col = QVBoxLayout(self)
         col.setContentsMargins(0, 0, 0, 0)
@@ -169,6 +170,9 @@ class AttachmentEditor(QWidget):
 
         stored_path = Path(str(stored))
         old_path_str = str(stored_path)
+        new_filename = self._dedupe_filename_in_session(
+            new_filename, exclude_path_str=old_path_str
+        )
         new_path = stored_path.parent / new_filename
         new_path_str = str(new_path)
 
@@ -189,6 +193,33 @@ class AttachmentEditor(QWidget):
             finally:
                 self.list_widget.blockSignals(False)
         item.setToolTip(formatted)
+
+    def _dedupe_filename_in_session(
+        self, filename: str, *, exclude_path_str: str
+    ) -> str:
+        """Return a filename that doesn't collide with any other item
+        currently shown in this editing session (pending or existing),
+        auto-appending a numeric suffix like the filesystem-level
+        _resolve_unique_name does, so two items can't silently end up with
+        the same display name / caption key before save_to_anomaly runs
+        (audit finding A13)."""
+        taken: set[str] = set()
+        for i in range(self.list_widget.count()):
+            other = self.list_widget.item(i)
+            other_path_str = other.data(Qt.ItemDataRole.UserRole)
+            if other_path_str == exclude_path_str:
+                continue
+            other_name = other.data(Qt.ItemDataRole.UserRole + 1) or ""
+            if other_name:
+                taken.add(other_name)
+        if filename not in taken:
+            return filename
+        stem = Path(filename).stem
+        suffix = Path(filename).suffix
+        counter = 2
+        while f"{stem}_{counter}{suffix}" in taken:
+            counter += 1
+        return f"{stem}_{counter}{suffix}"
 
     def _remove_selected(self) -> None:
         for item in self.list_widget.selectedItems():
@@ -246,6 +277,8 @@ class AttachmentEditor(QWidget):
         if not key:
             return
 
+        self._last_rename_failures = []
+
         for filename in self._deleted_attachments:
             attachment_manager.delete_anomaly_attachment(key, filename)
         self._deleted_attachments.clear()
@@ -265,9 +298,11 @@ class AttachmentEditor(QWidget):
             else:
                 p = Path(stored_path_str)
                 if p.name != display_name:
-                    attachment_manager.rename_anomaly_attachment(
+                    renamed = attachment_manager.rename_anomaly_attachment(
                         key, p.name, display_name
                     )
+                    if not renamed:
+                        self._last_rename_failures.append(display_name)
 
         self._pending_attachments.clear()
 

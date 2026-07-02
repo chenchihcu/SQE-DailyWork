@@ -1,11 +1,8 @@
 import unittest
 import sqlite3
-import os
-import sys
 
-# Add SQE DailyWork root to path so `import ncr.*` resolves (two levels up: ncr/tests -> ncr -> SQE DailyWork)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
+# Run with PYTHONPATH='src;.' (same as tests/ and scripts/verify.ps1) so
+# `import ncr.*` resolves — no manual sys.path patching (audit finding C6).
 from ncr.db import database, crud
 from ncr.services import defect_service, product_service, supplier_service
 

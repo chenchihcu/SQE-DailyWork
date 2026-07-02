@@ -81,6 +81,8 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         # 內建的 grid_layout 屬性必須是 QGridLayout
         grid_layout = widget.grid_layout
         self.assertIsInstance(grid_layout, QGridLayout)
+        self.assertEqual("statsInfoBanner", widget.info_banner.property("role"))
+        self.assertEqual("insight", widget.insight_label.property("role"))
         
         # 網格中必須有 4 個 QChartView 統計圖表
         chart_views = widget.findChildren(QChartView)

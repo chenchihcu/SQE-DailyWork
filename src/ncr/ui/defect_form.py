@@ -29,6 +29,7 @@ from ncr.ui.supplier_combo_utils import (
     SUPPLIER_CATEGORY_FORMAL,
     SUPPLIER_CATEGORY_OUTSOURCE,
     apply_supplier_exclusion_lock,
+    block_signals,
     load_supplier_names_by_category,
 )
 from ncr.models.defect import (
@@ -61,6 +62,7 @@ from ncr.models.labels import (
     MSG_SAVING,
     MSG_UPDATE_SUCCESS,
     VALIDATION_ITEM_NO_NOT_FOUND,
+    VALIDATION_REQUIRED,
     PLACEHOLDER_DEFECT_DESC,
     PLACEHOLDER_OUTSOURCE_SUPPLIER,
     HEADER_CREATED_AT,
@@ -70,6 +72,7 @@ from ncr.ui.ui_style import (
     DATE_FIELD_MIN_WIDTH,
     DEFECT_FORM_CONTENT_MARGINS,
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
+    EDIT_DIALOG_CARD_MARGINS,
     FIELD_SPACING_Y,
     FORM_COMPACT_FIELD_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
@@ -113,6 +116,21 @@ def _connect_dirty_tracking_signals(
     fields.status_combo.currentTextChanged.connect(on_dirty)
     fields.disposition_combo.currentTextChanged.connect(on_dirty)
     fields.responsibility_combo.currentTextChanged.connect(on_dirty)
+
+
+def _run_defect_save(operation):
+    """Run a defect service call, mapping the two expected failure types to a
+    (severity, title, exception) triple so save_record / save_changes share
+    one exception-classification table instead of copy-pasted except blocks
+    (audit finding D13). Returns (result, None) on success, (None, error) on
+    failure; each caller keeps its own feedback channel (inline label +
+    status bar vs. plain QMessageBox)."""
+    try:
+        return operation(), None
+    except ValueError as exc:
+        return None, ("warning", "欄位驗證", exc)
+    except sqlite3.Error as exc:
+        return None, ("critical", "資料庫錯誤", exc)
 
 
 class DirtyTrackingMixin:
@@ -494,25 +512,23 @@ class DefectFieldsWidget(QWidget):
             load_supplier_names_by_category(self.conn, SUPPLIER_CATEGORY_OUTSOURCE)
         )
 
-        self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
-        self.supplier_combo.addItems(supplier_options)
-        if current_supplier_text and current_supplier_text not in supplier_options:
-            self.supplier_combo.addItem(current_supplier_text)
-        self.supplier_combo.setCurrentText(current_supplier_text)
-        self.supplier_combo.blockSignals(False)
+        with block_signals(self.supplier_combo):
+            self.supplier_combo.clear()
+            self.supplier_combo.addItems(supplier_options)
+            if current_supplier_text and current_supplier_text not in supplier_options:
+                self.supplier_combo.addItem(current_supplier_text)
+            self.supplier_combo.setCurrentText(current_supplier_text)
 
-        self.outsource_supplier_combo.blockSignals(True)
-        self.outsource_supplier_combo.clear()
-        self.outsource_supplier_combo.addItems(outsource_options)
-        if current_outsource_text and current_outsource_text not in outsource_options:
-            self.outsource_supplier_combo.addItem(current_outsource_text)
-        target_outsource_index = self.outsource_supplier_combo.findText(current_outsource_text)
-        if target_outsource_index >= 0:
-            self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
-        else:
-            self.outsource_supplier_combo.setCurrentIndex(-1)
-        self.outsource_supplier_combo.blockSignals(False)
+        with block_signals(self.outsource_supplier_combo):
+            self.outsource_supplier_combo.clear()
+            self.outsource_supplier_combo.addItems(outsource_options)
+            if current_outsource_text and current_outsource_text not in outsource_options:
+                self.outsource_supplier_combo.addItem(current_outsource_text)
+            target_outsource_index = self.outsource_supplier_combo.findText(current_outsource_text)
+            if target_outsource_index >= 0:
+                self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
+            else:
+                self.outsource_supplier_combo.setCurrentIndex(-1)
 
         self._sync_supplier_outsource_guard()
 
@@ -524,59 +540,80 @@ class DefectFieldsWidget(QWidget):
         )
         products = product_service.list_products(self.conn)
         self._product_name_by_item_no = {
-            item["item_no"].strip(): item["product_name"].strip()
+            (item["item_no"] or "").strip(): (item["product_name"] or "").strip()
             for item in products
-            if item["item_no"].strip()
+            if (item["item_no"] or "").strip()
         }
 
-        self.item_no_input.blockSignals(True)
-        self.item_no_input.clear()
-        self.item_no_input.addItem("", "")
-        for item_no, product_name in self._product_name_by_item_no.items():
-            self.item_no_input.addItem(item_no, item_no)
-            index = self.item_no_input.count() - 1
-            if product_name:
-                self.item_no_input.setItemData(
-                    index,
-                    f"{item_no} / {product_name}",
-                    Qt.ItemDataRole.ToolTipRole,
-                )
-        if current_item_no and self.item_no_input.findText(current_item_no) < 0:
-            self.item_no_input.addItem(current_item_no, current_item_no)
-        self.item_no_input.setCurrentText(current_item_no)
-        self.item_no_input.blockSignals(False)
+        with block_signals(self.item_no_input):
+            self.item_no_input.clear()
+            self.item_no_input.addItem("", "")
+            for item_no, product_name in self._product_name_by_item_no.items():
+                self.item_no_input.addItem(item_no, item_no)
+                index = self.item_no_input.count() - 1
+                if product_name:
+                    self.item_no_input.setItemData(
+                        index,
+                        f"{item_no} / {product_name}",
+                        Qt.ItemDataRole.ToolTipRole,
+                    )
+            if current_item_no and self.item_no_input.findText(current_item_no) < 0:
+                self.item_no_input.addItem(current_item_no, current_item_no)
+            self.item_no_input.setCurrentText(current_item_no)
         self.sync_product_name_from_item_no()
 
-    def reset_fields(self) -> None:
-        self.event_date_edit.setDate(QDate.currentDate())
-        self.return_slip_type_combo.setCurrentIndex(0)
-        self.work_order_input.clear()
-        self.internal_work_order_input.clear()
-        self.transfer_slip_input.clear()
-        self.category_combo.setCurrentIndex(0)
-        self.item_no_input.setCurrentText("")
-        self.product_name_input.clear()
-        self.quick_add_product_btn.hide()
-        self.qty_spin.setValue(1)
-        self.supplier_combo.setCurrentText("")
-        self.outsource_supplier_combo.setCurrentIndex(-1)
-        self.defect_desc_input.clear()
-        self.status_combo.setCurrentText(STATUS_OPTIONS[0])
-        self.disposition_combo.setCurrentIndex(0)
-        self.responsibility_combo.setCurrentIndex(0)
+    _ALL_FIELD_GROUPS = frozenset({
+        "date", "return_slip_type", "work_order", "transfer_slip",
+        "category", "product", "qty", "supplier", "description",
+        "status", "disposition", "responsibility",
+    })
+
+    def _reset_field_group(self, groups: set[str]) -> None:
+        """Reset a named subset of form fields. Shared by reset_fields (all
+        groups), prepare_next_continuous_entry (a subset that preserves
+        supplier/date/work_order for consecutive same-batch entry), and
+        DefectFormWidget._clear_form_internal (all groups, to match its
+        "清除" button tooltip's "清空所有輸入欄位內容" promise) -- so all
+        three call sites share one authoritative field list instead of each
+        maintaining its own drifting copy (audit findings A3/D4)."""
+        if "date" in groups:
+            self.event_date_edit.setDate(QDate.currentDate())
+        if "return_slip_type" in groups:
+            self.return_slip_type_combo.setCurrentIndex(0)
+        if "work_order" in groups:
+            self.work_order_input.clear()
+            self.internal_work_order_input.clear()
+        if "transfer_slip" in groups:
+            self.transfer_slip_input.clear()
+        if "category" in groups:
+            self.category_combo.setCurrentIndex(0)
+        if "product" in groups:
+            self.item_no_input.setCurrentText("")
+            self.product_name_input.clear()
+            self.quick_add_product_btn.hide()
+        if "qty" in groups:
+            self.qty_spin.setValue(1)
+        if "supplier" in groups:
+            self.supplier_combo.setCurrentText("")
+            self.outsource_supplier_combo.setCurrentIndex(-1)
+        if "description" in groups:
+            self.defect_desc_input.clear()
+        if "status" in groups:
+            self.status_combo.setCurrentText(STATUS_OPTIONS[0])
+        if "disposition" in groups:
+            self.disposition_combo.setCurrentIndex(0)
+        if "responsibility" in groups:
+            self.responsibility_combo.setCurrentIndex(0)
         self._sync_supplier_outsource_guard()
 
+    def reset_fields(self) -> None:
+        self._reset_field_group(self._ALL_FIELD_GROUPS)
+
     def prepare_next_continuous_entry(self) -> None:
-        self.transfer_slip_input.clear()
-        self.item_no_input.setCurrentText("")
-        self.product_name_input.clear()
-        self.quick_add_product_btn.hide()
-        self.qty_spin.setValue(1)
-        self.defect_desc_input.clear()
-        self.status_combo.setCurrentText(STATUS_OPTIONS[0])
-        self.disposition_combo.setCurrentIndex(0)
-        self.responsibility_combo.setCurrentIndex(0)
-        self._sync_supplier_outsource_guard()
+        self._reset_field_group({
+            "transfer_slip", "product", "qty", "description",
+            "status", "disposition", "responsibility",
+        })
 
     def set_form_data(self, data) -> None:
         record = dict(data)
@@ -587,9 +624,9 @@ class DefectFieldsWidget(QWidget):
         if return_slip_type and self.return_slip_type_combo.findText(return_slip_type) == -1:
             self.return_slip_type_combo.addItem(return_slip_type)
         self.return_slip_type_combo.setCurrentText(return_slip_type)
-        self.work_order_input.setText(record.get("work_order_no", ""))
-        self.internal_work_order_input.setText(record.get("internal_work_order_no", ""))
-        self.transfer_slip_input.setText(record.get("transfer_slip_no", ""))
+        self.work_order_input.setText(str(record.get("work_order_no", "") or ""))
+        self.internal_work_order_input.setText(str(record.get("internal_work_order_no", "") or ""))
+        self.transfer_slip_input.setText(str(record.get("transfer_slip_no", "") or ""))
         self.category_combo.setCurrentText(record.get("category", CATEGORY_OPTIONS[0]))
         self.refresh_product_options(str(record.get("item_no", "") or ""))
         self.sync_product_name_from_item_no()
@@ -614,7 +651,7 @@ class DefectFieldsWidget(QWidget):
             self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
         finally:
             self.outsource_supplier_combo.blockSignals(False)
-        self.defect_desc_input.setPlainText(record.get("defect_desc", ""))
+        self.defect_desc_input.setPlainText(str(record.get("defect_desc", "") or ""))
         self.status_combo.setCurrentText(record.get("status", STATUS_OPTIONS[0]))
         disposition = record.get("disposition", "")
         if self.disposition_combo.findText(disposition) != -1:
@@ -650,27 +687,23 @@ class DefectFieldsWidget(QWidget):
     def _on_supplier_changed(self, text: str) -> None:
         stripped = text.strip()
         if stripped and stripped != "N/A":
-            self.outsource_supplier_combo.blockSignals(True)
-            self.outsource_supplier_combo.setCurrentText("N/A")
-            self.outsource_supplier_combo.blockSignals(False)
+            with block_signals(self.outsource_supplier_combo):
+                self.outsource_supplier_combo.setCurrentText("N/A")
         elif not stripped or stripped == "N/A":
             if self.outsource_supplier_combo.currentText() == "N/A":
-                self.outsource_supplier_combo.blockSignals(True)
-                self.outsource_supplier_combo.setCurrentIndex(-1)
-                self.outsource_supplier_combo.blockSignals(False)
+                with block_signals(self.outsource_supplier_combo):
+                    self.outsource_supplier_combo.setCurrentIndex(-1)
         self._sync_supplier_outsource_guard()
 
     def _on_outsource_supplier_changed(self, text: str) -> None:
         stripped = text.strip()
         if stripped and stripped != "N/A":
-            self.supplier_combo.blockSignals(True)
-            self.supplier_combo.setCurrentText("N/A")
-            self.supplier_combo.blockSignals(False)
+            with block_signals(self.supplier_combo):
+                self.supplier_combo.setCurrentText("N/A")
         elif not stripped or stripped == "N/A":
             if self.supplier_combo.currentText() == "N/A":
-                self.supplier_combo.blockSignals(True)
-                self.supplier_combo.setCurrentText("")
-                self.supplier_combo.blockSignals(False)
+                with block_signals(self.supplier_combo):
+                    self.supplier_combo.setCurrentText("")
         self._sync_supplier_outsource_guard()
 
     def _sync_supplier_outsource_guard(self) -> None:
@@ -699,11 +732,18 @@ class DefectFieldsWidget(QWidget):
         self._sync_quick_add_product_visibility(product_name)
         return product_name
 
-    def has_known_product_item_no(self) -> bool:
+    def item_no_validation_error(self) -> str | None:
+        """Return the blocking validation message for the item-no field, or
+        None when valid. Blank is rejected here (audit finding A10): the
+        field carries a required marker and the service layer already
+        enforces it, so the UI pre-check must agree instead of deferring
+        blank input to the later, generic ValueError path."""
         item_no = self.item_no_input.currentText().strip()
         if not item_no:
-            return True
-        return bool(self.sync_product_name_from_item_no())
+            return VALIDATION_REQUIRED.format(LABEL_ITEM_NO)
+        if not self.sync_product_name_from_item_no():
+            return VALIDATION_ITEM_NO_NOT_FOUND
+        return None
 
     def _on_item_no_changed(self, _text: str) -> None:
         self.sync_product_name_from_item_no()
@@ -884,18 +924,8 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
 
     def _clear_form_internal(self) -> None:
         self._track_changes = False
-        # 清除所有文字輸入，但保留數值與日期的預設值
-        self.fields_widget.return_slip_type_combo.setCurrentIndex(0)
-        self.fields_widget.item_no_input.setCurrentText("")
-        self.fields_widget.work_order_input.clear()
-        self.fields_widget.internal_work_order_input.clear()
-        self.fields_widget.transfer_slip_input.clear()
-        self.fields_widget.product_name_input.clear()
-        self.fields_widget.supplier_combo.setCurrentText("")
-        self.fields_widget.outsource_supplier_combo.setCurrentIndex(-1)
-        self.fields_widget.defect_desc_input.clear()
-        self.fields_widget.disposition_combo.setCurrentIndex(0)
-        self.fields_widget._sync_supplier_outsource_guard()
+        # 清空所有欄位以符合「清除」按鈕 tooltip 承諾的行為（audit finding A3）。
+        self.fields_widget._reset_field_group(DefectFieldsWidget._ALL_FIELD_GROUPS)
         self._track_changes = True
         self._mark_clean()
 
@@ -929,9 +959,9 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self._show_feedback("欄位已重置為初始狀態", visible=True)
 
     def _validate_item_no_product_mapping(self) -> bool:
-        if self.fields_widget.has_known_product_item_no():
+        message = self.fields_widget.item_no_validation_error()
+        if message is None:
             return True
-        message = VALIDATION_ITEM_NO_NOT_FOUND
         if self.show_popups:
             QMessageBox.warning(self, "欄位驗證", message)
         self._show_feedback(MSG_SAVE_FAILED.format(message), role="warningHint")
@@ -946,20 +976,16 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self._set_save_busy_state(True)
         self._show_feedback(MSG_SAVING, role="notice")
         self.status_message.emit(MSG_SAVING, STATUS_TIMEOUT_PERSIST)
-        try:
-            defect_no = defect_service.create_defect(
+        defect_no, save_error = _run_defect_save(
+            lambda: defect_service.create_defect(
                 self.conn, self.fields_widget.get_form_data()
             )
-        except ValueError as exc:
+        )
+        if save_error is not None:
+            severity, title, exc = save_error
             if self.show_popups:
-                QMessageBox.warning(self, "欄位驗證", str(exc))
-            self._show_feedback(MSG_SAVE_FAILED.format(exc), role="warningHint")
-            self.status_message.emit(MSG_SAVE_FAILED.format(exc), STATUS_TIMEOUT_ERROR)
-            self._set_save_busy_state(False)
-            return False
-        except sqlite3.Error as exc:
-            if self.show_popups:
-                QMessageBox.critical(self, "資料庫錯誤", str(exc))
+                show = QMessageBox.warning if severity == "warning" else QMessageBox.critical
+                show(self, title, str(exc))
             self._show_feedback(MSG_SAVE_FAILED.format(exc), role="warningHint")
             self.status_message.emit(MSG_SAVE_FAILED.format(exc), STATUS_TIMEOUT_ERROR)
             self._set_save_busy_state(False)
@@ -1005,7 +1031,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         return self.save_record()
 
 
-class DefectEditDialog(QDialog):
+class DefectEditDialog(DirtyTrackingMixin, QDialog):
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -1026,12 +1052,12 @@ class DefectEditDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
         layout.setSpacing(12)
 
         # Unified Main Card for Dialog
         main_card, main_card_layout = create_section_card("")
-        main_card_layout.setContentsMargins(18, 16, 18, 16)
+        main_card_layout.setContentsMargins(*EDIT_DIALOG_CARD_MARGINS)
         main_card_layout.setSpacing(10)
 
         # Record context
@@ -1087,15 +1113,8 @@ class DefectEditDialog(QDialog):
     def _connect_dirty_tracking(self) -> None:
         _connect_dirty_tracking_signals(self.fields_widget, self._mark_dirty)
 
-    def _mark_dirty(self, *_args: object) -> None:
-        if self._track_changes:
-            self._is_dirty = True
-
-    def _mark_clean(self) -> None:
-        self._is_dirty = False
-
     def _set_save_busy_state(self, busy: bool) -> None:
-        self._is_saving = busy
+        super()._set_save_busy_state(busy)
         self.save_button.setEnabled(not busy)
         self.cancel_button.setEnabled(not busy)
 
@@ -1136,22 +1155,22 @@ class DefectEditDialog(QDialog):
     def save_changes(self) -> bool:
         if self._is_saving:
             return False
-        if not self.fields_widget.has_known_product_item_no():
-            QMessageBox.warning(self, "欄位驗證", VALIDATION_ITEM_NO_NOT_FOUND)
+        item_no_error = self.fields_widget.item_no_validation_error()
+        if item_no_error is not None:
+            QMessageBox.warning(self, "欄位驗證", item_no_error)
             return False
         self._set_save_busy_state(True)
-        try:
-            defect_service.update_defect(
+        _, save_error = _run_defect_save(
+            lambda: defect_service.update_defect(
                 self.conn,
                 self.defect_id,
                 self.fields_widget.get_form_data(),
             )
-        except ValueError as exc:
-            QMessageBox.warning(self, "欄位驗證", str(exc))
-            self._set_save_busy_state(False)
-            return False
-        except sqlite3.Error as exc:
-            QMessageBox.critical(self, "資料庫錯誤", str(exc))
+        )
+        if save_error is not None:
+            severity, title, exc = save_error
+            show = QMessageBox.warning if severity == "warning" else QMessageBox.critical
+            show(self, title, str(exc))
             self._set_save_busy_state(False)
             return False
 

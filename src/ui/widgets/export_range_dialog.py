@@ -16,6 +16,8 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.widgets.common_widgets import (
+    DirtyTrackingMixin,
+    RequiredFieldLabel,
     mark_button_variant,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
@@ -23,7 +25,7 @@ from ui.window_sizing import fit_dialog_to_available_screen
 logger = logging.getLogger(__name__)
 
 
-class ExportRangeDialog(QDialog):
+class ExportRangeDialog(DirtyTrackingMixin, QDialog):
     """自訂日期區間選擇對話框，用於匯出 Excel 報告前供使用者設定篩選範圍。"""
 
     def __init__(self, title: str = "匯出 Excel 報告", parent=None):
@@ -33,6 +35,10 @@ class ExportRangeDialog(QDialog):
         self.setModal(True)
 
         self._setup_ui()
+        self._init_dirty_tracking([
+            self.start_date_edit.dateChanged,
+            self.end_date_edit.dateChanged,
+        ])
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -61,8 +67,8 @@ class ExportRangeDialog(QDialog):
         self.end_date_edit.setCalendarPopup(True)
         self.end_date_edit.setDate(QDate.currentDate())
 
-        form_layout.addRow("開始日期", self.start_date_edit)
-        form_layout.addRow("結束日期", self.end_date_edit)
+        form_layout.addRow(RequiredFieldLabel("開始日期"), self.start_date_edit)
+        form_layout.addRow(RequiredFieldLabel("結束日期"), self.end_date_edit)
         
         layout.addLayout(form_layout)
 
@@ -78,11 +84,15 @@ class ExportRangeDialog(QDialog):
         cancel_btn.setText("取消")
         mark_button_variant(cancel_btn, "secondary")
 
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
         fit_dialog_to_available_screen(self, preferred_width=400, preferred_height=200)
+
+    def _on_accept(self) -> None:
+        self._dirty = False
+        self.accept()
 
     def get_date_range(self) -> tuple[str, str]:
         """回傳 (開始日期, 結束日期) 字串元組，格式為 YYYY-MM-DD。"""

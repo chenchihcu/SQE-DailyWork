@@ -12,7 +12,8 @@ the ``N/A`` sentinel as empty, while the list keys off the placeholder at index
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from PySide6.QtWidgets import QComboBox, QLabel
 
@@ -20,6 +21,19 @@ from ncr.models.labels import HINT_OUTSOURCE_LOCKED, HINT_SUPPLIER_LOCKED
 
 SUPPLIER_CATEGORY_FORMAL = "正式供應商"
 SUPPLIER_CATEGORY_OUTSOURCE = "委外供應商"
+
+
+@contextmanager
+def block_signals(widget) -> Iterator[None]:
+    """Block a widget's signals for the duration of the with-block,
+    guaranteeing blockSignals(False) runs on every exit path including
+    exceptions (project P1 rule: blockSignals must be paired with
+    try/finally; audit findings A4/A5)."""
+    widget.blockSignals(True)
+    try:
+        yield
+    finally:
+        widget.blockSignals(False)
 
 
 def load_supplier_names_by_category(

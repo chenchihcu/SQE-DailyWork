@@ -57,6 +57,4 @@ def apply_preferred_cjk_font(app: QApplication | None = None) -> None:
 
 def apply_app_theme(app: QApplication) -> None:
     apply_preferred_cjk_font(app)
-    if app.font().family() == "":
-        app.setFont(QFont("Segoe UI"))
     app.setStyleSheet(get_theme_qss())

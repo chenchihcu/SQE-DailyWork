@@ -9,19 +9,16 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import Qt
+from PySide6.QtCharts import QChart, QChartView, QHorizontalStackedBarSeries
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
     QDialog,
@@ -38,9 +35,22 @@ from ui.layout_constants import (
     RANK_PANEL_MARGINS,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
-from ui.theme import TOKENS
-from ui.widgets.chart_style import apply_chart_surface
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
+from ui.widgets.stats_dashboard_helpers import (
+    StatsInfoBanner,
+    build_temp_chart_paths,
+    cleanup_temp_files,
+    create_hidden_month_controls,
+    create_insight_label,
+    create_period_combo,
+    create_period_label,
+    create_stats_grid_layout,
+    create_stats_scroll_area,
+    period_month_key,
+    period_month_text,
+    render_chart_to_png,
+    short_chart_label,
+)
 from ui.widgets.stats_chart_mixin import _StatsChartMixin
 from ui.widgets.export_range_dialog import ExportRangeDialog
 
@@ -91,31 +101,19 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         month_row = QHBoxLayout()
         month_row.setSpacing(INLINE_SPACING)
-        period_label = QLabel("篩選區間")
-        period_label.setProperty("role", "sectionTitle")
-        period_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        
-        self.period_combo = QComboBox()
-        self.period_combo.addItems(["全期項目", "年度", "半年度"])
-        self.period_combo.setMinimumWidth(112)
-        self.period_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.period_combo.currentIndexChanged.connect(self._on_period_changed)
-        apply_clickable_affordance(self.period_combo, tooltip="切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）")
+        period_label = create_period_label()
+        self.period_combo = create_period_combo(self._on_period_changed)
 
         month_row.addWidget(period_label)
         month_row.addWidget(self.period_combo)
 
         # ── 向下相容 Proxy ──────────────────────────────────
-        from PySide6.QtWidgets import QDateEdit, QCheckBox
-        from PySide6.QtCore import QDate
-        self.month_input = QDateEdit(self)
-        self.month_input.setDate(QDate.currentDate())
-        self.all_time_toggle = QCheckBox(self)
-        self.month_input.hide()
-        self.all_time_toggle.hide()
+        self.month_input, self.all_time_toggle = create_hidden_month_controls(
+            self,
+            self._on_month_input_changed,
+            self._on_all_time_toggle_changed,
+        )
         self._test_yyyy_mm = None
-        self.month_input.dateChanged.connect(self._on_month_input_changed)
-        self.all_time_toggle.toggled.connect(self._on_all_time_toggle_changed)
 
         self.source_tag_label = QLabel("供應商事件統計")
         self.source_tag_label.setProperty("role", "sourceTag")
@@ -125,6 +123,13 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計」頁")
         month_row.addWidget(self.source_tag_label)
         month_row.addStretch(1)
+
+        btn_refresh = QPushButton("重新整理")
+        btn_refresh.setProperty("variant", "secondary")
+        btn_refresh.setMinimumWidth(100)
+        apply_clickable_affordance(btn_refresh, tooltip="重新整理統計數據")
+        btn_refresh.clicked.connect(self.refresh_data)
+        month_row.addWidget(btn_refresh)
 
         btn_export = QPushButton("匯出 Excel")
         btn_export.setProperty("variant", "primary")
@@ -137,18 +142,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         root.addWidget(top_panel)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
-        scroll = QScrollArea()
-        scroll.setObjectName("StatsTrendScrollArea")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        scroll_content = QWidget()
-        scroll_content.setObjectName("StatsScrollContent")
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(*RANK_PANEL_MARGINS)
-        scroll_layout.setSpacing(12)
+        scroll, scroll_layout = create_stats_scroll_area(
+            scroll_object_name="StatsTrendScrollArea",
+            content_object_name="StatsScrollContent",
+            margins=RANK_PANEL_MARGINS,
+        )
 
         self.info_banner = self._create_info_banner(
             "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；圖表只呈現供應商事件，不包含倉庫不合格品。",
@@ -157,11 +155,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         scroll_layout.addWidget(self.info_banner)
 
         # 2x2 網格佈局；外層裝飾 panel 已移除，保留每個圖表的語意 panel。
-        self.grid_layout = QGridLayout()
-        self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(16)
-        self.grid_layout.setColumnStretch(0, 1)
-        self.grid_layout.setColumnStretch(1, 1)
+        self.grid_layout = create_stats_grid_layout()
         scroll_layout.addLayout(self.grid_layout)
 
         # 1. 供應商事件趨勢 Panel
@@ -218,121 +212,34 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         rank_layout.addLayout(self._chart_content_layout, 1)
         self.grid_layout.addWidget(rank_panel, 1, 0, 1, 2)
 
-        scroll.setWidget(scroll_content)
         root.addWidget(scroll, 1)
 
         self._update_rank_month_subtitle()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # ── 測試向下相容 Proxy ────────────────────────────────
-        # 1. Dummy QTabWidget
-        self.tabs = QTabWidget(self)
-        self.tabs.setObjectName("StatsTabs")
-        self.tabs.addTab(QWidget(), "供應商事件趨勢")
-        self.tabs.addTab(QWidget(), "事件責任人績效")
-        self.tabs.addTab(QWidget(), "供應商事件風險")
-        self.tabs.hide()
-        
-        # 2. Dummy QScrollArea
-        self.d2 = QScrollArea(self)
-        self.d2.setObjectName("StatsResponsibleScrollArea")
-        self.d2.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.d2.hide()
-        self.d3 = QScrollArea(self)
-        self.d3.setObjectName("StatsSupplierRiskScrollArea")
-        self.d3.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.d3.hide()
-
     def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
         """建立統一格式的統計說明區塊。"""
-        banner = QFrame()
-        banner.setObjectName("statsInfoBanner")
-
-        bg_color = TOKENS["panel_alt_bg"]
-        border_color = TOKENS["border"]
-        text_color = TOKENS["text_muted"]
-
-        banner.setStyleSheet(f"""
-            QFrame#statsInfoBanner {{
-                background-color: {bg_color};
-                border: 1px solid {border_color};
-                border-radius: 6px;
-            }}
-            QLabel {{
-                background-color: transparent;
-                border: none;
-                color: {text_color};
-            }}
-        """)
-
-        layout = QVBoxLayout(banner)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(1)
-
-        formula_label = QLabel(f"<b>統計公式：</b>{formula}")
-        purpose_label = QLabel(f"<b>統計目的：</b>{purpose}")
-        formula_label.setProperty("role", "statsInfoText")
-        purpose_label.setProperty("role", "statsInfoText")
-        formula_label.setWordWrap(True)
-        purpose_label.setWordWrap(True)
-        formula_label.setMinimumWidth(0)
-        purpose_label.setMinimumWidth(0)
-
-        layout.addWidget(formula_label)
-        layout.addWidget(purpose_label)
-        return banner
+        return StatsInfoBanner(
+            formula,
+            purpose,
+            formula_prefix="統計公式",
+            purpose_prefix="統計目的",
+            object_name="statsInfoBanner",
+            margins=(8, 4, 8, 4),
+            spacing=1,
+        )
 
     def _create_insight_label(self, text: str) -> QLabel:
         """建立統一背景的管理建議標籤。"""
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setProperty("role", "insight")
-        label.setMinimumWidth(0)
-
-        bg_color = TOKENS["panel_alt_bg"]
-        border_color = TOKENS["info"]
-        text_color = TOKENS["text_primary"]
-
-        label.setStyleSheet(f"""
-            QLabel {{
-                background-color: {bg_color};
-                border-left: 4px solid {border_color};
-                padding: 6px 10px;
-                color: {text_color};
-                border-top-right-radius: 4px;
-                border-bottom-right-radius: 4px;
-            }}
-        """)
-        return label
+        return create_insight_label(text)
 
     # ── 日期 / 導覽方法 ──────────────────────────────────
 
     def _month_key(self) -> str:
-        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
-            return self._test_yyyy_mm
-        idx = self.period_combo.currentIndex()
-        if idx == 0:
-            return "ALL"
-        elif idx == 1:
-            return "YEAR"
-        else:
-            return "HALF_YEAR"
+        return period_month_key(self.period_combo, getattr(self, "_test_yyyy_mm", None))
 
     def _month_text(self) -> str:
-        if hasattr(self, "_test_yyyy_mm") and self._test_yyyy_mm is not None:
-            if self._test_yyyy_mm == "ALL":
-                return "全期累計"
-            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
-        from datetime import date
-        idx = self.period_combo.currentIndex()
-        if idx == 0:
-            return "全期項目"
-        elif idx == 1:
-            return f"{date.today().year}年度"
-        else:
-            current_month = date.today().month
-            half = "上半年" if current_month <= 6 else "下半年"
-            return f"{date.today().year}年{half}"
+        return period_month_text(self.period_combo, getattr(self, "_test_yyyy_mm", None))
 
     def _update_rank_month_subtitle(self):
         if self._rank_month_label is None:
@@ -418,7 +325,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 if risk_suppliers:
                     top_risk = risk_suppliers[0]
                     top_risk_name = str(top_risk.get("supplier_name") or "")
-                    top_risk_label = self._short_supplier_label(top_risk_name, max_len=18)
+                    top_risk_label = short_chart_label(top_risk_name, max_len=18)
                     insight = self._create_insight_label(
                         f"供應商預警：發現 {len(risk_suppliers)} 家廠商存在逾期案件。\n"
                         f"重點關注：{top_risk_label} 目前有 {top_risk.get('overdue_open_anomaly_count', 0)} 件逾期未結，平均時效達 {top_risk.get('avg_resolution_time', 0)} 天。"
@@ -500,44 +407,32 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         # 3. 處理與匯出
         temp_dir = os.path.dirname(file_path)
         pid = os.getpid()
-        temp_paths = {
-            "trend": os.path.join(temp_dir, f"temp_evt_trend_{pid}.png"),
-            "responsible": os.path.join(temp_dir, f"temp_evt_responsible_{pid}.png"),
-        }
-        
-        # 確保刪除先前遺留的暫存檔
-        for p in temp_paths.values():
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+        temp_paths = build_temp_chart_paths(temp_dir, pid, ["trend", "responsible"], "temp_evt")
+        cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
 
         try:
             # 取得這段時間範圍的數據
             trend_data = event_service.get_anomaly_trend_by_range(start_date, end_date)
             resp_stats = event_service.get_responsible_person_stats_by_range(start_date, end_date)
             events_detail = event_service.list_events_by_range(start_date, end_date)
-            
+
             has_data = len(events_detail) > 0
-            
+
             # 如果有數據，則在背景繪製圖表並 grab 儲存
             active_temp_paths = {}
             if has_data:
                 # 1. Trend chart
-                if trend_data:
-                    v = self._build_trend_chart(trend_data)
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["trend"])
+                if trend_data and render_chart_to_png(
+                    lambda: self._build_trend_chart(trend_data), temp_paths["trend"]
+                ):
                     active_temp_paths["trend"] = temp_paths["trend"]
-                    
+
                 # 2. Responsible chart
-                if resp_stats:
-                    v = self._build_responsible_chart(resp_stats)
-                    v.resize(600, 400)
-                    v.grab().save(temp_paths["responsible"])
+                if resp_stats and render_chart_to_png(
+                    lambda: self._build_responsible_chart(resp_stats), temp_paths["responsible"]
+                ):
                     active_temp_paths["responsible"] = temp_paths["responsible"]
-                    
+
             # 呼叫匯出服務
             ok, msg = event_service.export_events_report(
                 file_path,
@@ -545,20 +440,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 end_date,
                 temp_chart_paths=active_temp_paths if has_data else None
             )
-            
+
             if ok:
                 QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
-                
+
         except Exception as exc:
             logger.exception("匯出 Excel 報告出錯")
             QMessageBox.critical(self, "錯誤", f"匯出過程發生非預期錯誤：{exc}")
         finally:
-            # 刪除暫存檔
-            for p in temp_paths.values():
-                if os.path.exists(p):
-                    try:
-                        os.remove(p)
-                    except Exception:
-                        pass
+            cleanup_temp_files(temp_paths)
