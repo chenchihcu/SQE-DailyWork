@@ -50,6 +50,7 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Soft Delete**: Use `is_active: bool = True` for Models. Filter by `is_active=True` in all standard queries.
 - **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
 - **Badge and List Count Alignment**: When updating sidebar navigation badges or dashboard cards for specific scoped items (e.g. '單獨異常' / '訪廠發現異常'), ensure that the count query aligns exactly with the filters applied to the lists displayed on the right. For example, the badge count for '單獨異常' must only count open anomalies without a visit link (`visit_id IS NULL OR visit_id = ''`), rather than using a general un-scoped count of all open anomalies.
+- **Supplier Event List Columns (Anomaly No over Date)**: For all supplier event lists (such as the EventListWidget query tabs and the HomeWidget backlog table), the first column must be named "異常單號" (Anomaly Number) instead of "日期" (Date). The row rendering must show the `ref_no` (anomaly number) if present, and fallback to `event_date` (date) only for visit records that lack an anomaly number. When sorting by this column, if the `ref_no` is empty (e.g., visits), the system must fallback to sorting by `event_date` to ensure stable sorting.
 
 ## 3. UI/UX & Styling Standards (Slate + Electric Blue)
 - **Terminology**: Keep labels and status terms consistent with existing dialogs and `src/ui/popup_i18n.py` patterns.
