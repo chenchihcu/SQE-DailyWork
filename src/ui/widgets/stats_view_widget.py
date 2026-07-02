@@ -382,6 +382,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     self._chart_content_layout.addWidget(self._create_insight_label("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。"))
         else:
             self._chart_content_layout.addWidget(EmptyStateWidget("暫無責任人數據"))
+        self.update()
 
     # ── 匯出 ──────────────────────────────────────────────
 

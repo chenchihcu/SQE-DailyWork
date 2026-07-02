@@ -246,6 +246,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         # 產生 Insights 管理建議
         self._generate_insights(top_suppliers, top_products, scrap_rework, return_slips)
+        self.update()
 
     def _generate_insights(
         self, top_suppliers: list, top_products: list, scrap_rework: list, return_slips: list
