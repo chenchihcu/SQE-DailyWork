@@ -212,6 +212,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         rank_layout.addLayout(self._chart_content_layout, 1)
         self.grid_layout.addWidget(rank_panel, 1, 0, 1, 2)
 
+        # 加上 stretch 吸收剩餘垂直空間，防止圖表長寬比在拉大時嚴重變形
+        scroll_layout.addStretch(1)
+
         root.addWidget(scroll, 1)
 
         self._update_rank_month_subtitle()

@@ -28,7 +28,7 @@ from PySide6.QtCharts import (
 )
 from PySide6.QtCore import QMargins, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QLabel, QToolTip
+from PySide6.QtWidgets import QApplication, QLabel, QToolTip, QSizePolicy
 
 from ui.layout_constants import CHART_BAR_HEIGHT, CHART_HEADER_FOOTER_OFFSET, CHART_MIN_HEIGHT
 from ui.status_colors import get_status_palette
@@ -169,6 +169,7 @@ class _StatsChartMixin:
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, len(categories) * 28 + 150))
+        chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         bar_series.hovered.connect(lambda status, idx, bs: self._on_resp_stacked_hovered(status, idx, data))
 
@@ -292,6 +293,7 @@ class _StatsChartMixin:
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
+        chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         bar_series.hovered.connect(lambda status, idx, bs: self._on_trend_bar_hovered(status, idx, data))
 
@@ -392,6 +394,7 @@ class _StatsChartMixin:
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
+        chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         bar_series.hovered.connect(lambda status, idx, bs: self._on_visit_trend_bar_hovered(status, idx, data))
 
