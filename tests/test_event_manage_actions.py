@@ -808,6 +808,59 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual(1, summary["open_count"])
         self.assertEqual(0, summary["closed_count"])
 
+    def test_get_dashboard_summary_with_standalone_open_count(self) -> None:
+        # Create a supplier
+        supplier_id = self._create_supplier("Dashboard Badge Supplier")
+        
+        # 1. Create a standalone open anomaly (visit_id IS NULL)
+        anomaly_no_1 = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="standalone open anomaly",
+        )
+        
+        # 2. Create a visit-derived open anomaly (visit_id IS NOT NULL)
+        visit_id = repository.create_visit(
+            self.conn,
+            visit_date="2026-04-16",
+            supplier_id=supplier_id,
+            summary="visit summary",
+        )
+        anomaly_no_2 = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="visit derived open anomaly",
+            visit_id=visit_id,
+        )
+        
+        # 3. Create a closed anomaly
+        anomaly_no_3 = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="closed anomaly",
+        )
+        anomaly_id_3 = self._find_anomaly_id(anomaly_no_3)
+        repository.close_anomaly(
+            self.conn,
+            anomaly_id=anomaly_id_3,
+            improvement_desc="resolved",
+            closed_by="Tester",
+            root_cause_category="製程參數異常",
+            closed_at="2026-04-17",
+        )
+        
+        # Query dashboard summary and verify
+        summary = repository.get_dashboard_summary(self.conn)
+        # Total open: standalone (1) + visit-derived (1) = 2
+        self.assertEqual(2, summary["open_count"])
+        # Total closed: 1
+        self.assertEqual(1, summary["closed_count"])
+        # Standalone open: 1
+        self.assertEqual(1, summary["standalone_open_count"])
+
 
 if __name__ == "__main__":
     unittest.main()

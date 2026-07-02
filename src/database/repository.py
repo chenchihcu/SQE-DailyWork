@@ -3942,7 +3942,8 @@ def get_dashboard_summary(conn: sqlite3.Connection) -> dict:
         """
         SELECT
             COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count,
-            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_count
+            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_count,
+            COUNT(CASE WHEN status = '待處理' AND (visit_id IS NULL OR visit_id = '') THEN 1 END) AS standalone_open_count
         FROM anomalies
         """
     ).fetchone()
@@ -3950,6 +3951,7 @@ def get_dashboard_summary(conn: sqlite3.Connection) -> dict:
         "unclosed_count": int(row["open_count"]),
         "open_count": int(row["open_count"]),
         "closed_count": int(row["closed_count"]),
+        "standalone_open_count": int(row["standalone_open_count"]),
         "recent_events": list_events(conn, limit=10),
     }
 

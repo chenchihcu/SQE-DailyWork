@@ -348,7 +348,7 @@ class MainWindow(QMainWindow):
     def _refresh_sidebar_badge(self) -> None:
         try:
             summary = event_service.get_dashboard_summary()
-            count = int(summary.get("open_count", 0))
+            count = int(summary.get("standalone_open_count", 0))
         except Exception:
             logger.exception("重新整理事件徽章失敗")
             count = 0
