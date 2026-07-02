@@ -49,6 +49,49 @@ def create_period_combo(
     return combo
 
 
+def create_year_month_selectors(
+    on_changed: Callable[[], None],
+    *,
+    parent: QWidget | None = None,
+) -> tuple[QComboBox, QLabel, QComboBox, QLabel]:
+    """建立年份與月份下拉選單，選單後加上年與月字樣。"""
+    # Year options: 2025 to 2030
+    year_combo = QComboBox(parent)
+    year_combo.addItems(["2025", "2026", "2027", "2028", "2029", "2030"])
+    
+    year_label = QLabel("年", parent)
+    year_label.setProperty("role", "sectionTitle")
+    year_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    
+    # Month options: 01 to 12
+    month_combo = QComboBox(parent)
+    month_combo.addItems([f"{m:02d}" for m in range(1, 13)])
+    
+    month_label = QLabel("月", parent)
+    month_label.setProperty("role", "sectionTitle")
+    month_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    
+    # Connect signals
+    year_combo.currentIndexChanged.connect(lambda: on_changed())
+    month_combo.currentIndexChanged.connect(lambda: on_changed())
+    
+    # Default to current year and month
+    from datetime import date
+    current_year = str(date.today().year)
+    current_month = f"{date.today().month:02d}"
+    
+    if current_year in ["2025", "2026", "2027", "2028", "2029", "2030"]:
+        year_combo.setCurrentText(current_year)
+    else:
+        year_combo.setCurrentText("2026") # fallback
+    month_combo.setCurrentText(current_month)
+    
+    apply_clickable_affordance(year_combo, tooltip="選擇統計年份")
+    apply_clickable_affordance(month_combo, tooltip="選擇統計月份")
+    
+    return year_combo, year_label, month_combo, month_label
+
+
 def create_hidden_month_controls(
     parent: QWidget,
     on_month_changed: Callable[[QDate], None],

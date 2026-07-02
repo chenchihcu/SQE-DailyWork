@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-
+from PySide6.QtCore import QDate
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QFrame,
@@ -35,13 +35,13 @@ from ui.widgets.stats_dashboard_helpers import (
     cleanup_temp_files,
     create_hidden_month_controls,
     create_insight_label,
-    create_period_combo,
     create_period_label,
     create_stats_grid_layout,
     create_stats_scroll_area,
     period_month_key,
     period_month_text,
     render_chart_to_png,
+    create_year_month_selectors,
 )
 from ui.widgets.ncr_stats_chart_mixin import (
     _NcrStatsChartMixin,
@@ -79,14 +79,16 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         control_row.setSpacing(INLINE_SPACING)
         
         period_label = create_period_label()
-        self.period_combo = create_period_combo(
-            self._on_period_changed,
-            minimum_width=None,
-            fixed_size=False,
+        self.year_combo, self.year_suffix, self.month_combo, self.month_suffix = create_year_month_selectors(
+            self._on_selector_changed,
+            parent=self
         )
 
         control_row.addWidget(period_label)
-        control_row.addWidget(self.period_combo)
+        control_row.addWidget(self.year_combo)
+        control_row.addWidget(self.year_suffix)
+        control_row.addWidget(self.month_combo)
+        control_row.addWidget(self.month_suffix)
 
         # ── 向下相容 Proxy ──────────────────────────────────
         self.month_input, self.all_time_toggle = create_hidden_month_controls(
@@ -166,21 +168,48 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         return create_insight_label(text, minimum_height=40)
 
     def _month_key(self) -> str:
-        return period_month_key(self.period_combo, getattr(self, "_test_yyyy_mm", None))
+        if getattr(self, "_test_yyyy_mm", None) is not None:
+            return self._test_yyyy_mm
+        year = self.year_combo.currentText()
+        month = self.month_combo.currentText()
+        return f"{year}{month}"
 
     def _month_text(self) -> str:
-        return period_month_text(self.period_combo, getattr(self, "_test_yyyy_mm", None))
+        if getattr(self, "_test_yyyy_mm", None) is not None:
+            if self._test_yyyy_mm == "ALL":
+                return "全期累計"
+            return f"{self._test_yyyy_mm[:4]}-{self._test_yyyy_mm[4:]}"
+        year = self.year_combo.currentText()
+        month = self.month_combo.currentText()
+        return f"{year}-{month}"
 
     def _on_month_input_changed(self, qdate):
         self._test_yyyy_mm = qdate.toString("yyyyMM")
+        year_str = qdate.toString("yyyy")
+        month_str = qdate.toString("MM")
+        self.year_combo.blockSignals(True)
+        self.month_combo.blockSignals(True)
+        self.year_combo.setCurrentText(year_str)
+        self.month_combo.setCurrentText(month_str)
+        self.year_combo.blockSignals(False)
+        self.month_combo.blockSignals(False)
         self.refresh_data()
 
     def _on_all_time_toggle_changed(self, checked):
-        self._test_yyyy_mm = "ALL" if checked else self.month_input.date().toString("yyyyMM")
+        self._test_yyyy_mm = "ALL" if checked else f"{self.year_combo.currentText()}{self.month_combo.currentText()}"
         self.month_input.setEnabled(not checked)
+        self.year_combo.setEnabled(not checked)
+        self.month_combo.setEnabled(not checked)
         self.refresh_data()
 
-    def _on_period_changed(self, index: int):
+    def _on_selector_changed(self):
+        year = self.year_combo.currentText()
+        month = self.month_combo.currentText()
+        qdate = QDate(int(year), int(month), 1)
+        self.month_input.blockSignals(True)
+        self.month_input.setDate(qdate)
+        self.month_input.blockSignals(False)
+        self._test_yyyy_mm = f"{year}{month}"
         self.refresh_data()
 
     def refresh_data(self):
