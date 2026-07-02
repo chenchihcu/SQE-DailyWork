@@ -93,9 +93,21 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         main_window: _DummyMainWindow | None = None,
     ) -> tuple[StatsViewWidget, _DummyMainWindow]:
         host = main_window or _DummyMainWindow()
+        resp_stats = []
+        if "top_suppliers_by_anomaly" in summary:
+            for item in summary["top_suppliers_by_anomaly"]:
+                resp_stats.append({
+                    "responsible_person": item.get("supplier_name") or item.get("responsible_person"),
+                    "total_count": item.get("anomaly_count", 0),
+                    "closed_count": item.get("closed_anomaly_count", 0),
+                    "open_count": item.get("open_anomaly_count", 0),
+                    "min_open_date": "2026-02-01",
+                    "max_open_date": "2026-05-01",
+                })
         with patch("services.event_service.get_monthly_stats", return_value=summary), \
              patch("services.event_service.get_anomaly_trend", return_value=trend_data or []), \
-             patch("services.event_service.get_responsible_person_stats", return_value=[]):
+             patch("services.event_service.get_visit_trend", return_value=[]), \
+             patch("services.event_service.get_responsible_person_stats", return_value=resp_stats):
             widget = StatsViewWidget(main_window=host)
             widget.month_input.setDate(month)
             widget.refresh_data()
@@ -146,20 +158,21 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertIsInstance(series, QHorizontalStackedBarSeries)
 
         bar_sets = series.barSets()
-        self.assertEqual(3, len(bar_sets))
-        overdue_set = bar_sets[0]
-        ongoing_set = bar_sets[1]
-        closed_set = bar_sets[2]
+        self.assertEqual(2, len(bar_sets))
+        closed_set = bar_sets[0]
+        open_set = bar_sets[1]
         
-        self.assertEqual("逾期未結", overdue_set.label())
-        self.assertEqual("進行中", ongoing_set.label())
         self.assertEqual("已結案", closed_set.label())
+        self.assertEqual("未結案", open_set.label())
         
         # In setup, B is last, so it's index 0 in reversed categories
-        self.assertEqual(0, int(overdue_set.at(0))) # B
-        self.assertEqual(0, int(overdue_set.at(1))) # A
-        self.assertEqual(1, int(overdue_set.at(2))) # C
-
+        self.assertEqual(0, int(closed_set.at(0))) # B
+        self.assertEqual(1, int(closed_set.at(1))) # A
+        self.assertEqual(2, int(closed_set.at(2))) # C
+        self.assertEqual(1, int(open_set.at(0))) # B
+        self.assertEqual(2, int(open_set.at(1))) # A
+        self.assertEqual(3, int(open_set.at(2))) # C
+ 
         category_axis = next(
             axis
             for axis in widget._chart.axes(Qt.Orientation.Vertical)
@@ -169,33 +182,23 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             ["Supplier-B", "Supplier-A", "Supplier-C"],
             category_axis.categories(),
         )
-
-        self.assertEqual(
-            QColor(get_status_palette("逾期未結").chart).name().lower(),
-            overdue_set.color().name().lower(),
-        )
+ 
         self.assertEqual(
             QColor(get_status_palette("已結案").chart).name().lower(),
             closed_set.color().name().lower(),
         )
+        self.assertEqual(
+            QColor(get_status_palette("待處理").chart).name().lower(),
+            open_set.color().name().lower(),
+        )
         assert widget._rank_month_label is not None
         self.assertEqual("月份：2026-04", widget._rank_month_label.text())
         self.assertTrue(widget._chart.legend().isVisible())
-
-        self.assertFalse(
-            any(isinstance(series, QLineSeries) for series in widget._chart.series())
-        )
-        self.assertTrue(
-            any(
-                isinstance(series, QScatterSeries)
-                and series.name() == "平均處理時效 (天)"
-                for series in widget._chart.series()
-            )
-        )
+ 
         labels = [label.text() for label in widget.findChildren(QLabel)]
         self.assertIn("供應商事件趨勢分析 (過去 6 個月)", labels)
-        self.assertIn("供應商事件責任人績效 (總件數 vs 平均處理時效)", labels)
-        self.assertIn("供應商事件風險堆疊圖", labels)
+        self.assertIn("供應商訪廠與訪廠異常趨勢分析 (過去 6 個月)", labels)
+        self.assertIn("責任人事件統計 (已結案 vs 未結案)", labels)
         self.assertEqual([], widget.findChildren(QTabWidget))
         self.assertEqual("statsInfoBanner", widget.info_banner.property("role"))
 
@@ -262,7 +265,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
 
         self.assertEqual(11, value_axis.labelsFont().pointSize())
         self.assertEqual(11, value_axis.titleFont().pointSize())
-        self.assertEqual(11, category_axis.labelsFont().pointSize())
+        self.assertEqual(9, category_axis.labelsFont().pointSize())
         self.assertEqual(11, category_axis.titleFont().pointSize())
         self.assertTrue(widget._chart.legend().isVisible())
 
@@ -305,7 +308,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             widget._chart_view.sizePolicy().horizontalPolicy(),
         )
 
-    def test_stats_view_chart_click_routes_to_event_query_with_month_filter(self) -> None:
+    def test_stats_view_chart_click_does_not_route_in_responsible_chart(self) -> None:
         summary = {
             "anomaly_count": 6,
             "visit_count": 2,
@@ -318,33 +321,10 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                     "open_anomaly_count": 3,
                     "closed_anomaly_count": 1,
                 },
-                {
-                    "supplier_name": "Supplier-B",
-                    "anomaly_count": 2,
-                    "open_anomaly_count": 1,
-                    "closed_anomaly_count": 1,
-                },
             ],
         }
         widget, host = self._build_widget(summary, month=QDate(2026, 11, 1))
-        assert widget._chart_series is not None
-        bar_set = widget._chart_series.barSets()[0]
-
-        widget._on_chart_bar_clicked(1, bar_set)
-
-        self.assertEqual(
-            [
-                {
-                    "event_type": "ANOMALY",
-                    "supplier_keyword": "Supplier-A", # index 1 is now A after reverse
-                    "yyyymm": "202611",
-                    "status": "待處理",
-                    "event_scope": event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                    "overdue_only": False,
-                }
-            ],
-            host.quick_filter_calls,
-        )
+        self.assertEqual([], host.quick_filter_calls)
 
     def test_stats_view_does_not_render_decision_summary_cards(self) -> None:
         summary = {
@@ -458,7 +438,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                     categories = axis.categories()
                     self.assertEqual(len(categories), len(set(categories)))
 
-    def test_stats_view_hover_uses_full_supplier_name_in_tooltip(self) -> None:
+    def test_stats_view_hover_uses_full_responsible_name_in_tooltip(self) -> None:
         summary = {
             "anomaly_count": 4,
             "visit_count": 0,
@@ -470,28 +450,34 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                     "anomaly_count": 4,
                     "open_anomaly_count": 3,
                     "closed_anomaly_count": 1,
-                    "avg_resolution_time": 3.2,
                 },
             ],
         }
         widget, _host = self._build_widget(summary, month=QDate(2026, 9, 1))
         assert widget._chart_series is not None
-        bar_set = widget._chart_series.barSets()[0]
+        
+        resp_data = [
+            {
+                "responsible_person": "NorthStarSupplierAlpha",
+                "total_count": 4,
+                "open_count": 3,
+                "closed_count": 1,
+                "min_open_date": "2026-02-01",
+                "max_open_date": "2026-05-01",
+            }
+        ]
 
         with patch("ui.widgets.stats_chart_mixin.QToolTip.showText") as mock_show:
-            widget._on_chart_bar_hovered(True, 0, bar_set)
+            widget._on_resp_stacked_hovered(True, 0, resp_data)
         mock_show.assert_called_once()
         tooltip_text = str(mock_show.call_args.args[1])
         self.assertIn("NorthStarSupplierAlpha", tooltip_text)
-        self.assertIn("逾期未結：0", tooltip_text)
-        self.assertIn("進行中：3", tooltip_text)
-        self.assertIn("已結案：1", tooltip_text)
-        self.assertIn("總異常件數：4", tooltip_text)
-        self.assertIn("平均處理時效：3.2 天", tooltip_text)
-        self.assertIn("月份：2026-09", tooltip_text)
+        self.assertIn("已結案：1 件", tooltip_text)
+        self.assertIn("未結案：3 件", tooltip_text)
+        self.assertIn("未結案累計月份：2026/02 ~ 2026/05", tooltip_text)
 
         with patch("ui.widgets.stats_chart_mixin.QToolTip.hideText") as mock_hide:
-            widget._on_chart_bar_hovered(False, 0, bar_set)
+            widget._on_resp_stacked_hovered(False, 0, resp_data)
         mock_hide.assert_called_once()
 
 

@@ -4229,8 +4229,42 @@ def get_anomaly_trend(conn: sqlite3.Connection, months: int = 6) -> list[dict]:
     return results
 
 
+def get_visit_trend(conn: sqlite3.Connection, months: int = 6) -> list[dict]:
+    """Fetch monthly visit counts and visit anomaly counts for the last N months."""
+    now = datetime.now()
+    months_list = []
+    for i in range(months - 1, -1, -1):
+        y = now.year
+        m = now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        months_list.append(f"{y:04d}-{m:02d}")
+
+    results = []
+    for yyyymm in months_list:
+        # 1. Total visits in this month
+        visit_row = conn.execute(
+            "SELECT COUNT(*) as c FROM visits WHERE substr(visit_date, 1, 7) = ?",
+            (yyyymm,)
+        ).fetchone()
+
+        # 2. Total anomalies linked to a visit in this month
+        anomaly_row = conn.execute(
+            "SELECT COUNT(*) as c FROM anomalies WHERE substr(anomaly_date, 1, 7) = ? AND NULLIF(visit_id, '') IS NOT NULL",
+            (yyyymm,)
+        ).fetchone()
+
+        results.append({
+            "yyyymm": yyyymm,
+            "visit_count": int(visit_row["c"] or 0),
+            "visit_anomaly_count": int(anomaly_row["c"] or 0)
+        })
+    return results
+
+
 def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[dict]:
-    """Aggregate anomaly counts and average resolution time by responsible person."""
+    """Aggregate anomaly counts (closed, open, and unclosed range) by responsible person."""
     current_year = date.today().year
     current_month = date.today().month
 
@@ -4256,6 +4290,8 @@ def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[
         SELECT 
             COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
             COUNT(*) AS total_count,
+            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_count,
+            COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count,
             AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_days
         FROM anomalies
         {where_clause}
@@ -4263,13 +4299,32 @@ def get_responsible_person_stats(conn: sqlite3.Connection, yyyymm: str) -> list[
         ORDER BY total_count DESC, person ASC
     """
     rows = conn.execute(sql, params).fetchall()
+
+    # Get unclosed cases range for each person from all time
+    unclosed_sql = """
+        SELECT 
+            COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
+            MIN(anomaly_date) AS min_date,
+            MAX(anomaly_date) AS max_date
+        FROM anomalies
+        WHERE status = '待處理'
+        GROUP BY person
+    """
+    unclosed_rows = conn.execute(unclosed_sql).fetchall()
+    unclosed_dates = {r["person"]: (r["min_date"], r["max_date"]) for r in unclosed_rows}
     
     results = []
     for row in rows:
+        person = row["person"]
+        min_date, max_date = unclosed_dates.get(person, (None, None))
         results.append({
-            "responsible_person": row["person"],
+            "responsible_person": person,
             "total_count": int(row["total_count"]),
-            "avg_resolution_time": round(float(row["avg_days"] or 0), 1)
+            "closed_count": int(row["closed_count"]),
+            "open_count": int(row["open_count"]),
+            "avg_resolution_time": round(float(row["avg_days"] or 0), 1),
+            "min_open_date": min_date,
+            "max_open_date": max_date,
         })
     return results
 

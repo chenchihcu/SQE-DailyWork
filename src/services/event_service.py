@@ -731,6 +731,11 @@ def get_anomaly_trend(months: int = 6) -> list[dict]:
         return repository.get_anomaly_trend(conn, months)
 
 
+def get_visit_trend(months: int = 6) -> list[dict]:
+    with get_connection() as conn:
+        return repository.get_visit_trend(conn, months)
+
+
 def get_responsible_person_stats(yyyymm: str | None = None) -> list[dict]:
     month = yyyymm or _month_now()
     with get_connection() as conn:
@@ -1028,11 +1033,12 @@ def export_events_report(
             for c in [1, 2, 3, 5, 6, 7]:
                 report_sheet.cell(row=r, column=c).border = STYLE_BORDER_THIN
 
-        # 插入統計圖表 (橫向並排)
+        # 插入統計圖表 (橫向與縱向並排)
         if temp_chart_paths:
             chart_placements = [
                 ("trend", "A7"),
-                ("responsible", "I7")
+                ("visit_anomaly", "I7"),
+                ("responsible", "A23")
             ]
             for key, cell in chart_placements:
                 path = temp_chart_paths.get(key)
@@ -1172,6 +1178,8 @@ def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> lis
         SELECT 
             COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
             COUNT(*) AS total_count,
+            COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_count,
+            COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count,
             AVG(julianday(COALESCE(NULLIF(closed_at, ''), date('now', 'localtime'))) - julianday(anomaly_date)) AS avg_days
         FROM anomalies
         WHERE anomaly_date BETWEEN ? AND ?
@@ -1180,13 +1188,93 @@ def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> lis
     """
     with get_connection() as conn:
         rows = conn.execute(sql, (start_date, end_date)).fetchall()
+        
+        # Get unclosed dates range (all-time unclosed for these people)
+        unclosed_sql = """
+            SELECT 
+                COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
+                MIN(anomaly_date) AS min_date,
+                MAX(anomaly_date) AS max_date
+            FROM anomalies
+            WHERE status = '待處理'
+            GROUP BY person
+        """
+        unclosed_rows = conn.execute(unclosed_sql).fetchall()
+        unclosed_dates = {r["person"]: (r["min_date"], r["max_date"]) for r in unclosed_rows}
     
     results = []
     for row in rows:
+        person = row["person"]
+        min_date, max_date = unclosed_dates.get(person, (None, None))
         results.append({
-            "responsible_person": row["person"],
+            "responsible_person": person,
             "total_count": int(row["total_count"]),
-            "avg_resolution_time": round(float(row["avg_days"] or 0), 1)
+            "closed_count": int(row["closed_count"]),
+            "open_count": int(row["open_count"]),
+            "avg_resolution_time": round(float(row["avg_days"] or 0), 1),
+            "min_open_date": min_date,
+            "max_open_date": max_date,
+        })
+    return results
+
+
+def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
+    """計算指定日期範圍內各月份的訪廠數與訪廠發現的異常數（最多限制 12 個月）。"""
+    from datetime import datetime
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    except Exception:
+        return []
+    
+    months_list = []
+    curr_y, curr_m = start_dt.year, start_dt.month
+    end_y, end_m = end_dt.year, end_dt.month
+    
+    while (curr_y < end_y) or (curr_y == end_y and curr_m <= end_m):
+        months_list.append(f"{curr_y:04d}-{curr_m:02d}")
+        curr_m += 1
+        if curr_m > 12:
+            curr_m = 1
+            curr_y += 1
+            
+    if len(months_list) > 12:
+        months_list = months_list[-12:]
+    elif not months_list:
+        months_list = [start_date[:7]]
+
+    earliest_month = months_list[0]
+    latest_month = months_list[-1]
+
+    with get_connection() as conn:
+        visit_rows = conn.execute(
+            """
+            SELECT substr(visit_date, 1, 7) AS yyyymm, COUNT(*) AS visit_count
+            FROM visits
+            WHERE substr(visit_date, 1, 7) BETWEEN ? AND ?
+            GROUP BY yyyymm
+            """,
+            (earliest_month, latest_month)
+        ).fetchall()
+        visits_by_month = {r["yyyymm"]: int(r["visit_count"] or 0) for r in visit_rows}
+
+        anomaly_rows = conn.execute(
+            """
+            SELECT substr(anomaly_date, 1, 7) AS yyyymm, COUNT(*) AS anomaly_count
+            FROM anomalies
+            WHERE NULLIF(visit_id, '') IS NOT NULL AND substr(anomaly_date, 1, 7) BETWEEN ? AND ?
+            GROUP BY yyyymm
+            """,
+            (earliest_month, latest_month)
+        ).fetchall()
+        anomalies_by_month = {r["yyyymm"]: int(r["anomaly_count"] or 0) for r in anomaly_rows}
+
+    results = []
+    for yyyymm in months_list:
+        results.append({
+            "yyyymm": yyyymm,
+            "visit_count": visits_by_month.get(yyyymm, 0),
+            "visit_anomaly_count": anomalies_by_month.get(yyyymm, 0)
         })
     return results
 

@@ -100,96 +100,68 @@ class _StatsChartMixin:
         self._chart_avg_time_values = []
         QToolTip.hideText()
 
-    # ── 供應商風險圖表 ────────────────────────────────────
+    # ── 責任人事件統計圖表 ────────────────────────────────────
 
-    def _build_supplier_chart(self, rows: list[dict]) -> QChartView | None:
+    def _build_responsible_stacked_chart(self, rows: list[dict]) -> QChartView | None:
         if not rows:
             return None
 
+        # Display top 15 responsible persons, reverse for horizontal chart listing
         data = rows[:15]
         data.reverse()
         self._last_supplier_data = list(data)
         categories = dedupe_chart_labels([
-            short_chart_label(r["supplier_name"], max_len=SUPPLIER_LABEL_MAX_LEN)
+            short_chart_label(r["responsible_person"], max_len=SUPPLIER_LABEL_MAX_LEN)
             for r in data
         ])
-
-        overdue_set = QBarSet("逾期未結")
-        overdue_set.setColor(CHART_OVERDUE_COLOR)
-
-        ongoing_set = QBarSet("進行中")
-        ongoing_set.setColor(CHART_OPEN_COLOR)
 
         closed_set = QBarSet("已結案")
         closed_set.setColor(CHART_CLOSED_COLOR)
 
-        time_points = QScatterSeries()
-        time_points.setName("平均處理時效 (天)")
-        time_points.setMarkerSize(7)
-        time_points.setColor(QColor(TOKENS.get("info", "#2196f3")))
-        time_points.setBorderColor(QColor(TOKENS.get("info", "#2196f3")).darker(115))
+        open_set = QBarSet("未結案")
+        open_set.setColor(CHART_OPEN_COLOR)
 
-        for i, r in enumerate(data):
-            total_open = int(r.get("open_anomaly_count") or 0)
-            overdue = int(r.get("overdue_open_anomaly_count") or 0)
-            ongoing = max(0, total_open - overdue)
-            closed = int(r.get("closed_anomaly_count") or 0)
-
-            overdue_set.append(overdue)
-            ongoing_set.append(ongoing)
-            closed_set.append(closed)
-            time_points.append(float(r.get("avg_resolution_time") or 0), i)
+        for r in data:
+            closed_set.append(int(r.get("closed_count") or 0))
+            open_set.append(int(r.get("open_count") or 0))
 
         bar_series = QHorizontalStackedBarSeries()
-        bar_series.append(overdue_set)
-        bar_series.append(ongoing_set)
         bar_series.append(closed_set)
+        bar_series.append(open_set)
         bar_series.setLabelsVisible(True)
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.addSeries(time_points)
-        chart.setTitle("供應商品質風險堆疊分析")
+        chart.setTitle("責任人事件統計 (已結案 vs 未結案)")
         apply_chart_surface(chart)
         chart.setMargins(QMargins(12, 8, 12, 10))
 
         app_font_family = QApplication.font().family()
         axis_font = QFont(app_font_family, CHART_AXIS_LABEL_POINT_SIZE)
+        axis_y_font = QFont(app_font_family, 9)
         title_font = QFont(app_font_family, CHART_AXIS_TITLE_POINT_SIZE, QFont.Weight.Bold)
 
         axis_y = QBarCategoryAxis()
         axis_y.append(categories)
-        axis_y.setLabelsFont(axis_font)
+        axis_y.setLabelsFont(axis_y_font)
         axis_y.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
+        axis_y.setTitleFont(title_font)
         axis_y.setTruncateLabels(False)
-        axis_y.setLabelsAngle(0)
         axis_y.setTitleText("")
         axis_y.setTitleVisible(False)
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         bar_series.attachAxis(axis_y)
-        time_points.attachAxis(axis_y)
 
-        axis_x_count = QValueAxis()
-        axis_x_count.setTitleText("異常件數")
-        axis_x_count.setLabelFormat("%d")
-        axis_x_count.setLabelsFont(axis_font)
-        axis_x_count.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
-        axis_x_count.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        max_total = max((int(r.get("anomaly_count", 0)) for r in data), default=10)
-        axis_x_count.setRange(0, max_total + 1)
-        chart.addAxis(axis_x_count, Qt.AlignmentFlag.AlignBottom)
-        bar_series.attachAxis(axis_x_count)
-
-        axis_x_time = QValueAxis()
-        axis_x_time.setTitleText("平均處理時效 (天)")
-        axis_x_time.setLabelFormat("%.0f")
-        axis_x_time.setLabelsFont(axis_font)
-        axis_x_time.setLabelsColor(QColor(TOKENS.get("info", "#2196f3")))
-        axis_x_time.setGridLineVisible(False)
-        max_time = max((float(r.get("avg_resolution_time") or 0) for r in data), default=10)
-        axis_x_time.setRange(0, max_time + 5)
-        chart.addAxis(axis_x_time, Qt.AlignmentFlag.AlignTop)
-        time_points.attachAxis(axis_x_time)
+        axis_x = QValueAxis()
+        axis_x.setTitleText("事件件數")
+        axis_x.setLabelFormat("%d")
+        axis_x.setLabelsFont(axis_font)
+        axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
+        axis_x.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
+        max_total = max((int(r.get("total_count", 0)) for r in data), default=10)
+        axis_x.setRange(0, max_total + 1)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        bar_series.attachAxis(axis_x)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         chart.legend().setLabelColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
@@ -198,72 +170,51 @@ class _StatsChartMixin:
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, len(categories) * 28 + 150))
 
-        bar_series.hovered.connect(lambda status, idx, bs: self._on_chart_bar_hovered(status, idx, bs))
-        bar_series.clicked.connect(lambda idx, bs: self._on_chart_bar_clicked(idx, bs))
+        bar_series.hovered.connect(lambda status, idx, bs: self._on_resp_stacked_hovered(status, idx, data))
 
         self._chart = chart
         self._chart_series = bar_series
         self._chart_view = chart_view
         return chart_view
 
-    def _on_supplier_bar_hovered(self, status: bool, index: int, data: list[dict]):
+    def _on_resp_stacked_hovered(self, status: bool, index: int, data: list[dict]):
         if not status or index < 0 or index >= len(data):
             QToolTip.hideText()
             return
 
         row = data[index]
-        total_open = int(row.get("open_anomaly_count") or 0)
-        overdue = int(row.get("overdue_open_anomaly_count") or 0)
-        ongoing = max(0, total_open - overdue)
+        min_open = row.get("min_open_date")
+        max_open = row.get("max_open_date")
+        
+        # Format date range
+        def to_yyyymm(d):
+            if not d:
+                return ""
+            digits = d.replace("-", "")
+            if len(digits) >= 6 and digits[:6].isdigit():
+                return f"{digits[:4]}/{digits[4:6]}"
+            return d[:7]
+
+        if min_open:
+            min_m = to_yyyymm(min_open)
+            max_m = to_yyyymm(max_open) if max_open else min_m
+            range_str = min_m if min_m == max_m else f"{min_m} ~ {max_m}"
+        else:
+            range_str = "無未結案"
 
         QToolTip.showText(
             QCursor.pos(),
             (
-                f"供應商：{row['supplier_name']}\n"
-                f"月份：{self._month_text()}\n"
+                f"責任人：{row['responsible_person']}\n"
+                f"篩選區間總件數：{row['total_count']}\n"
                 "------------------\n"
-                f"總異常件數：{row['anomaly_count']}\n"
-                f"逾期未結：{overdue}\n"
-                f"進行中：{ongoing}\n"
-                f"已結案：{row['closed_anomaly_count']}\n"
-                f"平均處理時效：{row.get('avg_resolution_time', 0)} 天"
+                f"已結案：{row['closed_count']} 件\n"
+                f"未結案：{row['open_count']} 件\n"
+                f"未結案累計月份：{range_str}"
             ),
             self
         )
 
-    def _on_chart_bar_hovered(self, status: bool, index: int, bar_set: QBarSet):
-        data = self._last_supplier_data
-        if not isinstance(data, list):
-            QToolTip.hideText()
-            return
-        self._on_supplier_bar_hovered(status, index, data)
-
-    def _on_chart_bar_clicked(self, index: int, bar_set: QBarSet):
-        data = self._last_supplier_data
-        if not data or index < 0 or index >= len(data):
-            return
-
-        row = data[index]
-        if self.main_window:
-            status_filter = "ALL"
-            label = bar_set.label()
-            if "逾期" in label or "進行中" in label:
-                status_filter = "待處理"
-
-            scope = (
-                event_service.EVENT_SCOPE_CLOSED_ONLY
-                if status_filter == "已結案"
-                else event_service.EVENT_SCOPE_ANOMALY_ONLY
-            )
-            self.main_window.open_event_query_with_filters(
-                event_type="ANOMALY",
-                supplier_keyword=str(row["supplier_name"]),
-                yyyymm=str(self._month_key()),
-                status=status_filter,
-                event_scope=scope,
-            )
-
-    # ── 趨勢圖表 ──────────────────────────────────────────
 
     def _build_trend_chart(self, trend_data: list[dict]) -> QChartView | None:
         if not trend_data:
@@ -274,54 +225,37 @@ class _StatsChartMixin:
         for d in data:
             categories.append(self._format_month_axis_label(d["yyyymm"]))
 
-        new_set = QBarSet("新增異常")
+        new_set = QBarSet("新增件數")
         new_set.setColor(CHART_OPEN_COLOR)
         new_set.setBorderColor(CHART_OPEN_COLOR.darker(110))
 
-        closed_set = QBarSet("已結案數")
+        closed_set = QBarSet("結案件數")
         closed_set.setColor(CHART_CLOSED_COLOR)
         closed_set.setBorderColor(CHART_CLOSED_COLOR.darker(110))
+
+        backlog_set = QBarSet("未結案件數")
+        backlog_set.setColor(QColor(TOKENS.get("warning", "#ffc107")))
+        backlog_set.setBorderColor(QColor(TOKENS.get("warning", "#ffc107")).darker(110))
 
         for d in data:
             new_set.append(d["total_count"])
             closed_set.append(d["closed_count"])
+            backlog_set.append(d["backlog_count"])
 
         bar_series = QBarSeries()
         bar_series.append(new_set)
         bar_series.append(closed_set)
+        bar_series.append(backlog_set)
         bar_series.setLabelsVisible(True)
         bar_series.setLabelsPosition(QBarSeries.LabelsPosition.LabelsOutsideEnd)
 
-        backlog_series = QLineSeries()
-        backlog_series.setName("積壓未結 (全期)")
-        backlog_series.setColor(QColor(TOKENS.get("warning", "#ffc107")))
-        backlog_series.setPointsVisible(True)
-
-        backlog_points = QScatterSeries()
-        backlog_points.setMarkerSize(10)
-        backlog_points.setColor(QColor(TOKENS.get("warning", "#ffc107")))
-        backlog_points.setBorderColor(QColor("white"))
-
-        for i, d in enumerate(data):
-            backlog_series.append(i, d["backlog_count"])
-            backlog_points.append(i, d["backlog_count"])
-
-        app_font_family = QApplication.font().family()
-
-        label_font = QFont(app_font_family, 9)
-        backlog_series.setPointLabelsVisible(True)
-        backlog_series.setPointLabelsFormat("@yPoint")
-        backlog_series.setPointLabelsFont(label_font)
-        backlog_series.setPointLabelsColor(QColor(TOKENS.get("warning", "#ffc107")))
-
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.addSeries(backlog_series)
-        chart.addSeries(backlog_points)
-        backlog_points.setName("")
+        chart.setTitle("供應商事件處理效率趨勢分析 (過去 6 個月)")
         apply_chart_surface(chart)
         chart.setMargins(QMargins(8, 8, 8, 8))
 
+        app_font_family = QApplication.font().family()
         axis_label_font = QFont(app_font_family, 9)
         axis_title_font = QFont(app_font_family)
         axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
@@ -333,46 +267,33 @@ class _StatsChartMixin:
         axis_x.setLabelsFont(axis_label_font)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         bar_series.attachAxis(axis_x)
-        backlog_series.attachAxis(axis_x)
-        backlog_points.attachAxis(axis_x)
 
-        max_bar = max([d["total_count"] for d in data] + [d["closed_count"] for d in data], default=5)
-        axis_y_count = QValueAxis()
-        axis_y_count.setTitleText("當月件數")
-        axis_y_count.setLabelFormat("%i")
-        axis_y_count.setRange(0, max_bar + 2)
-        axis_y_count.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_y_count.setLabelsFont(axis_label_font)
-        axis_y_count.setTitleFont(axis_title_font)
-        axis_y_count.setGridLineVisible(True)
-        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignLeft)
-        bar_series.attachAxis(axis_y_count)
-
-        max_backlog = max([d["backlog_count"] for d in data], default=5)
-        axis_y_backlog = QValueAxis()
-        axis_y_backlog.setTitleText("累積積壓數")
-        axis_y_backlog.setLabelFormat("%i")
-        axis_y_backlog.setRange(0, max_backlog + 5)
-        axis_y_backlog.setLabelsColor(QColor(TOKENS.get("warning", "#ffc107")))
-        axis_y_backlog.setLabelsFont(axis_label_font)
-        axis_y_backlog.setTitleFont(axis_title_font)
-        axis_y_backlog.setGridLineVisible(False)
-        chart.addAxis(axis_y_backlog, Qt.AlignmentFlag.AlignRight)
-        backlog_series.attachAxis(axis_y_backlog)
-        backlog_points.attachAxis(axis_y_backlog)
+        max_bar = max(
+            [d["total_count"] for d in data] +
+            [d["closed_count"] for d in data] +
+            [d["backlog_count"] for d in data],
+            default=5
+        )
+        axis_y = QValueAxis()
+        axis_y.setTitleText("件數")
+        axis_y.setLabelFormat("%i")
+        axis_y.setRange(0, max_bar + 2)
+        axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_y.setLabelsFont(axis_label_font)
+        axis_y.setTitleFont(axis_title_font)
+        axis_y.setGridLineVisible(True)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        bar_series.attachAxis(axis_y)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         if TOKENS.get("chart_axis_text"):
             chart.legend().setLabelColor(QColor(TOKENS["chart_axis_text"]))
-        for _marker in chart.legend().markers(backlog_points):
-            _marker.setVisible(False)
 
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
 
         bar_series.hovered.connect(lambda status, idx, bs: self._on_trend_bar_hovered(status, idx, data))
-        backlog_points.hovered.connect(lambda pt, state: self._on_trend_line_hovered(state, pt, data))
 
         return chart_view
 
@@ -390,112 +311,79 @@ class _StatsChartMixin:
             QCursor.pos(),
             (
                 f"月份：{row['yyyymm']}\n"
-                f"新增異常：{row['total_count']}\n"
-                f"已結案數：{row['closed_count']}\n"
-                f"當月結案率：{rate:.1f}%\n"
-                f"逾期未結：{row['overdue_count']} (當月件)"
+                f"新增件數：{row['total_count']}\n"
+                f"結案件數：{row['closed_count']}\n"
+                f"未結案件數 (累積)：{row['backlog_count']}\n"
+                f"當月結案率：{rate:.1f}%"
             ),
             self
         )
 
-    def _on_trend_line_hovered(self, status: bool, point: any, data: list[dict]):
-        if not status:
-            QToolTip.hideText()
-            return
+    # ── 訪廠品質趨勢圖表 ────────────────────────────────────────
 
-        index = int(round(point.x()))
-        if index < 0 or index >= len(data):
-            return
-
-        row = data[index]
-        QToolTip.showText(
-            QCursor.pos(),
-            (
-                f"月份：{row['yyyymm']}\n"
-                f"累積未結積壓：{row['backlog_count']}\n"
-                f"包含本月及歷史所有未結案項目"
-            ),
-            self
-        )
-
-    # ── 負責人圖表 ────────────────────────────────────────
-
-    def _build_responsible_chart(self, rows: list[dict]) -> QChartView | None:
-        if not rows:
+    def _build_visit_trend_chart(self, visit_data: list[dict]) -> QChartView | None:
+        if not visit_data:
             return None
 
-        data = list(rows[:12])
-        data.reverse()
-        categories = dedupe_chart_labels([
-            short_chart_label(r["responsible_person"], max_len=10)
-            for r in data
-        ])
+        data = visit_data[-6:]
+        categories = []
+        for d in data:
+            categories.append(self._format_month_axis_label(d["yyyymm"]))
 
-        bar_set = QBarSet("總件數")
-        bar_set.setColor(CHART_OPEN_COLOR)
-        bar_set.setBorderColor(CHART_OPEN_COLOR.darker(110))
+        visit_palette = get_status_palette("訪廠")
+        visit_color = QColor(visit_palette.chart)
 
-        time_points = QScatterSeries()
-        time_points.setName("平均處理時效 (天)")
-        time_points.setMarkerSize(7)
-        time_points.setColor(QColor(TOKENS["info"]))
-        time_points.setBorderColor(QColor(TOKENS["info"]).darker(115))
+        anomaly_palette = get_status_palette("異常")
+        anomaly_color = QColor(anomaly_palette.chart)
 
-        for i, row in enumerate(data):
-            bar_set.append(row["total_count"])
-            time_points.append(row["avg_resolution_time"], i)
+        visit_set = QBarSet("每月訪廠件數")
+        visit_set.setColor(visit_color)
+        visit_set.setBorderColor(visit_color.darker(110))
 
-        app_font_family = QApplication.font().family()
+        anomaly_set = QBarSet("每月訪廠發現的異常件數")
+        anomaly_set.setColor(anomaly_color)
+        anomaly_set.setBorderColor(anomaly_color.darker(110))
 
-        label_font = QFont(app_font_family, 9)
-        bar_series = QHorizontalBarSeries()
-        bar_series.append(bar_set)
+        for d in data:
+            visit_set.append(d["visit_count"])
+            anomaly_set.append(d["visit_anomaly_count"])
+
+        bar_series = QBarSeries()
+        bar_series.append(visit_set)
+        bar_series.append(anomaly_set)
         bar_series.setLabelsVisible(True)
-        bar_series.setLabelsPosition(QHorizontalBarSeries.LabelsPosition.LabelsInsideEnd)
+        bar_series.setLabelsPosition(QBarSeries.LabelsPosition.LabelsOutsideEnd)
 
         chart = QChart()
         chart.addSeries(bar_series)
-        chart.addSeries(time_points)
+        chart.setTitle("供應商訪廠與訪廠異常趨勢分析 (過去 6 個月)")
         apply_chart_surface(chart)
-        chart.setMargins(QMargins(12, 8, 12, 10))
+        chart.setMargins(QMargins(8, 8, 8, 8))
 
+        app_font_family = QApplication.font().family()
         axis_label_font = QFont(app_font_family, 9)
         axis_title_font = QFont(app_font_family)
         axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
 
-        axis_y = QBarCategoryAxis()
-        axis_y.append(categories)
-        axis_y.setLabelsAngle(0)
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_x.setLabelsAngle(0)
+        axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_x.setLabelsFont(axis_label_font)
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        bar_series.attachAxis(axis_x)
+
+        max_bar = max([d["visit_count"] for d in data] + [d["visit_anomaly_count"] for d in data], default=5)
+        axis_y = QValueAxis()
+        axis_y.setTitleText("件數")
+        axis_y.setLabelFormat("%i")
+        axis_y.setRange(0, max_bar + 2)
         axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_y.setLabelsFont(axis_label_font)
-        axis_y.setTruncateLabels(False)
+        axis_y.setTitleFont(axis_title_font)
+        axis_y.setGridLineVisible(True)
         chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
         bar_series.attachAxis(axis_y)
-        time_points.attachAxis(axis_y)
-
-        axis_y_count = QValueAxis()
-        axis_y_count.setTitleText("總件數")
-        axis_y_count.setLabelFormat("%i")
-        axis_y_count.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_y_count.setLabelsFont(axis_label_font)
-        axis_y_count.setTitleFont(axis_title_font)
-        max_count = max((r["total_count"] for r in data), default=10)
-        axis_y_count.setRange(0, max_count + 1)
-        axis_y_count.applyNiceNumbers()
-        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignBottom)
-        bar_series.attachAxis(axis_y_count)
-
-        axis_time = QValueAxis()
-        axis_time.setTitleText("平均處理時效 (天)")
-        max_time = max((r["avg_resolution_time"] for r in data), default=10)
-        axis_time.setRange(0, max_time + 5)
-        axis_time.setLabelFormat("%.0f")
-        axis_time.setLabelsColor(QColor(TOKENS["info"]))
-        axis_time.setLabelsFont(axis_label_font)
-        axis_time.setTitleFont(axis_title_font)
-        axis_time.setGridLineVisible(False)
-        chart.addAxis(axis_time, Qt.AlignmentFlag.AlignTop)
-        time_points.attachAxis(axis_time)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         if TOKENS.get("chart_axis_text"):
@@ -503,14 +391,13 @@ class _StatsChartMixin:
 
         chart_view = QChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        calc_h = (len(data) * 28) + 150
-        chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, calc_h))
+        chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
 
-        bar_series.hovered.connect(lambda status, idx, bs: self._on_resp_hovered(status, idx, data))
+        bar_series.hovered.connect(lambda status, idx, bs: self._on_visit_trend_bar_hovered(status, idx, data))
 
         return chart_view
 
-    def _on_resp_hovered(self, status: bool, index: int, data: list[dict]):
+    def _on_visit_trend_bar_hovered(self, status: bool, index: int, data: list[dict]):
         if not status or index < 0 or index >= len(data):
             QToolTip.hideText()
             return
@@ -519,10 +406,9 @@ class _StatsChartMixin:
         QToolTip.showText(
             QCursor.pos(),
             (
-                f"責任人：{row['responsible_person']}\n"
-                f"總件數：{row['total_count']}\n"
-                f"平均處理時效：{row['avg_resolution_time']} 天\n"
-                f"月份：{self._month_text()}"
+                f"月份：{row['yyyymm']}\n"
+                f"訪廠件數：{row['visit_count']}\n"
+                f"訪廠發現的異常件數：{row['visit_anomaly_count']}"
             ),
             self
         )

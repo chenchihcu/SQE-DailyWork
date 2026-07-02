@@ -181,7 +181,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         responsible_layout.setContentsMargins(*RANK_PANEL_MARGINS)
         responsible_layout.setSpacing(INLINE_TIGHT_SPACING)
 
-        resp_title = QLabel("供應商事件責任人績效 (總件數 vs 平均處理時效)")
+        resp_title = QLabel("供應商訪廠與訪廠異常趨勢分析 (過去 6 個月)")
         resp_title.setProperty("role", "sectionTitle")
         responsible_layout.addWidget(resp_title)
 
@@ -198,7 +198,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         rank_layout.setSpacing(INLINE_TIGHT_SPACING)
 
         title_row = QHBoxLayout()
-        rank_title = QLabel("供應商事件風險堆疊圖")
+        rank_title = QLabel("責任人事件統計 (已結案 vs 未結案)")
         rank_title.setProperty("role", "sectionTitle")
         title_row.addWidget(rank_title)
         title_row.addStretch(1)
@@ -273,9 +273,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._has_loaded = True
         try:
             yyyymm = self._month_key()
-            summary = event_service.get_monthly_stats(yyyymm)
+            # 保持此呼叫以觸發 monthly_stats_cache 刷新與向下相容 side-effects
+            _ = event_service.get_monthly_stats(yyyymm)
 
             trend_data = event_service.get_anomaly_trend(months=6)
+            visit_trend_data = event_service.get_visit_trend(months=6)
             try:
                 resp_stats = event_service.get_responsible_person_stats(yyyymm)
             except Exception:
@@ -285,17 +287,17 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 resp_stats = []
 
             self._render_charts(
-                summary.get("top_suppliers_by_anomaly", []),
-                trend_data,
+                trend_data=trend_data,
+                visit_trend_data=visit_trend_data,
                 resp_stats=resp_stats
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._render_charts([], [], error_message=localize_exception(exc))
+            self._render_charts([], [], [], error_message=localize_exception(exc))
 
     # ── 圖表協調 ──────────────────────────────────────────
 
-    def _render_charts(self, rows: list[dict], trend_data: list[dict], *, resp_stats: list[dict] | None = None, error_message: str | None = None):
+    def _render_charts(self, trend_data: list[dict], visit_trend_data: list[dict], resp_stats: list[dict], *, error_message: str | None = None):
         self._clear_top_suppliers()
         if any(l is None for l in (self._chart_content_layout, self._trend_content_layout, self._resp_content_layout)):
             return
@@ -307,37 +309,12 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 layout.addWidget(lbl)
             return
 
-        if not rows and not trend_data and not resp_stats:
+        if not trend_data and not visit_trend_data and not resp_stats:
             empty = EmptyStateWidget("暫無數據", "尚無供應商事件統計記錄")
             self._chart_content_layout.addWidget(empty)
             return
 
-        # 1. Supplier Risk Stacked Chart
-        if rows:
-            chart_view = self._build_supplier_chart(rows)
-            if chart_view:
-                displayed_count = min(len(rows), 15)
-                calc_h = (displayed_count * CHART_BAR_HEIGHT) + CHART_HEADER_FOOTER_OFFSET
-                chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT, calc_h))
-                self._chart_content_layout.addWidget(chart_view)
-
-                risk_suppliers = [r for r in rows if int(r.get("overdue_open_anomaly_count") or 0) > 0]
-                if risk_suppliers:
-                    top_risk = risk_suppliers[0]
-                    top_risk_name = str(top_risk.get("supplier_name") or "")
-                    top_risk_label = short_chart_label(top_risk_name, max_len=18)
-                    insight = self._create_insight_label(
-                        f"供應商預警：發現 {len(risk_suppliers)} 家廠商存在逾期案件。\n"
-                        f"重點關注：{top_risk_label} 目前有 {top_risk.get('overdue_open_anomaly_count', 0)} 件逾期未結，平均時效達 {top_risk.get('avg_resolution_time', 0)} 天。"
-                    )
-                    insight.setToolTip(f"重點關注供應商：{top_risk_name}")
-                    self._chart_content_layout.addWidget(insight)
-                else:
-                    self._chart_content_layout.addWidget(self._create_insight_label("所有供應商目前均無逾期未結案件，品質與效率表現穩定。"))
-        else:
-            self._chart_content_layout.addWidget(EmptyStateWidget("暫無異常數據"))
-
-        # 3. Trend Chart
+        # 1. Trend Chart
         if trend_data:
             trend_view = self._build_trend_chart(trend_data)
             if trend_view:
@@ -357,28 +334,54 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         else:
             self._trend_content_layout.addWidget(EmptyStateWidget("暫無趨勢數據"))
 
-        # 4. Responsible Person Chart
-        if resp_stats:
-            resp_view = self._build_responsible_chart(resp_stats)
-            if resp_view:
-                self._resp_content_layout.addWidget(resp_view)
+        # 2. Visit Trend Chart
+        if visit_trend_data:
+            visit_view = self._build_visit_trend_chart(visit_trend_data)
+            if visit_view:
+                self._resp_content_layout.addWidget(visit_view, 1)
 
-                if resp_stats:
-                    top_person = resp_stats[0]
-                    total_cases = sum(r["total_count"] for r in resp_stats)
-                    avg_cases = total_cases / len(resp_stats)
-                    workload_status = "工作量過於集中" if top_person["total_count"] > avg_cases * 1.5 else "工作量分佈均勻"
-
-                    avg_time = sum(r["avg_resolution_time"] for r in resp_stats) / len(resp_stats)
-                    efficiency_status = "存在處理時效瓶頸" if any(r["avg_resolution_time"] > avg_time * 1.5 for r in resp_stats) else "處理時效均合規"
-
+                last_month_visit = visit_trend_data[-1] if visit_trend_data else None
+                if last_month_visit:
+                    total_visits = last_month_visit["visit_count"]
+                    total_anomalies = last_month_visit["visit_anomaly_count"]
+                    ratio = total_anomalies / total_visits if total_visits > 0 else 0
+                    ratio_status = "發現異常比例偏高" if ratio >= 1.5 else "發現異常比例正常"
                     insight = self._create_insight_label(
-                        f"團隊概況：{workload_status} | 效率評估：{efficiency_status}\n"
-                        f"最高負擔人員：{top_person['responsible_person']} ({top_person['total_count']} 件)，其平均時效為 {top_person['avg_resolution_time']} 天。"
+                        f"最新月份：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
+                        f"訪廠評估：{ratio_status}，請持續追蹤供應商改善進度。"
                     )
                     self._resp_content_layout.addWidget(insight)
         else:
-            self._resp_content_layout.addWidget(EmptyStateWidget("暫無責任人數據"))
+            self._resp_content_layout.addWidget(EmptyStateWidget("暫無訪廠數據"))
+
+        # 3. Responsible Person Stacked Chart
+        if resp_stats:
+            resp_view = self._build_responsible_stacked_chart(resp_stats)
+            if resp_view:
+                self._chart_content_layout.addWidget(resp_view)
+
+                open_cases_stats = [r for r in resp_stats if r.get("open_count", 0) > 0]
+                if open_cases_stats:
+                    most_backlogged = max(open_cases_stats, key=lambda x: x["open_count"])
+                    total_open = sum(r["open_count"] for r in resp_stats)
+                    
+                    def format_long_m(d):
+                        if not d:
+                            return "無"
+                        digits = d.replace("-", "")
+                        if len(digits) >= 6 and digits[:6].isdigit():
+                            return f"{digits[:4]}/{digits[4:6]}"
+                        return str(d)
+                        
+                    insight = self._create_insight_label(
+                        f"責任人負載分析：目前全期未結案共 {total_open} 件。\n"
+                        f"重點關注：{most_backlogged['responsible_person']} 目前有 {most_backlogged['open_count']} 件未結案，其最早未結案件累計自 {format_long_m(most_backlogged['min_open_date'])}。"
+                    )
+                    self._chart_content_layout.addWidget(insight)
+                else:
+                    self._chart_content_layout.addWidget(self._create_insight_label("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。"))
+        else:
+            self._chart_content_layout.addWidget(EmptyStateWidget("暫無責任人數據"))
 
     # ── 匯出 ──────────────────────────────────────────────
 
@@ -407,12 +410,13 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         # 3. 處理與匯出
         temp_dir = os.path.dirname(file_path)
         pid = os.getpid()
-        temp_paths = build_temp_chart_paths(temp_dir, pid, ["trend", "responsible"], "temp_evt")
+        temp_paths = build_temp_chart_paths(temp_dir, pid, ["trend", "visit_anomaly", "responsible"], "temp_evt")
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
 
         try:
             # 取得這段時間範圍的數據
             trend_data = event_service.get_anomaly_trend_by_range(start_date, end_date)
+            visit_trend_data = event_service.get_visit_trend_by_range(start_date, end_date)
             resp_stats = event_service.get_responsible_person_stats_by_range(start_date, end_date)
             events_detail = event_service.list_events_by_range(start_date, end_date)
 
@@ -427,9 +431,15 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 ):
                     active_temp_paths["trend"] = temp_paths["trend"]
 
-                # 2. Responsible chart
+                # 2. Visit anomaly chart
+                if visit_trend_data and render_chart_to_png(
+                    lambda: self._build_visit_trend_chart(visit_trend_data), temp_paths["visit_anomaly"]
+                ):
+                    active_temp_paths["visit_anomaly"] = temp_paths["visit_anomaly"]
+
+                # 3. Responsible stacked chart
                 if resp_stats and render_chart_to_png(
-                    lambda: self._build_responsible_chart(resp_stats), temp_paths["responsible"]
+                    lambda: self._build_responsible_stacked_chart(resp_stats), temp_paths["responsible"]
                 ):
                     active_temp_paths["responsible"] = temp_paths["responsible"]
 
