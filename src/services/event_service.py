@@ -353,6 +353,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             rc_in_transit=payload.get("rc_in_transit", "unconfirmed"),
             rc_internal_inventory=payload.get("rc_internal_inventory", "unconfirmed"),
             is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
+            anomaly_no=payload.get("anomaly_no"),
         )
 
 
@@ -405,6 +406,7 @@ def update_anomaly(anomaly_id: str, payload: dict) -> None:
             rc_in_transit=payload.get("rc_in_transit", "unconfirmed"),
             rc_internal_inventory=payload.get("rc_internal_inventory", "unconfirmed"),
             is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
+            anomaly_no=payload.get("anomaly_no"),
         )
         conn.commit()
 

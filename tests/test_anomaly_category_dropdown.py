@@ -63,7 +63,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             patch.object(
                 self.widget_module.event_service,
                 "preview_anomaly_no",
-                return_value="2026年04月16日 -SN 001",
+                side_effect=lambda d: d.replace("-", "") + "001" if d else "20260702001",
             ),
             patch.object(
                 self.widget_module.event_service,

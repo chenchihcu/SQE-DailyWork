@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QDate, Qt, QRegularExpression
+from PySide6.QtGui import QIntValidator, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -109,7 +109,10 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.date_edit.dateChanged.connect(self._on_date_changed)
 
         self.anomaly_no_preview_input = QLineEdit()
-        self.anomaly_no_preview_input.setReadOnly(True)
+        self.anomaly_no_preview_input.setMaxLength(11)
+        self.anomaly_no_preview_input.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"^\d{0,11}$"))
+        )
 
         self.supplier_combo = QComboBox()
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
@@ -380,6 +383,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.is_tech_transfer_check.setEnabled(False)
         self.problem_input.setReadOnly(True)
         self.pending_items_input.setReadOnly(True)
+        self.anomaly_no_preview_input.setReadOnly(True)
 
         # Risk control combos
         self.rc_supplier_inv_combo.setEnabled(False)
@@ -417,6 +421,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self.outsource_work_order_input.textChanged,
             self.batch_qty_input.textChanged,
             self.responsible_person_input.textChanged,
+            self.anomaly_no_preview_input.textChanged,
             self.due_date_check.toggled,
             self.due_date_edit.dateChanged,
             self.is_tech_transfer_check.toggled,
@@ -437,15 +442,17 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._apply_same_day_visit_defaults()
 
     def _update_anomaly_no_preview(self, _date: QDate | None = None):
-        if self._is_edit:
-            self.anomaly_no_preview_input.setText(self._fixed_anomaly_no or "-")
-            return
         anomaly_date = self.date_edit.date().toString("yyyy-MM-dd")
+        if self._is_edit:
+            original_date = str(self._initial_data.get("anomaly_date") or "").strip()
+            if anomaly_date == original_date:
+                self.anomaly_no_preview_input.setText(self._fixed_anomaly_no or "")
+                return
         try:
             preview = event_service.preview_anomaly_no(anomaly_date)
         except Exception:
             logger.exception("preview_anomaly_no failed for date %s", anomaly_date)
-            preview = "-"
+            preview = ""
         self.anomaly_no_preview_input.setText(preview)
 
     def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
@@ -627,10 +634,32 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         if not product_id:
             QMessageBox.warning(self, "驗證失敗", localize_popup_message("產品為必填"))
             return
+        anomaly_no_val = self.anomaly_no_preview_input.text().strip()
+        if not anomaly_no_val:
+            QMessageBox.warning(self, "驗證失敗", localize_popup_message("異常單號為必填"))
+            return
+        if not (len(anomaly_no_val) == 11 and anomaly_no_val.isdigit()):
+            QMessageBox.warning(
+                self,
+                "驗證失敗",
+                localize_popup_message("異常單號必須為 11 位純數字"),
+            )
+            return
+        
+        expected_prefix = self.date_edit.date().toString("yyyyMMdd")
+        if not anomaly_no_val.startswith(expected_prefix):
+            QMessageBox.warning(
+                self,
+                "驗證失敗",
+                localize_popup_message(f"異常單號前 8 碼必須與所選日期 ({expected_prefix}) 一致"),
+            )
+            return
+            
         due_date_value = ""
         if self.due_date_check.isChecked():
             due_date_value = self.due_date_edit.date().toString("yyyy-MM-dd")
         payload = {
+            "anomaly_no": anomaly_no_val,
             "anomaly_date": self.date_edit.date().toString("yyyy-MM-dd"),
             "supplier_id": (self.supplier_combo.currentData() or "").strip(),
             "product_id": product_id,

@@ -2753,6 +2753,7 @@ def update_anomaly(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    anomaly_no: str | None = None,
 ) -> None:
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
@@ -2760,6 +2761,10 @@ def update_anomaly(
     existing = get_anomaly_detail(conn, anomaly_key)
     if existing is None:
         raise ValueError("Anomaly not found")
+
+    resolved_anomaly_no = (anomaly_no or "").strip() or existing.get("anomaly_no") or ""
+    if not resolved_anomaly_no:
+        raise ValueError("Anomaly number is required")
 
     normalized_problem_desc = (problem_desc or "").strip()
     if not normalized_problem_desc:
@@ -2793,53 +2798,60 @@ def update_anomaly(
     normalized_due_date = _normalize_optional_iso_date(
         due_date, field_name="Due date"
     )
-    cur = conn.execute(
-        """
-        UPDATE anomalies
-        SET anomaly_date = ?,
-            supplier_id = ?,
-            product_id = ?,
-            product_name = ?,
-            product_stage = ?,
-            problem_desc = ?,
-            category = ?,
-            product_lot_no = ?,
-            outsource_work_order = ?,
-            batch_qty = ?,
-            pending_items = ?,
-            responsible_person = ?,
-            due_date = ?,
-            rc_supplier_inventory = ?,
-            rc_supplier_wip = ?,
-            rc_in_transit = ?,
-            rc_internal_inventory = ?,
-            is_tech_transfer = ?,
-            updated_at = ?
-        WHERE id = ?
-        """,
-        (
-            normalized_date,
-            normalized_supplier_id,
-            resolved_product_id,
-            resolved_product_name,
-            normalized_product_stage,
-            normalized_problem_desc,
-            (category or "").strip(),
-            (product_lot_no or "").strip(),
-            (outsource_work_order or "").strip(),
-            normalized_batch_qty,
-            (pending_items or "").strip(),
-            (responsible_person or "").strip(),
-            normalized_due_date,
-            (rc_supplier_inventory or "unconfirmed").strip(),
-            (rc_supplier_wip or "unconfirmed").strip(),
-            (rc_in_transit or "unconfirmed").strip(),
-            (rc_internal_inventory or "unconfirmed").strip(),
-            1 if is_tech_transfer else 0,
-            _now_iso(),
-            anomaly_key,
-        ),
-    )
+    try:
+        cur = conn.execute(
+            """
+            UPDATE anomalies
+            SET anomaly_no = ?,
+                anomaly_date = ?,
+                supplier_id = ?,
+                product_id = ?,
+                product_name = ?,
+                product_stage = ?,
+                problem_desc = ?,
+                category = ?,
+                product_lot_no = ?,
+                outsource_work_order = ?,
+                batch_qty = ?,
+                pending_items = ?,
+                responsible_person = ?,
+                due_date = ?,
+                rc_supplier_inventory = ?,
+                rc_supplier_wip = ?,
+                rc_in_transit = ?,
+                rc_internal_inventory = ?,
+                is_tech_transfer = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                resolved_anomaly_no,
+                normalized_date,
+                normalized_supplier_id,
+                resolved_product_id,
+                resolved_product_name,
+                normalized_product_stage,
+                normalized_problem_desc,
+                (category or "").strip(),
+                (product_lot_no or "").strip(),
+                (outsource_work_order or "").strip(),
+                normalized_batch_qty,
+                (pending_items or "").strip(),
+                (responsible_person or "").strip(),
+                normalized_due_date,
+                (rc_supplier_inventory or "unconfirmed").strip(),
+                (rc_supplier_wip or "unconfirmed").strip(),
+                (rc_in_transit or "unconfirmed").strip(),
+                (rc_internal_inventory or "unconfirmed").strip(),
+                1 if is_tech_transfer else 0,
+                _now_iso(),
+                anomaly_key,
+            ),
+        )
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE constraint failed" in str(exc) and "anomaly_no" in str(exc):
+            raise ValueError("異常單號已存在，請使用其他單號。") from exc
+        raise
     if cur.rowcount == 0:
         raise ValueError("Anomaly not found")
     conn.commit()
@@ -3508,6 +3520,7 @@ def create_anomaly_with_visit_link(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    anomaly_no: str | None = None,
 ) -> dict[str, str | None]:
     inputs = _prepare_anomaly_inputs(
         conn,
@@ -3525,7 +3538,10 @@ def create_anomaly_with_visit_link(
     resolved_product_name = inputs.resolved_product_name
     normalized_product_stage = inputs.normalized_product_stage
     normalized_batch_qty = inputs.normalized_batch_qty
-    anomaly_no = _next_anomaly_no(conn, normalized_date)
+
+    resolved_anomaly_no = (anomaly_no or "").strip()
+    if not resolved_anomaly_no:
+        resolved_anomaly_no = _next_anomaly_no(conn, normalized_date)
 
     linked_visit_id: str | None = None
     visit_action = "none"
@@ -3548,9 +3564,9 @@ def create_anomaly_with_visit_link(
         if linked_visit_id is None:
             note = (visit_summary or "").strip()
             if note:
-                note = f"{note}\n由異常單 {anomaly_no} 同步建立訪廠紀錄。"
+                note = f"{note}\n由異常單 {resolved_anomaly_no} 同步建立訪廠紀錄。"
             else:
-                note = f"由異常單 {anomaly_no} 同步建立訪廠紀錄。"
+                note = f"由異常單 {resolved_anomaly_no} 同步建立訪廠紀錄。"
             linked_visit_id = _insert_visit_row(
                 conn,
                 visit_date=normalized_date,
@@ -3603,7 +3619,7 @@ def create_anomaly_with_visit_link(
         outsource_work_order=outsource_work_order,
         batch_qty=normalized_batch_qty,
         visit_id=linked_visit_id,
-        anomaly_no=anomaly_no,
+        anomaly_no=resolved_anomaly_no,
         pending_items=pending_items,
         responsible_person=responsible_person,
         due_date=due_date,
@@ -3615,13 +3631,13 @@ def create_anomaly_with_visit_link(
     )
     id_row = conn.execute(
         "SELECT id FROM anomalies WHERE anomaly_no = ?",
-        (anomaly_no,),
+        (resolved_anomaly_no,),
     ).fetchone()
     anomaly_id = str(id_row["id"]) if id_row else None
     conn.commit()
     refresh_monthly_cache(conn, normalized_date[:7].replace("-", ""))
     return {
-        "anomaly_no": anomaly_no,
+        "anomaly_no": resolved_anomaly_no,
         "anomaly_id": anomaly_id,
         "visit_id": linked_visit_id,
         "visit_action": visit_action,
@@ -4602,8 +4618,13 @@ def _insert_anomaly_row(
         # embeds it into a visit summary text before reaching here), so a
         # collision here is a genuine caller bug, not a race -- retrying with a
         # different number would desync it from that already-written text.
-        _do_insert(anomaly_no)
-        return anomaly_no
+        try:
+            _do_insert(anomaly_no)
+            return anomaly_no
+        except sqlite3.IntegrityError as exc:
+            if "UNIQUE constraint failed" in str(exc) and "anomaly_no" in str(exc):
+                raise ValueError("異常單號已存在，請使用其他單號。") from exc
+            raise
 
     # No anomaly_no supplied (create_anomaly's direct path): generate + insert
     # with retry-on-collision, mirroring _apply_key_updates' UNIQUE-collision

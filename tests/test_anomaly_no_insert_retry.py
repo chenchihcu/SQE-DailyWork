@@ -112,7 +112,7 @@ class InsertAnomalyRowRetryTests(unittest.TestCase):
         )
         self.conn.commit()
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(ValueError):
             repository._insert_anomaly_row(
                 self.conn,
                 anomaly_date="2026-07-01",
@@ -120,6 +120,37 @@ class InsertAnomalyRowRetryTests(unittest.TestCase):
                 problem_desc="duplicate fixed number",
                 anomaly_no="FIXED-001",
             )
+
+    def test_update_anomaly_checks_unique_collision(self) -> None:
+        repository._insert_anomaly_row(
+            self.conn,
+            anomaly_date="2026-07-01",
+            supplier_id=self.supplier_id,
+            problem_desc="first",
+            anomaly_no="20260701001",
+        )
+        repository._insert_anomaly_row(
+            self.conn,
+            anomaly_date="2026-07-01",
+            supplier_id=self.supplier_id,
+            problem_desc="second",
+            anomaly_no="20260701002",
+        )
+        self.conn.commit()
+
+        row = self.conn.execute("SELECT id FROM anomalies WHERE anomaly_no = '20260701002'").fetchone()
+        anomaly2_id = row["id"]
+
+        with self.assertRaises(ValueError) as ctx:
+            repository.update_anomaly(
+                self.conn,
+                anomaly_id=anomaly2_id,
+                anomaly_date="2026-07-01",
+                supplier_id=self.supplier_id,
+                problem_desc="try to collide",
+                anomaly_no="20260701001",
+            )
+        self.assertIn("異常單號已存在", str(ctx.exception))
 
 
 if __name__ == "__main__":
