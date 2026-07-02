@@ -2048,7 +2048,13 @@ def _product_select_fragments(conn: sqlite3.Connection) -> dict[str, Any]:
     columns, used by list_products / get_product / list_active_products_for_supplier.
     Centralizes the _has_column probing so schema-migration state is checked
     once per call site instead of being re-derived independently in each
-    function (audit finding D2)."""
+    function (audit finding D2).
+
+    The missing-column fallbacks are NOT dead code (audit finding C2): legacy
+    pre-migration databases without product_stage / secondary_supplier_id are
+    a supported upgrade path — tests/test_product_spec_removal.py constructs
+    exactly such schemas and create_schema's products__new rebuild migrates
+    them in place."""
     stage_sql = (
         "p.product_stage"
         if _has_column(conn, "products", "product_stage")
