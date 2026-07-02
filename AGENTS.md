@@ -49,6 +49,7 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Import boundary**: Keep database import paths because future ERP imports will reduce manual entry. Imports that update shared master data must target `suppliers/products` with preview, backup, and reconciliation. Warehouse compatibility imports may update warehouse support tables only when clearly labeled as warehouse-module data.
 - **Soft Delete**: Use `is_active: bool = True` for Models. Filter by `is_active=True` in all standard queries.
 - **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
+- **Badge and List Count Alignment**: When updating sidebar navigation badges or dashboard cards for specific scoped items (e.g. '單獨異常' / '訪廠發現異常'), ensure that the count query aligns exactly with the filters applied to the lists displayed on the right. For example, the badge count for '單獨異常' must only count open anomalies without a visit link (`visit_id IS NULL OR visit_id = ''`), rather than using a general un-scoped count of all open anomalies.
 
 ## 3. UI/UX & Styling Standards (Slate + Electric Blue)
 - **Terminology**: Keep labels and status terms consistent with existing dialogs and `src/ui/popup_i18n.py` patterns.

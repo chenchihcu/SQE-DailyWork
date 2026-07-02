@@ -83,3 +83,19 @@ Root cause: Existing guidance required native visual checks but did not explicit
 Fix: Promote removal semantics and compatibility-widget scans into repo harness docs/rules and reusable Qt skill guidance.
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `qt-desktop-layout-theme`, `spc-chart-ui`
+
+## Badge Count Alignment Entry
+
+Date: 2026-07-02
+Task: Fix sidebar event badge count mismatch with displayed list count.
+Changes: Updated `repository.get_dashboard_summary` to include `standalone_open_count` and modified `MainWindow._refresh_sidebar_badge` to use it for the "單獨異常" badge.
+Impact: The "單獨異常" sidebar badge now displays the count of open standalone anomalies (6), matching the list of 6 items on the right side, instead of all open anomalies (11).
+Verification: Run `pytest tests/test_event_manage_actions.py` (which includes `test_get_dashboard_summary_with_standalone_open_count`) and `pytest`.
+Residual risk: None.
+Next action: None.
+Debug/RCA (when applicable):
+Observed: The left sidebar badge for "單獨異常" displayed 11, while the right side displayed "共 6 筆".
+Root cause: The sidebar badge was updated with `open_count` from `get_dashboard_summary`, which counted all open anomalies (standalone + visit-derived), whereas the right-side list only showed standalone anomalies.
+Fix: Add `standalone_open_count` to the dashboard summary query and use it in the sidebar badge.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_event_manage_actions.py`
