@@ -71,10 +71,6 @@ def create_year_month_selectors(
     month_label.setProperty("role", "sectionTitle")
     month_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     
-    # Connect signals
-    year_combo.currentIndexChanged.connect(lambda: on_changed())
-    month_combo.currentIndexChanged.connect(lambda: on_changed())
-    
     # Default to current year and month
     from datetime import date
     current_year = str(date.today().year)
@@ -85,6 +81,10 @@ def create_year_month_selectors(
     else:
         year_combo.setCurrentText("2026") # fallback
     month_combo.setCurrentText(current_month)
+    
+    # Connect signals after setting default values to prevent early triggering during construction
+    year_combo.currentIndexChanged.connect(lambda: on_changed())
+    month_combo.currentIndexChanged.connect(lambda: on_changed())
     
     apply_clickable_affordance(year_combo, tooltip="選擇統計年份")
     apply_clickable_affordance(month_combo, tooltip="選擇統計月份")
