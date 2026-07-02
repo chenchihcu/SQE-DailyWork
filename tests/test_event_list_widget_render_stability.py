@@ -135,7 +135,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
     def test_table_headers_match_template_eleven_columns(self) -> None:
         self.assertEqual(11, self.widget.table.columnCount())
         self.assertEqual(
-            ["日期", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"],
+            ["異常單號", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"],
             self._headers(),
         )
 

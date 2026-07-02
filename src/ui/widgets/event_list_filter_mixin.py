@@ -256,7 +256,7 @@ class _EventListFilterMixin:
             return
         key = _SORTABLE_COLS[self._sort_col]
         self._all_rows.sort(
-            key=lambda r: str(r.get(key) or "").lower(),
+            key=lambda r: (str(r.get(key) or "") or str(r.get("event_date") or "")).lower(),
             reverse=not self._sort_asc,
         )
 

@@ -138,7 +138,7 @@ class HomeWidget(QWidget):
         self._backlog_table.setObjectName("HomeBacklogTable")
         self._backlog_table.setColumnCount(4)
         self._backlog_table.setHorizontalHeaderLabels(
-            ["日期", "供應商", "問題/摘要", "狀態"]
+            ["異常單號", "供應商", "問題/摘要", "狀態"]
         )
         style_table(self._backlog_table)
         apply_table_action_affordance(
@@ -316,9 +316,10 @@ class HomeWidget(QWidget):
         self._backlog_table.setRowCount(0)
         for idx, row in enumerate(rows):
             self._backlog_table.insertRow(idx)
-            date_item = QTableWidgetItem(str(row.get("event_date") or "—"))
-            date_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-            self._backlog_table.setItem(idx, 0, date_item)
+            no_val = row.get("ref_no") or row.get("event_date") or "—"
+            no_item = QTableWidgetItem(str(no_val))
+            no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+            self._backlog_table.setItem(idx, 0, no_item)
             full_name = str(row.get("supplier_name") or "—")
             name_item = QTableWidgetItem(full_name)
             name_item.setToolTip(full_name)

@@ -62,7 +62,7 @@ EVENT_QUERY_SCOPE_TABS = (
 )
 
 _SORTABLE_COLS: dict[int, str] = {
-    0: "event_date",
+    0: "ref_no",
     2: "supplier_name",
     3: "product_name",
     5: "product_stage",
@@ -266,7 +266,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table = QTableWidget()
         self.table.setColumnCount(11)
         self.table.setHorizontalHeaderLabels(
-            ["日期", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"]
+            ["異常單號", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -353,9 +353,10 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         for idx, row in enumerate(page_rows):
             self.table.insertRow(idx)
             event_type = event_type_display(str(row.get("event_type") or ""))
-            date_item = QTableWidgetItem(self._text_or_dash(row.get("event_date")))
-            date_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-            self.table.setItem(idx, 0, date_item)
+            no_val = row.get("ref_no") or row.get("event_date")
+            no_item = QTableWidgetItem(self._text_or_dash(no_val))
+            no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+            self.table.setItem(idx, 0, no_item)
             self.table.setItem(idx, 1, QTableWidgetItem(event_type))
             self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
             self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
