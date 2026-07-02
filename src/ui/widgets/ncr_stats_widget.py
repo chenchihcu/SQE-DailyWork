@@ -246,6 +246,11 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         # 產生 Insights 管理建議
         self._generate_insights(top_suppliers, top_products, scrap_rework, return_slips)
+        
+        # 強制 Layout 重新佈局與刷新
+        if self.grid_layout is not None:
+            self.grid_layout.activate()
+            self.grid_layout.update()
         self.update()
 
     def _generate_insights(
