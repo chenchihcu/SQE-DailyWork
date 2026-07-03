@@ -16,8 +16,12 @@ import logging
 import os
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
 
 
 def copy_image_to_clipboard(image: "QImage") -> bool:

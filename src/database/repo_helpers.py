@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any, TypedDict

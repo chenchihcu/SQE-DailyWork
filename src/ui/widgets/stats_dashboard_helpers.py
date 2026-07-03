@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import logging
 import os
 from datetime import date
 from collections.abc import Callable
@@ -19,6 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from ui.widgets.common_widgets import apply_clickable_affordance
+
+logger = logging.getLogger(__name__)
 
 PERIOD_OPTIONS = ("全期項目", "年度", "半年度")
 PERIOD_TOOLTIP = "切換統計區間：全期項目、年度（當前年份）、半年度（當前半年度）"
@@ -168,8 +171,10 @@ class YearMonthRangeSelectors(NamedTuple):
         )
         for combo, text in pairs:
             combo.blockSignals(True)
-            combo.setCurrentText(text)
-            combo.blockSignals(False)
+            try:
+                combo.setCurrentText(text)
+            finally:
+                combo.blockSignals(False)
 
 
 def _create_suffix_label(text: str, parent: QWidget | None) -> QLabel:
@@ -365,8 +370,8 @@ def cleanup_temp_files(paths: dict[str, str]) -> None:
         if os.path.exists(p):
             try:
                 os.remove(p)
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Could not remove temporary chart file: %s", p, exc_info=True)
 
 
 def render_chart_to_png(

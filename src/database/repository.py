@@ -469,6 +469,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         for legacy_col, state_col in zip(
             VISIT_TECH_TRANSFER_ITEM_COLUMNS,
             VISIT_TECH_TRANSFER_STATE_COLUMNS,
+            strict=True,
         ):
             conn.execute(
                 f"UPDATE visits SET {state_col} = 'yes' "
@@ -2072,7 +2073,7 @@ def consolidate_suppliers(
             conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
             conn.execute(f"RELEASE SAVEPOINT {savepoint_name}")
         except sqlite3.Error:
-            pass
+            logger.warning("supplier consolidation rollback cleanup failed", exc_info=True)
         raise
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 import os
 import unittest
 from datetime import datetime
@@ -330,10 +331,8 @@ class EventPdfExportTests(unittest.TestCase):
             captions_path = target_dir / attachment_manager.CAPTIONS_FILENAME
             if captions_path.exists():
                 captions_path.unlink()
-            try:
+            with suppress(OSError):
                 target_dir.rmdir()
-            except OSError:
-                pass
 
     def test_attachment_html_scales_large_and_multiple_images_for_pdf(self) -> None:
         from services import attachment_manager
@@ -378,10 +377,8 @@ class EventPdfExportTests(unittest.TestCase):
                 for child in target_dir.iterdir():
                     if child.is_file():
                         child.unlink()
-                try:
+                with suppress(OSError):
                     target_dir.rmdir()
-                except OSError:
-                    pass
 
     def test_event_service_fetches_detail_before_pdf_export(self) -> None:
         row = self._anomaly_row(linked=True)

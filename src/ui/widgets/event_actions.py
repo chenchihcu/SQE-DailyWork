@@ -183,7 +183,7 @@ class EventActionsController:
             _op,
             warning_title="編輯失敗",
             logger_msg="編輯異常失敗",
-            error_msg=f"開啟異常編輯失敗：",
+            error_msg="開啟異常編輯失敗：",
         )
 
     def delete_anomaly(self, anomaly_id: str, ref_no: str) -> None:

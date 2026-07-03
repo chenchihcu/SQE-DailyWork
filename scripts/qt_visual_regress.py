@@ -20,6 +20,7 @@ import argparse
 import json
 import subprocess
 import sys
+from itertools import zip_longest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,15 +58,15 @@ def _run_probe(args: argparse.Namespace) -> dict:
         cmd.append("--min-width")
     if args.allow_offscreen:
         cmd.append("--allow-offscreen")
-    completed = subprocess.run(cmd, capture_output=True, text=True)
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if completed.returncode not in (0, 3):  # 3 == not visual-trustworthy (env), still has JSON
         sys.stderr.write(completed.stdout + "\n" + completed.stderr)
         raise SystemExit(f"probe failed for {args.target} (exit {completed.returncode})")
     try:
         return json.loads(completed.stdout)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         sys.stderr.write(completed.stdout)
-        raise SystemExit("could not parse probe JSON output")
+        raise SystemExit("could not parse probe JSON output") from exc
 
 
 def _current_env(probe_json: dict) -> dict:
@@ -84,8 +85,13 @@ def _byte_diff_ratio(path_a: Path, path_b: Path):
     bytes_b = img_b.constBits().tobytes()
     if bytes_a == bytes_b:
         return 0.0, True
-    total = max(len(bytes_a), 1)
-    differing = sum(1 for x, y in zip(bytes_a, bytes_b) if x != y)
+    total = max(len(bytes_a), len(bytes_b), 1)
+    sentinel = object()
+    differing = sum(
+        1
+        for x, y in zip_longest(bytes_a, bytes_b, fillvalue=sentinel)
+        if x != y
+    )
     return differing / total, True
 
 

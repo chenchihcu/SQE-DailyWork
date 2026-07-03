@@ -200,8 +200,8 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         for expected in ("外觀不良", "客製分類-XYZ"):
             captured: dict = {}
 
-            def _fake_create(payload: dict) -> dict:
-                captured.update(payload)
+            def _fake_create(payload: dict, _captured: dict = captured) -> dict:
+                _captured.update(payload)
                 return {"anomaly_no": "2026年04月16日 -SN 001", "visit_action": "none"}
 
             with self.subTest(category=expected):

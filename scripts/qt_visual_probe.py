@@ -7,10 +7,14 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
 
 # Stress strings reused across targets so every surface is checked with long CJK.
 LONG_SUPPLIER = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ股份有限公司"
@@ -282,8 +286,8 @@ def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int
     # Land on the event-management page (the daily primary surface) rather than 首頁.
     try:
         window._switch_primary_page(EVENT_PAGE_INDEX)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"warning: could not switch visual probe page: {exc}", file=sys.stderr)
     return [_capture_widget(window, output, app)]
 
 
@@ -729,7 +733,7 @@ def _run_multi_scale(args: argparse.Namespace, scales: list[str]) -> int:
             child.append("--min-width")
         if args.size:
             child += ["--size", args.size]
-        completed = subprocess.run(child, capture_output=True, text=True)
+        completed = subprocess.run(child, capture_output=True, text=True, check=False)
         sys.stdout.write(completed.stdout)
         if completed.stderr:
             sys.stderr.write(completed.stderr)

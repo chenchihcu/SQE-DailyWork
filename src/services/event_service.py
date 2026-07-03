@@ -5,12 +5,16 @@ from __future__ import annotations
 import logging
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
 from database.connection import get_connection
 from database import repository
 from services import event_pdf_exporter
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QImage
 
 EVENT_SCOPE_VISIT_ONLY = repository.EVENT_SCOPE_VISIT_ONLY
 EVENT_SCOPE_VISIT_WITH_ANOMALY = repository.EVENT_SCOPE_VISIT_WITH_ANOMALY

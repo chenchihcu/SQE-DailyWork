@@ -161,8 +161,10 @@ class PaginationBar(QWidget):
             self.page_size_combo.addItem(str(self._page_size), self._page_size)
             index = self.page_size_combo.findData(self._page_size)
         self.page_size_combo.blockSignals(True)
-        self.page_size_combo.setCurrentIndex(index)
-        self.page_size_combo.blockSignals(False)
+        try:
+            self.page_size_combo.setCurrentIndex(index)
+        finally:
+            self.page_size_combo.blockSignals(False)
 
         total_pages = self._total_pages(total_items, self._page_size)
         self._total_items = total_items

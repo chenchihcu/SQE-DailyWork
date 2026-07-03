@@ -431,7 +431,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         
         # 2. 彈出儲存路徑
         import os
-        from datetime import datetime
         default_name = f"SQE_Quality_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
         
         file_path, _ = QFileDialog.getSaveFileName(

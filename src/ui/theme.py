@@ -9,13 +9,10 @@ from __future__ import annotations
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
-from ui.theme_tokens import PREFERRED_CJK_FONT_FAMILIES
-from ui.theme_qss import get_theme_qss
-
 # ── 向後相容的重新匯出 (Re-exports for backward compatibility) ─────
 # 外部呼叫端仍可 `from ui.theme import TOKENS, get_theme_qss, asset_path`。
 from ui.theme_tokens import TOKENS, TYPOGRAPHY, PREFERRED_CJK_FONT_FAMILIES, CJK_FONT_FAMILY_CSS
-from ui.theme_qss import asset_path
+from ui.theme_qss import asset_path, get_theme_qss
 
 
 def _supports_cjk_writing_system(font_db: type[QFontDatabase], family: str) -> bool:

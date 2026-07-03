@@ -111,7 +111,7 @@ class ThemeSurfaceHierarchyTests(unittest.TestCase):
             assert match is not None
             body = match.group("body")
             self.assertIn(f'background: {TOKENS[bg_token]};', body)
-            self.assertIn(f'border:', body)
+            self.assertIn('border:', body)
             self.assertIn(TOKENS[border_token], body)
 
     def test_status_badge_tones_and_ref_na_chip_are_styled(self) -> None:

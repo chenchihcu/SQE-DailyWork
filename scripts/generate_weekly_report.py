@@ -400,7 +400,7 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
     table_data = []
     for row in data_dicts:
         r_data = []
-        for key, tlen in zip(keys, trunc_lens):
+        for key, tlen in zip(keys, trunc_lens, strict=True):
             val = str(row.get(key) or "")
             if tlen > 0:
                 val = trunc(val, tlen)
@@ -425,7 +425,7 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
 
     style_header_row(table, len(cols_def))
 
-    for ri, (r_data, raw_row) in enumerate(zip(table_data, data_dicts), start=1):
+    for ri, (r_data, raw_row) in enumerate(zip(table_data, data_dicts, strict=True), start=1):
         is_overdue  = False
         is_new_item = False
 
@@ -693,10 +693,10 @@ def generate_report() -> Path:
         try:
             prs.save(str(alt_path))
             out_path = alt_path
-        except PermissionError:
+        except PermissionError as exc:
             raise PermissionError(
                 f"檔案已在其他程式中開啟，請關閉後重試。\n({out_path.name})"
-            )
+            ) from exc
     return out_path
 
 def main():

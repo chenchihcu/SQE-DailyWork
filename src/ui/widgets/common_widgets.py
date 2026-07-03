@@ -449,14 +449,16 @@ class SupplierProductFormMixin:
             else _event_service.list_active_suppliers()
         )
         self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
-        self.supplier_combo.addItem("請選擇供應商", "")
-        for item in suppliers:
-            name = item["supplier_name"]
-            if self._is_edit and not item.get("is_active", True):
-                name = f"{name}（停用）"
-            self.supplier_combo.addItem(name, item["id"])
-        self.supplier_combo.blockSignals(False)
+        try:
+            self.supplier_combo.clear()
+            self.supplier_combo.addItem("請選擇供應商", "")
+            for item in suppliers:
+                name = item["supplier_name"]
+                if self._is_edit and not item.get("is_active", True):
+                    name = f"{name}（停用）"
+                self.supplier_combo.addItem(name, item["id"])
+        finally:
+            self.supplier_combo.blockSignals(False)
         self._on_supplier_changed()
 
     def _on_supplier_changed(self) -> None:

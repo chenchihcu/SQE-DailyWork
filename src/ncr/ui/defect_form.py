@@ -460,7 +460,7 @@ class DefectFieldsWidget(QWidget):
             self.transfer_slip_input,
             self.responsibility_combo,
         ]
-        for earlier, later in zip(order, order[1:]):
+        for earlier, later in zip(order, order[1:], strict=False):
             self.setTabOrder(earlier, later)
 
     def _add_compact_field(

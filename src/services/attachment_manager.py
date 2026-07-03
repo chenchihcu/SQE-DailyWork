@@ -135,7 +135,7 @@ def set_anomaly_captions(
             try:
                 captions_path.unlink()
             except OSError:
-                pass
+                logger.debug("Could not remove empty anomaly captions file", exc_info=True)
         return
     captions_path.write_text(
         json.dumps(pruned, ensure_ascii=False, indent=2),

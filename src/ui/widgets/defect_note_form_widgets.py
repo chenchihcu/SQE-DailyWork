@@ -166,19 +166,21 @@ class ProductSectionEditor(QGroupBox):
     def set_products(self, products: list[dict]) -> None:
         current = (self.product_combo.currentData() or "").strip()
         self.product_combo.blockSignals(True)
-        self.product_combo.clear()
-        self.product_combo.addItem("請選擇產品", "")
-        self._product_stage_by_id = {}
-        self._product_code_by_id = {}
-        for item in products:
-            product_id = str(item.get("id") or "").strip()
-            self.product_combo.addItem(product_label(item), product_id)
-            if product_id:
-                self._product_stage_by_id[product_id] = normalize_product_stage_ui(
-                    item.get("product_stage")
-                )
-                self._product_code_by_id[product_id] = str(item.get("product_code") or "").strip()
-        self.product_combo.blockSignals(False)
+        try:
+            self.product_combo.clear()
+            self.product_combo.addItem("請選擇產品", "")
+            self._product_stage_by_id = {}
+            self._product_code_by_id = {}
+            for item in products:
+                product_id = str(item.get("id") or "").strip()
+                self.product_combo.addItem(product_label(item), product_id)
+                if product_id:
+                    self._product_stage_by_id[product_id] = normalize_product_stage_ui(
+                        item.get("product_stage")
+                    )
+                    self._product_code_by_id[product_id] = str(item.get("product_code") or "").strip()
+        finally:
+            self.product_combo.blockSignals(False)
         if current:
             _set_combo_current_data(self.product_combo, current)
         self._on_product_changed()

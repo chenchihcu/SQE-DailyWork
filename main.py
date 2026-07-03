@@ -21,11 +21,13 @@ from ui.theme import apply_app_theme
 # 載入 .env 環境變數 (若存在)
 try:
     from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv is not None:
     env_path = _repo_root / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-except ImportError:
-    pass
 
 # 可透過環境變數覆蓋資料庫路徑
 _env_db_path = os.environ.get("SQE_DB_PATH", "").strip()
@@ -79,7 +81,7 @@ def _global_excepthook(exc_type, exc_value, exc_tb) -> None:
                 f"應用程式發生未預期錯誤：\n\n{msg}\n\n請查看 logs/app.log 取得詳細資訊。",
             )
     except Exception:
-        logger.exception("Global excepthook UI also failed")
+        _logger.exception("Global excepthook UI also failed")
 
 
 def main() -> int:

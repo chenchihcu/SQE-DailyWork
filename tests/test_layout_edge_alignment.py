@@ -141,7 +141,7 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
             self.assertIs(widget.parentWidget(), control_panel)
 
         sorted_rects = sorted(rects, key=lambda rect: rect.x())
-        for left, right in zip(sorted_rects, sorted_rects[1:]):
+        for left, right in zip(sorted_rects, sorted_rects[1:], strict=False):
             self.assertLess(left.right(), right.left())
 
         center_ys = [rect.center().y() for rect in rects]
@@ -194,7 +194,7 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
             local_rects.append((top_left.x(), top_left.y(), widget.width(), widget.height()))
 
         sorted_rects = sorted(local_rects, key=lambda item: item[0])
-        for left, right in zip(sorted_rects, sorted_rects[1:]):
+        for left, right in zip(sorted_rects, sorted_rects[1:], strict=False):
             self.assertLess(left[0] + left[2] - 1, right[0])
 
         center_ys = [top + (height // 2) for _x, top, _width, height in local_rects]
