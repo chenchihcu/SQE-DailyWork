@@ -84,6 +84,7 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - Use the completion impact format for task delivery: `Changes`, `Impact`, `Verification`, `Residual risk`, and `Next action`.
 - For debugging, regressions, repeated failures, or Investigation Path work, add Debug/RCA fields: `Observed`, `Root cause`, `Fix`, `Harness update needed`, and `Destination`.
 - If a harness update is needed, update the narrowest durable location: repo docs, tests, `scripts/verify.ps1`, `scripts/harness_check.ps1`, `.codex/rules/project.rules`, `.cursor/rules/agents_gateway.mdc`, or this file.
+- If the final Debug/RCA status would be `Harness update needed: yes`, invoke the `/learn` workflow, or the current memory-update equivalent, before marking the task complete. Include the learn destination/result in the final delivery.
 - Keep one-off bug details out of global Codex rules. Promote only reusable project knowledge into `docs/harness/closed-loop-log.md` or the relevant source-of-truth doc.
 - For complex changes, create a short plan under `docs/exec-plans/active/` and move it to `docs/exec-plans/completed/` after completion.
 - This format does not weaken global Hard Triggers, `blocked`, `not verified`, or `not pass` semantics.

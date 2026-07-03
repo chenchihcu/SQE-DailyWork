@@ -1349,18 +1349,15 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     elif not months_list:
         months_list = [start_date[:7]]
 
-    earliest_month = months_list[0]
-    latest_month = months_list[-1]
-
     with get_connection() as conn:
         visit_rows = conn.execute(
             """
             SELECT substr(visit_date, 1, 7) AS yyyymm, COUNT(*) AS visit_count
             FROM visits
-            WHERE substr(visit_date, 1, 7) BETWEEN ? AND ?
+            WHERE visit_date BETWEEN ? AND ?
             GROUP BY yyyymm
             """,
-            (earliest_month, latest_month)
+            (start_date, end_date)
         ).fetchall()
         visits_by_month = {r["yyyymm"]: int(r["visit_count"] or 0) for r in visit_rows}
 
@@ -1368,10 +1365,10 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
             """
             SELECT substr(anomaly_date, 1, 7) AS yyyymm, COUNT(*) AS anomaly_count
             FROM anomalies
-            WHERE NULLIF(visit_id, '') IS NOT NULL AND substr(anomaly_date, 1, 7) BETWEEN ? AND ?
+            WHERE NULLIF(visit_id, '') IS NOT NULL AND anomaly_date BETWEEN ? AND ?
             GROUP BY yyyymm
             """,
-            (earliest_month, latest_month)
+            (start_date, end_date)
         ).fetchall()
         anomalies_by_month = {r["yyyymm"]: int(r["anomaly_count"] or 0) for r in anomaly_rows}
 
@@ -1387,6 +1384,7 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
 
 def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     """計算指定日期範圍內各月份的異常數、結案數、逾期數及累計積壓趨勢（最多限制 12 個月）。"""
+    import calendar
     from datetime import datetime
     try:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -1410,14 +1408,17 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     elif not months_list:
         months_list = [start_date[:7]]
 
-    earliest_month = months_list[0]
-    latest_month = months_list[-1]
+    def _month_end_date(yyyymm: str) -> str:
+        year, month = int(yyyymm[:4]), int(yyyymm[5:])
+        last_day = calendar.monthrange(year, month)[1]
+        return f"{year:04d}-{month:02d}-{last_day:02d}"
 
     with get_connection() as conn:
         # total + overdue per month in one grouped query (both keyed off
         # anomaly_date; overdue's "now" cutoff doesn't depend on the month
-        # being reported, so it groups cleanly alongside total). Replaces
-        # what used to be 2 of the 4 per-month queries (audit finding E1).
+        # being reported, so it groups cleanly alongside total). Keep the
+        # date predicate exact so custom export ranges do not include
+        # same-month rows outside the selected start/end dates.
         total_overdue_rows = conn.execute(
             """
             SELECT
@@ -1429,10 +1430,10 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
                          THEN 1 ELSE 0 END
                 ) AS overdue_count
             FROM anomalies
-            WHERE substr(anomaly_date, 1, 7) BETWEEN ? AND ?
+            WHERE anomaly_date BETWEEN ? AND ?
             GROUP BY yyyymm
             """,
-            (earliest_month, latest_month),
+            (start_date, end_date),
         ).fetchall()
         total_by_month = {r["yyyymm"]: int(r["total_count"] or 0) for r in total_overdue_rows}
         overdue_by_month = {r["yyyymm"]: int(r["overdue_count"] or 0) for r in total_overdue_rows}
@@ -1443,10 +1444,10 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
             """
             SELECT substr(closed_at, 1, 7) AS yyyymm, COUNT(*) AS closed_count
             FROM anomalies
-            WHERE closed_at <> '' AND substr(closed_at, 1, 7) BETWEEN ? AND ?
+            WHERE closed_at <> '' AND closed_at BETWEEN ? AND ?
             GROUP BY yyyymm
             """,
-            (earliest_month, latest_month),
+            (start_date, end_date),
         ).fetchall()
         closed_by_month = {r["yyyymm"]: int(r["closed_count"] or 0) for r in closed_rows}
 
@@ -1457,22 +1458,23 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
         # table once per month (was up to 12 additional full-table scans).
         all_rows = conn.execute(
             "SELECT anomaly_date, status, closed_at FROM anomalies "
-            "WHERE substr(anomaly_date, 1, 7) <= ?",
-            (latest_month,),
+            "WHERE anomaly_date <= ?",
+            (end_date,),
         ).fetchall()
 
     results = []
     for yyyymm in months_list:
+        cutoff_date = min(_month_end_date(yyyymm), end_date)
         backlog_count = 0
         for row in all_rows:
-            row_month = str(row["anomaly_date"] or "")[:7]
-            if row_month > yyyymm:
+            row_date = str(row["anomaly_date"] or "")
+            if row_date > cutoff_date:
                 continue
             status = row["status"]
             closed_at = row["closed_at"] or ""
             is_open_as_of_month = (
                 status != "已結案"
-                or (closed_at != "" and closed_at[:7] > yyyymm)
+                or (closed_at != "" and closed_at > cutoff_date)
             )
             if is_open_as_of_month:
                 backlog_count += 1

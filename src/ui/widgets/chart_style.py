@@ -12,7 +12,9 @@ ad-hoc, so the figure/plot separation is defined in one place.
 
 from __future__ import annotations
 
-from PySide6.QtCharts import QChartView
+import math
+
+from PySide6.QtCharts import QChartView, QValueAxis
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QBrush, QColor
 
@@ -26,6 +28,37 @@ def apply_chart_surface(chart) -> None:
     # Plot area gets its own semantic token so it reads as a separate layer.
     chart.setPlotAreaBackgroundBrush(QBrush(QColor(TOKENS["chart_plot_bg"])))
     chart.setPlotAreaBackgroundVisible(True)
+
+
+def _nice_integer_interval(raw: float) -> int:
+    """回傳 >= raw 的最小 1/2/5×10^n 整數間隔。"""
+    if raw <= 1:
+        return 1
+    exponent = math.floor(math.log10(raw))
+    for base in (1, 2, 5):
+        candidate = base * (10 ** exponent)
+        if candidate >= raw:
+            return int(candidate)
+    return int(10 ** (exponent + 1))
+
+
+def apply_integer_count_axis(
+    axis: QValueAxis, max_value: int, *, padding: int = 1, max_ticks: int = 6
+) -> None:
+    """設定「件數」類 QValueAxis 的範圍與刻度,保證格線落在整數值上。
+
+    QValueAxis 預設 tickCount=5(4 段);range 上限取 max+padding 時多半不是
+    4 的倍數,格線會落在小數(例 0..6 → 0/1.5/3/4.5/6),再被 %d、%i 標籤格式
+    四捨五入成 0,1,3,4,6 這種不等距整數,整數件數的長條就對不上任何標示格線。
+    這裡改用 TicksDynamic + 1/2/5×10^n 整數間隔,並把上限進位到間隔的倍數。
+    """
+    upper = max(1, int(max_value)) + max(0, int(padding))
+    interval = _nice_integer_interval(upper / (max_ticks - 1))
+    upper = math.ceil(upper / interval) * interval
+    axis.setRange(0, upper)
+    axis.setTickAnchor(0.0)
+    axis.setTickInterval(float(interval))
+    axis.setTickType(QValueAxis.TickType.TicksDynamic)
 
 
 class StableChartView(QChartView):

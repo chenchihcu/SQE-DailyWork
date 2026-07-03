@@ -211,6 +211,7 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         ]
         return_slips = [
             {"return_slip_type": "廠內退料", "case_count": 6, "total_qty": 60},
+            {"return_slip_type": "未註明", "case_count": 2, "total_qty": 40},
         ]
         
         widget_with_data = self._build_widget(
@@ -224,6 +225,8 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         self.assertIn("產品X", insights)
         self.assertIn("報廢", insights)
         self.assertIn("廠內退料", insights)
+        self.assertIn("未註明", insights)
+        self.assertIn("40 件", insights)
 
 
 if __name__ == "__main__":

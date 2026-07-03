@@ -237,10 +237,10 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         )
         self.grid_layout.addWidget(disposition_view, 1, 0)
 
-        # 4. 廠內退料/託外退料 比例% (環形圖)
+        # 4. 退料來源比例% (環形圖)
         return_slip_view = self._build_donut_chart(
-            return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比",
-            {"廠內退料": _C_INFO, "託外退料": _C_PENDING}
+            return_slips, "return_slip_type", "退料來源比例佔比",
+            {"廠內退料": _C_INFO, "託外退料": _C_PENDING, "未註明": _C_NA}
         )
         self.grid_layout.addWidget(return_slip_view, 1, 1)
 
@@ -318,17 +318,30 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         if return_slips:
             in_house = 0
             outsource = 0
+            unspecified = 0
             for r in return_slips:
                 qty = int(r["total_qty"] or 0)
                 if r["return_slip_type"] == "廠內退料":
                     in_house += qty
                 elif r["return_slip_type"] == "託外退料":
                     outsource += qty
+                else:
+                    unspecified += qty
             total = in_house + outsource
+            total += unspecified
             if total > 0:
                 in_house_pct = (in_house / total) * 100
+                outsource_pct = (outsource / total) * 100
+                unspecified_pct = (unspecified / total) * 100
+                note = (
+                    f"，未註明佔 <b>{unspecified_pct:.1f}%</b>（{unspecified} 件），"
+                    "請補齊退料類型以維持來源分析完整。"
+                    if unspecified
+                    else "。"
+                )
                 insights.append(
-                    f"🔄 <b>退料來源：</b>廠內退料佔 <b>{in_house_pct:.1f}%</b>，託外退料佔 <b>{(100 - in_house_pct):.1f}%</b>。"
+                    f"🔄 <b>退料來源：</b>廠內退料佔 <b>{in_house_pct:.1f}%</b>，"
+                    f"託外退料佔 <b>{outsource_pct:.1f}%</b>{note}"
                     f"廠內退料涉及內部製程不良，託外退料涉及外協加工品質，請按比例調度改善資源。"
                 )
 
@@ -399,7 +412,12 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
                 # 4. Return slip chart
                 if return_slips and render_chart_to_png(
-                    lambda: self._build_donut_chart(return_slips, "return_slip_type", "廠內退料 / 託外退料 比例佔比", {"廠內退料": _C_INFO, "託外退料": _C_PENDING}),
+                    lambda: self._build_donut_chart(
+                        return_slips,
+                        "return_slip_type",
+                        "退料來源比例佔比",
+                        {"廠內退料": _C_INFO, "託外退料": _C_PENDING, "未註明": _C_NA},
+                    ),
                     temp_paths["return_slip"],
                 ):
                     active_temp_paths["return_slip"] = temp_paths["return_slip"]

@@ -224,8 +224,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             {"yyyymm": "2026-04", "visit_count": 2, "visit_anomaly_count": 1},
         ]
         category_pareto = [
-            {"rank": 1, "category": "製程條件/參數未受控", "count": 4, "percent": 66.7, "cumulative_percent": 66.7},
-            {"rank": 2, "category": "文件/SOP/規格資料缺口", "count": 2, "percent": 33.3, "cumulative_percent": 100.0},
+            {"rank": 1, "category": "製程參數失控", "count": 4, "percent": 66.7, "cumulative_percent": 66.7},
+            {"rank": 2, "category": "規範文件缺漏", "count": 2, "percent": 33.3, "cumulative_percent": 100.0},
         ]
         widget, _host = self._build_widget(
             summary,
@@ -265,8 +265,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             "top_suppliers_by_anomaly": [],
         }
         category_pareto = [
-            {"rank": 1, "category": "來料品質不良", "count": 3, "percent": 50.0, "cumulative_percent": 50.0},
-            {"rank": 2, "category": "外觀不良", "count": 2, "percent": 33.3, "cumulative_percent": 83.3},
+            {"rank": 1, "category": "製程條件/參數未受控", "count": 3, "percent": 50.0, "cumulative_percent": 50.0},
+            {"rank": 2, "category": "標準作業不落實", "count": 2, "percent": 33.3, "cumulative_percent": 83.3},
             {"rank": 3, "category": "未分類", "count": 1, "percent": 16.7, "cumulative_percent": 100.0},
         ]
         widget, _host = self._build_widget(
@@ -282,24 +282,31 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         )
         category_axis = next(
             axis
-            for axis in pareto_chart.axes(Qt.Orientation.Horizontal)
+            for axis in pareto_chart.axes(Qt.Orientation.Vertical)
             if isinstance(axis, QBarCategoryAxis)
         )
         value_axes = [
             axis
-            for axis in pareto_chart.axes(Qt.Orientation.Vertical)
+            for axis in pareto_chart.axes(Qt.Orientation.Horizontal)
             if isinstance(axis, QValueAxis)
         ]
         line_series = [
             series for series in pareto_chart.series() if isinstance(series, QLineSeries)
         ]
 
-        self.assertEqual(["來料品質不良", "外觀不良", "未分類"], category_axis.categories())
+        self.assertEqual(
+            ["未分類", "標準作業不落實", "製程條件/參數未受控"],
+            category_axis.categories(),
+        )
         self.assertEqual(2, len(value_axes))
         self.assertEqual(1, len(line_series))
         self.assertEqual("累積佔比", line_series[0].name())
         self.assertEqual(3, line_series[0].count())
-        self.assertEqual(100.0, line_series[0].at(2).y())
+        self.assertEqual(100.0, line_series[0].at(0).x())
+        self.assertTrue(line_series[0].pointsVisible())
+        self.assertTrue(line_series[0].pointLabelsVisible())
+        self.assertEqual("@xPoint%", line_series[0].pointLabelsFormat())
+        self.assertFalse(line_series[0].pointLabelsClipping())
 
     def test_stats_view_shortens_long_supplier_labels_and_disables_axis_truncation(self) -> None:
         summary = {
@@ -572,7 +579,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             widget.range_selectors.start_month.setCurrentText("01")
             self.app.processEvents()
 
-        expected_window = ("2025-01-01", "2025-03-01")
+        expected_window = ("2025-01-01", "2025-03-31")
         self.assertEqual(expected_window, tuple(mock_trend.call_args.args))
         self.assertEqual(expected_window, tuple(mock_visit.call_args.args))
         self.assertEqual(("2025-01-01", "2025-03-31"), tuple(mock_resp.call_args.args))

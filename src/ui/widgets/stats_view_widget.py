@@ -49,7 +49,6 @@ from ui.widgets.stats_dashboard_helpers import (
     range_display_text,
     range_iso_dates,
     range_month_span,
-    range_month_window,
     render_chart_to_png,
     short_chart_label,
 )
@@ -232,11 +231,10 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             # 保留此呼叫以觸發 monthly_stats_cache 刷新（回傳值不使用），錨定迄月
             _ = event_service.get_monthly_stats(end_key)
 
-            # 趨勢圖窗口 = 使用者選定的起迄區間（服務端上限 12 個月）
-            trend_start, trend_end = range_month_window(start_key, end_key)
-            trend_data = event_service.get_anomaly_trend_by_range(trend_start, trend_end)
-            visit_trend_data = event_service.get_visit_trend_by_range(trend_start, trend_end)
             iso_start, iso_end = range_iso_dates(start_key, end_key)
+            # 趨勢圖窗口 = 使用者選定的完整月份區間（服務端上限 12 個月）
+            trend_data = event_service.get_anomaly_trend_by_range(iso_start, iso_end)
+            visit_trend_data = event_service.get_visit_trend_by_range(iso_start, iso_end)
             try:
                 resp_stats = event_service.get_responsible_person_stats_by_range(
                     iso_start, iso_end

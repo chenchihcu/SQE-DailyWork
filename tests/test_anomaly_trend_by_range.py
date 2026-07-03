@@ -116,6 +116,71 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         self.assertEqual(0, row["overdue_count"])
         self.assertEqual(0, row["backlog_count"])
 
+    def test_partial_month_range_filters_event_counts_by_exact_dates(self) -> None:
+        self._create_anomaly("2026-06-01")
+        self._create_anomaly("2026-06-15")
+        self._create_anomaly("2026-06-30")
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            trend = event_service.get_anomaly_trend_by_range("2026-06-10", "2026-06-20")
+
+        self.assertEqual(1, len(trend))
+        row = trend[0]
+        self.assertEqual("2026-06", row["yyyymm"])
+        self.assertEqual(1, row["total_count"])
+        # Backlog is a stock metric as of the range cutoff: include already-open
+        # prior work, but do not include future same-month rows after end_date.
+        self.assertEqual(2, row["backlog_count"])
+
+    def test_partial_month_visit_trend_filters_visits_and_visit_anomalies_by_exact_dates(self) -> None:
+        outside_visit = repository.create_visit(
+            self.conn,
+            visit_date="2026-06-01",
+            supplier_id=self.supplier_id,
+            summary="outside start",
+        )
+        inside_visit = repository.create_visit(
+            self.conn,
+            visit_date="2026-06-15",
+            supplier_id=self.supplier_id,
+            summary="inside",
+        )
+        future_visit = repository.create_visit(
+            self.conn,
+            visit_date="2026-06-30",
+            supplier_id=self.supplier_id,
+            summary="outside end",
+        )
+        repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-06-01",
+            supplier_id=self.supplier_id,
+            problem_desc="outside linked anomaly",
+            visit_id=outside_visit,
+        )
+        repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-06-15",
+            supplier_id=self.supplier_id,
+            problem_desc="inside linked anomaly",
+            visit_id=inside_visit,
+        )
+        repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-06-30",
+            supplier_id=self.supplier_id,
+            problem_desc="future linked anomaly",
+            visit_id=future_visit,
+        )
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            trend = event_service.get_visit_trend_by_range("2026-06-10", "2026-06-20")
+
+        self.assertEqual(
+            [{"yyyymm": "2026-06", "visit_count": 1, "visit_anomaly_count": 1}],
+            trend,
+        )
+
     def test_invalid_date_range_returns_empty_list(self) -> None:
         with patch.object(event_service, "get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("not-a-date", "also-not-a-date")

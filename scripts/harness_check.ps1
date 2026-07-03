@@ -263,6 +263,8 @@ Require-Text "AGENTS.md" "docs/harness/source-baseline-manifest.md" "source base
 Require-Text "AGENTS.md" "completion impact format" "completion impact format"
 Require-Text "AGENTS.md" "Residual risk" "residual risk field"
 Require-Text "AGENTS.md" "Source-Control Boundary" "source-control boundary rule"
+Require-Text "AGENTS.md" "Harness update needed: yes" "learn-before-complete trigger"
+Require-Text "AGENTS.md" "/learn" "learn-before-complete workflow"
 
 Require-Text "CLAUDE.md" "@AGENTS.md" "Claude imports AGENTS policy"
 Require-Text ".cursor\rules\agents_gateway.mdc" "AGENTS.md" "Cursor gateway points to AGENTS"

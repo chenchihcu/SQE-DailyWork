@@ -34,14 +34,14 @@ from ui.layout_constants import CHART_BAR_HEIGHT, CHART_HEADER_FOOTER_OFFSET, CH
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
 from services import event_service
-from ui.widgets.chart_style import apply_chart_surface, StableChartView
+from ui.widgets.chart_style import apply_chart_surface, apply_integer_count_axis, StableChartView
 from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 logger = logging.getLogger(__name__)
 
 # ── 圖表常數 ──────────────────────────────────────────────
 SUPPLIER_LABEL_MAX_LEN = 12
-PARETO_CATEGORY_LABEL_MAX_LEN = 10
+PARETO_CATEGORY_LABEL_MAX_LEN = 12
 CHART_AXIS_LABEL_POINT_SIZE = 11
 CHART_AXIS_TITLE_POINT_SIZE = 11
 CHART_AXIS_LABEL_ANGLE = 0
@@ -177,7 +177,7 @@ class _StatsChartMixin:
         axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
         axis_x.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
         max_total = max((int(r.get("total_count", 0)) for r in data), default=10)
-        axis_x.setRange(0, max_total + 1)
+        apply_integer_count_axis(axis_x, max_total, padding=1)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         bar_series.attachAxis(axis_x)
 
@@ -241,9 +241,10 @@ class _StatsChartMixin:
             return None
 
         data = list(rows)
+        display_data = list(reversed(data))
         categories = dedupe_chart_labels([
-            short_chart_label(row["category"], max_len=PARETO_CATEGORY_LABEL_MAX_LEN)
-            for row in data
+            short_chart_label(row.get("category") or "-", max_len=PARETO_CATEGORY_LABEL_MAX_LEN)
+            for row in display_data
         ])
 
         count_set = QBarSet("件數")
@@ -257,11 +258,11 @@ class _StatsChartMixin:
         cumulative_series.setPen(cumulative_pen)
         cumulative_series.setPointsVisible(True)
 
-        for index, row in enumerate(data):
+        for index, row in enumerate(display_data):
             count_set.append(int(row.get("count") or 0))
-            cumulative_series.append(index, float(row.get("cumulative_percent") or 0.0))
+            cumulative_series.append(float(row.get("cumulative_percent") or 0.0), index)
 
-        bar_series = QBarSeries()
+        bar_series = QHorizontalBarSeries()
         bar_series.append(count_set)
         bar_series.setLabelsVisible(True)
         bar_series.setLabelsPosition(QBarSeries.LabelsPosition.LabelsOutsideEnd)
@@ -271,47 +272,61 @@ class _StatsChartMixin:
         chart.addSeries(cumulative_series)
         chart.setTitle(f"異常類別柏拉圖分析 ({self._range_text()})")
         apply_chart_surface(chart)
-        chart.setMargins(QMargins(8, 8, 8, 8))
+        has_dense_categories = len(categories) > 4
+        chart.setMargins(
+            QMargins(
+                24 if has_dense_categories else 8,
+                18,
+                56 if has_dense_categories else 24,
+                42 if has_dense_categories else 18,
+            )
+        )
 
         app_font_family = QApplication.font().family()
         axis_label_font = QFont(app_font_family, 9)
         axis_title_font = QFont(app_font_family)
         axis_title_font.setPointSize(CHART_AXIS_TITLE_POINT_SIZE)
+        point_label_font = QFont(app_font_family, 8)
+        point_label_font.setBold(True)
+        cumulative_series.setPointLabelsVisible(True)
+        cumulative_series.setPointLabelsFormat("@xPoint%")
+        cumulative_series.setPointLabelsColor(PARETO_LINE_COLOR.darker(110))
+        cumulative_series.setPointLabelsFont(point_label_font)
+        cumulative_series.setPointLabelsClipping(False)
 
-        axis_x = QBarCategoryAxis()
-        axis_x.append(categories)
-        axis_x.setLabelsAngle(-45 if len(categories) > 4 else 0)
-        axis_x.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_x.setLabelsFont(axis_label_font)
-        axis_x.setTruncateLabels(False)
-        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-        bar_series.attachAxis(axis_x)
-        cumulative_series.attachAxis(axis_x)
+        axis_y = QBarCategoryAxis()
+        axis_y.append(categories)
+        axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_y.setLabelsFont(axis_label_font)
+        axis_y.setTruncateLabels(False)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        bar_series.attachAxis(axis_y)
+        cumulative_series.attachAxis(axis_y)
 
         max_count = max((int(row.get("count") or 0) for row in data), default=5)
-        axis_y_count = QValueAxis()
-        axis_y_count.setTitleText("件數")
-        axis_y_count.setLabelFormat("%i")
-        axis_y_count.setRange(0, max_count + 1)
-        axis_y_count.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
-        axis_y_count.setLabelsFont(axis_label_font)
-        axis_y_count.setTitleFont(axis_title_font)
-        axis_y_count.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        chart.addAxis(axis_y_count, Qt.AlignmentFlag.AlignLeft)
-        bar_series.attachAxis(axis_y_count)
+        axis_x_count = QValueAxis()
+        axis_x_count.setTitleText("件數")
+        axis_x_count.setLabelFormat("%i")
+        apply_integer_count_axis(axis_x_count, max_count, padding=1)
+        axis_x_count.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
+        axis_x_count.setLabelsFont(axis_label_font)
+        axis_x_count.setTitleFont(axis_title_font)
+        axis_x_count.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
+        chart.addAxis(axis_x_count, Qt.AlignmentFlag.AlignBottom)
+        bar_series.attachAxis(axis_x_count)
 
-        axis_y_percent = QValueAxis()
-        axis_y_percent.setTitleText("累積佔比")
-        axis_y_percent.setLabelFormat("%.0f%%")
-        axis_y_percent.setRange(0, 100)
-        axis_y_percent.setTickCount(6)
-        axis_y_percent.setLabelsColor(PARETO_LINE_COLOR)
-        axis_y_percent.setTitleBrush(PARETO_LINE_COLOR)
-        axis_y_percent.setLabelsFont(axis_label_font)
-        axis_y_percent.setTitleFont(axis_title_font)
-        axis_y_percent.setGridLineVisible(False)
-        chart.addAxis(axis_y_percent, Qt.AlignmentFlag.AlignRight)
-        cumulative_series.attachAxis(axis_y_percent)
+        axis_x_percent = QValueAxis()
+        axis_x_percent.setTitleText("累積佔比")
+        axis_x_percent.setLabelFormat("%.0f%%")
+        axis_x_percent.setRange(0, 100)
+        axis_x_percent.setTickCount(6)
+        axis_x_percent.setLabelsColor(PARETO_LINE_COLOR)
+        axis_x_percent.setTitleBrush(PARETO_LINE_COLOR)
+        axis_x_percent.setLabelsFont(axis_label_font)
+        axis_x_percent.setTitleFont(axis_title_font)
+        axis_x_percent.setGridLineVisible(False)
+        chart.addAxis(axis_x_percent, Qt.AlignmentFlag.AlignTop)
+        cumulative_series.attachAxis(axis_x_percent)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         if TOKENS.get("chart_axis_text"):
@@ -319,11 +334,11 @@ class _StatsChartMixin:
 
         chart_view = StableChartView(chart)
         chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        chart_view.setMinimumHeight(CHART_MIN_HEIGHT + 48)
+        chart_view.setMinimumHeight(max(CHART_MIN_HEIGHT + 48, len(categories) * 32 + 150))
         chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         bar_series.hovered.connect(
-            lambda status, idx, bs: self._on_category_pareto_hovered(status, idx, data)
+            lambda status, idx, bs: self._on_category_pareto_hovered(status, idx, display_data)
         )
 
         return chart_view
@@ -412,7 +427,7 @@ class _StatsChartMixin:
         axis_y = QValueAxis()
         axis_y.setTitleText("件數")
         axis_y.setLabelFormat("%i")
-        axis_y.setRange(0, max_bar + 2)
+        apply_integer_count_axis(axis_y, max_bar, padding=2)
         axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_y.setLabelsFont(axis_label_font)
         axis_y.setTitleFont(axis_title_font)
@@ -518,7 +533,7 @@ class _StatsChartMixin:
         axis_y = QValueAxis()
         axis_y.setTitleText("件數")
         axis_y.setLabelFormat("%i")
-        axis_y.setRange(0, max_bar + 2)
+        apply_integer_count_axis(axis_y, max_bar, padding=2)
         axis_y.setLabelsColor(QColor(TOKENS["chart_axis_text"]))
         axis_y.setLabelsFont(axis_label_font)
         axis_y.setTitleFont(axis_title_font)

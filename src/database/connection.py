@@ -56,6 +56,7 @@ def initialize_database() -> dict:
     from database.repository import (
         ANOMALY_NO_RECODE_META_KEY,
         SUPPLIER_CONSOLIDATION_META_KEY,
+        align_legacy_anomaly_categories,
         consolidate_suppliers,
         create_schema,
         get_migration_meta,
@@ -112,6 +113,9 @@ def initialize_database() -> dict:
                 }
         product_stage_sync = sync_all_product_stages_to_events_once(conn)
 
+        # 對齊舊版異常分類資料與現行 UI 選項
+        aligned_count = align_legacy_anomaly_categories(conn)
+
         # NCR (不良品追蹤) 資料庫一次性遷移
         from database.ncr_migration import migrate_ncr_data_once
         ncr_db = PROJECT_ROOT / "ncr" / "data" / "defect.db"
@@ -124,6 +128,7 @@ def initialize_database() -> dict:
         supplier_consolidation.get("backup_path") or ""
     )
     report["product_stage_sync"] = product_stage_sync
+    report["align_legacy_categories"] = aligned_count
     report["ncr_migration"] = ncr_migration_report
     if report.get("migrated"):
         logger.info("已將 Legacy 資料從 %s 遷移至 %s", LEGACY_DB_PATH, DB_PATH)

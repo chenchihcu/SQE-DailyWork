@@ -763,6 +763,47 @@ class DefectServiceTests(DatabaseTestCase):
         self.assertEqual(2, warehouse_summary["scrap_qty"])
         conn.close()
 
+    def test_return_slip_ratio_by_range_includes_unspecified_legacy_rows(self) -> None:
+        conn = self.create_memory_connection()
+        try:
+            blank_legacy_row = self.sample_payload(
+                return_slip_type="",
+                work_order_no="5102-260414010",
+                item_no="ITEM-BLANK",
+                qty=4,
+            )
+            blank_legacy_row["defect_no"] = "NCR-BLANK"
+            blank_legacy_row["created_at"] = "2026-04-14T09:00:00"
+            blank_legacy_row["internal_work_order_no"] = ""
+            blank_legacy_row["transfer_slip_no"] = ""
+            blank_legacy_row["responsibility"] = "不確定"
+            crud.insert_defect(conn, blank_legacy_row)
+
+            valid_row = self.sample_payload(
+                return_slip_type="廠內退料",
+                work_order_no="5102-260414011",
+                item_no="ITEM-INHOUSE",
+                qty=7,
+            )
+            valid_row["defect_no"] = "NCR-INHOUSE"
+            valid_row["created_at"] = "2026-04-14T09:30:00"
+            valid_row["internal_work_order_no"] = ""
+            valid_row["transfer_slip_no"] = ""
+            valid_row["responsibility"] = "不確定"
+            crud.insert_defect(conn, valid_row)
+
+            rows = stats_service.get_return_slip_ratio_by_range(
+                conn,
+                "2026-04-01",
+                "2026-04-30",
+            )
+            self.assertEqual(
+                [("廠內退料", 7), ("未註明", 4)],
+                [(row["return_slip_type"], row["total_qty"]) for row in rows],
+            )
+        finally:
+            conn.close()
+
     def test_stats_preview_handles_single_quote_in_filter_values(self) -> None:
         conn = self.create_memory_connection()
         conn.execute(

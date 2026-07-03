@@ -821,6 +821,39 @@ def _normalize_supplier_name_for_storage(supplier_name: str) -> str:
     return canonical or raw
 
 
+def align_legacy_anomaly_categories(conn: sqlite3.Connection) -> int:
+    """Align legacy anomaly category names to the current standard options.
+
+    Returns the total number of rows updated.
+    """
+    mapping = {
+        "文件/SOP 不足": "規範文件缺漏",
+        "文件/SOP不足": "規範文件缺漏",
+        "人為操作疏失": "標準作業不落實",
+        "物料/來料問題": "來料品質不良",
+        "製程參數異常": "製程參數失控",
+        "設計缺陷": "設計匹配不良",
+    }
+    changed_count = 0
+    # Use TRIM to handle potential extra spaces in user input
+    for old_val, new_val in mapping.items():
+        # Update root_cause_category
+        res1 = conn.execute(
+            "UPDATE anomalies SET root_cause_category = ? WHERE TRIM(root_cause_category) = ?",
+            (new_val, old_val),
+        )
+        changed_count += res1.rowcount
+        
+        # Update category
+        res2 = conn.execute(
+            "UPDATE anomalies SET category = ? WHERE TRIM(category) = ?",
+            (new_val, old_val),
+        )
+        changed_count += res2.rowcount
+        
+    return changed_count
+
+
 def recode_anomaly_numbers(
     conn: sqlite3.Connection,
     *,

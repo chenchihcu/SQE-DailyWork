@@ -18,7 +18,7 @@ from PySide6.QtCharts import (
 from ui.design_tokens import PALETTE
 from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.theme import TOKENS
-from ui.widgets.chart_style import apply_chart_surface, StableChartView
+from ui.widgets.chart_style import apply_chart_surface, apply_integer_count_axis, StableChartView
 from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 
 # Chart colour aliases sourced from shared design_tokens so theme updates propagate.
@@ -83,7 +83,7 @@ class _NcrStatsChartMixin:
         axis_x.setLabelsColor(QColor(TOKENS.get("chart_axis_text", "#333333")))
         axis_x.setLabelsFont(axis_font)
         axis_x.setGridLinePen(QPen(QColor(TOKENS.get("chart_grid", "#c5d4de")), 1, Qt.PenStyle.DashLine))
-        axis_x.setRange(0, max_qty + 5 if max_qty > 0 else 10)
+        apply_integer_count_axis(axis_x, max_qty if max_qty > 0 else 5, padding=5)
         chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         series.attachAxis(axis_x)
 

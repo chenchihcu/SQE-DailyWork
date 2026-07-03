@@ -32,6 +32,7 @@ from ui.widgets.common_widgets import (
 from ui.widgets.defect_form_widgets import (
     ROOT_CAUSE_PARETO_OPTIONS,
     apply_dialog_layout,
+    set_combo_current_text,
     set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
@@ -54,6 +55,15 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.setWindowTitle("異常結案")
         self.setMinimumWidth(720)
         self.setMaximumWidth(FORM_MAX_WIDTH)
+        
+        # 取得異常詳情以設定預設的原因分類 (與原先 category 一致)
+        self.initial_category = ""
+        try:
+            detail = event_service.get_anomaly_detail(self.anomaly_id)
+            self.initial_category = detail.get("category", "")
+        except Exception:
+            logger.exception("Failed to get initial category for anomaly %s", self.anomaly_id)
+
         self._setup_ui()
         self.attachment_editor.load_existing_attachments(self.anomaly_id)
         self._update_validation()
@@ -85,6 +95,8 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.root_cause_combo.setEditable(True)
         for option in ROOT_CAUSE_CATEGORY_OPTIONS:
             self.root_cause_combo.addItem(option)
+        if self.initial_category:
+            set_combo_current_text(self.root_cause_combo, self.initial_category)
 
         self.attachment_editor = AttachmentEditor(self)
 

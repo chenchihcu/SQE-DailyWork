@@ -329,9 +329,63 @@ def get_scrap_rework_ratio_filtered(
 def get_return_slip_ratio_filtered(
     conn: sqlite3.Connection, yyyymm: str | None = None
 ) -> list[sqlite3.Row]:
-    return _get_grouped_stats_filtered(
-        conn, "return_slip_type", ("廠內退料", "託外退料"), yyyymm
+    return _get_return_slip_ratio_filtered(conn, yyyymm)
+
+
+def _get_return_slip_ratio_filtered(
+    conn: sqlite3.Connection,
+    yyyymm: str | None = None,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[sqlite3.Row]:
+    from datetime import date
+    current_year = date.today().year
+    current_month = date.today().month
+
+    if start_date and end_date:
+        time_clause = "event_date BETWEEN ? AND ?"
+        params = [start_date, end_date]
+    elif not yyyymm or yyyymm == "ALL":
+        time_clause = "1=1"
+        params = []
+    elif yyyymm == "YEAR":
+        time_clause = "SUBSTR(event_date, 1, 4) = ?"
+        params = [str(current_year)]
+    elif yyyymm == "HALF_YEAR":
+        if current_month <= 6:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 1 AND 6"
+        else:
+            time_clause = "SUBSTR(event_date, 1, 4) = ? AND CAST(SUBSTR(event_date, 6, 2) AS INTEGER) BETWEEN 7 AND 12"
+        params = [str(current_year)]
+    else:
+        formatted_month = f"{yyyymm[:4]}-{yyyymm[4:]}"
+        time_clause = "SUBSTR(event_date, 1, 7) = ?"
+        params = [formatted_month]
+
+    normalized_field = "COALESCE(NULLIF(TRIM(return_slip_type), ''), '未註明')"
+    cursor = conn.execute(
+        f"""
+        SELECT
+            {normalized_field} AS return_slip_type,
+            COUNT(*) AS case_count,
+            COALESCE(SUM(qty), 0) AS total_qty
+        FROM defect_records
+        WHERE {time_clause}
+        GROUP BY {normalized_field}
+        ORDER BY
+            CASE return_slip_type
+                WHEN '廠內退料' THEN 0
+                WHEN '託外退料' THEN 1
+                WHEN '未註明' THEN 2
+                ELSE 3
+            END,
+            total_qty DESC,
+            return_slip_type ASC
+        """,
+        params,
     )
+    return list(cursor.fetchall())
 
 
 
@@ -455,8 +509,8 @@ def get_scrap_rework_ratio_by_range(
 def get_return_slip_ratio_by_range(
     conn: sqlite3.Connection, start_date: str, end_date: str
 ) -> list[sqlite3.Row]:
-    return _get_grouped_stats_filtered(
-        conn, "return_slip_type", ("廠內退料", "託外退料"), start_date=start_date, end_date=end_date
+    return _get_return_slip_ratio_filtered(
+        conn, start_date=start_date, end_date=end_date
     )
 
 

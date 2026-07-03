@@ -118,16 +118,16 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertEqual(
             [
                 "",
-                "製程條件/參數未受控",
-                "文件/SOP/規格資料缺口",
-                "檢驗/量測/出貨把關不足",
-                "設計/圖面/組裝匹配風險",
-                "治具/設備/工具能力不足",
-                "包裝/搬運防護不足",
-                "物料/來料品質異常",
-                "作業方法/訓練執行落差",
-                "供應商回覆/改善管理不足",
-                "其他/待釐清",
+                "製程參數失控",
+                "規範文件缺漏",
+                "檢驗把關失靈",
+                "設計匹配不良",
+                "設備能力不符",
+                "包裝防護不足",
+                "來料品質不良",
+                "標準作業不落實",
+                "供應商改善不力",
+                "其他",
             ],
             self.category_options,
         )
@@ -607,8 +607,97 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             self.assertEqual(Qt.LayoutDirection.RightToLeft, card.yes_radio.layoutDirection())
             self.assertEqual(Qt.LayoutDirection.RightToLeft, card.no_radio.layoutDirection())
 
-        # Style is now handled globally via 'techTransferCard' objectName and properties.
-        # We only verify the layout direction which determines the right-side positioning.
+    def test_close_anomaly_dialog_preselects_original_category(self) -> None:
+        from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
+        with patch.object(
+            self.widget_module.event_service,
+            "get_anomaly_detail",
+            return_value={"category": "規範文件缺漏"},
+        ) as mock_get:
+            dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
+            self.addCleanup(dialog.close)
+            mock_get.assert_called_once_with("anomaly-123")
+            self.assertEqual("規範文件缺漏", dialog.root_cause_combo.currentText())
+
+    def test_closed_anomaly_edit_uses_saved_category_not_root_cause(self) -> None:
+        dialog_closed = self.NewAnomalyDialog(
+            anomaly_id="anomaly-456",
+            initial_data={
+                "anomaly_no": "20260702002",
+                "anomaly_date": "2026-07-02",
+                "supplier_id": "sup-1",
+                "supplier_name": "供應商A",
+                "product_id": "prd-1",
+                "product_name": "產品一號",
+                "status": "已結案",
+                "category": "尺寸異常",
+                "root_cause_category": "規範文件缺漏",
+            }
+        )
+        self.addCleanup(dialog_closed.close)
+        self.assertEqual("尺寸異常", dialog_closed.category_input.currentText())
+
+        captured: dict = {}
+
+        def _fake_update(_anomaly_id: str, payload: dict) -> None:
+            captured.update(payload)
+
+        products = [
+            {
+                "id": "prd-1",
+                "product_code": "P-001",
+                "product_name": "產品一號",
+                "product_stage": "量產",
+            }
+        ]
+        with patch.object(
+            self.widget_module.event_service,
+            "list_active_products_for_supplier",
+            return_value=products,
+        ), patch.object(
+            self.widget_module.event_service,
+            "update_anomaly",
+            side_effect=_fake_update,
+        ):
+            dialog_closed.category_input.setCurrentText("來料品質不良")
+            dialog_closed.problem_input.setPlainText("測試問題描述")
+            dialog_closed._on_submit()
+
+        self.assertEqual("來料品質不良", captured.get("category"))
+
+        reopened = self.NewAnomalyDialog(
+            anomaly_id="anomaly-456",
+            initial_data={
+                "anomaly_no": "20260702002",
+                "anomaly_date": "2026-07-02",
+                "supplier_id": "sup-1",
+                "supplier_name": "供應商A",
+                "product_id": "prd-1",
+                "product_name": "產品一號",
+                "status": "已結案",
+                "category": captured.get("category"),
+                "root_cause_category": "規範文件缺漏",
+            }
+        )
+        self.addCleanup(reopened.close)
+        self.assertEqual("來料品質不良", reopened.category_input.currentText())
+
+        dialog_open = self.NewAnomalyDialog(
+            anomaly_id="anomaly-789",
+            initial_data={
+                "anomaly_no": "20260702003",
+                "anomaly_date": "2026-07-02",
+                "supplier_id": "sup-1",
+                "supplier_name": "供應商A",
+                "product_id": "prd-1",
+                "product_name": "產品一號",
+                "status": "待處理",
+                "category": "製程參數失控",
+                "root_cause_category": "規範文件缺漏",
+            }
+        )
+        self.addCleanup(dialog_open.close)
+        self.assertEqual("製程參數失控", dialog_open.category_input.currentText())
 
 
 if __name__ == "__main__":
