@@ -116,3 +116,20 @@ Fix: Perform automated idempotent updates on database initialization to map all 
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_align_legacy_categories.py`
 
+## Category Alignment in Dialog and List Entry
+
+Date: 2026-07-03
+Task: Align event list category and anomaly dialog category for closed anomalies.
+Changes: Added a read-only "原因分類" (cause category) field to `NewAnomalyDialog` when status is "已結案". Made the main "異常類別" combobox always display the raw category (`category_raw`) in both edit and read-only preview modes, aligning it with lists and preventing data overrides.
+Impact: Avoids visual mismatches where the event list shows the resolved category (e.g. "其他") but the form shows the raw category (e.g. "包裝防護不足"). Also prevents saving from overwriting the raw category with the root cause category.
+Verification: Run `tests/test_anomaly_category_dropdown.py` (including updated test cases) and `scripts/verify.ps1`.
+Residual risk: None.
+Next action: None.
+Debug/RCA (when applicable):
+Observed: Event lists and read-only previews showed resolved category while the edit form showed raw category, causing mismatches.
+Root cause: Read-only preview loaded category (resolved), edit form loaded category_raw (raw), and `NewAnomalyDialog` had no field to display the `root_cause_category`.
+Fix: Add a read-only `root_cause_display` field to `NewAnomalyDialog` for closed cases, and make both modes load `category_raw` for `category_input`.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_anomaly_category_dropdown.py`
+
+
