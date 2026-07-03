@@ -75,6 +75,9 @@ class ResolvedCategoryDisplayTests(unittest.TestCase):
         self.assertIsNotNone(detail_closed)
         self.assertEqual("其他", detail_closed["category"])
         self.assertEqual("其他", detail_closed["root_cause_category"])
+        # category_raw 保留原始異常類別:編輯對話框必須用它載入,
+        # 否則存檔會把解析後的根因值無聲覆寫進 category 欄位。
+        self.assertEqual("製程參數失控", detail_closed["category_raw"])
 
         events_closed = repository.list_events(self.conn, event_type="ANOMALY", event_scope="CLOSED_ONLY")
         self.assertEqual(1, len(events_closed))

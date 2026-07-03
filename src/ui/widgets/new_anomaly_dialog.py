@@ -572,7 +572,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         )
         self.batch_qty_input.setText(str(self._initial_data.get("batch_qty") or ""))
         self.problem_input.setPlainText(str(self._initial_data.get("problem_desc") or ""))
-        set_combo_current_text(self.category_input, str(self._initial_data.get("category") or ""))
+        # 唯讀預覽顯示解析後類別(已結案優先 root_cause_category,見 AGENTS.md 對齊規則);
+        # 編輯模式必須載入原始 category,否則存檔會把根因值無聲覆寫進 category 欄位。
+        if self._read_only:
+            category_value = self._initial_data.get("category")
+        else:
+            category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
+        set_combo_current_text(self.category_input, str(category_value or ""))
         self.responsible_person_input.setText(
             str(self._initial_data.get("responsible_person") or "")
         )

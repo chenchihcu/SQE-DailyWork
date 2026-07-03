@@ -2729,6 +2729,7 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.product_stage AS product_stage,
             a.problem_desc AS problem_desc,
             COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
+            a.category AS category_raw,
             a.product_lot_no AS product_lot_no,
             a.outsource_work_order AS outsource_work_order,
             a.batch_qty AS batch_qty,

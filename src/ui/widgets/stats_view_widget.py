@@ -344,12 +344,19 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 if last_month_visit:
                     total_visits = last_month_visit["visit_count"]
                     total_anomalies = last_month_visit["visit_anomaly_count"]
-                    ratio = total_anomalies / total_visits if total_visits > 0 else 0
-                    ratio_status = "發現異常比例偏高" if ratio >= 1.5 else "發現異常比例正常"
-                    insights.append(
-                        f"區間末月（{last_month_visit['yyyymm']}）：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
-                        f"訪廠評估：{ratio_status}，請持續追蹤供應商改善進度。"
-                    )
+                    if total_visits == 0 and total_anomalies > 0:
+                        # 分母(訪廠月份)與分子(異常月份)可因事後改日期而分屬不同月;
+                        # 此時「平均每場 0.0 件/正常」與圖面矛盾,改輸出事實描述。
+                        insights.append(
+                            f"區間末月（{last_month_visit['yyyymm']}）：無訪廠紀錄，但有 {total_anomalies} 件訪廠連結異常（請確認異常日期與訪廠日期是否同月）。"
+                        )
+                    else:
+                        ratio = total_anomalies / total_visits if total_visits > 0 else 0
+                        ratio_status = "發現異常比例偏高" if ratio >= 1.5 else "發現異常比例正常"
+                        insights.append(
+                            f"區間末月（{last_month_visit['yyyymm']}）：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
+                            f"訪廠評估：{ratio_status}，請持續追蹤供應商改善進度。"
+                        )
             else:
                 self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
         else:
@@ -394,8 +401,8 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         return str(d)
 
                     insights.append(
-                        f"責任人負載分析：目前全期未結案共 {total_open} 件。\n"
-                        f"重點關注：{most_backlogged['responsible_person']} 目前有 {most_backlogged['open_count']} 件未結案，其最早未結案件累計自 {format_long_m(most_backlogged['min_open_date'])}。"
+                        f"責任人負載分析：區間內未結案共 {total_open} 件。\n"
+                        f"重點關注：{most_backlogged['responsible_person']} 區間內有 {most_backlogged['open_count']} 件未結案，其最早未結案件累計自 {format_long_m(most_backlogged['min_open_date'])}。"
                     )
                 else:
                     insights.append("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。")

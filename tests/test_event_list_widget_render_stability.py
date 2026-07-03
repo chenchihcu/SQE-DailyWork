@@ -76,6 +76,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "production_qty": 10,
                 "content": "問題-0",
                 "status": "待處理",
+                "category": "尺寸不符",
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -91,6 +92,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "production_qty": 0,
                 "content": "摘要-1",
                 "status": "已完成",
+                "category": "",
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -106,6 +108,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "production_qty": 8,
                 "content": None,
                 "status": "待處理",
+                "category": "文件/SOP不足",
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -121,6 +124,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "production_qty": -1,
                 "content": "問題-3",
                 "status": None,
+                "category": None,
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -132,10 +136,10 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             for idx in range(self.widget.table.columnCount())
         ]
 
-    def test_table_headers_match_template_eleven_columns(self) -> None:
-        self.assertEqual(11, self.widget.table.columnCount())
+    def test_table_headers_match_template_nine_columns(self) -> None:
+        self.assertEqual(9, self.widget.table.columnCount())
         self.assertEqual(
-            ["異常單號", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"],
+            ["異常單號", "異常類別", "供應商", "品名", "料號", "階段", "問題/摘要", "缺失紀錄", "狀態"],
             self._headers(),
         )
 
@@ -176,7 +180,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _label, scope, _t in EVENT_QUERY_SCOPE_TABS:
             self.widget.set_event_scope(scope)
             self._drain_events()
-            self.assertEqual(11, self.widget.table.columnCount())
+            self.assertEqual(9, self.widget.table.columnCount())
             self.assertIsNotNone(self.widget.export_pdf_button)
             assert self.widget.export_pdf_button is not None
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
@@ -225,7 +229,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _ in range(5):
             self.widget.refresh_data()
             self._drain_events()
-            self.assertEqual(11, self.widget.table.columnCount())
+            self.assertEqual(9, self.widget.table.columnCount())
             self.assertEqual(expected_rows, self.widget.table.rowCount())
 
         has_cell_widget = any(
@@ -239,36 +243,33 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         table = self.widget.table
 
         self.assertEqual("2026-04-18", table.item(0, 0).text())
-        self.assertEqual("異常", table.item(0, 1).text())
+        self.assertEqual("尺寸不符", table.item(0, 1).text())
         self.assertEqual("供應商-A", table.item(0, 2).text())
         self.assertEqual("產品-A", table.item(0, 3).text())
         self.assertEqual("PN-A001", table.item(0, 4).text())
         self.assertEqual("試產", table.item(0, 5).text())
-        self.assertEqual("WO-001", table.item(0, 6).text())
-        self.assertEqual("10", table.item(0, 7).text())
-        self.assertEqual("問題-0", table.item(0, 8).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(0, 9).text())
-        self.assertEqual("待處理", table.item(0, 10).text())
+        self.assertEqual("問題-0", table.item(0, 6).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(0, 7).text())
+        self.assertEqual("待處理", table.item(0, 8).text())
 
-        self.assertEqual("-", table.item(1, 7).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(2, 0).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(2, 8).text())
-        self.assertEqual("-", table.item(3, 1).text())
+        self.assertEqual("文件/SOP不足", table.item(2, 1).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(2, 6).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 1).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 2).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 3).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 4).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 5).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 6).text())
-        self.assertEqual("-", table.item(3, 7).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 9).text())
-        self.assertEqual("-", table.item(3, 10).text())
+        self.assertEqual("問題-3", table.item(3, 6).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 7).text())
+        self.assertEqual("-", table.item(3, 8).text())
 
     def test_status_cells_keep_color_mapping(self) -> None:
         table = self.widget.table
-        row0_color = table.item(0, 10).foreground().color().name().lower()
-        row1_color = table.item(1, 10).foreground().color().name().lower()
-        row3_color = table.item(3, 10).foreground().color().name().lower()
-        row0_bg = table.item(0, 10).background().color().name().lower()
+        row0_color = table.item(0, 8).foreground().color().name().lower()
+        row1_color = table.item(1, 8).foreground().color().name().lower()
+        row3_color = table.item(3, 8).foreground().color().name().lower()
+        row0_bg = table.item(0, 8).background().color().name().lower()
 
         self.assertEqual(
             QColor(get_status_color_hex("待處理")).name().lower(),

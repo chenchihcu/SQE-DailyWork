@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
 )
 
 from services import event_service
-from ui.event_display import event_type_display
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
     EVENT_LIST_NAME_COL_MIN_WIDTH,
@@ -43,6 +42,7 @@ from ui.widgets.common_widgets import (
     apply_table_action_affordance,
     create_status_item,
     style_table,
+    text_table_item,
 )
 from ui.widgets.event_actions import (
     EventActionsController,
@@ -63,10 +63,11 @@ EVENT_QUERY_SCOPE_TABS = (
 
 _SORTABLE_COLS: dict[int, str] = {
     0: "ref_no",
+    1: "category",
     2: "supplier_name",
     3: "product_name",
     5: "product_stage",
-    10: "status",
+    8: "status",
 }
 
 
@@ -264,9 +265,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         result_layout.addWidget(self.empty_state)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels(
-            ["異常單號", "類型", "供應商", "品名", "料號", "階段", "工單", "數量", "問題/摘要", "缺失紀錄", "狀態"]
+            ["異常單號", "異常類別", "供應商", "品名", "料號", "階段", "問題/摘要", "缺失紀錄", "狀態"]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -277,27 +278,24 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 日期
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 類型
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 異常單號
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 異常類別
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 供應商
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 品名
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 料號
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 階段
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)       # 工單（限寬）
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
-        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 狀態
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents) # 狀態
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
-        # 初始工單欄寬度 — 防止超長工單號擠壓 Stretch 欄；使用者仍可手動拖寬
-        self.table.setColumnWidth(6, 140)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
 
         self.table.cellDoubleClicked.connect(self._on_table_row_clicked)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         result_layout.addWidget(self.table, 1)
         if self.fixed_status:
-            self.table.setColumnHidden(10, True)
+            self.table.setColumnHidden(8, True)
 
         root.addWidget(result_panel, 1)
 
@@ -352,24 +350,31 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.setRowCount(0)
         for idx, row in enumerate(page_rows):
             self.table.insertRow(idx)
-            event_type = event_type_display(str(row.get("event_type") or ""))
             no_val = row.get("ref_no") or row.get("event_date")
             no_item = QTableWidgetItem(self._text_or_dash(no_val))
             no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+            no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(idx, 0, no_item)
-            self.table.setItem(idx, 1, QTableWidgetItem(event_type))
+
+            self.table.setItem(idx, 1, self._text_cell(row.get("category")))
             self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
             self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
-            self.table.setItem(idx, 4, QTableWidgetItem(self._text_or_dash(row.get("product_code"))))
-            self.table.setItem(idx, 5, QTableWidgetItem(self._text_or_dash(row.get("product_stage"))))
-            self.table.setItem(idx, 6, QTableWidgetItem(self._text_or_dash(row.get("work_order_no"))))
-            self.table.setItem(idx, 7, QTableWidgetItem(self._format_positive_qty(row.get("production_qty"))))
-            self.table.setItem(idx, 8, self._text_cell(row.get("content")))
+
+            pcode_item = QTableWidgetItem(self._text_or_dash(row.get("product_code")))
+            pcode_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self.table.setItem(idx, 4, pcode_item)
+
+            pstage_item = QTableWidgetItem(self._text_or_dash(row.get("product_stage")))
+            pstage_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self.table.setItem(idx, 5, pstage_item)
+
+            self.table.setItem(idx, 6, self._text_cell(row.get("content")))
+
             defect_summary = row.get("defect_note_summary") or row.get("pending_items")
-            self.table.setItem(idx, 9, self._text_cell(defect_summary))
+            self.table.setItem(idx, 7, self._text_cell(defect_summary))
 
             status_text = str(row.get("status") or "").strip() or "-"
-            self.table.setItem(idx, 10, create_status_item(status_text))
+            self.table.setItem(idx, 8, create_status_item(status_text))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()
@@ -386,25 +391,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
     def _text_cell(self, value) -> QTableWidgetItem:
         """Long-text cell whose tooltip shows the full CJK text when elided (§6)."""
-        text = self._text_or_dash(value)
-        item = QTableWidgetItem(text)
-        if text and text != EMPTY_DISPLAY:
-            item.setToolTip(text)
-        return item
-
-    def _format_positive_qty(self, value) -> str:
-        if value is None:
-            return "-"
-        text = str(value).strip()
-        if not text:
-            return "-"
-        try:
-            qty = int(text)
-        except (TypeError, ValueError):
-            return "-"
-        if qty <= 0:
-            return "-"
-        return str(qty)
+        return text_table_item(value)
 
     def _on_page_changed(self, page_no: int):
         self._current_page = page_no

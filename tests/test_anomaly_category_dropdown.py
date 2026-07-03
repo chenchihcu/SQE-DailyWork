@@ -147,6 +147,44 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
 
         self.assertEqual("客製異常A", dialog.category_input.currentText())
 
+    def test_edit_mode_loads_raw_category_not_resolved_root_cause(self) -> None:
+        # 已結案事件 detail 的 category 是解析值(root_cause 優先);編輯模式必須
+        # 載入 category_raw,否則存檔會把根因值無聲覆寫進 category 欄位。
+        dialog = self.NewAnomalyDialog(
+            anomaly_id="anomaly-raw",
+            initial_data={
+                "anomaly_no": "20260416001",
+                "anomaly_date": "2026-04-16",
+                "supplier_id": "sup-1",
+                "supplier_name": "供應商A",
+                "status": "已結案",
+                "category": "其他",
+                "category_raw": "製程參數失控",
+            },
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual("製程參數失控", dialog.category_input.currentText())
+
+    def test_read_only_mode_shows_resolved_category_for_closed_anomaly(self) -> None:
+        # 唯讀預覽依 AGENTS.md 對齊規則顯示解析後類別(已結案優先 root_cause)。
+        dialog = self.NewAnomalyDialog(
+            anomaly_id="anomaly-ro",
+            initial_data={
+                "anomaly_no": "20260416001",
+                "anomaly_date": "2026-04-16",
+                "supplier_id": "sup-1",
+                "supplier_name": "供應商A",
+                "status": "已結案",
+                "category": "其他",
+                "category_raw": "製程參數失控",
+            },
+            read_only=True,
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual("其他", dialog.category_input.currentText())
+
     def test_submit_payload_uses_dropdown_or_custom_category_text(self) -> None:
         products = [
             {

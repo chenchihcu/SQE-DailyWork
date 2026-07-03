@@ -119,7 +119,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         # 管理建議 / 說明橫幅
         self.info_banner = self._create_info_banner(
-            "基於倉庫不良品登記主檔分析；Top5 以退料金額與件數綜合比重之總件數排序。",
+            "基於倉庫不良品登記主檔分析；Top5 依期間不合格數量（qty 加總）排序。",
             "協助 SQE 與倉管人員追蹤產線不良退料模式、聚焦不良高發廠商與產品，以及退料類型佔比。"
         )
         self.scroll_layout.addWidget(self.info_banner)
@@ -283,7 +283,9 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 f"期間不合格數量達 <b>{top_s['total_qty']}</b> 件。建議 SQE 加強對該廠品質的進料檢驗與稽核。"
             )
         else:
-            insights.append("✅ <b>供應商品質：</b>此期間無明顯的高頻不合格供應商。")
+            # 排名查詢會排除空白/'N/A' 供應商;排名為空不代表期間沒有不合格品,
+            # 不可用綠勾暗示品質健康。
+            insights.append("ℹ️ <b>供應商品質：</b>此期間無可歸戶供應商的不合格紀錄（未填供應商名稱的紀錄不列入排名）。")
 
         # 2. 產品分析
         if top_products:

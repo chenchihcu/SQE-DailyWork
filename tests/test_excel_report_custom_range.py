@@ -77,8 +77,19 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
 
+    @patch("services.event_service.get_anomaly_category_pareto_by_range")
     @patch("services.event_service.list_events_by_range")
-    def test_events_report_export_success(self, mock_list_events) -> None:
+    def test_events_report_export_success(self, mock_list_events, mock_pareto) -> None:
+        # 柏拉圖表格與頁面圖表、嵌入 PNG 共用同一 SQL 來源(單一實作)
+        mock_pareto.return_value = [
+            {
+                "rank": 1,
+                "category": "物料/來料品質異常",
+                "count": 1,
+                "percent": 100.0,
+                "cumulative_percent": 100.0,
+            }
+        ]
         # Mock 範圍事件列表
         mock_list_events.return_value = [
             {
@@ -133,3 +144,5 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertEqual([1, "物料/來料品質異常", 1, 100.0, 100.0], [
                 sheet.cell(row=2, column=col).value for col in range(1, 6)
             ])
+            # 表格必須以與頁面圖表相同的區間參數取自同一實作
+            mock_pareto.assert_called_once_with("2026-06-01", "2026-06-30")

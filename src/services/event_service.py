@@ -834,7 +834,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             s.supplier_name AS supplier_name,
             a.problem_desc AS content,
             a.status AS status,
-            a.category AS category,
+            COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
             a.root_cause_category AS root_cause_category,
             a.improvement_desc AS improvement_desc,
             a.closed_at AS closed_at
@@ -953,21 +953,14 @@ def _build_category_pareto_rows(category_counts: dict[str, int]) -> list[dict]:
     return rows
 
 
-def summarize_anomaly_category_pareto(events: list[dict]) -> list[dict]:
-    """Summarize opened-in-range anomaly events by root-cause Pareto category."""
+def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list[dict]:
+    """Return root-cause Pareto rows for anomalies opened in a date range.
+
+    頁面圖表與 Excel 匯出(表格、嵌入 PNG)都必須走這個唯一實作,
+    避免兩套彙總口徑(fallback、JOIN 掉列)造成同一份報告內數字不一致。
+    """
     from collections import defaultdict
 
-    category_counts = defaultdict(int)
-    for event in events:
-        if event.get("event_type") != "ANOMALY":
-            continue
-        category = event.get("root_cause_category") or event.get("category")
-        category_counts[_normalized_anomaly_category(category)] += 1
-    return _build_category_pareto_rows(dict(category_counts))
-
-
-def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list[dict]:
-    """Return root-cause Pareto rows for anomalies opened in a date range."""
     sql = """
         SELECT
             COALESCE(
@@ -987,11 +980,12 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
     """
     with get_connection() as conn:
         rows = conn.execute(sql, (start_date, end_date)).fetchall()
-    category_counts = {
-        _normalized_anomaly_category(row["category"]): int(row["count"] or 0)
-        for row in rows
-    }
-    return _build_category_pareto_rows(category_counts)
+    # SQL TRIM 只去 ASCII 空白,Python strip() 另涵蓋全形空白等 Unicode 空白;
+    # 兩個 SQL 群組正規化成同一鍵時必須累加,不能讓後者覆蓋前者的計數。
+    category_counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        category_counts[_normalized_anomaly_category(row["category"])] += int(row["count"] or 0)
+    return _build_category_pareto_rows(dict(category_counts))
 
 
 def export_events_report(
@@ -1011,7 +1005,7 @@ def export_events_report(
         events = list_events_by_range(start_date, end_date)
 
         totals, ranking_rows = summarize_range_events(events)
-        category_pareto_rows = summarize_anomaly_category_pareto(events)
+        category_pareto_rows = get_anomaly_category_pareto_by_range(start_date, end_date)
         total_anomalies = totals["total_anomalies"]
         total_visits = totals["total_visits"]
         closed_anomalies = totals["closed_anomalies"]
@@ -1295,17 +1289,18 @@ def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> lis
     with get_connection() as conn:
         rows = conn.execute(sql, (start_date, end_date)).fetchall()
         
-        # Get unclosed dates range (all-time unclosed for these people)
+        # 未結案最早/最晚日期必須與 open_count 同一區間口徑(圖表長條、tooltip、
+        # 洞察文字皆以區間內事件為準),否則日期會指向不在計數內的案件。
         unclosed_sql = """
-            SELECT 
+            SELECT
                 COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
                 MIN(anomaly_date) AS min_date,
                 MAX(anomaly_date) AS max_date
             FROM anomalies
-            WHERE status = '待處理'
+            WHERE status = '待處理' AND anomaly_date BETWEEN ? AND ?
             GROUP BY person
         """
-        unclosed_rows = conn.execute(unclosed_sql).fetchall()
+        unclosed_rows = conn.execute(unclosed_sql, (start_date, end_date)).fetchall()
         unclosed_dates = {r["person"]: (r["min_date"], r["max_date"]) for r in unclosed_rows}
     
     results = []

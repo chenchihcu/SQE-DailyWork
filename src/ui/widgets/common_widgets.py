@@ -150,9 +150,12 @@ def style_table(table: QTableWidget, *, single_selection: bool = True) -> None:
 
 
 def align_table_header_left(table: QTableWidget) -> None:
-    table.horizontalHeader().setDefaultAlignment(
-        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-    )
+    alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    table.horizontalHeader().setDefaultAlignment(alignment)
+    for column_index in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column_index)
+        if header_item is not None:
+            header_item.setTextAlignment(alignment)
 
 
 def create_status_item(status: str) -> QTableWidgetItem:
@@ -283,6 +286,7 @@ def text_table_item(value, *, empty: str = EMPTY_DISPLAY) -> QTableWidgetItem:
     """
     text = str(value or "").strip() or empty
     item = QTableWidgetItem(text)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     if text and text != empty:
         item.setToolTip(text)
     return item
