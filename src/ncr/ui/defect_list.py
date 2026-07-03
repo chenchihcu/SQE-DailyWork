@@ -68,10 +68,11 @@ from ncr.ui.ui_style import (
     make_notice_label,
     set_button_role,
     style_table,
-    PaginationWidget,
     ITEMS_PER_PAGE,
     create_table_item,
 )
+from ui.widgets.pagination_bar import PaginationBar
+from ui.layout_constants import GRID_GUTTER, INLINE_SPACING, ROW_GAP
 
 
 VALID_WORKFLOWS = {"combined", "tracking", "trace"}
@@ -125,7 +126,7 @@ class DefectListWidget(QWidget):
 
     def _build_ui(self) -> None:
         page, content_layout = create_page_shell(show_header=False)
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(GRID_GUTTER)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(page)
@@ -133,11 +134,11 @@ class DefectListWidget(QWidget):
         # Unified Search & Results Card
         main_card, main_layout = create_section_card("")
         main_layout.setContentsMargins(16, 12, 16, 12)
-        main_layout.setSpacing(8)
+        main_layout.setSpacing(ROW_GAP)
 
         # Filters Section
         filter_grid = create_form_grid(field_count=3)
-        filter_grid.setVerticalSpacing(8)
+        filter_grid.setVerticalSpacing(ROW_GAP)
 
         self.month_edit = QDateEdit()
         self.month_edit.setDisplayFormat("yyyy-MM")
@@ -227,7 +228,7 @@ class DefectListWidget(QWidget):
 
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
-        button_layout.setSpacing(8)
+        button_layout.setSpacing(INLINE_SPACING)
         button_layout.addStretch(1)
         button_layout.addWidget(self.reset_button)
         button_layout.addWidget(self.search_button)
@@ -337,8 +338,11 @@ class DefectListWidget(QWidget):
         else:
             main_layout.addWidget(self.closed_table)
         
-        self.pagination = PaginationWidget()
-        self.pagination.pageChanged.connect(self._on_page_changed)
+        self.pagination = PaginationBar(
+            on_page_changed=self._on_page_changed,
+            on_page_size_changed=self._on_page_size_changed,
+            default_page_size=ITEMS_PER_PAGE,
+        )
         main_layout.addWidget(self.pagination)
 
         # Connect after initial construction to avoid currentChanged firing before pagination exists.
@@ -450,7 +454,11 @@ class DefectListWidget(QWidget):
 
     def update_display(self) -> None:
         active_results = self._get_active_results()
-        self.pagination.update_state(len(active_results), ITEMS_PER_PAGE, self.current_page)
+        self.pagination.set_state(
+            total_items=len(active_results),
+            current_page=self.current_page,
+            page_size=ITEMS_PER_PAGE,
+        )
 
         if self.workflow == "tracking":
             self.populate_table(self.open_table, self.open_results, is_active=True)
@@ -471,6 +479,14 @@ class DefectListWidget(QWidget):
 
     def _on_page_changed(self, page: int) -> None:
         self.current_page = page
+        self.update_display()
+
+    def _on_page_size_changed(self, page_size: int) -> None:
+        if page_size <= 0:
+            return
+        #ITEMS_PER_PAGE 是 ncr 模組的固定切片單位(用於 rows[start:end] 與 actual_index 計算),
+        #不隨 PaginationBar 的 page_size 變動,因此這裡只重置頁碼並重渲染,保持切片邏輯一致。
+        self.current_page = 1
         self.update_display()
 
     def _on_tab_changed(self, index: int) -> None:

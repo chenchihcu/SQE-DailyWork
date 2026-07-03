@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import QStyledItemDelegate
 # module reuses it instead of maintaining a second, divergent list.
 from ui.theme import CJK_FONT_FAMILY_CSS, PREFERRED_CJK_FONT_FAMILIES
 from ui.status_colors import get_status_tone
+from ui.layout_constants import HERO_BANNER_MARGINS, INLINE_SPACING
 
 
 PAGE_MARGIN = 8
@@ -63,7 +64,6 @@ FILTER_BUTTON_MAX_WIDTH = 110
 DATE_FIELD_MIN_WIDTH = 150
 QUICK_ADD_BUTTON_MIN_WIDTH = 76
 TABLE_ROW_HEIGHT = 28
-PAGINATION_BUTTON_WIDTH = 36
 DASHBOARD_CHART_CARD_MIN_HEIGHT = 400
 EMPTY_PLACEHOLDER = "—"
 ITEMS_PER_PAGE = 12
@@ -761,16 +761,6 @@ def app_stylesheet() -> str:
     QHeaderView::section:first {{
         border-left: 1px solid {COLOR_BORDER_DEFAULT};
     }}
-    PaginationWidget {{
-        background: {COLOR_SURFACE_MUTED};
-        border-top: 1px solid {COLOR_BORDER_SOFT};
-        border-bottom-left-radius: 16px;
-        border-bottom-right-radius: 16px;
-    }}
-    PaginationWidget QPushButton {{
-        min-height: 28px;
-        padding: 0 10px;
-    }}
     QPushButton:pressed {{
         background: {COLOR_SURFACE_SUBTLE};
         border-color: {COLOR_BORDER_DEFAULT};
@@ -901,7 +891,7 @@ def create_section_title_with_icon(title: str, icon_key: str, *, required: bool 
     title_host = QWidget()
     row = QHBoxLayout(title_host)
     row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(8)
+    row.setSpacing(INLINE_SPACING)
 
     icon_label = QLabel()
     icon_label.setObjectName("sectionIconLabel")
@@ -992,7 +982,7 @@ def create_page_shell(
         header_card = QFrame()
         header_card.setProperty("uiRole", "pageCard")
         header_layout = QVBoxLayout(header_card)
-        header_layout.setContentsMargins(24, 22, 24, 18)
+        header_layout.setContentsMargins(*HERO_BANNER_MARGINS)
         header_layout.setSpacing(6)
 
         title_label = QLabel(title)
@@ -1224,94 +1214,3 @@ def setup_column_persistence(
     if not bool(header.property("columnMenuConnected")):
         header.setProperty("columnMenuConnected", True)
         header.customContextMenuRequested.connect(show_header_menu)
-
-
-class PaginationWidget(QWidget):
-    pageChanged = Signal(int)
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.total_items = 0
-        self.items_per_page = ITEMS_PER_PAGE
-        self.current_page = 1
-        self.total_pages = 1
-        self._build_ui()
-
-    def _build_ui(self):
-        # Named _layout (not layout) to avoid shadowing QWidget.layout()
-        # (audit finding A16).
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(16, 10, 16, 10)
-        self._layout.setSpacing(8)
-
-        self.status_label = QLabel()
-        self.status_label.setProperty("uiRole", "paginationStatus")
-        self._layout.addWidget(self.status_label)
-        self._layout.addStretch(1)
-
-        self.btn_first = QPushButton("«")
-        self.btn_prev = QPushButton("‹")
-        self.btn_next = QPushButton("›")
-        self.btn_last = QPushButton("»")
-
-        for btn in (self.btn_first, self.btn_prev, self.btn_next, self.btn_last):
-            btn.setFixedWidth(PAGINATION_BUTTON_WIDTH)
-            set_button_role(btn, "secondary")
-
-        self.btn_first.clicked.connect(lambda: self.change_page(1))
-        self.btn_prev.clicked.connect(lambda: self.change_page(self.current_page - 1))
-        self.btn_next.clicked.connect(lambda: self.change_page(self.current_page + 1))
-        self.btn_last.clicked.connect(lambda: self.change_page(self.total_pages))
-
-        self._layout.addWidget(self.btn_first)
-        self._layout.addWidget(self.btn_prev)
-
-        self.page_buttons_layout = QHBoxLayout()
-        self.page_buttons_layout.setSpacing(4)
-        self._layout.addLayout(self.page_buttons_layout)
-
-        self._layout.addWidget(self.btn_next)
-        self._layout.addWidget(self.btn_last)
-
-    def update_state(self, total_items: int, items_per_page: int, current_page: int):
-        self.total_items = total_items
-        items_per_page = max(1, items_per_page)
-        self.items_per_page = items_per_page
-        self.total_pages = max(1, (total_items + items_per_page - 1) // items_per_page)
-        self.current_page = max(1, min(current_page, self.total_pages))
-
-        self.status_label.setText(f"第 {self.current_page} / {self.total_pages} 頁 (共 {self.total_items} 筆)")
-
-        self.btn_first.setEnabled(self.current_page > 1)
-        self.btn_prev.setEnabled(self.current_page > 1)
-        self.btn_next.setEnabled(self.current_page < self.total_pages)
-        self.btn_last.setEnabled(self.current_page < self.total_pages)
-
-        # Clear old page buttons
-        while self.page_buttons_layout.count():
-            child = self.page_buttons_layout.takeAt(0)
-            widget = child.widget()
-            if widget:
-                widget.hide()
-                widget.deleteLater()
-
-        # Show a range of pages (e.g., current +/- 2)
-        start_page = max(1, self.current_page - 2)
-        end_page = min(self.total_pages, start_page + 4)
-        if end_page == self.total_pages:
-            start_page = max(1, end_page - 4)
-
-        for p in range(start_page, end_page + 1):
-            btn = QPushButton(str(p))
-            btn.setFixedWidth(PAGINATION_BUTTON_WIDTH)
-            if p == self.current_page:
-                set_button_role(btn, "primary")
-            else:
-                set_button_role(btn, "secondary")
-            btn.clicked.connect(lambda checked=False, page=p: self.change_page(page))
-            self.page_buttons_layout.addWidget(btn)
-            btn.show()
-
-    def change_page(self, page: int):
-        if 1 <= page <= self.total_pages and page != self.current_page:
-            self.pageChanged.emit(page)
