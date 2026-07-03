@@ -221,6 +221,16 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         grid.addWidget(QLabel("預計回覆日"), 4, 3)
         grid.addWidget(due_row, 4, 4, 1, 2)
 
+        # Row 5: 原因分類 (若已結案則顯示唯讀項目，對齊清單)
+        is_closed = str(self._initial_data.get("status") or "").strip() == "已結案"
+        if is_closed:
+            self.root_cause_label = QLabel("原因分類")
+            self.root_cause_display = QLineEdit()
+            self.root_cause_display.setReadOnly(True)
+            self.root_cause_display.setEnabled(False)
+            grid.addWidget(self.root_cause_label, 5, 0)
+            grid.addWidget(self.root_cause_display, 5, 1, 1, 2)
+
         basic_layout.addLayout(grid)
         self._product_guard_label = QLabel("")
         self._product_guard_label.setProperty("role", "messageText")
@@ -384,6 +394,9 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.problem_input.setReadOnly(True)
         self.pending_items_input.setReadOnly(True)
         self.anomaly_no_preview_input.setReadOnly(True)
+        if hasattr(self, "root_cause_display"):
+            self.root_cause_display.setEnabled(False)
+            self.root_cause_display.setReadOnly(True)
 
         # Risk control combos
         self.rc_supplier_inv_combo.setEnabled(False)
@@ -572,13 +585,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         )
         self.batch_qty_input.setText(str(self._initial_data.get("batch_qty") or ""))
         self.problem_input.setPlainText(str(self._initial_data.get("problem_desc") or ""))
-        # 唯讀預覽顯示解析後類別(已結案優先 root_cause_category,見 AGENTS.md 對齊規則);
-        # 編輯模式必須載入原始 category,否則存檔會把根因值無聲覆寫進 category 欄位。
-        if self._read_only:
-            category_value = self._initial_data.get("category")
-        else:
-            category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
+        # 載入原始 category，以防存檔時被解析後的根因覆寫，且與原因分類並列顯示
+        category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
         set_combo_current_text(self.category_input, str(category_value or ""))
+        if hasattr(self, "root_cause_display"):
+            root_cause_value = self._initial_data.get("root_cause_category") or ""
+            self.root_cause_display.setText(str(root_cause_value))
         self.responsible_person_input.setText(
             str(self._initial_data.get("responsible_person") or "")
         )

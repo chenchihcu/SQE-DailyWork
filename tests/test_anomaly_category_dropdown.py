@@ -167,7 +167,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertEqual("製程參數失控", dialog.category_input.currentText())
 
     def test_read_only_mode_shows_resolved_category_for_closed_anomaly(self) -> None:
-        # 唯讀預覽依 AGENTS.md 對齊規則顯示解析後類別(已結案優先 root_cause)。
+        # 唯讀預覽依新規則顯示原始異常類別，並並列原因分類（結案唯讀項目）
         dialog = self.NewAnomalyDialog(
             anomaly_id="anomaly-ro",
             initial_data={
@@ -178,12 +178,15 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 "status": "已結案",
                 "category": "其他",
                 "category_raw": "製程參數失控",
+                "root_cause_category": "其他",
             },
             read_only=True,
         )
         self.addCleanup(dialog.close)
 
-        self.assertEqual("其他", dialog.category_input.currentText())
+        self.assertEqual("製程參數失控", dialog.category_input.currentText())
+        self.assertTrue(hasattr(dialog, "root_cause_display"))
+        self.assertEqual("其他", dialog.root_cause_display.text())
 
     def test_submit_payload_uses_dropdown_or_custom_category_text(self) -> None:
         products = [
@@ -674,6 +677,8 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         )
         self.addCleanup(dialog_closed.close)
         self.assertEqual("尺寸異常", dialog_closed.category_input.currentText())
+        self.assertTrue(hasattr(dialog_closed, "root_cause_display"))
+        self.assertEqual("規範文件缺漏", dialog_closed.root_cause_display.text())
 
         captured: dict = {}
 
