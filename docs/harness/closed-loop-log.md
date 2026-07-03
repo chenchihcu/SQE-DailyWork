@@ -99,3 +99,20 @@ Root cause: The sidebar badge was updated with `open_count` from `get_dashboard_
 Fix: Add `standalone_open_count` to the dashboard summary query and use it in the sidebar badge.
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_event_manage_actions.py`
+
+## Anomaly Category Data Alignment Entry
+
+Date: 2026-07-03
+Task: Align legacy anomaly category names to standard UI dropdown options.
+Changes: Added `align_legacy_anomaly_categories(conn)` in `repository.py`, integrated it into `initialize_database()` in `connection.py`, and added `tests/test_align_legacy_categories.py`.
+Impact: Legacy category values in the database (such as '文件/SOP 不足') are automatically corrected to standard names on database initialization, resolving the discrepancy where legacy categories appeared in Pareto charts but were missing from UI dropdown options.
+Verification: Run `pytest tests/test_align_legacy_categories.py` and `scripts\verify.ps1`.
+Residual risk: None.
+Next action: None.
+Debug/RCA (when applicable):
+Observed: The Pareto chart displayed "文件/SOP 不足" (with 2 items), but this option was absent in the anomaly category dropdown list in the UI form.
+Root cause: The live database had legacy data containing "文件/SOP 不足", "人為操作疏失", "物料/來料問題", etc., in `root_cause_category` and `category` fields, which were not migrated when UI dropdown options were renamed.
+Fix: Perform automated idempotent updates on database initialization to map all legacy names to current standard names.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_align_legacy_categories.py`
+
