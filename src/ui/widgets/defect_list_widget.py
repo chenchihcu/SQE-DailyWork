@@ -323,6 +323,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
     def refresh_data(self):
         self._has_loaded = True
+        self._sync_category_column_visibility()
         filters = {
             "event_type": self._filter_event_type,
             "status": self._filter_status,
@@ -338,6 +339,16 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._apply_sort()
         self._current_page = 1
         self._render_current_page()
+
+    def _sync_category_column_visibility(self) -> None:
+        """訪廠紀錄 scope 沒有異常類別（整欄皆為「—」），故於該 scope 隱藏此欄。
+
+        scope 可由側欄 set_event_scope() 或統計下鑽 apply_quick_filters() 動態切換，
+        因此每次 refresh_data() 都依當前 event_type 重新評估，而非只在建構時設定一次。
+        僅隱藏顯示欄位，不影響 DB 資料或表單欄位。
+        """
+        is_visit_only_scope = self._filter_event_type == "VISIT"
+        self.table.setColumnHidden(1, is_visit_only_scope)
 
     def _render_current_page(self):
         self._selected_event_row = None

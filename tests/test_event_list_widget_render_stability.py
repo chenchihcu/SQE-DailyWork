@@ -186,6 +186,27 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
             self.assertFalse(self.widget.export_pdf_button.isEnabled())
 
+    def test_category_column_hidden_only_in_visit_only_scope(self) -> None:
+        # 訪廠紀錄 scope 沒有異常類別（整欄「—」），該欄應隱藏；
+        # 異常類 scope（單獨異常 / 訪廠發現異常 / 已結案）維持顯示。
+        # 僅隱藏顯示欄位，欄位總數不變（DB 資料與表單不受影響）。
+        visit_hidden_by_scope = {
+            event_service.EVENT_SCOPE_ANOMALY_ONLY: False,
+            event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY: False,
+            event_service.EVENT_SCOPE_CLOSED_ONLY: False,
+            event_service.EVENT_SCOPE_VISIT_ONLY: True,
+        }
+        for scope, should_hide in visit_hidden_by_scope.items():
+            self.widget.set_event_scope(scope)
+            self._drain_events()
+            with self.subTest(scope=scope):
+                self.assertEqual(9, self.widget.table.columnCount())
+                self.assertEqual(
+                    should_hide, self.widget.table.isColumnHidden(1)
+                )
+                # 表頭文字保留（未刪欄），僅視覺隱藏
+                self.assertEqual("異常類別", self.widget.table.horizontalHeaderItem(1).text())
+
     def test_export_pdf_button_enables_only_after_row_selection(self) -> None:
         assert self.widget.export_pdf_button is not None
         self.assertFalse(self.widget.export_pdf_button.isEnabled())
@@ -224,7 +245,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("", filters["supplier"])
 
-    def test_refresh_data_keeps_eleven_column_structure_without_cell_widgets(self) -> None:
+    def test_refresh_data_keeps_nine_column_structure_without_cell_widgets(self) -> None:
         expected_rows = len(self._build_rows())
         for _ in range(5):
             self.widget.refresh_data()
