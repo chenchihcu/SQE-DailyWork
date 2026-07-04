@@ -15,6 +15,7 @@ NCR_MIGRATION_META_KEY = "ncr_defect_db_migrated_v1"
 DEFECT_COLUMNS = (
     "defect_no",
     "event_date",
+    "processing_line",
     "return_slip_type",
     "work_order_no",
     "internal_work_order_no",
@@ -53,6 +54,11 @@ def _table_counts(conn: sqlite3.Connection, table_names: tuple[str, ...]) -> dic
 
 def _row_value(row: sqlite3.Row, key: str, default: Any = "") -> Any:
     return row[key] if key in row.keys() and row[key] is not None else default
+
+
+def _processing_line_value(row: sqlite3.Row) -> str:
+    value = str(_row_value(row, "processing_line", "未分流") or "").strip()
+    return value if value in {"原物料", "委外加工", "未分流"} else "未分流"
 
 
 def _archive_path(path: Path) -> Path:
@@ -235,6 +241,7 @@ def migrate_ncr_data_once(
                 values = [
                     _row_value(row, "defect_no"),
                     _row_value(row, "event_date"),
+                    _processing_line_value(row),
                     _row_value(row, "return_slip_type"),
                     _row_value(row, "work_order_no"),
                     _row_value(row, "internal_work_order_no"),

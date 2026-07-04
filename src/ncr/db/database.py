@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 from database.connection import DB_PATH
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 # ⚠ TESTS-ONLY schema. The runtime schema for sqe_v2.db is created by
@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS defect_records (
             event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
             AND date(event_date) IS NOT NULL
         ),
+    processing_line TEXT NOT NULL DEFAULT '未分流'
+        CHECK(processing_line IN ('原物料', '委外加工', '未分流')),
     return_slip_type TEXT NOT NULL DEFAULT '',
     work_order_no TEXT NOT NULL DEFAULT '',
     internal_work_order_no TEXT NOT NULL DEFAULT '',
@@ -76,6 +78,11 @@ ON defect_records(event_date, work_order_no, internal_work_order_no, transfer_sl
 
 """
 
+PENDING_PROCESSING_LINE_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_defect_records_status_processing_line
+ON defect_records(status, processing_line);
+"""
+
 FUTURE_DATE_INSERT_TRIGGER_SQL = """
 CREATE TRIGGER IF NOT EXISTS trg_defect_records_no_future_insert
 BEFORE INSERT ON defect_records
@@ -109,6 +116,7 @@ def _create_v8_objects(conn: sqlite3.Connection) -> None:
     conn.execute(SUPPLIER_SCHEMA)
     conn.execute(PRODUCT_SCHEMA)
     conn.execute(UNIQUE_BUSINESS_INDEX_SQL)
+    conn.execute(PENDING_PROCESSING_LINE_INDEX_SQL)
     conn.execute(FUTURE_DATE_INSERT_TRIGGER_SQL)
     conn.execute(FUTURE_DATE_UPDATE_TRIGGER_SQL)
 

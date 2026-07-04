@@ -33,7 +33,11 @@ _NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
 PAGE_HOME = "HOME"
 PAGE_STATS = "STATS"
 PAGE_NCR_CREATE = "NCR_CREATE"
-PAGE_NCR_PENDING = "NCR_PENDING"
+PAGE_NCR_PENDING_OUTSOURCE = "NCR_PENDING_OUTSOURCE"
+PAGE_NCR_PENDING_MATERIAL = "NCR_PENDING_MATERIAL"
+# Compatibility-only key for older callers. Active navigation uses the two
+# formal processing-line entries above.
+PAGE_NCR_PENDING = PAGE_NCR_PENDING_OUTSOURCE
 PAGE_NCR_HISTORY = "NCR_HISTORY"
 PAGE_NCR = PAGE_NCR_PENDING
 PAGE_NCR_STATS = "NCR_STATS"
@@ -55,7 +59,8 @@ _NAV_GROUPS = [
     ]),
     ("倉庫不合格品", [
         ("建立不合格品", ("page", PAGE_NCR_CREATE), False, "icons/warehouse.svg"),
-        ("待處理不合格品", ("page", PAGE_NCR_PENDING), True, "icons/warehouse.svg"),
+        ("待處理委外加工", ("page", PAGE_NCR_PENDING_OUTSOURCE), True, "icons/warehouse.svg"),
+        ("待處理原物料", ("page", PAGE_NCR_PENDING_MATERIAL), True, "icons/warehouse.svg"),
         ("歷史紀錄", ("page", PAGE_NCR_HISTORY), False, "icons/closed.svg"),
         ("不合格品統計", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
     ]),
@@ -181,7 +186,7 @@ class SidebarNav(QFrame):
     """左側 220px 深色固定側欄，點擊發出 nav_activated(action) signal。
 
     action 為 ("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*)。事件的 4 個 scope
-    （單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）以及倉庫不合格品三個工作頁
+    （單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）以及倉庫不合格品四個工作頁
     升級為一等導覽列；main_window 負責把 PAGE_KEY 對應到 QStackedWidget 索引。
 
     導覽項目以「供應商事件 / 倉庫不合格品 / 系統」三組標題分隔，區分兩條工作流程資料線。

@@ -24,6 +24,15 @@ class MockMainWindow:
     def open_warehouse_nonconforming_tracker(self) -> None:
         return
 
+    def open_warehouse_pending_outsource(self) -> None:
+        return
+
+    def open_warehouse_pending_material(self) -> None:
+        return
+
+    def open_warehouse_unclassified_pending(self) -> None:
+        return
+
 
 class HomeWidgetLayoutContractTests(unittest.TestCase):
     @classmethod
@@ -45,14 +54,14 @@ class HomeWidgetLayoutContractTests(unittest.TestCase):
         self.assertIsNone(widget.findChild(QScrollArea, "HomeScrollArea"))
         self.assertIsNone(widget.findChild(QFrame, "InfoPanel"))
         self.assertIsNone(widget.findChild(QFrame, "HomeQuickActionPanel"))
-        self.assertIsNotNone(widget.findChild(QFrame, "HomeKpiPanel"))
+        self.assertIsNone(widget.findChild(QFrame, "HomeKpiPanel"))
 
         kpi_cards = [
             frame
             for frame in widget.findChildren(QFrame)
             if frame.property("role") == "kpiCard"
         ]
-        self.assertEqual(4, len(kpi_cards))
+        self.assertEqual(0, len(kpi_cards))
         widget.close()
 
 

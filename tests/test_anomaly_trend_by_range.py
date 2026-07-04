@@ -51,6 +51,14 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         )
         self.conn.commit()
 
+    def _find_anomaly_id(self, anomaly_no: str) -> str:
+        row = self.conn.execute(
+            "SELECT id FROM anomalies WHERE anomaly_no = ?",
+            (anomaly_no,),
+        ).fetchone()
+        assert row is not None
+        return str(row["id"])
+
     def _set_due_date(self, anomaly_no: str, due_date: str) -> None:
         self.conn.execute(
             "UPDATE anomalies SET due_date = ? WHERE anomaly_no = ?",
@@ -115,6 +123,37 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         self.assertEqual(0, row["closed_count"])
         self.assertEqual(0, row["overdue_count"])
         self.assertEqual(0, row["backlog_count"])
+
+    def test_closed_count_follows_user_selected_closed_date_after_edit(self) -> None:
+        anomaly_no = self._create_anomaly("2026-01-10")
+        anomaly_id = self._find_anomaly_id(anomaly_no)
+        repository.close_anomaly(
+            self.conn,
+            anomaly_id=anomaly_id,
+            improvement_desc="fixed",
+            closed_by="Tester",
+            closed_at="2026-03-05",
+        )
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            initial = event_service.get_anomaly_trend_by_range("2026-01-01", "2026-04-30")
+
+        initial_by_month = {row["yyyymm"]: row for row in initial}
+        self.assertEqual(1, initial_by_month["2026-03"]["closed_count"])
+        self.assertEqual(0, initial_by_month["2026-04"]["closed_count"])
+
+        repository.update_anomaly_closed_at(
+            self.conn,
+            anomaly_id=anomaly_id,
+            closed_at="2026-04-10",
+        )
+
+        with patch.object(event_service, "get_connection", return_value=self.conn):
+            updated = event_service.get_anomaly_trend_by_range("2026-01-01", "2026-04-30")
+
+        updated_by_month = {row["yyyymm"]: row for row in updated}
+        self.assertEqual(0, updated_by_month["2026-03"]["closed_count"])
+        self.assertEqual(1, updated_by_month["2026-04"]["closed_count"])
 
     def test_partial_month_range_filters_event_counts_by_exact_dates(self) -> None:
         self._create_anomaly("2026-06-01")

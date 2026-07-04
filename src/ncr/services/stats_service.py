@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 
+from ncr.models.defect import (
+    PROCESSING_LINE_MATERIAL,
+    PROCESSING_LINE_OUTSOURCE,
+    PROCESSING_LINE_STORAGE_OPTIONS,
+    PROCESSING_LINE_UNCLASSIFIED,
+)
+
 _ALLOWED_NAME_FIELDS = frozenset(
     {"product_name", "supplier_name", "outsource_supplier_name"}
 )
@@ -51,6 +58,7 @@ def _build_detail_preview_query(where_clause: str) -> str:
         SELECT
             defect_no,
             event_date,
+            processing_line,
             return_slip_type,
             work_order_no,
             item_no,
@@ -145,10 +153,19 @@ def get_status_totals(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(cursor.fetchall())
 
 
-def get_warehouse_nonconforming_summary(conn: sqlite3.Connection) -> dict[str, int]:
+def get_warehouse_nonconforming_summary(
+    conn: sqlite3.Connection,
+    *,
+    processing_line: str | None = None,
+) -> dict[str, int]:
     """Return physical warehouse nonconforming-product totals from defect_records only."""
+    where_clause = ""
+    params: tuple[str, ...] = ()
+    if processing_line:
+        where_clause = "WHERE processing_line = ?"
+        params = (processing_line,)
     row = conn.execute(
-        """
+        f"""
         SELECT
             COUNT(*) AS total_count,
             COALESCE(SUM(qty), 0) AS total_qty,
@@ -159,7 +176,9 @@ def get_warehouse_nonconforming_summary(conn: sqlite3.Connection) -> dict[str, i
             COALESCE(SUM(CASE WHEN disposition = '重工' THEN qty ELSE 0 END), 0) AS rework_qty,
             COALESCE(SUM(CASE WHEN disposition = '報廢' THEN qty ELSE 0 END), 0) AS scrap_qty
         FROM defect_records
-        """
+        {where_clause}
+        """,
+        params,
     ).fetchone()
     if row is None:
         return {
@@ -182,6 +201,34 @@ def get_warehouse_nonconforming_summary(conn: sqlite3.Connection) -> dict[str, i
         "rework_qty": int(row["rework_qty"] or 0),
         "scrap_qty": int(row["scrap_qty"] or 0),
     }
+
+
+def get_pending_counts_by_processing_line(conn: sqlite3.Connection) -> dict[str, int]:
+    """Return open warehouse counts grouped by the formal processing-line contract."""
+    counts = {
+        PROCESSING_LINE_MATERIAL: 0,
+        PROCESSING_LINE_OUTSOURCE: 0,
+        PROCESSING_LINE_UNCLASSIFIED: 0,
+    }
+    try:
+        cursor = conn.execute(
+            """
+            SELECT processing_line, COUNT(*) AS case_count
+            FROM defect_records
+            WHERE status <> '已結案'
+            GROUP BY processing_line
+            """
+        )
+    except sqlite3.OperationalError as exc:
+        if "no such column: processing_line" in str(exc):
+            return counts
+        raise
+    for row in cursor.fetchall():
+        line = str(row["processing_line"] or PROCESSING_LINE_UNCLASSIFIED)
+        if line not in PROCESSING_LINE_STORAGE_OPTIONS:
+            line = PROCESSING_LINE_UNCLASSIFIED
+        counts[line] += int(row["case_count"] or 0)
+    return counts
 
 
 def _get_top_entity_stats_filtered(

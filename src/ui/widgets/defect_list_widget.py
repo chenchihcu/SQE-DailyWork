@@ -68,6 +68,7 @@ _SORTABLE_COLS: dict[int, str] = {
     3: "product_name",
     5: "product_stage",
     8: "status",
+    9: "closed_at",
 }
 
 
@@ -265,9 +266,20 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         result_layout.addWidget(self.empty_state)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(9)
+        self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels(
-            ["異常單號", "異常類別", "供應商", "品名", "料號", "階段", "問題/摘要", "缺失紀錄", "狀態"]
+            [
+                "異常單號",
+                "異常類別",
+                "供應商",
+                "品名",
+                "料號",
+                "階段",
+                "問題/摘要",
+                "缺失紀錄",
+                "狀態",
+                "結案日期",
+            ]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -287,6 +299,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents) # 狀態
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
@@ -341,7 +354,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._render_current_page()
 
     def _sync_category_column_visibility(self) -> None:
-        """訪廠紀錄 scope 沒有異常類別（整欄皆為「—」），故於該 scope 隱藏此欄。
+        """訪廠紀錄 scope 沒有異常類別/結案日期，故於該 scope 隱藏這些欄位。
 
         scope 可由側欄 set_event_scope() 或統計下鑽 apply_quick_filters() 動態切換，
         因此每次 refresh_data() 都依當前 event_type 重新評估，而非只在建構時設定一次。
@@ -349,6 +362,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         """
         is_visit_only_scope = self._filter_event_type == "VISIT"
         self.table.setColumnHidden(1, is_visit_only_scope)
+        self.table.setColumnHidden(9, is_visit_only_scope)
 
     def _render_current_page(self):
         self._selected_event_row = None
@@ -386,6 +400,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
             status_text = str(row.get("status") or "").strip() or "-"
             self.table.setItem(idx, 8, create_status_item(status_text))
+
+            self.table.setItem(idx, 9, self._text_cell(row.get("closed_at")))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()
@@ -502,11 +518,15 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             on_preview_anomaly=self.open_preview_anomaly_dialog,
             on_preview_visit=self.open_preview_visit_dialog,
             on_reopen_anomaly=self.reopen_anomaly,
+            on_update_closed_at=self.open_update_closed_at_dialog,
             on_send_line=self.send_line_brief_report,
         )
 
     def open_close_dialog(self, anomaly_id: str, problem_desc: str):
         self._event_actions.open_close_dialog(anomaly_id, problem_desc)
+
+    def open_update_closed_at_dialog(self, anomaly_id: str, problem_desc: str):
+        self._event_actions.open_update_closed_at_dialog(anomaly_id, problem_desc)
 
     def open_edit_anomaly_dialog(self, anomaly_id: str):
         self._event_actions.open_edit_anomaly_dialog(anomaly_id)

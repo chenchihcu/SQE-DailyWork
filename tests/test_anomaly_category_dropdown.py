@@ -653,12 +653,80 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         with patch.object(
             self.widget_module.event_service,
             "get_anomaly_detail",
-            return_value={"category": "規範文件缺漏"},
+            return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
         ) as mock_get:
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
             mock_get.assert_called_once_with("anomaly-123")
             self.assertEqual("規範文件缺漏", dialog.root_cause_combo.currentText())
+            self.assertEqual("2026-04-16", dialog.closed_at_input.minimumDate().toString("yyyy-MM-dd"))
+
+    def test_close_anomaly_dialog_submits_user_selected_closed_date(self) -> None:
+        from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
+        with (
+            patch.object(
+                self.widget_module.event_service,
+                "get_anomaly_detail",
+                return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
+            ),
+            patch.object(self.widget_module.event_service, "close_anomaly") as close_mock,
+        ):
+            dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
+            self.addCleanup(dialog.close)
+            dialog.improvement_input.setPlainText("改善完成")
+            dialog.closer_input.setText("王小明")
+            dialog.closed_at_input.setDate(QDate(2026, 5, 10))
+            dialog._on_submit()
+
+        close_mock.assert_called_once_with(
+            "anomaly-123",
+            "改善完成",
+            closed_by="王小明",
+            root_cause_category="規範文件缺漏",
+            closed_at="2026-05-10",
+        )
+
+    def test_close_anomaly_dialog_adjustment_mode_updates_only_closed_date(self) -> None:
+        from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
+        with (
+            patch.object(
+                self.widget_module.event_service,
+                "get_anomaly_detail",
+                return_value={
+                    "category": "尺寸異常",
+                    "anomaly_date": "2026-04-16",
+                    "status": "已結案",
+                    "improvement_desc": "已改善",
+                    "closed_by": "王小明",
+                    "root_cause_category": "規範文件缺漏",
+                    "closed_at": "2026-05-10",
+                },
+            ),
+            patch.object(self.widget_module.event_service, "close_anomaly") as close_mock,
+            patch.object(
+                self.widget_module.event_service,
+                "update_anomaly_closed_at",
+            ) as update_closed_at,
+        ):
+            dialog = CloseAnomalyDialog(
+                "anomaly-123",
+                "Some problem description",
+                date_adjustment_only=True,
+            )
+            self.addCleanup(dialog.close)
+            self.assertTrue(dialog.improvement_input.isReadOnly())
+            self.assertTrue(dialog.closer_input.isReadOnly())
+            self.assertFalse(dialog.root_cause_combo.isEnabled())
+            self.assertEqual("2026-05-10", dialog.closed_at_input.date().toString("yyyy-MM-dd"))
+
+            dialog.closed_at_input.setDate(QDate(2026, 5, 12))
+            dialog._on_submit()
+
+        close_mock.assert_not_called()
+        update_closed_at.assert_called_once_with(
+            "anomaly-123",
+            closed_at="2026-05-12",
+        )
 
     def test_closed_anomaly_edit_uses_saved_category_not_root_cause(self) -> None:
         dialog_closed = self.NewAnomalyDialog(

@@ -351,6 +351,7 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
     import sqlite3
 
     from ncr.db.database import apply_schema
+    from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget
     from ncr.ui.defect_list import DefectListWidget
@@ -364,10 +365,25 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
             (NcrWorkflowPage(DefectFormWidget(conn), "NcrCreatePage"), "ncr-create"),
             (
                 NcrWorkflowPage(
-                    DefectListWidget(conn, workflow="tracking"),
-                    "NcrPendingPage",
+                    DefectListWidget(
+                        conn,
+                        workflow="tracking",
+                        processing_line=PROCESSING_LINE_OUTSOURCE,
+                    ),
+                    "NcrPendingOutsourcePage",
                 ),
-                "ncr-pending",
+                "ncr-pending-outsource",
+            ),
+            (
+                NcrWorkflowPage(
+                    DefectListWidget(
+                        conn,
+                        workflow="tracking",
+                        processing_line=PROCESSING_LINE_MATERIAL,
+                    ),
+                    "NcrPendingMaterialPage",
+                ),
+                "ncr-pending-material",
             ),
             (
                 NcrWorkflowPage(

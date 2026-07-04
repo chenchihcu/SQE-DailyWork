@@ -35,6 +35,7 @@ from ncr.ui.supplier_combo_utils import (
 from ncr.models.defect import (
     CATEGORY_OPTIONS,
     DISPOSITION_OPTIONS,
+    PROCESSING_LINE_OPTIONS,
     RESPONSIBILITY_OPTIONS,
     RETURN_SLIP_TYPE_OPTIONS,
     STATUS_OPTIONS,
@@ -49,6 +50,7 @@ from ncr.models.labels import (
     LABEL_ITEM_NO,
     LABEL_OUTSOURCE_SUPPLIER_NAME,
     LABEL_PRODUCT_NAME,
+    LABEL_PROCESSING_LINE,
     LABEL_RESPONSIBILITY,
     LABEL_RETURN_SLIP_TYPE,
     LABEL_QTY,
@@ -102,6 +104,7 @@ def _connect_dirty_tracking_signals(
     fields: "DefectFieldsWidget", on_dirty: Callable[..., None]
 ) -> None:
     fields.event_date_edit.dateChanged.connect(on_dirty)
+    fields.processing_line_combo.currentTextChanged.connect(on_dirty)
     fields.return_slip_type_combo.currentTextChanged.connect(on_dirty)
     fields.work_order_input.textChanged.connect(on_dirty)
     fields.internal_work_order_input.textChanged.connect(on_dirty)
@@ -267,6 +270,10 @@ class DefectFieldsWidget(QWidget):
         self.return_slip_type_combo.addItem("")
         self.return_slip_type_combo.addItems(RETURN_SLIP_TYPE_OPTIONS)
 
+        self.processing_line_combo = QComboBox()
+        self.processing_line_combo.addItem("")
+        self.processing_line_combo.addItems(PROCESSING_LINE_OPTIONS)
+
         self.work_order_input = QLineEdit()
         self.internal_work_order_input = QLineEdit()
         self.transfer_slip_input = QLineEdit()
@@ -328,6 +335,7 @@ class DefectFieldsWidget(QWidget):
         apply_form_inputs(
             [
                 self.event_date_edit,
+                self.processing_line_combo,
                 self.return_slip_type_combo,
                 self.work_order_input,
                 self.internal_work_order_input,
@@ -353,30 +361,36 @@ class DefectFieldsWidget(QWidget):
         # Row 0
         self._add_compact_field(form_grid, 0, LABEL_EVENT_DATE, self.event_date_edit, column_offset=0)
         self._add_compact_field(
-            form_grid, 0, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
+            form_grid, 0, LABEL_PROCESSING_LINE, self.processing_line_combo,
             column_offset=2, required=True,
         )
 
         # Row 1
-        self._add_compact_field(form_grid, 1, LABEL_CATEGORY, self.category_combo, column_offset=0)
+        self._add_compact_field(
+            form_grid, 1, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
+            column_offset=0, required=True,
+        )
+        self._add_compact_field(form_grid, 1, LABEL_CATEGORY, self.category_combo, column_offset=2)
+
+        # Row 2
         add_labeled_field(
-            form_grid, 1, LABEL_QTY, self.qty_spin,
-            column_offset=2,
+            form_grid, 2, LABEL_QTY, self.qty_spin,
+            column_offset=0,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
             required=True,
         )
-
-        # Row 2
         self._add_compact_field(
-            form_grid, 2, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=0
-        )
-        self._add_compact_field(
-            form_grid, 2, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=2
+            form_grid, 2, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=2
         )
 
         # Row 3
-        self._add_compact_field(form_grid, 3, LABEL_ITEM_NO, self.item_no_input, column_offset=0, required=True)
+        self._add_compact_field(
+            form_grid, 3, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=0
+        )
+        self._add_compact_field(form_grid, 3, LABEL_ITEM_NO, self.item_no_input, column_offset=2, required=True)
+
+        # Row 4
         self.product_name_input.setToolTip("由系統依料號自動帶出，不可手動輸入")
         product_name_host = QWidget()
         product_name_layout = QHBoxLayout(product_name_host)
@@ -386,18 +400,18 @@ class DefectFieldsWidget(QWidget):
         product_name_layout.addWidget(self.quick_add_product_btn, 0)
         product_name_host.setMinimumWidth(FORM_COMPACT_FIELD_MIN_WIDTH + 84)
         add_labeled_field(
-            form_grid, 3, LABEL_PRODUCT_NAME, product_name_host,
-            column_offset=2,
+            form_grid, 4, LABEL_PRODUCT_NAME, product_name_host,
+            column_offset=0,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
         )
-
-        # Row 4
         self._add_compact_field(
-            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo, column_offset=0
+            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo, column_offset=2
         )
+
+        # Row 5
         self._add_compact_field(
-            form_grid, 4, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo, column_offset=2
+            form_grid, 5, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo, column_offset=0
         )
         layout.addLayout(form_grid)
 
@@ -444,6 +458,7 @@ class DefectFieldsWidget(QWidget):
         """
         order = [
             self.event_date_edit,
+            self.processing_line_combo,
             self.return_slip_type_combo,
             self.category_combo,
             self.qty_spin,
@@ -563,7 +578,7 @@ class DefectFieldsWidget(QWidget):
         self.sync_product_name_from_item_no()
 
     _ALL_FIELD_GROUPS = frozenset({
-        "date", "return_slip_type", "work_order", "transfer_slip",
+        "date", "processing_line", "return_slip_type", "work_order", "transfer_slip",
         "category", "product", "qty", "supplier", "description",
         "status", "disposition", "responsibility",
     })
@@ -578,6 +593,8 @@ class DefectFieldsWidget(QWidget):
         maintaining its own drifting copy (audit findings A3/D4)."""
         if "date" in groups:
             self.event_date_edit.setDate(QDate.currentDate())
+        if "processing_line" in groups:
+            self.processing_line_combo.setCurrentIndex(0)
         if "return_slip_type" in groups:
             self.return_slip_type_combo.setCurrentIndex(0)
         if "work_order" in groups:
@@ -620,6 +637,10 @@ class DefectFieldsWidget(QWidget):
         event_date = QDate.fromString(record.get("event_date", ""), "yyyy-MM-dd")
         if event_date.isValid():
             self.event_date_edit.setDate(event_date)
+        processing_line = str(record.get("processing_line", "") or "")
+        if processing_line and self.processing_line_combo.findText(processing_line) == -1:
+            self.processing_line_combo.addItem(processing_line)
+        self.processing_line_combo.setCurrentText(processing_line)
         return_slip_type = str(record.get("return_slip_type", "") or "")
         if return_slip_type and self.return_slip_type_combo.findText(return_slip_type) == -1:
             self.return_slip_type_combo.addItem(return_slip_type)
@@ -668,6 +689,7 @@ class DefectFieldsWidget(QWidget):
     def get_form_data(self) -> dict[str, object]:
         return {
             "event_date": self.event_date_edit.date().toPython(),
+            "processing_line": self.processing_line_combo.currentText(),
             "return_slip_type": self.return_slip_type_combo.currentText(),
             "work_order_no": self.work_order_input.text(),
             "internal_work_order_no": self.internal_work_order_input.text(),

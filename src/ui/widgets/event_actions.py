@@ -30,6 +30,7 @@ ACTION_VIEW_VISIT_DETAIL = "view_visit_detail"
 ACTION_PREVIEW_ANOMALY = "preview_anomaly"
 ACTION_PREVIEW_VISIT = "preview_visit"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
+ACTION_UPDATE_CLOSED_AT = "update_closed_at"
 ACTION_SEND_LINE = "send_line"
 
 
@@ -53,6 +54,7 @@ def build_event_action_menu(
         if str(row.get("status") or "").strip() == "待處理":
             _add_action("結案", ACTION_CLOSE_ANOMALY)
         if str(row.get("status") or "").strip() == "已結案":
+            _add_action("調整結案日期", ACTION_UPDATE_CLOSED_AT)
             _add_action("重新處理", ACTION_REOPEN_ANOMALY)
         if str(row.get("linked_visit_id") or "").strip():
             _add_action("關聯訪廠", ACTION_VIEW_LINKED_VISIT)
@@ -110,6 +112,7 @@ def dispatch_event_action(
     on_preview_anomaly: Callable[[str], None] | None = None,
     on_preview_visit: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
+    on_update_closed_at: Callable[[str, str], None] | None = None,
     on_send_line: Callable[[dict], None] | None = None,
 ) -> None:
     event_id = str(row.get("event_id") or "").strip()
@@ -126,6 +129,9 @@ def dispatch_event_action(
         return
     if action_key == ACTION_REOPEN_ANOMALY and on_reopen_anomaly:
         on_reopen_anomaly(event_id, str(row.get("ref_no") or ""))
+        return
+    if action_key == ACTION_UPDATE_CLOSED_AT and on_update_closed_at:
+        on_update_closed_at(event_id, str(row.get("content") or ""))
         return
     if action_key == ACTION_VIEW_LINKED_VISIT:
         linked_visit_id = str(row.get("linked_visit_id") or "").strip()
@@ -164,6 +170,17 @@ class EventActionsController:
 
     def open_close_dialog(self, anomaly_id: str, problem_desc: str) -> None:
         dialog = CloseAnomalyDialog(anomaly_id, problem_desc, self._parent)
+        if not dialog.exec():
+            return
+        self._refresh_all_views()
+
+    def open_update_closed_at_dialog(self, anomaly_id: str, problem_desc: str) -> None:
+        dialog = CloseAnomalyDialog(
+            anomaly_id,
+            problem_desc,
+            self._parent,
+            date_adjustment_only=True,
+        )
         if not dialog.exec():
             return
         self._refresh_all_views()

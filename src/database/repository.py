@@ -298,6 +298,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
                     event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
                     AND date(event_date) IS NOT NULL
                 ),
+            processing_line TEXT NOT NULL DEFAULT '未分流'
+                CHECK(processing_line IN ('原物料', '委外加工', '未分流')),
             return_slip_type TEXT NOT NULL DEFAULT '',
             work_order_no TEXT NOT NULL DEFAULT '',
             internal_work_order_no TEXT NOT NULL DEFAULT '',
@@ -329,6 +331,18 @@ def create_schema(conn: sqlite3.Connection) -> None:
     )
     _ensure_column(
         conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
+    )
+    _ensure_column(
+        conn,
+        "defect_records",
+        "processing_line",
+        "TEXT NOT NULL DEFAULT '未分流' CHECK(processing_line IN ('原物料', '委外加工', '未分流'))",
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_defect_records_status_processing_line
+            ON defect_records(status, processing_line)
+        """
     )
 
     conn.executescript(
@@ -2958,11 +2972,22 @@ def close_anomaly(
     if not closer:
         raise ValueError("Closer is required")
     cause = (root_cause_category or "").strip()
+    anomaly_key = (anomaly_id or "").strip()
+    existing = get_anomaly_detail(conn, anomaly_key)
+    if existing is None or existing.get("status") != "待處理":
+        raise ValueError("Open anomaly not found")
 
     close_date = _normalize_strict_iso_date(
         closed_at,
         field_name="Closed date",
     )
+    _ensure_date_not_in_future(close_date, field_name="Closed date")
+    anomaly_date = _normalize_strict_iso_date(
+        existing.get("anomaly_date"),
+        field_name="Anomaly date",
+    )
+    if close_date < anomaly_date:
+        raise ValueError("Closed date cannot be before anomaly date")
     cur = conn.execute(
         """
         UPDATE anomalies
@@ -2974,13 +2999,65 @@ def close_anomaly(
             updated_at = ?
         WHERE id = ? AND status = '待處理'
         """,
-        (text, closer, cause, close_date, _now_iso(), anomaly_id),
+        (text, closer, cause, close_date, _now_iso(), anomaly_key),
     )
     if cur.rowcount == 0:
         raise ValueError("Open anomaly not found")
 
     conn.commit()
     refresh_monthly_cache(conn, close_date[:7].replace("-", ""))
+
+
+def update_anomaly_closed_at(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    closed_at: str,
+) -> None:
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        raise ValueError("Anomaly id is required")
+    existing = get_anomaly_detail(conn, anomaly_key)
+    if existing is None:
+        raise ValueError("Anomaly not found")
+    if existing.get("status") != "已結案":
+        raise ValueError("Only closed anomalies can update closed date")
+
+    close_date = _normalize_strict_iso_date(
+        closed_at,
+        field_name="Closed date",
+    )
+    _ensure_date_not_in_future(close_date, field_name="Closed date")
+    anomaly_date = _normalize_strict_iso_date(
+        existing.get("anomaly_date"),
+        field_name="Anomaly date",
+    )
+    if close_date < anomaly_date:
+        raise ValueError("Closed date cannot be before anomaly date")
+
+    cur = conn.execute(
+        """
+        UPDATE anomalies
+        SET closed_at = ?,
+            updated_at = ?
+        WHERE id = ? AND status = '已結案'
+        """,
+        (close_date, _now_iso(), anomaly_key),
+    )
+    if cur.rowcount == 0:
+        raise ValueError("Anomaly not found")
+    conn.commit()
+
+    months_to_refresh = {
+        month
+        for month in (
+            _month_from_date_value(existing.get("anomaly_date")),
+            _month_from_date_value(existing.get("closed_at")),
+            _month_from_date_value(close_date),
+        )
+        if month
+    }
+    for month in months_to_refresh:
+        refresh_monthly_cache(conn, month)
 
 
 def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
@@ -5204,6 +5281,11 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
     table_sql = _table_sql(conn, "defect_records")
     if not table_sql or "CHECK(TRIM(work_order_no)" not in table_sql:
         return
+    processing_line_expr = (
+        "COALESCE(NULLIF(TRIM(processing_line), ''), '未分流')"
+        if _has_column(conn, "defect_records", "processing_line")
+        else "'未分流'"
+    )
 
     conn.commit()
     fk_row = conn.execute("PRAGMA foreign_keys").fetchone()
@@ -5223,6 +5305,8 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
                         event_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
                         AND date(event_date) IS NOT NULL
                     ),
+                processing_line TEXT NOT NULL DEFAULT '未分流'
+                    CHECK(processing_line IN ('原物料', '委外加工', '未分流')),
                 return_slip_type TEXT NOT NULL DEFAULT '',
                 work_order_no TEXT NOT NULL DEFAULT '',
                 internal_work_order_no TEXT NOT NULL DEFAULT '',
@@ -5242,15 +5326,17 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
             """
         )
         conn.execute(
-            """
+            f"""
             INSERT INTO defect_records__new(
-                id, defect_no, event_date, return_slip_type, work_order_no,
+                id, defect_no, event_date, processing_line, return_slip_type, work_order_no,
                 internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
                 category, supplier_name, outsource_supplier_name, defect_desc, status,
                 disposition, responsibility, created_at
             )
             SELECT
-                id, defect_no, event_date, return_slip_type, work_order_no,
+                id, defect_no, event_date,
+                {processing_line_expr} AS processing_line,
+                return_slip_type, work_order_no,
                 internal_work_order_no, transfer_slip_no, item_no, product_name, qty,
                 category, supplier_name, outsource_supplier_name, defect_desc, status,
                 disposition, responsibility, created_at
@@ -5266,6 +5352,12 @@ def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> N
                     event_date, work_order_no, internal_work_order_no,
                     transfer_slip_no, item_no, defect_desc
                 )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_defect_records_status_processing_line
+                ON defect_records(status, processing_line)
             """
         )
         conn.execute("COMMIT")

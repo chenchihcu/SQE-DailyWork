@@ -47,19 +47,19 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         frames = home.findChildren(QFrame)
         panels = [f for f in frames if f.property("role") == "panel"]
 
-        # Daily cockpit: KPI management panel + one read-only backlog panel.
+        # Daily cockpit: one read-only backlog panel; KPI cards are retired.
         panel_names = {p.objectName() for p in panels}
-        self.assertEqual(2, len(panels))
-        self.assertIn("HomeKpiPanel", panel_names)
+        self.assertEqual(1, len(panels))
+        self.assertNotIn("HomeKpiPanel", panel_names)
         self.assertIn("HomeBacklogPanel", panel_names)
 
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]
         self.assertNotIn("快速入口", texts)
-        self.assertIn("逾期未結", texts)
+        self.assertNotIn("逾期未結", texts)
 
         kpi_cards = [f for f in frames if f.property("role") == "kpiCard"]
-        self.assertEqual(4, len(kpi_cards))
+        self.assertEqual(0, len(kpi_cards))
 
     def test_query_page_subpanel_structure_and_roles_are_consistent(self) -> None:
         query = self.window.events_widget

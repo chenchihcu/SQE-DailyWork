@@ -16,6 +16,7 @@ from ncr.models.labels import (
     LABEL_ITEM_NO,
     LABEL_OUTSOURCE_SUPPLIER_NAME,
     LABEL_PRODUCT_NAME,
+    LABEL_PROCESSING_LINE,
     LABEL_QTY,
     LABEL_STATUS,
     LABEL_SUPPLIER_NAME,
@@ -31,10 +32,16 @@ STATUS_OPTIONS = ["處理中", "已結案"]
 DISPOSITION_OPTIONS = ["重工", "報廢"]
 RETURN_SLIP_TYPE_OPTIONS = ["廠內退料", "託外退料"]
 SUPPLIER_CATEGORY_OPTIONS = ["正式供應商", "委外供應商"]
+PROCESSING_LINE_MATERIAL = "原物料"
+PROCESSING_LINE_OUTSOURCE = "委外加工"
+PROCESSING_LINE_UNCLASSIFIED = "未分流"
+PROCESSING_LINE_OPTIONS = [PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE]
+PROCESSING_LINE_STORAGE_OPTIONS = [*PROCESSING_LINE_OPTIONS, PROCESSING_LINE_UNCLASSIFIED]
 
 DETAIL_EXPORT_COLUMNS = [
     ("defect_no", LABEL_DEFECT_NO),
     ("event_date", LABEL_EVENT_DATE),
+    ("processing_line", LABEL_PROCESSING_LINE),
     ("return_slip_type", LABEL_RETURN_SLIP_TYPE),
     ("work_order_no", LABEL_WORK_ORDER_NO),
     ("internal_work_order_no", LABEL_INTERNAL_WORK_ORDER_NO),
@@ -76,6 +83,7 @@ STATS_SECTION_DEFINITIONS = [
 LIST_HEADERS = [
     LABEL_DEFECT_NO,
     LABEL_EVENT_DATE,
+    LABEL_PROCESSING_LINE,
     LABEL_RETURN_SLIP_TYPE,
     LABEL_WORK_ORDER_NO,
     LABEL_INTERNAL_WORK_ORDER_NO,
@@ -98,6 +106,7 @@ STATS_DIMENSION_HEADERS = [label for _, label in STATS_DIMENSION_COLUMNS]
 LIST_FIELD_ORDER = [
     "defect_no",
     "event_date",
+    "processing_line",
     "return_slip_type",
     "work_order_no",
     "internal_work_order_no",
@@ -122,6 +131,7 @@ def labels_for_fields(field_names: list[str]) -> list[str]:
 DETAIL_PREVIEW_FIELDS = [
     "defect_no",
     "event_date",
+    "processing_line",
     "return_slip_type",
     "work_order_no",
     "item_no",

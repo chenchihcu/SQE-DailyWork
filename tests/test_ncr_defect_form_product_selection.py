@@ -46,6 +46,7 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
             {
                 "defect_no": "D-TEST-001",
                 "event_date": "2026-06-04",
+                "processing_line": "原物料",
                 "return_slip_type": "廠內退料",
                 "work_order_no": "WO-001",
                 "internal_work_order_no": "",

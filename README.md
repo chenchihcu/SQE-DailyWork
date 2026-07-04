@@ -28,23 +28,28 @@ no separate launcher window, and no standalone NCR main window.
 
 ## UI Workbench
 
-- Home is a daily cockpit: four operational KPI cards (`逾期未結`, `單獨異常`,
-  `訪廠發現異常`, `倉庫待處理不合格品`) plus one read-only backlog (待辦)
-  list (open/overdue anomalies, overdue first, with a warehouse pending
-  shortcut). Hero/cover content, feature tours, project-structure copy, and
-  quick-entry write panels stay retired; the backlog list only reads existing
-  services and routes through existing navigation.
+- Home is a daily cockpit centered on one read-only backlog (待辦) list
+  (open/overdue anomalies, overdue first). KPI cards stay retired from the
+  visible home layout. The backlog footer exposes warehouse pending shortcuts
+  for `待處理委外加工`, `待處理原物料`, and `未分流待整理`; each shortcut only reads
+  existing services and routes through existing navigation.
 - Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (單獨異常 /
   訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
-  待處理不合格品 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料). The former
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料). The former
   異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are first-class sidebar
   scope rows that drive the single 事件管理 page.
-- Supplier event and warehouse nonconforming-product pending work both surface
-  as sidebar badges.
+- Supplier event pending work surfaces as the 單獨異常 sidebar badge. Warehouse
+  nonconforming-product pending work surfaces as two separate badges: one for
+  `status <> '已結案' AND processing_line = '委外加工'`, and one for
+  `status <> '已結案' AND processing_line = '原物料'`. `未分流` is shown as a
+  cleanup warning/to-do, not merged into either formal badge.
 - `登錄訪廠紀錄` and `登錄訪廠缺失` use the visit form.
 - Visit/audit defect notes can be manually confirmed into formal supplier
   anomalies while retaining the `visit_id` link.
-- `建立不合格品`, `待處理不合格品`, and `歷史紀錄` open the embedded warehouse
+- Supplier anomaly closure uses the user-selected `closed_at` date from the
+  close dialog; closed anomalies can adjust that date without reopening, and
+  supplier-event trend charts group closures by the same date.
+- `建立不合格品`, `待處理委外加工`, `待處理原物料`, and `歷史紀錄` open the embedded warehouse
   nonconforming-product workflow pages inside the same main window.
 - `不合格品統計分析` opens warehouse nonconforming-product statistics charts
   and proportion analysis.
@@ -108,6 +113,9 @@ Supplier event workflow data:
 Warehouse physical nonconforming-product data:
 
 - `defect_records`
+  - `processing_line`: `原物料`, `委外加工`, or migrated/cleanup-only `未分流`.
+    New and edited records must use `原物料` or `委外加工`; existing rows default
+    to `未分流` until deliberately classified.
 - `ui_settings`
 - warehouse-module compatibility support tables such as `product_records`
 
@@ -125,7 +133,9 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
 - Legacy `data/sqe.db` migration remains handled by `src/database/migration.py`.
 - Legacy NCR `ncr/data/defect.db` was migrated once into `data/sqe_v2.db` by
   `src/database/ncr_migration.py`; the old source is archived as
-  `ncr/data/defect.db.migrated`.
+  `ncr/data/defect.db.migrated`. Warehouse schema upgrades backfill
+  `defect_records.processing_line` to `未分流` for existing rows without guessing
+  their formal processing line.
 - Shared product master import is implemented in
   `src/services/master_import_service.py`. It writes only `suppliers/products` after
   preview, conflict checks, and DB backup, then records the attempt in
@@ -172,7 +182,7 @@ present.
 Focused checks should cover:
 
 - One main window entrypoint and no standalone NCR main shell.
-- Embedded warehouse `建立不合格品` / `待處理不合格品` / `歷史紀錄` pages.
+- Embedded warehouse `建立不合格品` / `待處理委外加工` / `待處理原物料` / `歷史紀錄` pages.
 - `defect_records` count and migrated NCR business keys.
 - Visit/audit defect conversion into `anomalies.visit_id` without writing
   `defect_records`.

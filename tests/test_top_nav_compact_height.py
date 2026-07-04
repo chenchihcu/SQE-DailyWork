@@ -14,11 +14,12 @@ from ui.main_window import (
     MainWindow,
 )
 from ui.sidebar_nav import PAGE_NCR_PENDING, SidebarNav
+from ui.sidebar_nav import PAGE_NCR_PENDING_MATERIAL, PAGE_NCR_PENDING_OUTSOURCE
 from ui.theme import apply_app_theme
 
 
-# Eleven sidebar nav labels（事件 4 scope + 倉庫 3 workflow pages 升級為一等導覽列）：
-# 首頁 + 單獨異常/訪廠發現異常/訪廠紀錄/已結案 + 異常事件統計 + 建立/待處理/歷史 + 不合格品統計分析 + 基礎資料。
+# Twelve sidebar nav labels（事件 4 scope + 倉庫 4 workflow pages 升級為一等導覽列）：
+# 首頁 + 單獨異常/訪廠發現異常/訪廠紀錄/已結案 + 異常事件統計 + 建立/雙待處理/歷史 + 不合格品統計分析 + 基礎資料。
 _EXPECTED_NAV_LABELS = [
     "首頁",
     "單獨異常",
@@ -27,7 +28,8 @@ _EXPECTED_NAV_LABELS = [
     "已結案",
     "異常事件統計",
     "建立不合格品",
-    "待處理不合格品",
+    "待處理委外加工",
+    "待處理原物料",
     "歷史紀錄",
     "不合格品統計",
     "基礎資料",
@@ -83,9 +85,9 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_eleven_nav_items(self) -> None:
-        # 11 nav 按鈕：首頁 + 4 事件 scope + 異常事件統計 + 3 倉庫工作頁 + 不合格品統計分析 + 基礎資料。
-        self.assertEqual(11, len(self.window.sidebar._buttons))
+    def test_sidebar_has_twelve_nav_items(self) -> None:
+        # 12 nav 按鈕：首頁 + 4 事件 scope + 異常事件統計 + 4 倉庫工作頁 + 不合格品統計分析 + 基礎資料。
+        self.assertEqual(12, len(self.window.sidebar._buttons))
 
     def test_sidebar_uses_domain_group_headers(self) -> None:
         # 側欄以三組領域標題（非按鈕 QLabel）分隔：供應商事件 / 倉庫不合格品 / 系統。
@@ -101,15 +103,21 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertFalse(icon_label.pixmap().isNull())
 
     def test_sidebar_warehouse_badge_is_available(self) -> None:
-        action = ("page", PAGE_NCR_PENDING)
-        warehouse_button = self.window.sidebar.button_for_action(action)
-        self.assertIsNotNone(warehouse_button)
-        self.window.sidebar.set_badge(action, 12)
-        self.app.processEvents()
-        badges = warehouse_button.findChildren(QLabel, "NavBadge")
-        self.assertEqual(1, len(badges))
-        self.assertEqual("12", badges[0].text())
-        self.assertTrue(badges[0].isVisible())
+        for action, count in (
+            (("page", PAGE_NCR_PENDING_OUTSOURCE), 12),
+            (("page", PAGE_NCR_PENDING_MATERIAL), 3),
+        ):
+            with self.subTest(action=action):
+                warehouse_button = self.window.sidebar.button_for_action(action)
+                self.assertIsNotNone(warehouse_button)
+                assert warehouse_button is not None
+                self.window.sidebar.set_badge(action, count)
+                self.app.processEvents()
+                badges = warehouse_button.findChildren(QLabel, "NavBadge")
+                self.assertEqual(1, len(badges))
+                self.assertEqual(str(count), badges[0].text())
+                self.assertTrue(badges[0].isVisible())
+        self.assertEqual(PAGE_NCR_PENDING, PAGE_NCR_PENDING_OUTSOURCE)
 
     def test_sidebar_footer_quick_create_removed(self) -> None:
         # 底部「快速建立」兩顆按鈕已移除，改用各頁既有入口（事件管理工具列、建立不合格品側欄列）。

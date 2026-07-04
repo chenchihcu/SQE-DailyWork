@@ -5,10 +5,11 @@
 | Entrypoint | Open path | File / class | Parent | Sizing policy | Overflow / scroll | Theme source | Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
-| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Four KPI management cards plus a read-only backlog (待辦) list | Shared theme tokens | UI smoke + native visual probe |
+| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
 | Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus `src/ui/widgets/defect_form_widget.py` dialogs | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination + visit dialog body scroll; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
 | Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | Continuous-entry form layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
-| Warehouse pending | Sidebar `待處理不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`) | `MainWindow` | Fills content stack | Pending table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Warehouse pending outsource | Sidebar `待處理委外加工` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="委外加工"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Warehouse pending material | Sidebar `待處理原物料` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="原物料"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
@@ -42,7 +43,8 @@
 - Current good-only paired groups:
   - `NewVisitDialog`: `日期 + 訪廠人員`, `時段 + 工單`, and `數量 + 已技轉`.
   - `ProductSectionEditor`: `時段 + 工單`.
-  - `CloseAnomalyDialog`: `結案人員 + 原因分類`.
+  - `CloseAnomalyDialog`: `結案人員 + 原因分類`, plus a single-row `結案日期`
+    date picker using the user-selected `closed_at` statistics source.
   - `SupplierFormDialog`: `主聯絡人 + 部門` and `電話/行動 + 電子郵件`.
   - `ProductFormDialog`: `料號 + 階段`.
 - Keep large text, attachment, table, and long-selection fields as single-row blocks unless a later visual probe proves the paired version stays readable.
@@ -58,34 +60,36 @@
 - Supplier event pages and warehouse nonconforming-product pages must stay visually
   connected through the shell while keeping their data sources and statistics
   labeled separately.
-- Home is an operations workbench (daily cockpit): four KPI management cards
-  followed by one read-only backlog (待辦) list. Still forbidden: quick-entry
-  write panels, hero/cover banners, feature-tour blocks, and project-structure
-  explanations. The backlog list is not a generic recent-event feed — it is a
-  filtered, actionable to-do list (open / overdue anomalies) that only reads
-  existing services and only routes through existing navigation.
-- Home KPI cards and backlog rows are operational shortcuts. The four cards plus
-  the single backlog list are the complete first-screen contract, and each must
-  provide a hover/click affordance that routes through existing main-window
-  navigation with filters instead of introducing new write paths. The backlog
-  list reads existing services only (`event_service.list_events` plus the
-  warehouse summary); it must not add statistics tables, caches, migrations, or
+- Home is an operations workbench (daily cockpit): one read-only backlog (待辦)
+  list plus warehouse pending shortcuts. Still forbidden: KPI panels/cards,
+  quick-entry write panels, hero/cover banners, feature-tour blocks, and
+  project-structure explanations. The backlog list is not a generic recent-event
+  feed — it is a filtered, actionable to-do list (open / overdue anomalies) that
+  only reads existing services and only routes through existing navigation.
+- Home warehouse shortcuts are operational navigation only: `待處理委外加工`,
+  `待處理原物料`, and `未分流待整理`. The first two route to formal stack pages;
+  `未分流待整理` opens a cleanup list for migrated rows. The backlog reads
+  existing services only (`event_service.list_events` plus warehouse processing-line
+  counts); it must not add statistics tables, caches, migrations, or
   cross-workflow write paths.
 - Supplier event lists show a compact source tag such as `供應商事件 / 單獨異常`
   or `供應商事件 / 訪廠發現異常`. PDF export remains single-record output and
-  is disabled until a row is selected.
-- Warehouse nonconforming-product tracking exposes three first-class sidebar
-  rows: 建立不合格品, 待處理不合格品, and 歷史紀錄. Do not reintroduce the retired
-  outer `DefectTrackerPage` tab host for these three entrypoints.
+  is disabled until a row is selected. Anomaly rows expose `結案日期` from
+  `anomalies.closed_at`; visit-only scope hides that anomaly-only column.
+- Warehouse nonconforming-product tracking exposes four first-class sidebar
+  rows: 建立不合格品, 待處理委外加工, 待處理原物料, and 歷史紀錄. Do not
+  reintroduce the retired outer `DefectTrackerPage` tab host for these
+  entrypoints. Pending pages must be backed by visible `processing_line` scope,
+  not by hidden filters or inferred category/return-slip values.
 - Sidebar information architecture is workflow-first with three domain group
   headers (text labels): 供應商事件, 倉庫不合格品, 系統. The four supplier-event
   scopes are first-class nav rows (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案,
   default 單獨異常; the 已結案 row locks the status filter to 已結案) plus 異常事件統計;
-  倉庫不合格品 holds 建立不合格品 / 待處理不合格品 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. There is no
+  倉庫不合格品 holds 建立不合格品 / 待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. There is no
   in-page scope tab bar — the event page is driven by the active sidebar scope row,
   shown via the source tag. Stack page indexes are
-  (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 / 4 待處理不合格品 /
-  5 歷史紀錄 / 6 不合格品統計分析 / 7 基礎資料`, NCR offset 3).
+  (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 / 4 待處理委外加工 /
+  5 待處理原物料 / 6 歷史紀錄 / 7 不合格品統計分析 / 8 基礎資料`, NCR offset 3).
 - The sidebar is decoupled from stack indexes: it emits `nav_activated(action)`
   where action is `("page", PAGE_KEY)` or `("scope", EVENT_SCOPE_*)`; `MainWindow`
   maps PAGE_KEY → stack index and routes scope rows through
@@ -94,7 +98,10 @@
   (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`), `ncr.embed.NCR_PAGE_OFFSET`,
   `_PAGE_KEY_TO_INDEX`, and the affected tests together (Atomic Path).
 - Sidebar badges must expose pending work symmetrically: the supplier-event badge
-  rides the 單獨異常 scope row (open anomalies), the warehouse badge rides 待處理不合格品.
+  rides the 單獨異常 scope row (open anomalies), and warehouse badges ride
+  `待處理委外加工` / `待處理原物料` with count queries constrained to
+  `status <> '已結案' AND processing_line = <formal line>`. `未分流` records are
+  cleanup warnings/to-dos and must not be merged into either formal badge.
 - Quick-create has no sidebar footer. Creation uses each page's existing entry
   points: the event toolbar `新增異常` / `新增訪廠`, and the 倉庫不合格品 sidebar
   `建立不合格品` row. Do not reintroduce a global quick-create footer.
@@ -229,3 +236,10 @@
   `tests/test_closed_tab_categories`, `tests/test_event_list_widget_render_stability`,
   `tests/test_home_recent_events_panel`, `tests/test_stats_view_anomaly_chart`,
   and `tests/test_stats_refresh_height_stability`.
+- Warehouse pending dual-entry update - 2026-07-04: Home removed the visible
+  `HomeKpiPanel` / KPI cards and now keeps one backlog panel with three warehouse
+  shortcuts (`待處理委外加工`, `待處理原物料`, `未分流待整理`). The sidebar replaces
+  the retired generic `待處理不合格品` row with two formal pending rows backed by
+  `defect_records.processing_line`; `未分流` is only a migrated cleanup state.
+  NCR stack indexes are now `3 建立不合格品 / 4 待處理委外加工 / 5 待處理原物料 /
+  6 歷史紀錄`, while `不合格品統計分析` is index 7 and `基礎資料` is index 8.

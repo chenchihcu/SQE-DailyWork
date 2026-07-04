@@ -23,6 +23,7 @@ class DatabaseTestCase(unittest.TestCase):
     def sample_payload(self, **overrides) -> dict[str, object]:
         payload = {
             "event_date": "2026-04-14",
+            "processing_line": "原物料",
             "return_slip_type": "廠內退料",
             "work_order_no": "5102-260414001",
             "item_no": "ITEM-1001",
@@ -516,6 +517,7 @@ class DefectServiceTests(DatabaseTestCase):
         second = defect_service.validate_defect_data(
             self.sample_payload(
                 event_date="2026-04-15",
+                processing_line="委外加工",
                 work_order_no="5102-260415001",
                 item_no="ITEM-2001",
                 supplier_name="B Supplier",
@@ -531,7 +533,49 @@ class DefectServiceTests(DatabaseTestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["return_slip_type"], "廠內退料")
         self.assertEqual(results[0]["work_order_no"], "5102-260415001")
+        line_results = crud.get_defects(conn, {"processing_line": "原物料"})
+        self.assertEqual(len(line_results), 1)
+        outsource_results = crud.get_defects(conn, {"processing_line": "委外加工"})
+        self.assertEqual(len(outsource_results), 1)
+        counts = stats_service.get_pending_counts_by_processing_line(conn)
+        self.assertEqual(counts["原物料"], 1)
+        self.assertEqual(counts["委外加工"], 1)
+        self.assertEqual(counts["未分流"], 0)
         conn.close()
+
+    def test_apply_schema_defaults_existing_style_rows_to_unclassified(self) -> None:
+        conn = self.create_memory_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO defect_records (
+                    defect_no, event_date, return_slip_type, item_no, qty,
+                    defect_desc, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "NCR-LEGACY-UNCLASSIFIED",
+                    "2026-04-14",
+                    "廠內退料",
+                    "ITEM-LEGACY",
+                    1,
+                    "legacy row",
+                    "處理中",
+                    "2026-04-14T08:00:00",
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT processing_line
+                FROM defect_records
+                WHERE defect_no = ?
+                """,
+                ("NCR-LEGACY-UNCLASSIFIED",),
+            ).fetchone()
+            self.assertEqual(row["processing_line"], "未分流")
+        finally:
+            conn.close()
 
     def test_validate_defect_data_rejects_non_iso_event_date(self) -> None:
         with self.assertRaisesRegex(ValueError, "YYYY-MM-DD"):
@@ -556,6 +600,22 @@ class DefectServiceTests(DatabaseTestCase):
     def test_validate_defect_data_requires_return_slip_type(self) -> None:
         with self.assertRaisesRegex(ValueError, "退料單別為必填"):
             defect_service.validate_defect_data(self.sample_payload(return_slip_type=""))
+
+    def test_validate_defect_data_rejects_missing_or_unclassified_processing_line(self) -> None:
+        for value in ("", "未分流", "其他"):
+            with self.subTest(processing_line=value):
+                with self.assertRaisesRegex(ValueError, "處理線"):
+                    defect_service.validate_defect_data(
+                        self.sample_payload(processing_line=value)
+                    )
+
+    def test_validate_defect_data_accepts_formal_processing_lines(self) -> None:
+        for value in ("原物料", "委外加工"):
+            with self.subTest(processing_line=value):
+                normalized = defect_service.validate_defect_data(
+                    self.sample_payload(processing_line=value)
+                )
+                self.assertEqual(normalized["processing_line"], value)
 
     def test_validate_defect_data_rejects_invalid_return_slip_type(self) -> None:
         with self.assertRaisesRegex(ValueError, "退料單別選項不正確"):
@@ -939,6 +999,7 @@ class ExportServiceTests(DatabaseTestCase):
             {
                 "defect_no": "NCR-20260414-001",
                 "event_date": "2026-04-14",
+                "processing_line": "原物料",
                 "return_slip_type": "廠內退料",
                 "work_order_no": "5102-260414001",
                 "item_no": "ITEM-1001",
@@ -1011,7 +1072,8 @@ class ExportServiceTests(DatabaseTestCase):
             self.assertEqual(detail_headers, DETAIL_EXPORT_HEADERS)
             self.assertEqual(stats_headers, build_stats_headers("product_name"))
             self.assertEqual(workbook["不良品明細"]["A2"].value, "NCR-20260414-001")
-            self.assertEqual(workbook["不良品明細"]["C2"].value, "廠內退料")
+            self.assertEqual(workbook["不良品明細"]["C2"].value, "原物料")
+            self.assertEqual(workbook["不良品明細"]["D2"].value, "廠內退料")
             self.assertEqual(workbook["統計"]["A1"].value, "產品統計")
             self.assertEqual(workbook["統計"]["B2"].value, "處置方式")
             self.assertEqual(workbook["統計"]["D3"].value, "2026-04")

@@ -72,6 +72,35 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             actions,
         )
 
+    def test_event_query_menu_keeps_closed_anomaly_date_adjustment_action(self) -> None:
+        row = dict(self.row)
+        row["status"] = "已結案"
+        with patch(
+            "ui.widgets.defect_list_widget.event_service.list_events",
+            return_value=[row],
+        ):
+            widget = EventListWidget(self.main_window, mode="query")
+            widget.show()
+            self.app.processEvents()
+            menu, _action_map = build_event_action_menu(widget, row)
+            actions = [action.text() for action in menu.actions()]
+            widget.close()
+            self.app.processEvents()
+
+        self.assertEqual(
+            [
+                "預覽內容",
+                "編輯異常",
+                "刪除異常",
+                "調整結案日期",
+                "重新處理",
+                "關聯訪廠",
+                "",
+                "傳送精簡報告至 LINE",
+            ],
+            actions,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

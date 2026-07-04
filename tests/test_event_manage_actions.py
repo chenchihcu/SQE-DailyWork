@@ -309,6 +309,85 @@ class EventManageActionsTests(unittest.TestCase):
                 closed_at="2026-04-17",
             )
 
+    def test_close_anomaly_rejects_future_closed_date(self) -> None:
+        anomaly_id = self._create_open_anomaly()
+        with self.assertRaises(ValueError) as ctx:
+            repository.close_anomaly(
+                self.conn,
+                anomaly_id=anomaly_id,
+                improvement_desc="fixed",
+                closed_by="Bob",
+                closed_at=(date.today() + timedelta(days=1)).isoformat(),
+            )
+        self.assertIn("future", str(ctx.exception))
+
+    def test_close_anomaly_rejects_closed_date_before_anomaly_date(self) -> None:
+        anomaly_id = self._create_open_anomaly()
+        with self.assertRaises(ValueError) as ctx:
+            repository.close_anomaly(
+                self.conn,
+                anomaly_id=anomaly_id,
+                improvement_desc="fixed",
+                closed_by="Bob",
+                closed_at="2026-04-15",
+            )
+        self.assertIn("before anomaly date", str(ctx.exception))
+
+    def test_update_anomaly_closed_at_moves_monthly_stats_source(self) -> None:
+        supplier_id = self._create_supplier("Closed Date Supplier")
+        anomaly_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-01-10",
+            supplier_id=supplier_id,
+            problem_desc="closed date source",
+        )
+        anomaly_id = self._find_anomaly_id(anomaly_no)
+        repository.close_anomaly(
+            self.conn,
+            anomaly_id=anomaly_id,
+            improvement_desc="fixed",
+            closed_by="Bob",
+            closed_at="2026-03-05",
+        )
+
+        self.assertEqual(
+            1,
+            repository.get_monthly_stats(self.conn, "202603")["closed_anomaly_count"],
+        )
+        self.assertEqual(
+            0,
+            repository.get_monthly_stats(self.conn, "202604")["closed_anomaly_count"],
+        )
+
+        repository.update_anomaly_closed_at(
+            self.conn,
+            anomaly_id=anomaly_id,
+            closed_at="2026-04-10",
+        )
+
+        detail = repository.get_anomaly_detail(self.conn, anomaly_id)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual("2026-04-10", detail["closed_at"])
+        self.assertEqual(
+            0,
+            repository.get_monthly_stats(self.conn, "202603")["closed_anomaly_count"],
+        )
+        self.assertEqual(
+            1,
+            repository.get_monthly_stats(self.conn, "202604")["closed_anomaly_count"],
+        )
+
+    def test_update_anomaly_closed_at_rejects_open_anomaly(self) -> None:
+        anomaly_id = self._create_open_anomaly()
+        with self.assertRaises(ValueError) as ctx:
+            repository.update_anomaly_closed_at(
+                self.conn,
+                anomaly_id=anomaly_id,
+                closed_at="2026-04-17",
+            )
+        self.assertIn("Only closed anomalies", str(ctx.exception))
+
     def test_update_visit_success(self) -> None:
         supplier_a = self._create_supplier("Visit Supplier A")
         supplier_b = self._create_supplier("Visit Supplier B")

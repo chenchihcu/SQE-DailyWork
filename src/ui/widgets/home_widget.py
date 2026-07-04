@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, QEvent, QObject, Qt
+from PySide6.QtCore import QDate, Qt
 
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QFrame,
-    QGridLayout,
     QHeaderView,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -17,44 +17,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database.connection import get_connection
+from ncr.models.defect import (
+    PROCESSING_LINE_MATERIAL,
+    PROCESSING_LINE_OUTSOURCE,
+    PROCESSING_LINE_UNCLASSIFIED,
+)
 from ncr.services import stats_service as warehouse_stats_service
 from services import event_service
 from ui.layout_constants import (
     BACKLOG_SUPPLIER_MAX_COL_WIDTH,
-    GRID_GUTTER,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
-    ROW_GAP,
 )
-from ui.status_colors import get_status_palette
 from ui.widgets.common_widgets import (
     BrandDivider,
     EmptyStateWidget,
-    KpiCard,
     apply_table_action_affordance,
     create_status_item,
     style_table,
 )
-
-
-class _ClickFilter(QObject):
-    def __init__(self, callback, parent=None):
-        super().__init__(parent)
-        self._callback = callback
-
-    def eventFilter(self, watched, event):  # noqa: N802
-        et = event.type()
-        if et == QEvent.Type.MouseButtonPress:
-            self._callback()
-            return True
-        if et == QEvent.Type.KeyPress and event.key() in (
-            Qt.Key.Key_Return,
-            Qt.Key.Key_Enter,
-            Qt.Key.Key_Space,
-        ):
-            self._callback()
-            return True
-        return False
 
 
 class HomeWidget(QWidget):
@@ -64,8 +46,6 @@ class HomeWidget(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self._kpi_cards: dict[str, KpiCard] = {}
-        self._kpi_click_filters: dict[str, _ClickFilter] = {}
         self._backlog_rows: list[dict] = []
         self._setup_ui()
         self.refresh_data()
@@ -74,47 +54,6 @@ class HomeWidget(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(ROOT_SECTION_SPACING)
-
-        kpi_panel = QFrame()
-        kpi_panel.setObjectName("HomeKpiPanel")
-        kpi_panel.setProperty("role", "panel")
-        kpi_outer = QVBoxLayout(kpi_panel)
-        kpi_outer.setContentsMargins(*PANEL_MARGINS)
-        kpi_outer.setSpacing(8)
-
-        self._kpi_title = QLabel()
-        self._kpi_title.setProperty("role", "sectionTitle")
-        kpi_outer.addWidget(self._kpi_title)
-        kpi_outer.addWidget(BrandDivider())
-
-        kpi_grid = QGridLayout()
-        kpi_grid.setHorizontalSpacing(GRID_GUTTER)
-        kpi_grid.setVerticalSpacing(ROW_GAP)
-        # 四象限 KPI（2×2）：逾期未結 / 單獨異常 / 訪廠發現異常 / 倉庫待處理不合格品。
-        # 已移除「總異常件數」「已結案」兩卡——其導覽分別由「單獨異常」卡與事件頁「已結案」scope 涵蓋。
-        row0_defs = [
-            ("overdue_open_anomaly_count", "逾期未結", get_status_palette("逾期未結").chart, "danger"),
-            ("standalone_open_anomaly_count", "單獨異常", get_status_palette("單獨異常").chart, "pending"),
-        ]
-        row1_defs = [
-            ("visit_open_anomaly_count", "訪廠發現異常", get_status_palette("訪廠發現異常").chart, "info"),
-            ("defect_open_count", "倉庫待處理不合格品", get_status_palette("異常").chart, "danger"),
-        ]
-        for col, (key, text, color, tone) in enumerate(row0_defs):
-            card = KpiCard(text, color, tone=tone)
-            self._kpi_cards[key] = card
-            kpi_grid.addWidget(card, 0, col)
-            kpi_grid.setColumnStretch(col, 1)
-        for col, (key, text, color, tone) in enumerate(row1_defs):
-            card = KpiCard(text, color, tone=tone)
-            self._kpi_cards[key] = card
-            kpi_grid.addWidget(card, 1, col)
-            kpi_grid.setColumnStretch(col, 1)
-
-        self._install_kpi_navigation()
-
-        kpi_outer.addLayout(kpi_grid)
-        root.addWidget(kpi_panel)
 
         # Daily-cockpit backlog: read-only actionable to-do list that fills the
         # first screen. Reads existing services only; rows route through existing
@@ -161,119 +100,80 @@ class HomeWidget(QWidget):
         self._backlog_empty.setVisible(False)
         outer.addWidget(self._backlog_empty)
 
-        # 倉庫待處理彙總列：唯讀導覽捷徑（點擊跳轉待處理不合格品頁，不新增寫入）。
-        self._warehouse_summary_btn = QPushButton("倉庫待處理不合格品：— 件　→")
-        self._warehouse_summary_btn.setObjectName("HomeBacklogWarehouseLink")
-        self._warehouse_summary_btn.setProperty("variant", "secondary")
-        self._warehouse_summary_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._warehouse_summary_btn.setToolTip("開啟同一視窗內的待處理不合格品")
-        self._warehouse_summary_btn.clicked.connect(self._on_defect_kpi_clicked)
-        outer.addWidget(self._warehouse_summary_btn)
+        # 倉庫待處理正式雙入口：兩條處理線各自導向對應頁；未分流作為整理入口。
+        shortcut_row = QHBoxLayout()
+        shortcut_row.setContentsMargins(0, 0, 0, 0)
+        shortcut_row.setSpacing(8)
+        self._warehouse_outsource_btn = self._make_warehouse_shortcut(
+            "HomeBacklogWarehouseOutsourceLink",
+            "待處理委外加工：— 件　→",
+            "開啟同一視窗內的待處理委外加工清單",
+            "open_warehouse_pending_outsource",
+        )
+        self._warehouse_material_btn = self._make_warehouse_shortcut(
+            "HomeBacklogWarehouseMaterialLink",
+            "待處理原物料：— 件　→",
+            "開啟同一視窗內的待處理原物料清單",
+            "open_warehouse_pending_material",
+        )
+        self._warehouse_unclassified_btn = self._make_warehouse_shortcut(
+            "HomeBacklogWarehouseUnclassifiedLink",
+            "未分流待整理：— 件　→",
+            "開啟既有未分流資料整理清單",
+            "open_warehouse_unclassified_pending",
+        )
+        for button in (
+            self._warehouse_outsource_btn,
+            self._warehouse_material_btn,
+            self._warehouse_unclassified_btn,
+        ):
+            shortcut_row.addWidget(button, 1)
+        outer.addLayout(shortcut_row)
 
         return panel
+
+    def _make_warehouse_shortcut(
+        self,
+        object_name: str,
+        text: str,
+        tooltip: str,
+        method_name: str,
+    ) -> QPushButton:
+        button = QPushButton(text)
+        button.setObjectName(object_name)
+        button.setProperty("variant", "secondary")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(tooltip)
+        button.clicked.connect(
+            lambda _checked=False, name=method_name: self._invoke_main(name)
+        )
+        return button
+
+    def _invoke_main(self, method_name: str) -> None:
+        callback = getattr(self.main_window, method_name, None)
+        if callable(callback):
+            callback()
 
     def _month_key(self) -> str:
         return QDate.currentDate().toString("yyyyMM")
 
-    def _install_kpi_navigation(self) -> None:
-        self._set_kpi_action(
-            "overdue_open_anomaly_count",
-            "開啟本月逾期未結（待處理且逾期）清單",
-            lambda: self._open_event_workbench(
-                event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                status="待處理",
-                overdue=True,
-            ),
-        )
-        self._set_kpi_action(
-            "standalone_open_anomaly_count",
-            "開啟本月單獨異常待處理清單",
-            lambda: self._open_event_workbench(
-                event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                status="待處理",
-            ),
-        )
-        self._set_kpi_action(
-            "visit_open_anomaly_count",
-            "開啟本月訪廠發現異常待處理清單",
-            lambda: self._open_event_workbench(
-                event_scope=event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-                status="待處理",
-            ),
-        )
-        self._set_kpi_action(
-            "defect_open_count",
-            "開啟同一主視窗內的待處理不合格品",
-            self._on_defect_kpi_clicked,
-        )
-
-    def _set_kpi_action(self, key: str, tooltip: str, callback) -> None:
-        card = self._kpi_cards.get(key)
-        if card is None:
-            return
-        card.setCursor(Qt.CursorShape.PointingHandCursor)
-        card.setToolTip(tooltip)
-        card.setProperty("interactive", True)
-        # Keyboard reachability + screen-reader label (a11y §5): the card is a
-        # plain QFrame, so give it focus and announce its KPI title + action.
-        card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        card.setAccessibleName(card.title_label.text())
-        card.setAccessibleDescription(tooltip)
-        click_filter = _ClickFilter(callback, self)
-        self._kpi_click_filters[key] = click_filter
-        card.installEventFilter(click_filter)
-
-    def _open_event_workbench(
-        self, *, event_scope: str, status: str, overdue: bool = False
-    ) -> None:
-        open_filters = getattr(self.main_window, "open_event_query_with_filters", None)
-        if not callable(open_filters):
-            return
-        open_filters(
-            event_type="ANOMALY",
-            yyyymm=self._month_key(),
-            status=status,
-            event_scope=event_scope,
-            overdue_only=overdue,
-        )
-
-    def _on_defect_kpi_clicked(self):
-        self.main_window.open_warehouse_nonconforming_tracker()
-
     def refresh_data(self):
-        month_text = QDate.currentDate().toString("yyyy-MM")
-        self._kpi_title.setText(f"本月品質工作台（{month_text}）")
-        defect_count = 0
+        pending_counts = {
+            PROCESSING_LINE_OUTSOURCE: 0,
+            PROCESSING_LINE_MATERIAL: 0,
+            PROCESSING_LINE_UNCLASSIFIED: 0,
+        }
         try:
-            summary = event_service.get_monthly_stats()
-
-            from database.connection import get_connection
-
-            try:
-                with get_connection() as conn:
-                    warehouse_summary = (
-                        warehouse_stats_service.get_warehouse_nonconforming_summary(
-                            conn
-                        )
-                    )
-                    defect_count = int(warehouse_summary.get("open_count", 0))
-            except Exception:
-                logger.exception("讀取不合格品統計失敗")
-                defect_count = 0
-
-            summary = dict(summary)
-            summary["defect_open_count"] = defect_count
-
-            for key, card in self._kpi_cards.items():
-                card.set_value(str(int(summary.get(key, 0))))
+            with get_connection() as conn:
+                pending_counts = (
+                    warehouse_stats_service.get_pending_counts_by_processing_line(conn)
+                )
         except Exception:
-            logger.exception("讀取儀表板摘要失敗")
-            for card in self._kpi_cards.values():
-                card.set_value("-")
+            logger.exception("讀取不合格品統計失敗")
 
-        self._refresh_backlog(defect_count)
+        self._refresh_backlog(pending_counts)
 
-    def _refresh_backlog(self, defect_count: int) -> None:
+    def _refresh_backlog(self, pending_counts: dict[str, int]) -> None:
         """Populate the read-only backlog list from existing services only."""
         try:
             overdue_rows = event_service.list_events(
@@ -303,8 +203,14 @@ class HomeWidget(QWidget):
 
         self._render_backlog_rows(merged[: self._BACKLOG_LIMIT])
 
-        self._warehouse_summary_btn.setText(
-            f"倉庫待處理不合格品：{defect_count} 件　→"
+        self._warehouse_outsource_btn.setText(
+            f"待處理委外加工：{int(pending_counts.get(PROCESSING_LINE_OUTSOURCE, 0))} 件　→"
+        )
+        self._warehouse_material_btn.setText(
+            f"待處理原物料：{int(pending_counts.get(PROCESSING_LINE_MATERIAL, 0))} 件　→"
+        )
+        self._warehouse_unclassified_btn.setText(
+            f"未分流待整理：{int(pending_counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))} 件　→"
         )
 
     def _render_backlog_rows(self, rows: list[dict]) -> None:

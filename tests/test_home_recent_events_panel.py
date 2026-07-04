@@ -1,9 +1,9 @@
-"""Home daily-cockpit tests: four KPI cards + one read-only backlog (待辦) list.
+"""Home daily-cockpit tests: one read-only backlog (待辦) list.
 
 The backlog list replaces the former 70%-empty home. It is read-only: it reads
 existing services and routes through existing navigation, with no new write
-paths. (The retired generic recent-event table / quick-action write panel must
-stay retired.)
+paths. KPI cards and the retired generic recent-event table / quick-action write
+panel must stay retired.
 """
 
 from __future__ import annotations
@@ -43,7 +43,9 @@ def _backlog_row(idx: int, *, supplier: str, status: str = "待處理") -> dict:
 class _DummyMainWindow:
     def __init__(self) -> None:
         self.quick_filter_calls: list[dict[str, str | None]] = []
-        self.warehouse_tracker_calls = 0
+        self.warehouse_outsource_calls = 0
+        self.warehouse_material_calls = 0
+        self.warehouse_unclassified_calls = 0
 
     def refresh_all_views(self) -> None:
         return
@@ -55,7 +57,16 @@ class _DummyMainWindow:
         return
 
     def open_warehouse_nonconforming_tracker(self) -> None:
-        self.warehouse_tracker_calls += 1
+        self.open_warehouse_pending_outsource()
+
+    def open_warehouse_pending_outsource(self) -> None:
+        self.warehouse_outsource_calls += 1
+
+    def open_warehouse_pending_material(self) -> None:
+        self.warehouse_material_calls += 1
+
+    def open_warehouse_unclassified_pending(self) -> None:
+        self.warehouse_unclassified_calls += 1
 
     def open_warehouse_nonconforming_create(self) -> None:
         return
@@ -108,19 +119,13 @@ class HomeCockpitPanelTests(unittest.TestCase):
     def _label_texts(self) -> list[str]:
         return [label.text() for label in self.widget.findChildren(QLabel)]
 
-    def test_home_renders_four_kpi_cards_plus_backlog_panel(self) -> None:
+    def test_home_renders_backlog_panel_without_kpi_cards(self) -> None:
         labels = self._label_texts()
-        self.assertTrue(any(label.startswith("本月品質工作台") for label in labels))
         self.assertNotIn("快速入口", labels)
-
-        expected_kpi_titles = {
-            "逾期未結",
-            "單獨異常",
-            "訪廠發現異常",
-            "倉庫待處理不合格品",
-        }
-        self.assertTrue(expected_kpi_titles.issubset(set(labels)))
-        # 已移除「總異常件數」KPI（其導覽由「單獨異常」卡與事件頁 scope 涵蓋）。
+        self.assertNotIn("逾期未結", labels)
+        self.assertNotIn("單獨異常", labels)
+        self.assertNotIn("訪廠發現異常", labels)
+        self.assertNotIn("倉庫待處理不合格品", labels)
         self.assertNotIn("總異常件數", labels)
 
         kpi_cards = [
@@ -128,9 +133,9 @@ class HomeCockpitPanelTests(unittest.TestCase):
             for frame in self.widget.findChildren(QFrame)
             if frame.property("role") == "kpiCard"
         ]
-        self.assertEqual(4, len(kpi_cards))
-        self.assertIsNotNone(self.widget.findChild(QFrame, "HomeKpiPanel"))
-        # Daily cockpit: exactly one read-only backlog panel below the KPI cards.
+        self.assertEqual(0, len(kpi_cards))
+        self.assertIsNone(self.widget.findChild(QFrame, "HomeKpiPanel"))
+        # Daily cockpit: exactly one read-only backlog panel.
         self.assertIsNotNone(self.widget.findChild(QFrame, "HomeBacklogPanel"))
         self.assertIsNotNone(self.widget.findChild(QTableWidget, "HomeBacklogTable"))
         # Retired surfaces stay retired.
@@ -148,17 +153,21 @@ class HomeCockpitPanelTests(unittest.TestCase):
             for button in self.widget.findChildren(QPushButton)
             if button.text().strip()
         ]
-        # The only home button is the warehouse navigation shortcut (no write actions).
+        # The only home buttons are warehouse navigation shortcuts (no write actions).
         self.assertNotIn("新增異常", button_texts)
         self.assertNotIn("新增訪廠", button_texts)
         self.assertNotIn("基礎資料", button_texts)
-        self.assertTrue(
-            any(text.startswith("倉庫待處理不合格品") for text in button_texts)
-        )
+        self.assertTrue(any(text.startswith("待處理委外加工") for text in button_texts))
+        self.assertTrue(any(text.startswith("待處理原物料") for text in button_texts))
+        self.assertTrue(any(text.startswith("未分流待整理") for text in button_texts))
 
-    def test_warehouse_shortcut_routes_to_tracker(self) -> None:
-        self.widget._warehouse_summary_btn.click()
-        self.assertEqual(1, self.host.warehouse_tracker_calls)
+    def test_warehouse_shortcuts_route_to_formal_lines_and_unclassified_cleanup(self) -> None:
+        self.widget._warehouse_outsource_btn.click()
+        self.widget._warehouse_material_btn.click()
+        self.widget._warehouse_unclassified_btn.click()
+        self.assertEqual(1, self.host.warehouse_outsource_calls)
+        self.assertEqual(1, self.host.warehouse_material_calls)
+        self.assertEqual(1, self.host.warehouse_unclassified_calls)
 
     @patch("services.event_service.list_events")
     def test_backlog_lists_pending_and_row_click_routes(self, mock_list) -> None:
@@ -199,33 +208,17 @@ class HomeCockpitPanelTests(unittest.TestCase):
         self.assertIsNone(self.widget.refresh_data())
         self.assertFalse(hasattr(self.widget, "recent_table"))
 
-    def test_all_kpi_cards_are_clickable_workbench_routes(self) -> None:
-        for key, card in self.widget._kpi_cards.items():
-            with self.subTest(key=key):
+    def test_warehouse_shortcut_buttons_are_clickable_navigation(self) -> None:
+        for button in (
+            self.widget._warehouse_outsource_btn,
+            self.widget._warehouse_material_btn,
+            self.widget._warehouse_unclassified_btn,
+        ):
+            with self.subTest(button=button.objectName()):
                 self.assertEqual(
-                    Qt.CursorShape.PointingHandCursor, card.cursor().shape()
+                    Qt.CursorShape.PointingHandCursor, button.cursor().shape()
                 )
-                self.assertTrue(card.toolTip())
-                self.assertIn(key, self.widget._kpi_click_filters)
-
-        self.widget._kpi_click_filters["visit_open_anomaly_count"]._callback()
-        self.widget._kpi_click_filters["defect_open_count"]._callback()
-
-        self.assertEqual(
-            event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-            self.host.quick_filter_calls[-1]["event_scope"],
-        )
-        self.assertEqual("待處理", self.host.quick_filter_calls[-1]["status"])
-        self.assertEqual(1, self.host.warehouse_tracker_calls)
-
-        # 逾期未結 KPI 下鑽要帶 overdue_only=True（清單與計數一致）。
-        self.widget._kpi_click_filters["overdue_open_anomaly_count"]._callback()
-        overdue_call = self.host.quick_filter_calls[-1]
-        self.assertTrue(overdue_call["overdue_only"])
-        self.assertEqual("待處理", overdue_call["status"])
-        self.assertEqual(
-            event_service.EVENT_SCOPE_ANOMALY_ONLY, overdue_call["event_scope"]
-        )
+                self.assertTrue(button.toolTip())
 
 
 if __name__ == "__main__":

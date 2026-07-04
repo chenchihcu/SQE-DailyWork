@@ -1,17 +1,19 @@
 """In-process embedding controller for the warehouse nonconforming-product module.
 
-Hosts the warehouse create, pending, and history pages inside the SQE DailyWork
-main window's page stack.
+Hosts the warehouse create, two processing-line pending pages, and history page
+inside the SQE DailyWork main window's page stack.
 """
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 logger = logging.getLogger(__name__)
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from ncr.db.database import initialize_database
+from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
 from ncr.ui.defect_form import DefectFormWidget
 from ncr.ui.defect_list import DefectListWidget
 from ncr.ui.ui_style import app_stylesheet
@@ -21,7 +23,8 @@ from ncr.ui.ui_style import app_stylesheet
 NCR_PAGE_OFFSET = 3
 NCR_PAGE_SPECS: list[tuple[str, str, str]] = [
     ("建立不合格品", "建立不合格品", "倉庫實物不合格品連續登錄"),
-    ("待處理不合格品", "待處理不合格品", "未結案倉庫實物不合格品追蹤"),
+    ("待處理委外加工", "待處理委外加工", "未結案委外加工倉庫實物不合格品追蹤"),
+    ("待處理原物料", "待處理原物料", "未結案原物料倉庫實物不合格品追蹤"),
     ("歷史紀錄", "歷史紀錄", "已結案倉庫實物不合格品查詢與溯源"),
 ]
 NCR_NAV_LABELS: list[str] = [spec[0] for spec in NCR_PAGE_SPECS]
@@ -44,11 +47,12 @@ class NcrWorkflowPage(QWidget):
 
 
 class NcrController(QObject):
-    """Owns the NCR DB connection and the three warehouse stack pages."""
+    """Owns the NCR DB connection and the warehouse stack pages."""
 
     CREATE_PAGE_INDEX = 0
-    PENDING_PAGE_INDEX = 1
-    HISTORY_PAGE_INDEX = 2
+    PENDING_OUTSOURCE_PAGE_INDEX = 1
+    PENDING_MATERIAL_PAGE_INDEX = 2
+    HISTORY_PAGE_INDEX = 3
 
     def __init__(self, host_window: QObject, *, lazy_load: bool = False) -> None:
         super().__init__(host_window)
@@ -56,20 +60,46 @@ class NcrController(QObject):
         self.conn = initialize_database()
 
         self.form_widget = DefectFormWidget(self.conn)
-        self.list_widget = DefectListWidget(self.conn, workflow="tracking")
+        self.pending_outsource_widget = DefectListWidget(
+            self.conn,
+            workflow="tracking",
+            processing_line=PROCESSING_LINE_OUTSOURCE,
+        )
+        self.pending_material_widget = DefectListWidget(
+            self.conn,
+            workflow="tracking",
+            processing_line=PROCESSING_LINE_MATERIAL,
+        )
         self.trace_widget = DefectListWidget(self.conn, workflow="trace")
 
         self.create_page = NcrWorkflowPage(self.form_widget, "NcrCreatePage")
-        self.pending_page = NcrWorkflowPage(self.list_widget, "NcrPendingPage")
+        self.pending_outsource_page = NcrWorkflowPage(
+            self.pending_outsource_widget,
+            "NcrPendingOutsourcePage",
+        )
+        self.pending_material_page = NcrWorkflowPage(
+            self.pending_material_widget,
+            "NcrPendingMaterialPage",
+        )
         self.history_page = NcrWorkflowPage(self.trace_widget, "NcrHistoryPage")
-        self._widgets = [self.create_page, self.pending_page, self.history_page]
+        self._widgets = [
+            self.create_page,
+            self.pending_outsource_page,
+            self.pending_material_page,
+            self.history_page,
+        ]
 
         # Compatibility facade for tests or external callers that still access
         # the former consolidated page object.
         self.tracker_page = self.create_page
         self.tracker_page.FORM_TAB_INDEX = self.CREATE_PAGE_INDEX
         self.tracker_page.form_widget = self.form_widget
+        # Compatibility-only alias: the retired generic pending page resolves
+        # to the first formal line. New navigation must use the two line pages.
+        self.list_widget = self.pending_outsource_widget
         self.tracker_page.list_widget = self.list_widget
+        self.tracker_page.pending_outsource_widget = self.pending_outsource_widget
+        self.tracker_page.pending_material_widget = self.pending_material_widget
         self.tracker_page.trace_widget = self.trace_widget
         self.tracker_page.open_create_entry = self.open_create_entry
 
@@ -77,8 +107,15 @@ class NcrController(QObject):
         self.form_widget.saved.connect(self.refresh_all)
         self.form_widget.data_changed.connect(self.refresh_all)
         self.form_widget.status_message.connect(self._on_status_message)
-        self.list_widget.changed.connect(self.refresh_all)
+        self.pending_outsource_widget.changed.connect(self.refresh_all)
+        self.pending_material_widget.changed.connect(self.refresh_all)
         self.trace_widget.changed.connect(self.refresh_all)
+        self.pending_outsource_widget.unclassified_link_requested.connect(
+            self._open_unclassified_cleanup
+        )
+        self.pending_material_widget.unclassified_link_requested.connect(
+            self._open_unclassified_cleanup
+        )
 
         self._has_loaded = False
         if not lazy_load:
@@ -91,7 +128,8 @@ class NcrController(QObject):
         self._has_loaded = True
         self.form_widget.refresh_product_options()
         self.form_widget.refresh_supplier_options()
-        self.list_widget.refresh_data()
+        self.pending_outsource_widget.refresh_data()
+        self.pending_material_widget.refresh_data()
         self.trace_widget.refresh_data()
         # 同步重新整理 SQE DailyWork 的 views（例如首頁品質概況 KPI、統計分析等）
         refresh = getattr(self.host, "refresh_all_views", None)
@@ -104,6 +142,12 @@ class NcrController(QObject):
 
     def open_create_entry(self) -> None:
         self.form_widget.focus_item_no()
+
+    def _open_unclassified_cleanup(self) -> None:
+        """Route the pending-page unclassified link to the host cleanup dialog."""
+        opener = getattr(self.host, "open_warehouse_unclassified_pending", None)
+        if callable(opener):
+            opener()
 
     def confirm_can_leave(self, local_index: int) -> bool:
         """Prompt before leaving the create page when the form is dirty."""

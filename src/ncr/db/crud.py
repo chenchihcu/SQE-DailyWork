@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 TABLE_COLUMNS = (
     "defect_no",
     "event_date",
+    "processing_line",
     "return_slip_type",
     "work_order_no",
     "internal_work_order_no",
@@ -31,6 +32,7 @@ _INSERT_PLACEHOLDERS = ", ".join("?" for _ in TABLE_COLUMNS)
 _INSERT_COLUMNS = ", ".join(TABLE_COLUMNS)
 _EDITABLE_COLUMNS = (
     "event_date",
+    "processing_line",
     "return_slip_type",
     "work_order_no",
     "internal_work_order_no",
@@ -72,6 +74,7 @@ def get_defects(
             id,
             defect_no,
             event_date,
+            processing_line,
             return_slip_type,
             work_order_no,
             internal_work_order_no,
@@ -96,6 +99,9 @@ def get_defects(
     if filters.get("month"):
         conditions.append("strftime('%Y-%m', event_date) = ?")
         params.append(filters["month"])
+    if filters.get("processing_line"):
+        conditions.append("processing_line = ?")
+        params.append(filters["processing_line"])
     if filters.get("work_order_no"):
         conditions.append("(work_order_no LIKE ? OR internal_work_order_no LIKE ? OR transfer_slip_no LIKE ?)")
         search_val = f"%{filters['work_order_no'].strip()}%"
@@ -133,6 +139,7 @@ def get_defect_by_id(
             id,
             defect_no,
             event_date,
+            processing_line,
             return_slip_type,
             work_order_no,
             internal_work_order_no,
@@ -461,4 +468,3 @@ def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
         logger.exception("刪除產品 ID=%s 失敗", product_id)
         conn.rollback()
         raise
-

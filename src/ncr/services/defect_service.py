@@ -8,6 +8,7 @@ from ncr.db import crud
 from ncr.models.defect import (
     CATEGORY_OPTIONS,
     DISPOSITION_OPTIONS,
+    PROCESSING_LINE_OPTIONS,
     RESPONSIBILITY_OPTIONS,
     RETURN_SLIP_TYPE_OPTIONS,
     STATUS_OPTIONS,
@@ -17,6 +18,7 @@ from ncr.models.labels import (
     LABEL_DEFECT_DESC,
     LABEL_DISPOSITION,
     LABEL_ITEM_NO,
+    LABEL_PROCESSING_LINE,
     LABEL_QTY,
     LABEL_RESPONSIBILITY,
     LABEL_RETURN_SLIP_TYPE,
@@ -52,6 +54,7 @@ def validate_defect_data(
         raise ValueError(VALIDATION_EVENT_DATE_FUTURE)
     event_date = event_date_obj.isoformat()
     return_slip_type = str(data.get("return_slip_type", "")).strip()
+    processing_line = str(data.get("processing_line", "")).strip()
     work_order_no = str(data.get("work_order_no", "")).strip()
     internal_work_order_no = str(data.get("internal_work_order_no", "")).strip()
     transfer_slip_no = str(data.get("transfer_slip_no", "")).strip()
@@ -67,6 +70,8 @@ def validate_defect_data(
 
     if not return_slip_type:
         raise ValueError(VALIDATION_REQUIRED.format(LABEL_RETURN_SLIP_TYPE))
+    if not processing_line:
+        raise ValueError(VALIDATION_REQUIRED.format(LABEL_PROCESSING_LINE))
     # 委外製令 / 廠內製令 are optional free-text fields: blank or any value is accepted.
     if not item_no:
         raise ValueError(VALIDATION_REQUIRED.format(LABEL_ITEM_NO))
@@ -88,6 +93,8 @@ def validate_defect_data(
         raise ValueError(VALIDATION_OPTION_INVALID.format(LABEL_CATEGORY))
     if return_slip_type not in RETURN_SLIP_TYPE_OPTIONS:
         raise ValueError(VALIDATION_OPTION_INVALID.format(LABEL_RETURN_SLIP_TYPE))
+    if processing_line not in PROCESSING_LINE_OPTIONS:
+        raise ValueError(VALIDATION_OPTION_INVALID.format(LABEL_PROCESSING_LINE))
     if require_status_default and not status:
         status = STATUS_OPTIONS[0]
     if status not in STATUS_OPTIONS:
@@ -100,6 +107,7 @@ def validate_defect_data(
     return {
         "event_date": event_date,
         "return_slip_type": return_slip_type,
+        "processing_line": processing_line,
         "work_order_no": work_order_no,
         "internal_work_order_no": internal_work_order_no,
         "transfer_slip_no": transfer_slip_no,

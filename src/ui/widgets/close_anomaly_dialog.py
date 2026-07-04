@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QDateEdit,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -48,19 +49,41 @@ IMPROVEMENT_DESC_MAX_LEN = 1000
 
 # ── CloseAnomalyDialog ─────────────────────────────────────────────────────
 class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
-    def __init__(self, anomaly_id: str, problem_desc: str, parent=None):
+    def __init__(
+        self,
+        anomaly_id: str,
+        problem_desc: str,
+        parent=None,
+        *,
+        date_adjustment_only: bool = False,
+    ):
         super().__init__(parent)
         self.anomaly_id = anomaly_id
         self.problem_desc = problem_desc
-        self.setWindowTitle("異常結案")
+        self.date_adjustment_only = date_adjustment_only
+        self.setWindowTitle("調整結案日期" if date_adjustment_only else "異常結案")
         self.setMinimumWidth(720)
         self.setMaximumWidth(FORM_MAX_WIDTH)
         
         # 取得異常詳情以設定預設的原因分類 (與原先 category 一致)
+        self.detail: dict = {}
         self.initial_category = ""
+        self.initial_anomaly_date = ""
+        self.initial_closed_at = ""
+        self.initial_improvement_desc = ""
+        self.initial_closed_by = ""
+        self.initial_root_cause_category = ""
         try:
             detail = event_service.get_anomaly_detail(self.anomaly_id)
-            self.initial_category = detail.get("category", "")
+            self.detail = detail
+            self.initial_category = str(detail.get("category") or "")
+            self.initial_anomaly_date = str(detail.get("anomaly_date") or "")
+            self.initial_closed_at = str(detail.get("closed_at") or "")
+            self.initial_improvement_desc = str(detail.get("improvement_desc") or "")
+            self.initial_closed_by = str(detail.get("closed_by") or "")
+            self.initial_root_cause_category = str(
+                detail.get("root_cause_category") or ""
+            )
         except Exception:
             logger.exception("Failed to get initial category for anomaly %s", self.anomaly_id)
 
@@ -90,15 +113,40 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
 
         self.closer_input = QLineEdit()
         self.closer_input.setPlaceholderText("請輸入結案人員姓名（必填）")
+        if self.initial_closed_by:
+            self.closer_input.setText(self.initial_closed_by)
 
         self.root_cause_combo = QComboBox()
         self.root_cause_combo.setEditable(True)
         for option in ROOT_CAUSE_CATEGORY_OPTIONS:
             self.root_cause_combo.addItem(option)
-        if self.initial_category:
-            set_combo_current_text(self.root_cause_combo, self.initial_category)
+        initial_root_cause = self.initial_root_cause_category or self.initial_category
+        if initial_root_cause:
+            set_combo_current_text(self.root_cause_combo, initial_root_cause)
+
+        self.closed_at_input = QDateEdit()
+        self.closed_at_input.setDisplayFormat("yyyy-MM-dd")
+        self.closed_at_input.setCalendarPopup(True)
+        self.closed_at_input.setMaximumDate(QDate.currentDate())
+        initial_anomaly_qdate = QDate.fromString(self.initial_anomaly_date, "yyyy-MM-dd")
+        if initial_anomaly_qdate.isValid():
+            self.closed_at_input.setMinimumDate(initial_anomaly_qdate)
+        initial_close_qdate = QDate.fromString(self.initial_closed_at, "yyyy-MM-dd")
+        if initial_close_qdate.isValid():
+            self.closed_at_input.setDate(initial_close_qdate)
+        else:
+            self.closed_at_input.setDate(QDate.currentDate())
+
+        if self.initial_improvement_desc:
+            self.improvement_input.setPlainText(self.initial_improvement_desc)
+        if self.date_adjustment_only:
+            self.improvement_input.setReadOnly(True)
+            self.closer_input.setReadOnly(True)
+            self.root_cause_combo.setEnabled(False)
 
         self.attachment_editor = AttachmentEditor(self)
+        if self.date_adjustment_only:
+            self.attachment_editor.setEnabled(False)
 
         self.tabs = QTabWidget()
 
@@ -109,6 +157,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         form = QFormLayout()
         form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
         form.addRow("", self.improvement_counter)
+        form.addRow(RequiredFieldLabel("結案日期"), self.closed_at_input)
         form.addRow(
             make_paired_form_row(
                 "CloseAnomalyCloserCauseRow",
@@ -142,12 +191,14 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
 
         self.improvement_input.textChanged.connect(self._update_validation)
         self.closer_input.textChanged.connect(self._update_validation)
+        self.closed_at_input.dateChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.improvement_input.textChanged,
             self.closer_input.textChanged,
             self.root_cause_combo.currentTextChanged,
+            self.closed_at_input.dateChanged,
             self.attachment_editor.add_button.clicked,
             self.attachment_editor.remove_button.clicked,
         ])
@@ -160,11 +211,16 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             f"{length} / {IMPROVEMENT_DESC_MAX_LEN}"
         )
         set_tone(self.improvement_counter, "danger" if over_limit else "normal")
-        valid = (
-            bool(text.strip())
-            and not over_limit
-            and bool(self.closer_input.text().strip())
-        )
+        date_valid = self.closed_at_input.date().isValid()
+        if self.date_adjustment_only:
+            valid = date_valid
+        else:
+            valid = (
+                bool(text.strip())
+                and not over_limit
+                and bool(self.closer_input.text().strip())
+                and date_valid
+            )
         if self._save_button is not None:
             self._save_button.setEnabled(valid)
 
@@ -172,22 +228,31 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         text = self.improvement_input.toPlainText().strip()
         closer = self.closer_input.text().strip()
         root_cause = self.root_cause_combo.currentText().strip()
+        closed_at = self.closed_at_input.date().toString("yyyy-MM-dd")
         try:
-            event_service.close_anomaly(
-                self.anomaly_id,
-                text,
-                closed_by=closer,
-                root_cause_category=root_cause,
-            )
-            self.attachment_editor.save_to_anomaly(self.anomaly_id)
-            if self.attachment_editor._last_rename_failures:
-                QMessageBox.warning(
-                    self,
-                    "附件改名失敗",
-                    "以下附件改名未成功，檔名可能維持原狀：\n"
-                    + "\n".join(self.attachment_editor._last_rename_failures),
+            if self.date_adjustment_only:
+                event_service.update_anomaly_closed_at(
+                    self.anomaly_id,
+                    closed_at=closed_at,
                 )
-            QMessageBox.information(self, "成功", localize_popup_message("異常已結案"))
+                QMessageBox.information(self, "成功", "結案日期已更新")
+            else:
+                event_service.close_anomaly(
+                    self.anomaly_id,
+                    text,
+                    closed_by=closer,
+                    root_cause_category=root_cause,
+                    closed_at=closed_at,
+                )
+                self.attachment_editor.save_to_anomaly(self.anomaly_id)
+                if self.attachment_editor._last_rename_failures:
+                    QMessageBox.warning(
+                        self,
+                        "附件改名失敗",
+                        "以下附件改名未成功，檔名可能維持原狀：\n"
+                        + "\n".join(self.attachment_editor._last_rename_failures),
+                    )
+                QMessageBox.information(self, "成功", localize_popup_message("異常已結案"))
             self._dirty = False
             self.accept()
         except ValueError as exc:

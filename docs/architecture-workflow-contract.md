@@ -27,6 +27,11 @@ shared master-data area.
 5. ERP/Excel master imports update only shared master data plus import audit
    rows. They must not create visits, anomalies, visit defect notes, or warehouse
    defect records.
+6. Warehouse pending workflow split is data-backed by
+   `defect_records.processing_line`, not by labels, hidden UI filters,
+   `category`, or `return_slip_type`. Runtime values are `原物料`, `委外加工`, and
+   migrated/cleanup-only `未分流`. New and edited rows must save as `原物料` or
+   `委外加工`; existing rows default to `未分流` until a user classifies them.
 
 ## UI Entrypoint And Folder Boundaries
 
@@ -35,7 +40,7 @@ shared master-data area.
   domain group headers (text labels) — 供應商事件, 倉庫不合格品, 系統 — organize
   首頁 (overview) plus the supplier-event scopes (單獨異常 / 訪廠發現異常 /
   訪廠紀錄 / 已結案) and 異常事件統計; 倉庫不合格品 holds 建立不合格品 /
-  待處理不合格品 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. The four
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. The four
   supplier-event scopes are first-class sidebar rows (deep-linking into the single
   事件管理 page and setting its scope via `EventListWidget.set_event_scope`), not
   an in-page scope tab bar.
@@ -43,16 +48,20 @@ shared master-data area.
   `("scope", EVENT_SCOPE_*)`); `MainWindow._PAGE_KEY_TO_INDEX` maps PAGE_KEY to the
   stack index, so the sidebar stays decoupled from stack indexes.
 - Sidebar page indexes and stack routing are `0 首頁 / 1 事件管理 / 2 異常事件統計
-  / 3 建立不合格品 / 4 待處理不合格品 / 5 歷史紀錄 / 6 不合格品統計分析 /
-  7 基礎資料` (NCR offset 3). When indexes change, update the
+  / 3 建立不合格品 / 4 待處理委外加工 / 5 待處理原物料 / 6 歷史紀錄 /
+  7 不合格品統計分析 / 8 基礎資料` (NCR offset 3). When indexes change, update the
   index constants, legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`),
   `ncr.embed.NCR_PAGE_OFFSET`, and the affected tests in the same change.
 - Warehouse nonconforming-product tracking stays under the embedded `src/ncr/`
-  workflow and exposes create, pending, and history as first-class shell pages.
-  Do not add an outer launcher layer or duplicate warehouse data workflows.
+  workflow and exposes create, two formal pending processing-line pages, and
+  history as first-class shell pages. The old generic pending route may only be
+  retained as compatibility alias and must not be used by new navigation.
 - Supplier and warehouse sidebar badges are read-only status indicators. They
   must not create cross-line writes or merge supplier-event and warehouse
   statistics.
+- Warehouse pending badges count exactly `status <> '已結案' AND processing_line =
+  <formal line>`. `未分流` records are surfaced as cleanup/to-do warnings, not
+  merged into either formal badge or treated as a guessed line.
 - Runtime data, generated reports, and visual/debug artifacts stay in `data/`,
   `Outputs/`, `scratch/`, or the ignored root runtime `ncr/data/`; durable
   project guidance belongs in `docs/`.
@@ -63,6 +72,9 @@ shared master-data area.
 
 - Supplier event statistics query supplier-event tables and must be labeled as
   supplier-event analysis.
+- Supplier anomaly closure statistics use `anomalies.closed_at` as the
+  user-selected closure date; charts, lists, exports, and monthly cache refresh
+  must stay aligned to that single source of truth.
 - Warehouse nonconforming-product statistics query `defect_records` and must be
   labeled as warehouse physical nonconforming-product analysis.
 - A combined quality metric is allowed only when the UI explicitly separates the
@@ -84,6 +96,9 @@ After each change, verify:
 
 - no cross-line writes were introduced
 - visible copy names the correct workflow source
+- workflow splits define their data source, route/page key, badge/count query,
+  legacy-data handling, tests, and docs; label-only or hidden-filter splits are
+  not sufficient
 - folder placement matches the owning workflow or documentation index
 - focused tests cover the affected boundary
 - `scripts/verify.ps1` passes for source, script, UI, data-boundary, and

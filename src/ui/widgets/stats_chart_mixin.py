@@ -461,7 +461,7 @@ class _StatsChartMixin:
             (
                 f"月份：{row['yyyymm']}\n"
                 f"新增件數：{row['total_count']}\n"
-                f"結案件數：{row['closed_count']}\n"
+                f"結案件數（依結案日期）：{row['closed_count']}\n"
                 f"未結案件數 (累積)：{row['backlog_count']}\n"
                 f"當月結案率：{rate:.1f}%"
             ),

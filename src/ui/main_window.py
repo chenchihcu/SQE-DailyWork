@@ -6,6 +6,7 @@ import sys
 logger = logging.getLogger(__name__)
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
     QHBoxLayout,
     QMainWindow,
@@ -19,8 +20,15 @@ from app_version import APP_TITLE
 from database.connection import get_connection
 from services import event_service
 from ncr.db.database import DatabaseMigrationError
+from ncr.models.defect import (
+    PROCESSING_LINE_MATERIAL,
+    PROCESSING_LINE_OUTSOURCE,
+    PROCESSING_LINE_UNCLASSIFIED,
+)
 from ncr.embed import NCR_PAGE_OFFSET, NCR_PAGE_SPECS, NcrController
 import ncr.services.stats_service as ncr_stats_service
+from ncr.ui.defect_list import DefectListWidget as NcrDefectListWidget
+from ncr.ui.ui_style import app_stylesheet as ncr_app_stylesheet
 from ui.layout_constants import (
     MAIN_WINDOW_DEFAULT_HEIGHT,
     MAIN_WINDOW_DEFAULT_WIDTH,
@@ -37,6 +45,8 @@ from ui.sidebar_nav import (
     PAGE_NCR_CREATE,
     PAGE_NCR_HISTORY,
     PAGE_NCR_PENDING,
+    PAGE_NCR_PENDING_MATERIAL,
+    PAGE_NCR_PENDING_OUTSOURCE,
     PAGE_NCR_STATS,
     PAGE_STATS,
     SidebarNav,
@@ -57,8 +67,12 @@ EVENT_PAGE_INDEX = 1
 STATS_PAGE_INDEX = 2
 NCR_PAGE_COUNT = len(NCR_PAGE_SPECS)
 NCR_ENTRY_PAGE_INDEX = NCR_PAGE_OFFSET + 0
-NCR_TRACKING_PAGE_INDEX = NCR_PAGE_OFFSET + 1
-NCR_TRACE_PAGE_INDEX = NCR_PAGE_OFFSET + 2
+NCR_PENDING_OUTSOURCE_PAGE_INDEX = NCR_PAGE_OFFSET + 1
+NCR_PENDING_MATERIAL_PAGE_INDEX = NCR_PAGE_OFFSET + 2
+NCR_TRACE_PAGE_INDEX = NCR_PAGE_OFFSET + 3
+# Compatibility alias: the retired generic pending route lands on the first
+# formal processing line. New navigation must use the two explicit page keys.
+NCR_TRACKING_PAGE_INDEX = NCR_PENDING_OUTSOURCE_PAGE_INDEX
 NCR_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
 MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
@@ -84,6 +98,8 @@ _PAGE_KEY_TO_INDEX = {
     PAGE_NCR: NCR_TRACKING_PAGE_INDEX,
     PAGE_NCR_CREATE: NCR_ENTRY_PAGE_INDEX,
     PAGE_NCR_PENDING: NCR_TRACKING_PAGE_INDEX,
+    PAGE_NCR_PENDING_OUTSOURCE: NCR_PENDING_OUTSOURCE_PAGE_INDEX,
+    PAGE_NCR_PENDING_MATERIAL: NCR_PENDING_MATERIAL_PAGE_INDEX,
     PAGE_NCR_HISTORY: NCR_TRACE_PAGE_INDEX,
     PAGE_NCR_STATS: NCR_STATS_PAGE_INDEX,
     PAGE_MASTER: MASTER_PAGE_INDEX,
@@ -158,6 +174,7 @@ class MainWindow(QMainWindow):
         except (DatabaseMigrationError, sqlite3.Error) as exc:
             self.ncr = None
             self._insert_ncr_placeholders(str(exc))
+        self.home_widget.refresh_data()
 
         # ── 不合格品統計（索引 6）──
         self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self.ncr_stats_widget)
@@ -326,8 +343,42 @@ class MainWindow(QMainWindow):
             self.refresh_all_views()
 
     def open_warehouse_nonconforming_tracker(self) -> None:
-        """切換至嵌入式倉庫待處理不合格品頁（同一視窗內）。"""
-        self._switch_primary_page(NCR_HOME_PAGE_INDEX)
+        """Compatibility route for older callers; opens the outsource pending line."""
+        self.open_warehouse_pending_outsource()
+
+    def open_warehouse_pending_outsource(self) -> None:
+        """切換至嵌入式倉庫待處理委外加工頁（同一視窗內）。"""
+        self._switch_primary_page(NCR_PENDING_OUTSOURCE_PAGE_INDEX)
+
+    def open_warehouse_pending_material(self) -> None:
+        """切換至嵌入式倉庫待處理原物料頁（同一視窗內）。"""
+        self._switch_primary_page(NCR_PENDING_MATERIAL_PAGE_INDEX)
+
+    def open_warehouse_unclassified_pending(self) -> None:
+        """Open migrated warehouse records that still need a formal processing line."""
+        if self.ncr is None:
+            QMessageBox.warning(self, "倉庫模組未載入", "目前無法開啟未分流待整理清單。")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("未分流待整理")
+        dialog.setStyleSheet(ncr_app_stylesheet())
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(8, 12, 8, 8)
+        widget = NcrDefectListWidget(
+            self.ncr.conn,
+            dialog,
+            workflow="tracking",
+            processing_line=PROCESSING_LINE_UNCLASSIFIED,
+        )
+        widget.changed.connect(self.refresh_all_views)
+        layout.addWidget(widget)
+        dialog.resize(1100, 680)
+        dialog.exec()
+        # 整理後同步刷新倉庫清單頁(含待處理頁的未分流提示計數)與其餘 views。
+        if self.ncr is not None:
+            self.ncr.refresh_all()
+        else:
+            self.refresh_all_views()
 
     def open_warehouse_nonconforming_create(self) -> None:
         """切換至嵌入式倉庫不合格品建立表單。"""
@@ -355,12 +406,15 @@ class MainWindow(QMainWindow):
         self.sidebar.set_badge(("scope", event_service.EVENT_SCOPE_ANOMALY_ONLY), count)
         try:
             with get_connection() as conn:
-                warehouse_summary = ncr_stats_service.get_warehouse_nonconforming_summary(conn)
-            warehouse_count = int(warehouse_summary.get("open_count", 0))
+                warehouse_counts = ncr_stats_service.get_pending_counts_by_processing_line(conn)
+            outsource_count = int(warehouse_counts.get(PROCESSING_LINE_OUTSOURCE, 0))
+            material_count = int(warehouse_counts.get(PROCESSING_LINE_MATERIAL, 0))
         except Exception:
             logger.exception("重新整理倉庫徽章失敗")
-            warehouse_count = 0
-        self.sidebar.set_badge(("page", PAGE_NCR_PENDING), warehouse_count)
+            outsource_count = 0
+            material_count = 0
+        self.sidebar.set_badge(("page", PAGE_NCR_PENDING_OUTSOURCE), outsource_count)
+        self.sidebar.set_badge(("page", PAGE_NCR_PENDING_MATERIAL), material_count)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

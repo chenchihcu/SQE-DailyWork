@@ -132,4 +132,17 @@ Fix: Add a read-only `root_cause_display` field to `NewAnomalyDialog` for closed
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_anomaly_category_dropdown.py`
 
+Date: 2026-07-04
+Task: Align user-selected anomaly closure dates with event lists and trend charts.
+Changes: Added a `結案日期` date picker to `CloseAnomalyDialog`, added a closed-date adjustment action for already closed anomalies, exposed `結案日期` in supplier-event anomaly lists, and documented that `anomalies.closed_at` is the single source for closure-date statistics.
+Impact: Users can choose and later correct the closure date without reopening an anomaly; event-list preview, monthly cache, and the supplier-event trend chart now share the same `closed_at` source.
+Verification: `pytest tests/test_event_manage_actions.py tests/test_anomaly_trend_by_range.py tests/test_event_list_widget_render_stability.py tests/test_event_action_menu_consistency.py tests/test_anomaly_category_dropdown.py -q` passed; `pytest tests/test_stats_view_anomaly_chart.py tests/test_form_field_pairing_layout.py tests/test_form_inline_validation_and_dirty.py -q` passed; `python -m compileall -q main.py src scripts tests` passed; read-only DB parity probe passed; `scripts/qt_visual_probe.py --target stats-stress` passed; `scripts/verify.ps1` timed out after 5 minutes.
+Residual risk: Full repo gate completion remains unverified because `scripts/verify.ps1` timed out.
+Next action: Re-run `scripts/verify.ps1` with a longer external timeout before release if full-gate evidence is required.
+Debug/RCA (when applicable):
+Observed: The trend chart grouped closed counts by `closed_at`, but the close dialog did not expose a user-selectable closure date and event lists did not preview the field.
+Root cause: `repository.close_anomaly()` supported `closed_at`, while `CloseAnomalyDialog` and `event_service.close_anomaly()` omitted it and relied on repository defaulting.
+Fix: Pass user-selected `closed_at` through the close path, add a closed-date-only adjustment path, and add list/chart/documentation parity checks.
+Harness update needed: no
+Destination: `tests/test_event_manage_actions.py`, `tests/test_anomaly_trend_by_range.py`, `tests/test_event_list_widget_render_stability.py`, `tests/test_anomaly_category_dropdown.py`, `docs/harness/closed-loop-log.md`
 

@@ -40,6 +40,7 @@ class DefectListEditDialogTests(unittest.TestCase):
         self.conn = self._create_memory_connection()
         payload = {
             "event_date": "2026-04-14",
+            "processing_line": "原物料",
             "return_slip_type": "廠內退料",
             "work_order_no": "5102-260414001",
             "item_no": "ITEM-1001",

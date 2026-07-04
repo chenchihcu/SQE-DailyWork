@@ -31,10 +31,19 @@ from ncr.ui.supplier_combo_utils import (
     block_signals,
     load_supplier_names_by_category,
 )
-from ncr.models.defect import LIST_FIELD_ORDER, LIST_HEADERS, STATUS_OPTIONS
+from ncr.models.defect import (
+    LIST_FIELD_ORDER,
+    LIST_HEADERS,
+    PROCESSING_LINE_MATERIAL,
+    PROCESSING_LINE_OUTSOURCE,
+    PROCESSING_LINE_STORAGE_OPTIONS,
+    PROCESSING_LINE_UNCLASSIFIED,
+    STATUS_OPTIONS,
+)
 from ncr.models.labels import (
     HINT_EMPTY_RESULT,
     HINT_OPEN_CASES_SCOPE,
+    HINT_PROCESSING_LINE_SCOPE,
     HINT_CLOSED_CASES_SCOPE,
     HINT_CLOSED_CASES_MONTH_SCOPE,
     HINT_RESET_FILTER,
@@ -48,7 +57,7 @@ from ncr.models.labels import (
     LABEL_SUPPLIER_NAME,
     MSG_DELETE_CONFIRM,
 )
-from ncr.services import export_service
+from ncr.services import export_service, stats_service
 from ncr.ui.defect_form import DefectEditDialog
 from ncr.ui.ui_style import (
     ACTION_BUTTON_MIN_WIDTH,
@@ -85,6 +94,7 @@ STATUS_COLUMN = LIST_FIELD_ORDER.index("status")
 DISPOSITION_COLUMN = LIST_FIELD_ORDER.index("disposition")
 QTY_COLUMN = LIST_FIELD_ORDER.index("qty")
 EVENT_DATE_COLUMN = LIST_FIELD_ORDER.index("event_date")
+PROCESSING_LINE_COLUMN = LIST_FIELD_ORDER.index("processing_line")
 RETURN_SLIP_TYPE_COLUMN = LIST_FIELD_ORDER.index("return_slip_type")
 DEFECT_NO_COLUMN = LIST_FIELD_ORDER.index("defect_no")
 WORK_ORDER_COLUMN = LIST_FIELD_ORDER.index("work_order_no")
@@ -101,6 +111,9 @@ RESPONSIBILITY_COLUMN = LIST_FIELD_ORDER.index("responsibility")
 class DefectListWidget(QWidget):
     changed = Signal()
     data_changed = Signal()
+    # Emitted when the user clicks the「另有 N 筆未分流待整理」link on a formal
+    # processing-line pending page; the host wires this to open the cleanup list.
+    unclassified_link_requested = Signal()
 
     def __init__(
         self,
@@ -108,6 +121,7 @@ class DefectListWidget(QWidget):
         parent: QWidget | None = None,
         *,
         workflow: str = "combined",
+        processing_line: str | None = None,
     ):
         super().__init__(parent)
         if workflow not in VALID_WORKFLOWS:
@@ -115,8 +129,14 @@ class DefectListWidget(QWidget):
                 f"Unsupported DefectListWidget workflow: {workflow!r}. "
                 f"Expected one of: {', '.join(sorted(VALID_WORKFLOWS))}."
             )
+        if processing_line is not None and processing_line not in PROCESSING_LINE_STORAGE_OPTIONS:
+            raise ValueError(
+                f"Unsupported processing_line: {processing_line!r}. "
+                f"Expected one of: {', '.join(PROCESSING_LINE_STORAGE_OPTIONS)}."
+            )
         self.conn = conn
         self.workflow = workflow
+        self.processing_line = processing_line
         self.open_results: list[sqlite3.Row] = []
         self.closed_results: list[sqlite3.Row] = []
         self.current_page = 1
@@ -236,6 +256,41 @@ class DefectListWidget(QWidget):
         filter_grid.addLayout(button_layout, 1, 4, 1, 2)
 
         main_layout.addLayout(filter_grid)
+
+        self.processing_line_scope_notice = make_notice_label("", role="compactNotice")
+        self.processing_line_scope_notice.setWordWrap(False)
+        if self.processing_line:
+            self.processing_line_scope_notice.setText(
+                f"目前頁面固定處理線：{self.processing_line}（未結案，不限月份）"
+            )
+            self.processing_line_scope_notice.show()
+        else:
+            self.processing_line_scope_notice.hide()
+        main_layout.addWidget(self.processing_line_scope_notice)
+
+        # 未分流待整理提示連結:只在兩條正式處理線的待處理頁出現。當仍有「未分流 +
+        # 未結案」紀錄時顯示「另有 N 筆未分流待整理 →」,點擊導向整理清單,避免
+        # 遷移/匯入產生的未分流資料被誤認為遺失(discoverability 缺口)。
+        self.unclassified_link_button: QPushButton | None = None
+        if self.workflow == "tracking" and self.processing_line in (
+            PROCESSING_LINE_MATERIAL,
+            PROCESSING_LINE_OUTSOURCE,
+        ):
+            self.unclassified_link_button = QPushButton("")
+            self.unclassified_link_button.setObjectName("UnclassifiedCleanupLink")
+            set_button_role(self.unclassified_link_button, "utility")
+            self.unclassified_link_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.unclassified_link_button.setToolTip("開啟未分流待整理清單")
+            self.unclassified_link_button.setAccessibleName("未分流待整理連結")
+            self.unclassified_link_button.clicked.connect(
+                self.unclassified_link_requested.emit
+            )
+            self.unclassified_link_button.hide()
+            link_row = QHBoxLayout()
+            link_row.setContentsMargins(0, 0, 0, 0)
+            link_row.addWidget(self.unclassified_link_button)
+            link_row.addStretch(1)
+            main_layout.addLayout(link_row)
 
         # Summary and actions are split so status text cannot force all buttons
         # off-screen on smaller displays.
@@ -373,6 +428,7 @@ class DefectListWidget(QWidget):
 
         preferred_widths = {
             DEFECT_NO_COLUMN: 170,
+            PROCESSING_LINE_COLUMN: 110,
             RETURN_SLIP_TYPE_COLUMN: 120,
             WORK_ORDER_COLUMN: 140,
             INTERNAL_WORK_ORDER_COLUMN: 140,
@@ -401,6 +457,8 @@ class DefectListWidget(QWidget):
         status = self.status_combo.currentText()
         if self.workflow == "combined" and status and status != "全部":
             filters["status"] = status
+        if self.processing_line:
+            filters["processing_line"] = self.processing_line
         return filters
 
     @property
@@ -451,6 +509,23 @@ class DefectListWidget(QWidget):
         active_count = len(self._get_active_results())
         self.export_button.setEnabled(active_count > 0)
         self._update_scope_notices(filters, open_count + closed_count)
+        self._update_unclassified_hint()
+
+    def _update_unclassified_hint(self) -> None:
+        """Surface any lingering unclassified backlog on formal-line pending pages."""
+        button = self.unclassified_link_button
+        if button is None:
+            return
+        try:
+            counts = stats_service.get_pending_counts_by_processing_line(self.conn)
+            pending_unclassified = int(counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))
+        except sqlite3.Error:
+            pending_unclassified = 0
+        if pending_unclassified > 0:
+            button.setText(f"另有 {pending_unclassified} 筆未分流待整理　→")
+            button.setVisible(True)
+        else:
+            button.setVisible(False)
 
     def update_display(self) -> None:
         active_results = self._get_active_results()
@@ -519,7 +594,12 @@ class DefectListWidget(QWidget):
 
     def _update_scope_notices(self, filters: dict[str, str], result_count: int) -> None:
         if self.workflow == "tracking":
-            self.month_scope_notice.setText(HINT_OPEN_CASES_SCOPE)
+            if self.processing_line:
+                self.month_scope_notice.setText(
+                    f"{HINT_OPEN_CASES_SCOPE}；{HINT_PROCESSING_LINE_SCOPE.format(self.processing_line)}"
+                )
+            else:
+                self.month_scope_notice.setText(HINT_OPEN_CASES_SCOPE)
         elif self.workflow == "trace":
             month_value = filters.get("month", self.month_edit.date().toString("yyyy-MM"))
             if self._uses_month_filter():

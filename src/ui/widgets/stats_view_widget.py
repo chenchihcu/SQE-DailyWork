@@ -142,7 +142,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         )
 
         self.info_banner = self._create_info_banner(
-            "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；圖表只呈現供應商事件，不包含倉庫不合格品。",
+            "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；結案件數依使用者選定的結案日期歸月；圖表不包含倉庫不合格品。",
             "協助 SQE 追蹤月度趨勢、責任人負荷與高風險供應商，並將倉庫統計維持在「不合格品統計分析」頁。"
         )
         scroll_layout.addWidget(self.info_banner)

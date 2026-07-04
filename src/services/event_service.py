@@ -494,6 +494,7 @@ def close_anomaly(
     *,
     closed_by: str = "",
     root_cause_category: str = "",
+    closed_at: str | None = None,
 ) -> None:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
@@ -507,6 +508,18 @@ def close_anomaly(
             improvement_desc=improvement_desc,
             closed_by=closed_by,
             root_cause_category=root_cause_category,
+            closed_at=closed_at,
+        )
+
+
+def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> None:
+    if not (anomaly_id or "").strip():
+        raise ValueError("Anomaly id is required")
+    with get_connection() as conn:
+        repository.update_anomaly_closed_at(
+            conn,
+            anomaly_id=anomaly_id,
+            closed_at=closed_at,
         )
 
 

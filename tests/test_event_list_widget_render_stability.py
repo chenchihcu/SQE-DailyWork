@@ -77,6 +77,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "content": "問題-0",
                 "status": "待處理",
                 "category": "尺寸不符",
+                "closed_at": "",
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -93,6 +94,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "content": "摘要-1",
                 "status": "已完成",
                 "category": "",
+                "closed_at": None,
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -107,8 +109,9 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "work_order_no": "WO-003",
                 "production_qty": 8,
                 "content": None,
-                "status": "待處理",
+                "status": "已結案",
                 "category": "文件/SOP不足",
+                "closed_at": "2026-04-20",
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -125,6 +128,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 "content": "問題-3",
                 "status": None,
                 "category": None,
+                "closed_at": None,
                 "linked_visit_date": None,
                 "linked_visit_id": None,
             },
@@ -136,10 +140,21 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             for idx in range(self.widget.table.columnCount())
         ]
 
-    def test_table_headers_match_template_nine_columns(self) -> None:
-        self.assertEqual(9, self.widget.table.columnCount())
+    def test_table_headers_match_template_ten_columns(self) -> None:
+        self.assertEqual(10, self.widget.table.columnCount())
         self.assertEqual(
-            ["異常單號", "異常類別", "供應商", "品名", "料號", "階段", "問題/摘要", "缺失紀錄", "狀態"],
+            [
+                "異常單號",
+                "異常類別",
+                "供應商",
+                "品名",
+                "料號",
+                "階段",
+                "問題/摘要",
+                "缺失紀錄",
+                "狀態",
+                "結案日期",
+            ],
             self._headers(),
         )
 
@@ -180,7 +195,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _label, scope, _t in EVENT_QUERY_SCOPE_TABS:
             self.widget.set_event_scope(scope)
             self._drain_events()
-            self.assertEqual(9, self.widget.table.columnCount())
+            self.assertEqual(10, self.widget.table.columnCount())
             self.assertIsNotNone(self.widget.export_pdf_button)
             assert self.widget.export_pdf_button is not None
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
@@ -200,12 +215,16 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             self.widget.set_event_scope(scope)
             self._drain_events()
             with self.subTest(scope=scope):
-                self.assertEqual(9, self.widget.table.columnCount())
+                self.assertEqual(10, self.widget.table.columnCount())
                 self.assertEqual(
                     should_hide, self.widget.table.isColumnHidden(1)
                 )
+                self.assertEqual(
+                    should_hide, self.widget.table.isColumnHidden(9)
+                )
                 # 表頭文字保留（未刪欄），僅視覺隱藏
                 self.assertEqual("異常類別", self.widget.table.horizontalHeaderItem(1).text())
+                self.assertEqual("結案日期", self.widget.table.horizontalHeaderItem(9).text())
 
     def test_export_pdf_button_enables_only_after_row_selection(self) -> None:
         assert self.widget.export_pdf_button is not None
@@ -245,12 +264,12 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("", filters["supplier"])
 
-    def test_refresh_data_keeps_nine_column_structure_without_cell_widgets(self) -> None:
+    def test_refresh_data_keeps_ten_column_structure_without_cell_widgets(self) -> None:
         expected_rows = len(self._build_rows())
         for _ in range(5):
             self.widget.refresh_data()
             self._drain_events()
-            self.assertEqual(9, self.widget.table.columnCount())
+            self.assertEqual(10, self.widget.table.columnCount())
             self.assertEqual(expected_rows, self.widget.table.rowCount())
 
         has_cell_widget = any(
@@ -272,10 +291,12 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("問題-0", table.item(0, 6).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(0, 7).text())
         self.assertEqual("待處理", table.item(0, 8).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(0, 9).text())
 
         self.assertEqual(EMPTY_DISPLAY, table.item(2, 0).text())
         self.assertEqual("文件/SOP不足", table.item(2, 1).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(2, 6).text())
+        self.assertEqual("2026-04-20", table.item(2, 9).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 1).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 2).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 3).text())
@@ -284,6 +305,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("問題-3", table.item(3, 6).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 7).text())
         self.assertEqual("-", table.item(3, 8).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 9).text())
 
     def test_status_cells_keep_color_mapping(self) -> None:
         table = self.widget.table
