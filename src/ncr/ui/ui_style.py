@@ -32,7 +32,10 @@ from PySide6.QtWidgets import QStyledItemDelegate
 
 # Single source of truth for the CJK font fallback chain lives in ui.theme; the NCR
 # module reuses it instead of maintaining a second, divergent list.
-from ui.theme import CJK_FONT_FAMILY_CSS, PREFERRED_CJK_FONT_FAMILIES
+from ui.theme import (
+    CJK_FONT_FAMILY_CSS,
+    PREFERRED_CJK_FONT_FAMILIES as PREFERRED_CJK_FONT_FAMILIES,
+)
 from ui.status_colors import get_status_tone
 from ui.layout_constants import HERO_BANNER_MARGINS, INLINE_SPACING
 

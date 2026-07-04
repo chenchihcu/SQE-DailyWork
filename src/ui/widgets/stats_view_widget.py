@@ -26,15 +26,12 @@ from PySide6.QtWidgets import (
 
 from services import event_service
 from ui.layout_constants import (
-    CHART_BAR_HEIGHT,
-    CHART_HEADER_FOOTER_OFFSET,
-    CHART_MIN_HEIGHT,
     INLINE_SPACING,
     INLINE_TIGHT_SPACING,
     PANEL_MARGINS,
     RANK_PANEL_MARGINS,
 )
-from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.popup_i18n import localize_exception
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.stats_dashboard_helpers import (
     StatsInfoBanner,
@@ -48,9 +45,7 @@ from ui.widgets.stats_dashboard_helpers import (
     normalize_range_keys,
     range_display_text,
     range_iso_dates,
-    range_month_span,
     render_chart_to_png,
-    short_chart_label,
 )
 from ui.widgets.stats_chart_mixin import _StatsChartMixin
 from ui.widgets.export_range_dialog import ExportRangeDialog
@@ -310,6 +305,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             lbl.setProperty("role", "errorText")
             self.grid_layout.addWidget(lbl, 0, 0, 2, 2)
             self._set_insights([f"載入統計資料時發生錯誤：{error_message}"])
+            self.grid_layout.activate()
+            self.grid_layout.update()
+            self.update()
             return
 
         insights: list[str] = []

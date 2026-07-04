@@ -11,18 +11,14 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QRadioButton,
     QSizePolicy,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,35 +26,16 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from database.product_stage import (
-    PRODUCT_STAGE_MASS_PRODUCTION,
-    PRODUCT_STAGE_OPTIONS,
-    normalize_product_stage_ui,
-)
 from services import event_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     DIALOG_MIN_HEIGHT,
-    FORM_HORIZONTAL_SPACING,
-    FORM_MAX_WIDTH,
-    FORM_VERTICAL_SPACING,
-    GRID_GUTTER,
-    GROUPBOX_CONTENT_MARGINS,
     INLINE_SPACING,
-    REF_CELL_MARGINS,
-    REF_GRID_SPACING_H,
-    REF_GRID_SPACING_V,
-    ROW_GAP,
     TECH_CARD_INNER_MARGINS,
 )
-from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
-    RequiredFieldLabel,
-    make_paired_form_row as _make_paired_form_row,
     mark_button_variant as _mark_button_variant,
-    safe_ui_operation,
-    set_combo_current_data as _set_combo_current_data,
     style_table,
     text_table_item,
 )

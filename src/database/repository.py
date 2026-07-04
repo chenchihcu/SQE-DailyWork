@@ -9,24 +9,21 @@ import uuid
 
 logger = logging.getLogger(__name__)
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
-    PRODUCT_STAGE_OPTIONS,
 )
 from database.repo_helpers import (
     # ── Constants (keep in sync with source) ──
-    SUPPLIER_CONSOLIDATION_META_KEY,
+    SUPPLIER_CONSOLIDATION_META_KEY as SUPPLIER_CONSOLIDATION_META_KEY,
     PRODUCT_STAGE_SYNC_META_KEY,
     DEFAULT_STAGE_CHANGED_BY,
     STAGE_SYNC_SCOPE_ALL_HISTORY,
     VISIT_TECH_TRANSFER_ITEM_COLUMNS,
     TECH_TRANSFER_STATE_YES,
     TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_NA,
-    TECH_TRANSFER_STATE_VALUES,
     VISIT_TECH_TRANSFER_STATE_COLUMNS,
     EVENT_SCOPE_VISIT_ONLY,
     EVENT_SCOPE_VISIT_WITH_ANOMALY,
@@ -63,7 +60,6 @@ from database.repo_helpers import (
     _normalize_tech_transfer_state,
     _resolve_tech_transfer_states,
     _normalized_lookup_text,
-    _register_unique_lookup_key,
     _build_product_lookup_by_supplier_and_name,
 )
 
@@ -4060,8 +4056,8 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             COUNT(*) AS anomaly_count,
             COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
             COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_anomaly_count,
-            COUNT(CASE WHEN status = '待處理' AND visit_id IS NULL THEN 1 END) AS standalone_open_anomaly_count,
-            COUNT(CASE WHEN status = '待處理' AND visit_id IS NOT NULL THEN 1 END) AS visit_open_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' AND (visit_id IS NULL OR visit_id = '') THEN 1 END) AS standalone_open_anomaly_count,
+            COUNT(CASE WHEN status = '待處理' AND (visit_id IS NOT NULL AND visit_id <> '') THEN 1 END) AS visit_open_anomaly_count,
             COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
         FROM anomalies
         WHERE {anomaly_where}

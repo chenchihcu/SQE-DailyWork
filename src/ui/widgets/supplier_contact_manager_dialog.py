@@ -26,7 +26,6 @@ from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     apply_clickable_affordance,
     make_inline_error_label,
-    mark_button_variant,
     set_field_invalid,
     style_table,
 )

@@ -103,7 +103,6 @@ class _EventListFilterMixin:
             return
         self._sync_source_tag()
         if self.event_scope_tab_bar is not None:
-            from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
 
             index = self._scope_tab_index(self._filter_event_scope)
             self.event_scope_tab_bar.blockSignals(True)

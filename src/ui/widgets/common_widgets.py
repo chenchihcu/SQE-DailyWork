@@ -24,12 +24,10 @@ from PySide6.QtGui import QBrush, QColor
 
 from ui.layout_constants import (
     FORM_HORIZONTAL_SPACING,
-    GRID_GUTTER,
     PANEL_MARGINS,
-    ROW_GAP,
     TABLE_ITEM_MIN_HEIGHT,
 )
-from ui.status_colors import get_status_palette, get_status_tone
+from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,

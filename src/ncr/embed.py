@@ -6,7 +6,6 @@ main window's page stack.
 from __future__ import annotations
 
 import logging
-import sqlite3
 
 logger = logging.getLogger(__name__)
 from PySide6.QtCore import QObject
@@ -42,24 +41,6 @@ class NcrWorkflowPage(QWidget):
 
         # Apply NCR specific QSS to each stack page.
         self.setStyleSheet(app_stylesheet())
-
-
-class DefectTrackerPage(NcrWorkflowPage):
-    """Backward-compatible alias for the create page without the retired outer tabs."""
-
-    FORM_TAB_INDEX = 0
-
-    def __init__(self, conn: sqlite3.Connection, parent: QWidget | None = None) -> None:
-        self.conn = conn
-        self.form_widget = DefectFormWidget(self.conn)
-        super().__init__(self.form_widget, "NcrCreatePage", parent)
-
-    def refresh_all(self) -> None:
-        self.form_widget.refresh_product_options()
-        self.form_widget.refresh_supplier_options()
-
-    def open_create_entry(self) -> None:
-        self.form_widget.focus_item_no()
 
 
 class NcrController(QObject):

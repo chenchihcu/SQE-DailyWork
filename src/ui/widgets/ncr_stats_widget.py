@@ -208,6 +208,9 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             err_lbl.setProperty("role", "errorText")
             self.grid_layout.addWidget(err_lbl, 0, 0)
             self.insight_label.setText("載入數據時發生錯誤。")
+            self.grid_layout.activate()
+            self.grid_layout.update()
+            self.update()
             return
 
         has_data = any((top_suppliers, top_products, scrap_rework, return_slips))
@@ -216,6 +219,9 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             empty = EmptyStateWidget("暫無數據", f"在所選期間 ({self._range_text()}) 尚無不合格品資料")
             self.grid_layout.addWidget(empty, 0, 0, 1, 2)
             self.insight_label.setText("暫無可用數據以生成管理建議。")
+            self.grid_layout.activate()
+            self.grid_layout.update()
+            self.update()
             return
 
         # 1. Top 5 供應商 (水平條形圖)

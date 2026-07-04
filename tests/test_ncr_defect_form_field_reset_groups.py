@@ -10,7 +10,7 @@ from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QApplication
 
 from ncr.db.database import apply_schema
-from ncr.models.defect import CATEGORY_OPTIONS, STATUS_OPTIONS
+from ncr.models.defect import STATUS_OPTIONS
 from ncr.models.labels import (
     LABEL_ITEM_NO,
     VALIDATION_ITEM_NO_NOT_FOUND,

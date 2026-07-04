@@ -184,22 +184,6 @@ def get_warehouse_nonconforming_summary(conn: sqlite3.Connection) -> dict[str, i
     }
 
 
-def get_disposition_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    cursor = conn.execute(
-        """
-        SELECT
-            disposition,
-            COUNT(*) AS case_count,
-            SUM(qty) AS total_qty
-        FROM defect_records
-        WHERE disposition IS NOT NULL AND disposition <> ''
-        GROUP BY disposition
-        ORDER BY total_qty DESC
-        """
-    )
-    return list(cursor.fetchall())
-
-
 def _get_top_entity_stats_filtered(
     conn: sqlite3.Connection,
     entity_field: str,
@@ -249,18 +233,6 @@ def _get_top_entity_stats_filtered(
         params,
     )
     return list(cursor.fetchall())
-
-
-def get_top_suppliers_stats_filtered(
-    conn: sqlite3.Connection, yyyymm: str | None = None
-) -> list[sqlite3.Row]:
-    return _get_top_entity_stats_filtered(conn, "supplier_name", yyyymm)
-
-
-def get_top_products_stats_filtered(
-    conn: sqlite3.Connection, yyyymm: str | None = None
-) -> list[sqlite3.Row]:
-    return _get_top_entity_stats_filtered(conn, "product_name", yyyymm)
 
 
 def _get_grouped_stats_filtered(
@@ -318,20 +290,6 @@ def _get_grouped_stats_filtered(
     return list(cursor.fetchall())
 
 
-def get_scrap_rework_ratio_filtered(
-    conn: sqlite3.Connection, yyyymm: str | None = None
-) -> list[sqlite3.Row]:
-    return _get_grouped_stats_filtered(
-        conn, "disposition", ("報廢", "重工"), yyyymm
-    )
-
-
-def get_return_slip_ratio_filtered(
-    conn: sqlite3.Connection, yyyymm: str | None = None
-) -> list[sqlite3.Row]:
-    return _get_return_slip_ratio_filtered(conn, yyyymm)
-
-
 def _get_return_slip_ratio_filtered(
     conn: sqlite3.Connection,
     yyyymm: str | None = None,
@@ -384,52 +342,6 @@ def _get_return_slip_ratio_filtered(
             return_slip_type ASC
         """,
         params,
-    )
-    return list(cursor.fetchall())
-
-
-
-def get_trend_stats(conn: sqlite3.Connection, months: int = 6) -> list[sqlite3.Row]:
-    cursor = conn.execute(
-        """
-        SELECT
-            SUBSTR(event_date, 1, 7) AS event_month,
-            COUNT(*) AS case_count,
-            SUM(qty) AS total_qty
-        FROM defect_records
-        WHERE event_date IS NOT NULL AND event_date <> ''
-        GROUP BY SUBSTR(event_date, 1, 7)
-        ORDER BY event_month DESC
-        LIMIT ?
-        """,
-        (months,),
-    )
-    # 按照月份正序回傳 (較早的月份在前，適合畫圖)
-    rows = list(cursor.fetchall())
-    rows.reverse()
-    return rows
-
-
-def get_supplier_disposition_stats(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    cursor = conn.execute(
-        """
-        SELECT
-            supplier_name,
-            disposition,
-            SUM(qty) AS total_qty
-        FROM defect_records
-        WHERE supplier_name IN (
-            SELECT supplier_name
-            FROM defect_records
-            WHERE supplier_name IS NOT NULL AND supplier_name <> '' AND supplier_name <> 'N/A'
-            GROUP BY supplier_name
-            ORDER BY SUM(qty) DESC
-            LIMIT 5
-        )
-        AND disposition IS NOT NULL AND disposition <> ''
-        GROUP BY supplier_name, disposition
-        ORDER BY supplier_name, disposition
-        """
     )
     return list(cursor.fetchall())
 

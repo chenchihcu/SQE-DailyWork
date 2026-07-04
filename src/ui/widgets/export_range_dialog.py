@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,

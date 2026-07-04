@@ -228,6 +228,41 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         self.assertIn("未註明", insights)
         self.assertIn("40 件", insights)
 
+    def test_empty_ncr_stats_branch_forces_layout_refresh(self) -> None:
+        widget = NcrStatsWidget(lazy_load=True)
+        self.widgets.append(widget)
+        with (
+            patch("ncr.services.stats_service.get_top_suppliers_stats_by_range", return_value=[]),
+            patch("ncr.services.stats_service.get_top_products_stats_by_range", return_value=[]),
+            patch("ncr.services.stats_service.get_scrap_rework_ratio_by_range", return_value=[]),
+            patch("ncr.services.stats_service.get_return_slip_ratio_by_range", return_value=[]),
+            patch.object(widget.grid_layout, "activate", wraps=widget.grid_layout.activate) as mock_activate,
+            patch.object(widget.grid_layout, "update", wraps=widget.grid_layout.update) as mock_layout_update,
+            patch.object(widget, "update", wraps=widget.update) as mock_widget_update,
+        ):
+            widget.refresh_data()
+
+        self.assertGreaterEqual(mock_activate.call_count, 1)
+        self.assertGreaterEqual(mock_layout_update.call_count, 1)
+        self.assertGreaterEqual(mock_widget_update.call_count, 1)
+        self.assertIn("暫無可用數據以生成管理建議", widget.insight_label.text())
+
+    def test_error_ncr_stats_branch_forces_layout_refresh(self) -> None:
+        widget = NcrStatsWidget(lazy_load=True)
+        self.widgets.append(widget)
+        with (
+            patch("ncr.services.stats_service.get_top_suppliers_stats_by_range", side_effect=RuntimeError("boom")),
+            patch.object(widget.grid_layout, "activate", wraps=widget.grid_layout.activate) as mock_activate,
+            patch.object(widget.grid_layout, "update", wraps=widget.grid_layout.update) as mock_layout_update,
+            patch.object(widget, "update", wraps=widget.update) as mock_widget_update,
+        ):
+            widget.refresh_data()
+
+        self.assertGreaterEqual(mock_activate.call_count, 1)
+        self.assertGreaterEqual(mock_layout_update.call_count, 1)
+        self.assertGreaterEqual(mock_widget_update.call_count, 1)
+        self.assertIn("載入數據時發生錯誤", widget.insight_label.text())
+
 
 if __name__ == "__main__":
     unittest.main()

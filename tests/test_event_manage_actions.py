@@ -813,7 +813,7 @@ class EventManageActionsTests(unittest.TestCase):
         supplier_id = self._create_supplier("Dashboard Badge Supplier")
         
         # 1. Create a standalone open anomaly (visit_id IS NULL)
-        anomaly_no_1 = repository.create_anomaly(
+        repository.create_anomaly(
             self.conn,
             anomaly_date="2026-04-16",
             supplier_id=supplier_id,
@@ -827,7 +827,7 @@ class EventManageActionsTests(unittest.TestCase):
             supplier_id=supplier_id,
             summary="visit summary",
         )
-        anomaly_no_2 = repository.create_anomaly(
+        repository.create_anomaly(
             self.conn,
             anomaly_date="2026-04-16",
             supplier_id=supplier_id,

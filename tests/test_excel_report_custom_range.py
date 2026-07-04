@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import os
 import unittest
-from datetime import datetime
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

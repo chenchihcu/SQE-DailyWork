@@ -109,6 +109,34 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         self.assertEqual(1, len(summary["top_suppliers_by_anomaly"]))
         self.assertEqual("Supplier-A", summary["top_suppliers_by_anomaly"][0]["supplier_name"])
 
+    def test_get_monthly_stats_treats_empty_visit_id_as_standalone(self) -> None:
+        supplier_id = self._create_supplier("Legacy Empty Visit Supplier")
+        anomaly_no = self._create_anomaly(supplier_id, "2026-04-02")
+
+        # Legacy databases can contain empty-string visit_id values; dashboard
+        # KPI scope must match list_events(NULLIF(visit_id, '') IS NULL).
+        self.conn.execute("PRAGMA foreign_keys=OFF")
+        self.conn.execute(
+            "UPDATE anomalies SET visit_id = '' WHERE anomaly_no = ?",
+            (anomaly_no,),
+        )
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys=ON")
+
+        summary = repository.get_monthly_stats(self.conn, "202604")
+
+        self.assertEqual(1, summary["open_anomaly_count"])
+        self.assertEqual(1, summary["standalone_open_anomaly_count"])
+        self.assertEqual(0, summary["visit_open_anomaly_count"])
+        self.assertEqual(
+            1,
+            summary["top_suppliers_by_anomaly"][0]["standalone_open_anomaly_count"],
+        )
+        self.assertEqual(
+            0,
+            summary["top_suppliers_by_anomaly"][0]["visit_open_anomaly_count"],
+        )
+
     def test_get_monthly_stats_ranking_obeys_priority_without_top5_limit(self) -> None:
         suppliers = {
             "Alpha": self._create_supplier("Alpha"),

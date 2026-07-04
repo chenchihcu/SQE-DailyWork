@@ -11,7 +11,6 @@ from PySide6.QtCharts import (
     QChartView,
     QHorizontalStackedBarSeries,
     QLineSeries,
-    QScatterSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QDate, Qt
@@ -19,14 +18,12 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
-    QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
 )
 
-from services import event_service
 from ui.layout_constants import SCROLLBAR_WIDTH
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS, apply_app_theme

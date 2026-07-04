@@ -296,7 +296,6 @@ def export_ncr_excel_report(
                 cell.border = STYLE_BORDER_THIN
             stats_sheet.row_dimensions[current_row].height = 22
             
-            header_row_idx = current_row
             current_row += 1
             
             # 數據寫入

@@ -23,17 +23,15 @@ from PySide6.QtCharts import (
     QHorizontalBarSeries,
     QHorizontalStackedBarSeries,
     QLineSeries,
-    QScatterSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QMargins, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QLabel, QToolTip, QSizePolicy
+from PySide6.QtWidgets import QApplication, QToolTip, QSizePolicy
 
-from ui.layout_constants import CHART_BAR_HEIGHT, CHART_HEADER_FOOTER_OFFSET, CHART_MIN_HEIGHT
+from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
-from services import event_service
 from ui.widgets.chart_style import apply_chart_surface, apply_integer_count_axis, StableChartView
 from ui.widgets.stats_dashboard_helpers import dedupe_chart_labels, short_chart_label
 

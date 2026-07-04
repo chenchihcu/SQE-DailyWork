@@ -14,6 +14,7 @@ for _path in (_repo_root / "src", _repo_root):
     if _path_text not in sys.path:
         sys.path.insert(0, _path_text)
 
+from app_version import __version__
 from database.connection import initialize_database
 from ui.main_window import MainWindow
 from ui.theme import apply_app_theme
@@ -33,7 +34,12 @@ if load_dotenv is not None:
 _env_db_path = os.environ.get("SQE_DB_PATH", "").strip()
 if _env_db_path:
     import database.connection as _conn_mod
-    _conn_mod.DB_PATH = Path(_env_db_path).resolve()
+    _override_db = Path(_env_db_path).resolve()
+    _conn_mod.DB_PATH = _override_db
+    # 讓衍生的資料目錄與 legacy DB 路徑跟著覆蓋值走，否則 initialize_database()
+    # 會建立/尋找預設 repo data/ 目錄，導致覆蓋路徑的父目錄不會被自動建立。
+    _conn_mod.DATA_DIR = _override_db.parent
+    _conn_mod.LEGACY_DB_PATH = _override_db.parent / "sqe.db"
 
 # 可透過環境變數設定日誌層級
 _log_level = os.environ.get("SQE_LOG_LEVEL", "INFO").strip().upper()
@@ -88,6 +94,7 @@ def main() -> int:
     # 1. 安裝全域例外處理
     sys.excepthook = _global_excepthook
     qInstallMessageHandler(_qt_message_handler)
+    _logger.info("SQE DailyWork v%s 啟動", __version__)
 
     # 2. 啟動鏈：初始化資料庫
     try:

@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 import sqlite3
 import uuid
-from datetime import date, datetime, timezone
-from typing import Any, TypedDict
+from datetime import date, datetime
+from typing import TypedDict
 
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
@@ -91,7 +91,12 @@ def _today_iso() -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat(sep=" ")
+    # Local wall-clock time (tz-aware) so created_at/updated_at match the user's
+    # calendar day and the schema triggers' datetime('now', 'localtime'). Using
+    # UTC here made audit timestamps show the previous day for UTC+8 users near
+    # midnight. Date-range statistics are unaffected (they key off the date-only
+    # anomaly_date / closed_at values, not these timestamps).
+    return datetime.now().astimezone().replace(microsecond=0).isoformat(sep=" ")
 
 
 def _gen_id() -> str:

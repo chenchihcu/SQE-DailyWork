@@ -10,7 +10,6 @@ from PySide6.QtCore import QEvent, QCoreApplication
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtCharts import QChartView
 
-from services import event_service
 from ui.theme import apply_app_theme
 from ui.widgets.stats_view_widget import StatsViewWidget
 from ui.widgets.chart_style import StableChartView
@@ -107,7 +106,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             size_hints = [initial_size_hint]
 
             # 連續重新整理 5 次
-            for i in range(5):
+            for _ in range(5):
                 widget.refresh_data()
                 self.app.processEvents()
                 QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -128,6 +127,22 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             self.assertEqual(4, len(chart_views))
             for view in chart_views:
                 self.assertIsInstance(view, StableChartView)
+
+    def test_stats_view_error_branch_forces_layout_refresh(self) -> None:
+        with patch("services.event_service.get_monthly_stats", side_effect=RuntimeError("boom")):
+            widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
+            self.widgets.append(widget)
+            with (
+                patch.object(widget.grid_layout, "activate", wraps=widget.grid_layout.activate) as mock_activate,
+                patch.object(widget.grid_layout, "update", wraps=widget.grid_layout.update) as mock_layout_update,
+                patch.object(widget, "update", wraps=widget.update) as mock_widget_update,
+            ):
+                widget.refresh_data()
+
+        self.assertGreaterEqual(mock_activate.call_count, 1)
+        self.assertGreaterEqual(mock_layout_update.call_count, 1)
+        self.assertGreaterEqual(mock_widget_update.call_count, 1)
+        self.assertIn("載入統計資料時發生錯誤", widget.insight_label.text())
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ class AlignLegacyCategoriesTests(unittest.TestCase):
         self.assertEqual(12, updated_count)
 
         # 3. 驗證資料是否已全部轉換為預期的新值
-        for idx, (orig_cat, orig_cause, expected_val) in enumerate(test_cases):
+        for idx, (*_, expected_val) in enumerate(test_cases):
             ano_no = anomaly_ids[idx]
             row = self.conn.execute(
                 "SELECT category, root_cause_category FROM anomalies WHERE anomaly_no = ?",

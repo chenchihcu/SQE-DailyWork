@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -56,7 +56,6 @@ from ui.widgets.defect_form_widgets import (
     TechTransferCard,
     VISIT_TECH_TRANSFER_ITEMS,
     apply_dialog_layout,
-    set_combo_current_text,
     set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,

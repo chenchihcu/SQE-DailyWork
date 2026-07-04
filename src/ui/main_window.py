@@ -2,7 +2,6 @@ import logging
 import sqlite3
 import sys
 
-from PySide6.QtCore import Qt
 
 logger = logging.getLogger(__name__)
 from PySide6.QtGui import QIcon
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_version import APP_TITLE
 from database.connection import get_connection
 from services import event_service
 from ncr.db.database import DatabaseMigrationError
@@ -94,7 +94,7 @@ _PAGE_INDEX_TO_KEY = {index: key for key, index in _PAGE_KEY_TO_INDEX.items()}
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SQE DailyWork - SQE 工作台")
+        self.setWindowTitle(APP_TITLE)
         self.setWindowIcon(QIcon(str(asset_path("mitcorp_logo.png"))))
         fit_widget_to_available_screen(
             self,

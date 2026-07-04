@@ -34,24 +34,6 @@ def create_period_label() -> QLabel:
     return label
 
 
-def create_period_combo(
-    on_changed: Callable[[int], None],
-    *,
-    minimum_width: int | None = 112,
-    fixed_size: bool = True,
-    tooltip: str = PERIOD_TOOLTIP,
-) -> QComboBox:
-    combo = QComboBox()
-    combo.addItems(list(PERIOD_OPTIONS))
-    if minimum_width is not None:
-        combo.setMinimumWidth(minimum_width)
-    if fixed_size:
-        combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    combo.currentIndexChanged.connect(on_changed)
-    apply_clickable_affordance(combo, tooltip=tooltip)
-    return combo
-
-
 # ── 起迄年月範圍：純函式（無 QApplication 也可單元測試） ──────────────
 
 YEAR_OPTIONS = ("2025", "2026", "2027", "2028", "2029", "2030")
