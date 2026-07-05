@@ -14,6 +14,7 @@ def get_sidebar_qss() -> str:
         QFrame#SidebarNav {{
             background: {TOKENS["sidebar_bg"]};
             border: none;
+            border-right: 1px solid rgba(255, 255, 255, 0.12);
         }}
 
         QWidget#SidebarLogoSection {{
@@ -94,11 +95,13 @@ def get_sidebar_qss() -> str:
 
         /* 側欄領域分組標題（非按鈕，靜態語意標籤） */
         QLabel#SidebarGroupHeader {{
-            color: {TOKENS["sidebar_muted"]};
-            background: transparent;
-            font-size: 10px;
+            color: #0F172A;
+            background-color: {TOKENS["brand_cyan"]};
+            font-size: 11px;
             font-weight: 700;
-            padding: 2px 16px 2px 16px;
+            padding: 4px 12px 4px 12px;
+            border-radius: 4px;
+            margin: 6px 12px 2px 12px;
         }}
 
         /* ── 頁面頂部標題列 ─────────────────────────────── */

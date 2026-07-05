@@ -51,7 +51,7 @@ def get_controls_qss() -> str:
         QSpinBox:focus,
         QTextEdit:focus {{
             border: 2px solid {TOKENS["focus_ring"]};
-            background: {TOKENS["panel_bg"]};
+            background: {TOKENS["surface_active"]};
         }}
 
         QLineEdit:read-only,

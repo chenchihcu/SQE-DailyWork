@@ -224,6 +224,7 @@ class ProductRecordsViewWritePathTests(unittest.TestCase):
                 "product_name": "Gamma",
                 "qty": 3,
                 "category": "成品",
+                "processing_line": "原物料",
                 "supplier_name": "",
                 "outsource_supplier_name": "",
                 "defect_desc": "凹痕",

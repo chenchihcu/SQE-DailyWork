@@ -32,6 +32,7 @@ def get_data_widgets_qss() -> str:
             padding: {TABLE_CELL_PADDING}px;
             min-height: {TABLE_ITEM_MIN_HEIGHT}px;
             border: none;
+            border-bottom: 1px solid {TOKENS["grid"]};
         }}
 
         QTableWidget::item:hover {{

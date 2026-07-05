@@ -81,11 +81,11 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
         ]
 
         with (
-            patch("services.event_service.get_monthly_stats", return_value=summary),
-            patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data),
-            patch("services.event_service.get_visit_trend_by_range", return_value=visit_trend_data),
-            patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_data),
-            patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data),
+            patch("services.event._query_service.get_monthly_stats", return_value=summary),
+            patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data),
+            patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_trend_data),
+            patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_data),
+            patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data),
         ):
             widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
             self.widgets.append(widget)
@@ -129,7 +129,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
                 self.assertIsInstance(view, StableChartView)
 
     def test_stats_view_error_branch_forces_layout_refresh(self) -> None:
-        with patch("services.event_service.get_monthly_stats", side_effect=RuntimeError("boom")):
+        with patch("services.event._query_service.get_monthly_stats", side_effect=RuntimeError("boom")):
             widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
             self.widgets.append(widget)
             with (

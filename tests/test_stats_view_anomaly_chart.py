@@ -104,11 +104,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                     "max_open_date": "2026-05-01",
                 })
         month_key = month.toString("yyyyMM")
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data or []), \
-             patch("services.event_service.get_visit_trend_by_range", return_value=visit_trend_data or []), \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data or []):
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data or []), \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_trend_data or []), \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data or []):
             widget = StatsViewWidget(main_window=host)
             widget.set_range(month_key, month_key)
 
@@ -510,11 +510,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             for index in range(25)
         ]
         with (
-            patch("services.event_service.get_monthly_stats", return_value=summary),
-            patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data),
-            patch("services.event_service.get_visit_trend_by_range", return_value=[]),
-            patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_stats),
-            patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=[
+            patch("services.event._query_service.get_monthly_stats", return_value=summary),
+            patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data),
+            patch("services.event._query_service.get_visit_trend_by_range", return_value=[]),
+            patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats),
+            patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[
                 {"rank": 1, "category": "超長異常類別名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ", "count": 10, "percent": 50.0, "cumulative_percent": 50.0},
                 {"rank": 2, "category": "外觀不良", "count": 6, "percent": 30.0, "cumulative_percent": 80.0},
                 {"rank": 3, "category": "未分類", "count": 4, "percent": 20.0, "cumulative_percent": 100.0},
@@ -561,11 +561,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             "open_anomaly_count": 0,
             "top_suppliers_by_anomaly": [],
         }
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=[]) as mock_trend, \
-             patch("services.event_service.get_visit_trend_by_range", return_value=[]) as mock_visit, \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=[]) as mock_resp, \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=[]) as mock_category:
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]) as mock_trend, \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]) as mock_visit, \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]) as mock_resp, \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]) as mock_category:
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
 
@@ -591,11 +591,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             "open_anomaly_count": 0,
             "top_suppliers_by_anomaly": [],
         }
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_visit_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=[]), \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=[]):
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
 
@@ -612,11 +612,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             "open_anomaly_count": 0,
             "top_suppliers_by_anomaly": [],
         }
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_visit_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=[]), \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=[]):
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
             widget.set_range("202601", "202603")
@@ -643,11 +643,11 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             "open_anomaly_count": 0,
             "top_suppliers_by_anomaly": [],
         }
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_visit_trend_by_range", return_value=[]), \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=[]), \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=[]):
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
             widget.set_range("202501", "202606")

@@ -16,7 +16,7 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
     return dedent(f"""\
         QDialog,
         QMessageBox {{
-            background: {TOKENS["page_bg"]};
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(243, 244, 246, 0.96), stop:1 rgba(229, 231, 235, 0.96));
         }}
 
         QCalendarWidget {{
