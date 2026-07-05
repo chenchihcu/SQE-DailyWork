@@ -17,6 +17,19 @@ def get_sidebar_qss() -> str:
             border-right: 1px solid rgba(255, 255, 255, 0.12);
         }}
 
+        QScrollArea#SidebarScroll {{
+            background: transparent;
+            border: none;
+        }}
+
+        QScrollArea#SidebarScroll > QWidget {{
+            background: transparent;
+        }}
+
+        QWidget#SidebarNavBody {{
+            background: transparent;
+        }}
+
         QWidget#SidebarLogoSection {{
             background: {TOKENS["sidebar_panel"]};
             border-bottom: 1px solid {TOKENS["sidebar_divider"]};

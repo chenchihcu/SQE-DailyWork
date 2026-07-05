@@ -238,10 +238,8 @@ class SidebarNav(QFrame):
 
         nav_layout.addStretch(1)
 
-        # 讓深色側欄背景透出（Phase D 會以正式 QSS 取代行內透明設定）
-        nav_body.setStyleSheet("background: transparent;")
+        # 讓深色側欄背景透出（已移至 QSS 統一管理，避免行內樣式衝突）
         nav_scroll.setWidget(nav_body)
-        nav_scroll.viewport().setStyleSheet("background: transparent;")
         root.addWidget(nav_scroll, 1)
 
         self.set_active(("page", PAGE_HOME))
