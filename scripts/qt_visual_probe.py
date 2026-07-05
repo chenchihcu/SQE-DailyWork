@@ -456,8 +456,9 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from ncr.db.database import apply_schema
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget, QuickProductCreateDialog
-    from ui.widgets.defect_form_widget import NewVisitDialog
-    from ui.widgets.master_data_widget import ProductFormDialog, SupplierFormDialog
+    from ui.widgets.defect_form_shim import NewVisitDialog
+    from ui.widgets.product_form_dialog import ProductFormDialog
+    from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
     initialize_database()
     screenshots: list[str] = []

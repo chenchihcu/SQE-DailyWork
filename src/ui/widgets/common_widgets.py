@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -165,60 +164,6 @@ def create_status_item(status: str) -> QTableWidgetItem:
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     return item
 
-
-class KpiCard(QFrame):
-    """Compact KPI card with horizontal layout and left accent stripe."""
-
-    def __init__(
-        self,
-        title: str,
-        color_hex: str | None = None,
-        parent=None,
-        *,
-        tone: str | None = None,
-    ):
-        super().__init__(parent)
-        self.setProperty("role", "kpiCard")
-        if tone:
-            self.setProperty("tone", tone)
-
-        self.setMinimumHeight(44)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        stripe = QFrame()
-        stripe.setFixedWidth(6)
-        stripe.setStyleSheet(
-            f"background: {color_hex or TOKENS['border']};"
-            f"border-top-left-radius: {TOKENS['radius_md']}px;"
-            f"border-bottom-left-radius: {TOKENS['radius_md']}px;"
-            f"border: none;"
-        )
-        outer.addWidget(stripe)
-
-        content = QWidget()
-        layout = QHBoxLayout(content)
-        layout.setContentsMargins(10, 4, 10, 4)
-        layout.setSpacing(4)
-
-        self.title_label = QLabel(title)
-        self.title_label.setProperty("role", "kpiTitle")
-        self.title_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-
-        self.value_label = QLabel("0")
-        self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.value_label.setProperty("role", "kpiValue")
-
-        layout.addWidget(self.title_label)
-        layout.addStretch(1)
-        layout.addWidget(self.value_label)
-        outer.addWidget(content, 1)
-
-    def set_value(self, value: str | int):
-        self.value_label.setText(str(value))
 
 
 class RequiredFieldLabel(QLabel):

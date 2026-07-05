@@ -4,7 +4,7 @@ import logging
 
 from PySide6.QtCore import QDate, Qt
 
-from services import event_service
+from database import repository
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,13 @@ class _EventListFilterMixin:
 
     def _source_tag_text(self) -> str:
         scope = self.fixed_scope or self._filter_event_scope
-        if scope == event_service.EVENT_SCOPE_VISIT_ONLY:
+        if scope == repository.EVENT_SCOPE_VISIT_ONLY:
             base = "供應商事件 / 訪廠紀錄"
-        elif scope == event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY:
+        elif scope == repository.EVENT_SCOPE_VISIT_WITH_ANOMALY:
             base = "供應商事件 / 訪廠發現異常"
-        elif scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+        elif scope == repository.EVENT_SCOPE_CLOSED_ONLY:
             base = "供應商事件 / 已結案"
-        elif scope == event_service.EVENT_SCOPE_ANOMALY_ONLY:
+        elif scope == repository.EVENT_SCOPE_ANOMALY_ONLY:
             base = "供應商事件 / 單獨異常"
         else:
             base = "供應商事件"
@@ -73,7 +73,7 @@ class _EventListFilterMixin:
         from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
 
         scope_key = str(event_scope or "").strip().upper()
-        if scope_key == event_service.EVENT_SCOPE_CLOSED_ONLY:
+        if scope_key == repository.EVENT_SCOPE_CLOSED_ONLY:
             return scope_key
         known_scopes = {scope for _label, scope, _event_type in EVENT_QUERY_SCOPE_TABS}
         if scope_key in known_scopes:
@@ -118,7 +118,7 @@ class _EventListFilterMixin:
         # 已結案分頁固定狀態為已結案：鎖定狀態下拉，避免相互矛盾的篩選。
         if not self.fixed_status:
             is_closed_scope = (
-                self._filter_event_scope == event_service.EVENT_SCOPE_CLOSED_ONLY
+                self._filter_event_scope == repository.EVENT_SCOPE_CLOSED_ONLY
             )
             self.status_combo.setEnabled(not is_closed_scope)
         if self.supplier_filter_input is not None:
@@ -160,7 +160,7 @@ class _EventListFilterMixin:
         self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
-        if scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+        if scope == repository.EVENT_SCOPE_CLOSED_ONLY:
             # 已結案：狀態固定為已結案、停用狀態下拉。
             self._filter_status = "已結案"
         elif self._filter_status == "已結案":
@@ -206,11 +206,11 @@ class _EventListFilterMixin:
         )
 
     def _default_empty_message(self) -> str:
-        if self.fixed_scope == event_service.EVENT_SCOPE_VISIT_ONLY:
+        if self.fixed_scope == repository.EVENT_SCOPE_VISIT_ONLY:
             return "目前沒有訪廠紀錄，請先新增訪廠。"
-        if self.fixed_scope == event_service.EVENT_SCOPE_ANOMALY_ONLY:
+        if self.fixed_scope == repository.EVENT_SCOPE_ANOMALY_ONLY:
             return "目前沒有異常事件，請先新增異常。"
-        if self.fixed_scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+        if self.fixed_scope == repository.EVENT_SCOPE_CLOSED_ONLY:
             return "目前沒有已結案紀錄。"
         return "目前沒有事件資料，請先新增訪廠或異常。"
 
@@ -280,10 +280,10 @@ class _EventListFilterMixin:
                 self._filter_event_scope = scope_key
                 self._filter_event_type = self._event_type_for_scope(scope_key)
             elif event_type_key == "ANOMALY":
-                self._filter_event_scope = event_service.EVENT_SCOPE_ANOMALY_ONLY
+                self._filter_event_scope = repository.EVENT_SCOPE_ANOMALY_ONLY
                 self._filter_event_type = "ANOMALY"
             elif event_type_key == "VISIT":
-                self._filter_event_scope = event_service.EVENT_SCOPE_VISIT_ONLY
+                self._filter_event_scope = repository.EVENT_SCOPE_VISIT_ONLY
                 self._filter_event_type = "VISIT"
             else:
                 self._filter_event_type = "ALL"

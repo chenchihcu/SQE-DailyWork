@@ -76,11 +76,11 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             },
         ]
         self._list_suppliers_patch = patch(
-            "ui.widgets.master_data_widget.event_service.list_suppliers",
+            "ui.widgets.master_data_widget._supplier_service.list_suppliers",
             return_value=suppliers,
         )
         self._list_products_patch = patch(
-            "ui.widgets.master_data_widget.event_service.list_products",
+            "ui.widgets.master_data_widget._product_service.list_products",
             return_value=products,
         )
         self.list_suppliers_mock = self._list_suppliers_patch.start()
@@ -159,7 +159,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             "secondary_supplier_id": "sup-3",
         }
         with patch(
-            "ui.widgets.master_data_widget.event_service.create_product",
+            "ui.widgets.master_data_widget._product_service.create_product",
             return_value="new-product-id",
         ) as create_mock, patch(
             "ui.widgets.master_data_product_mixin.QMessageBox.information"
@@ -182,7 +182,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             "secondary_supplier_id": "sup-2",
         }
         with patch(
-            "ui.widgets.master_data_widget.event_service.update_product"
+            "ui.widgets.master_data_widget._product_service.update_product"
         ) as update_mock, patch(
             "ui.widgets.master_data_product_mixin.QMessageBox.information"
         ), patch.object(
@@ -228,7 +228,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         self.widget._selected_supplier_id = "sup-1"
         with (
             patch(
-                "ui.widgets.master_data_widget.event_service.update_supplier"
+                "ui.widgets.master_data_widget._supplier_service.update_supplier"
             ) as update_supplier_mock,
             patch("ui.widgets.master_data_supplier_mixin.QMessageBox.information"),
             patch.object(self.widget, "_open_supplier_dialog", return_value=payload),

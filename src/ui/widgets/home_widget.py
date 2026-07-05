@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database import repository
 from database.connection import get_connection
 from ncr.models.defect import (
     PROCESSING_LINE_MATERIAL,
@@ -24,7 +25,7 @@ from ncr.models.defect import (
     PROCESSING_LINE_UNCLASSIFIED,
 )
 from ncr.services import stats_service as warehouse_stats_service
-from services import event_service
+from services.event import _query_service as event_service
 from ui.layout_constants import (
     BACKLOG_SUPPLIER_MAX_COL_WIDTH,
     PANEL_MARGINS,
@@ -258,5 +259,5 @@ class HomeWidget(QWidget):
             supplier_keyword=supplier,
             yyyymm=self._month_key(),
             status="待處理",
-            event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
+            event_scope=repository.EVENT_SCOPE_ANOMALY_ONLY,
         )

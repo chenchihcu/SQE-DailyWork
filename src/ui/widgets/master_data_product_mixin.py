@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 
 from database.connection import get_connection
 from database.product_stage import normalize_product_stage_ui
-from services import event_service, master_import_service
+from services import master_import_service
+from services.event import _product_service as event_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     apply_table_action_affordance,

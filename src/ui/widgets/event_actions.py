@@ -12,9 +12,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from services import event_service as event_service
+from services.event import _anomaly_service, _visit_service
 from ui.popup_i18n import localize_exception, localize_popup_message
-from ui.widgets.defect_form_widget import CloseAnomalyDialog
+from ui.widgets.defect_form_shim import CloseAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.common_widgets import safe_ui_operation
@@ -187,7 +188,7 @@ class EventActionsController:
 
     def open_edit_anomaly_dialog(self, anomaly_id: str) -> None:
         def _op() -> None:
-            detail = event_service.get_anomaly_detail(anomaly_id)
+            detail = _anomaly_service.get_anomaly_detail(anomaly_id)
             dialog = NewAnomalyDialog(
                 self._parent,
                 anomaly_id=anomaly_id,
@@ -207,13 +208,13 @@ class EventActionsController:
         ref_text = ref_no.strip() or anomaly_id
         _confirm_and_delete(
             self._parent, "異常單", ref_text,
-            lambda: event_service.delete_anomaly(anomaly_id),
+            lambda: _anomaly_service.delete_anomaly(anomaly_id),
             self._refresh_all_views,
         )
 
     def open_edit_visit_dialog(self, visit_id: str) -> None:
         def _op() -> None:
-            detail = event_service.get_visit_detail(visit_id)
+            detail = _visit_service.get_visit_detail(visit_id)
             dialog = NewVisitDialog(
                 self._parent,
                 visit_id=visit_id,
@@ -233,13 +234,13 @@ class EventActionsController:
         date_text = visit_date.strip() or visit_id
         _confirm_and_delete(
             self._parent, "訪廠紀錄", date_text,
-            lambda: event_service.delete_visit(visit_id),
+            lambda: _visit_service.delete_visit(visit_id),
             self._refresh_all_views,
         )
 
     def open_visit_detail(self, visit_id: str) -> None:
         def _op() -> None:
-            visit = event_service.get_visit_detail(visit_id)
+            visit = _visit_service.get_visit_detail(visit_id)
             dlg = VisitDetailDialog(visit, self._parent)
             dlg.exec()
         safe_ui_operation(
@@ -252,7 +253,7 @@ class EventActionsController:
     def open_preview_anomaly_dialog(self, anomaly_id: str) -> None:
         """Open the anomaly form in read-only mode."""
         try:
-            detail = event_service.get_anomaly_detail(anomaly_id)
+            detail = _anomaly_service.get_anomaly_detail(anomaly_id)
             dialog = NewAnomalyDialog(
                 self._parent,
                 anomaly_id=anomaly_id,
@@ -271,7 +272,7 @@ class EventActionsController:
     def open_preview_visit_dialog(self, visit_id: str) -> None:
         """Open the visit form in read-only mode."""
         try:
-            detail = event_service.get_visit_detail(visit_id)
+            detail = _visit_service.get_visit_detail(visit_id)
             dialog = NewVisitDialog(
                 self._parent,
                 visit_id=visit_id,
@@ -301,7 +302,7 @@ class EventActionsController:
         safe_ui_operation(
             self._parent,
             lambda: (
-                event_service.reopen_anomaly(anomaly_id),
+                _anomaly_service.reopen_anomaly(anomaly_id),
                 self._refresh_all_views(),
             ),
             success_msg=f"異常單「{ref_text}」已變更為待處理狀態",

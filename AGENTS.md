@@ -14,6 +14,7 @@ global baseline.
 - Cursor rules: `.cursor/rules/agents_gateway.mdc`.
 - Active risks: `docs/risk-ledger.md`.
 - Closed-loop harness: `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `docs/harness/quality-score.md`, and `docs/harness/doc-gardening.md`.
+- Agent orchestration protocol (RACI, task tiering, routing, error-learning): `docs/harness/agent-orchestration.md`; cross-tool conflict log: `docs/harness/contradiction-log.md`.
 - Claude Code automation: `docs/harness/claude-code-automation.md`, `.claude/settings.json`, `.claude/hooks/`, `.claude/skills/`, and `.claude/agents/`.
 - AI rules compatibility and source-control boundary: `docs/harness/ai-rules-compatibility.md`, `docs/harness/source-baseline-manifest.md`, `.agents/rules/agents_gateway.md`, `.cursor/rules/agents_gateway.mdc`, `CLAUDE.md`, and `.codex/rules/project.rules`.
 - Execution plans: `docs/exec-plans/active/` and `docs/exec-plans/completed/`.
@@ -107,3 +108,4 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - **Command Policy & Codex Sync Rule:** Any modifications or additions to verification and development commands must be synchronized with the Python-like rules in `.codex/rules/project.rules` to prevent Codex sandbox blocks.
 - **AI Rules Compatibility:** Read `docs/harness/ai-rules-compatibility.md` before cross-tool handoff or governance edits. Official claims, local observations, audit inferences, assumptions, and `not verified` items must remain labeled.
 - **Source-Control Boundary:** If `git status --short` is noisy, the source baseline is absent, or the repo was just initialized, use one writer per worktree. Do not run parallel writing AI tools in the same checkout. Prefer Antigravity New Worktree Mode for complex or parallel tasks; Local Mode is for small interactive work only.
+- **Agent Orchestration:** For non-trivial coding tasks, follow `docs/harness/agent-orchestration.md` — Claude defines spec / architecture / risk, Codex implements / tests / diff, Gemini/Antigravity verifies with native Qt evidence, Cursor handles light in-editor edits. Task tiering (L0 / Standard / Heavy) is bound to the existing Hard Triggers; review findings use P0–P3 severity; the human-approval gate reuses the existing pre-tool hook and Codex rules rather than a new mechanism; and cross-tool rule conflicts go to `docs/harness/contradiction-log.md` for a user decision. This does not replace this file as the single source of truth.

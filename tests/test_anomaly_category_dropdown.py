@@ -9,6 +9,9 @@ from unittest.mock import patch
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QApplication, QComboBox, QTableWidgetItem
 
+import services.event._anomaly_service as _anomaly_service_mod
+import services.event._visit_service as _visit_service_mod
+
 
 class AnomalyCategoryDropdownTests(unittest.TestCase):
     @classmethod
@@ -39,9 +42,9 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         # (``findData`` returns -1). Keep the canonical module in ``sys.modules`` and pin
         # the widget's reference to it so the patch target is exactly the object the
         # dialog resolves at call time. This keeps the suite order-independent.
-        sys.modules.pop("ui.widgets.defect_form_widget", None)
-        self.widget_module = importlib.import_module("ui.widgets.defect_form_widget")
-        self.addCleanup(lambda: sys.modules.pop("ui.widgets.defect_form_widget", None))
+        sys.modules.pop("ui.widgets.defect_form_shim", None)
+        self.widget_module = importlib.import_module("ui.widgets.defect_form_shim")
+        self.addCleanup(lambda: sys.modules.pop("ui.widgets.defect_form_shim", None))
 
         import services.event_service as canonical_event_service
 
@@ -66,6 +69,11 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 side_effect=lambda d: d.replace("-", "") + "001" if d else "20260702001",
             ),
             patch.object(
+                _anomaly_service_mod,
+                "preview_anomaly_no",
+                side_effect=lambda d: d.replace("-", "") + "001" if d else "20260702001",
+            ),
+            patch.object(
                 self.widget_module.event_service,
                 "list_active_suppliers",
                 return_value=self._suppliers,
@@ -85,6 +93,21 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 "get_latest_visit_for_supplier_on_date",
                 return_value=None,
             ),
+            patch.object(
+                _anomaly_service_mod,
+                "get_latest_visit_for_supplier_on_date",
+                return_value=None,
+            ),
+            # Sub-module patches for methods called through _anomaly_service directly
+            patch.object(_anomaly_service_mod, "get_anomaly_detail", return_value=None),
+            patch.object(_anomaly_service_mod, "close_anomaly", return_value=None),
+            patch.object(_anomaly_service_mod, "update_anomaly_closed_at", return_value=None),
+            patch.object(_anomaly_service_mod, "update_anomaly", return_value=None),
+            patch.object(_anomaly_service_mod, "create_anomaly_with_visit_link", return_value=None),
+            # Sub-module patches for methods called through _visit_service directly
+            patch.object(_visit_service_mod, "get_visit_detail", return_value=None),
+            patch.object(_visit_service_mod, "create_visit", return_value=None),
+            patch.object(_visit_service_mod, "update_visit", return_value=None),
             patch.object(self.widget_module.QMessageBox, "information"),
             patch.object(self.widget_module.QMessageBox, "warning"),
             patch.object(self.widget_module.QMessageBox, "critical"),
@@ -210,6 +233,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                     "create_anomaly_with_visit_link",
                     side_effect=_fake_create,
                 ), patch.object(
+                    _anomaly_service_mod,
+                    "create_anomaly_with_visit_link",
+                    side_effect=_fake_create,
+                ), patch.object(
                     self.widget_module.event_service,
                     "list_active_products_for_supplier",
                     return_value=products,
@@ -249,6 +276,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
 
         with patch.object(
             self.widget_module.event_service,
+            "create_anomaly_with_visit_link",
+            side_effect=_fake_create,
+        ), patch.object(
+            _anomaly_service_mod,
             "create_anomaly_with_visit_link",
             side_effect=_fake_create,
         ), patch.object(
@@ -334,6 +365,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             return_value=products,
         ), patch.object(
             self.widget_module.event_service,
+            "get_latest_visit_for_supplier_on_date",
+            return_value=same_day_visit,
+        ), patch.object(
+            _anomaly_service_mod,
             "get_latest_visit_for_supplier_on_date",
             return_value=same_day_visit,
         ):
@@ -453,6 +488,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             "create_visit",
             side_effect=_fake_create_visit,
         ), patch.object(
+            _visit_service_mod,
+            "create_visit",
+            side_effect=_fake_create_visit,
+        ), patch.object(
             self.widget_module.event_service,
             "list_active_products_for_supplier",
             return_value=products,
@@ -514,6 +553,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             "create_visit",
             side_effect=_fake_create_visit,
         ), patch.object(
+            _visit_service_mod,
+            "create_visit",
+            side_effect=_fake_create_visit,
+        ), patch.object(
             self.widget_module.event_service,
             "list_active_products_for_supplier",
             return_value=products,
@@ -566,6 +609,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
 
         with patch.object(
             self.widget_module.event_service,
+            "create_visit",
+            side_effect=_fake_create_visit,
+        ), patch.object(
+            _visit_service_mod,
             "create_visit",
             side_effect=_fake_create_visit,
         ), patch.object(
@@ -654,6 +701,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             self.widget_module.event_service,
             "get_anomaly_detail",
             return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
+        ), patch.object(
+            _anomaly_service_mod,
+            "get_anomaly_detail",
+            return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
         ) as mock_get:
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
@@ -669,7 +720,13 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 "get_anomaly_detail",
                 return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
             ),
-            patch.object(self.widget_module.event_service, "close_anomaly") as close_mock,
+            patch.object(
+                _anomaly_service_mod,
+                "get_anomaly_detail",
+                return_value={"category": "規範文件缺漏", "anomaly_date": "2026-04-16"},
+            ),
+            patch.object(self.widget_module.event_service, "close_anomaly"),
+            patch.object(_anomaly_service_mod, "close_anomaly") as close_mock,
         ):
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
@@ -702,11 +759,29 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                     "closed_at": "2026-05-10",
                 },
             ),
+            patch.object(
+                _anomaly_service_mod,
+                "get_anomaly_detail",
+                return_value={
+                    "category": "尺寸異常",
+                    "anomaly_date": "2026-04-16",
+                    "status": "已結案",
+                    "improvement_desc": "已改善",
+                    "closed_by": "王小明",
+                    "root_cause_category": "規範文件缺漏",
+                    "closed_at": "2026-05-10",
+                },
+            ),
             patch.object(self.widget_module.event_service, "close_anomaly") as close_mock,
+            patch.object(_anomaly_service_mod, "close_anomaly") as close_mock_2,
             patch.object(
                 self.widget_module.event_service,
                 "update_anomaly_closed_at",
             ) as update_closed_at,
+            patch.object(
+                _anomaly_service_mod,
+                "update_anomaly_closed_at",
+            ) as update_closed_at_2,
         ):
             dialog = CloseAnomalyDialog(
                 "anomaly-123",
@@ -722,8 +797,8 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             dialog.closed_at_input.setDate(QDate(2026, 5, 12))
             dialog._on_submit()
 
-        close_mock.assert_not_called()
-        update_closed_at.assert_called_once_with(
+        close_mock_2.assert_not_called()
+        update_closed_at_2.assert_called_once_with(
             "anomaly-123",
             closed_at="2026-05-12",
         )
@@ -767,6 +842,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             return_value=products,
         ), patch.object(
             self.widget_module.event_service,
+            "update_anomaly",
+            side_effect=_fake_update,
+        ), patch.object(
+            _anomaly_service_mod,
             "update_anomaly",
             side_effect=_fake_update,
         ):

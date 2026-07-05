@@ -215,7 +215,7 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         self._create_anomaly(supplier_id, "2026-04-02")
         self._create_visit(supplier_id, "2026-05-06")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             ok, msg = event_service.export_monthly_excel(str(self.export_path), "ALL")
 
         self.assertTrue(ok, msg)
@@ -287,8 +287,8 @@ class MonthlyStatsExpansionExportTests(unittest.TestCase):
         ]
 
         with (
-            patch("services.event_service.get_monthly_stats", return_value=mocked_stats),
-            patch("services.event_service.list_events", return_value=mocked_rows),
+            patch("services.event._query_service.get_monthly_stats", return_value=mocked_stats),
+            patch("services.event._query_service.list_events", return_value=mocked_rows),
         ):
             ok, msg = event_service.export_monthly_excel(str(self.export_path), "202604")
 

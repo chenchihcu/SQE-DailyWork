@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from database import repository
+from services import event_service as event_service
+from services.event import _export_service, _query_service
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
     EVENT_LIST_NAME_COL_MIN_WIDTH,
@@ -55,10 +57,10 @@ from ui.widgets.event_list_filter_mixin import _EventListFilterMixin
 # Consolidated event-management page: one widget, scope tabs cover every supplier
 # event view (including 已結案查詢). Order = most-used first; default = 單獨異常.
 EVENT_QUERY_SCOPE_TABS = (
-    ("單獨異常", event_service.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
-    ("訪廠發現異常", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
-    ("訪廠紀錄", event_service.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
-    ("已結案", event_service.EVENT_SCOPE_CLOSED_ONLY, "ANOMALY"),
+    ("單獨異常", repository.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
+    ("訪廠發現異常", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
+    ("訪廠紀錄", repository.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
+    ("已結案", repository.EVENT_SCOPE_CLOSED_ONLY, "ANOMALY"),
 )
 
 _SORTABLE_COLS: dict[int, str] = {
@@ -87,7 +89,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._sort_asc: bool = True
         if self.fixed_scope:
             self._filter_event_scope = self.fixed_scope
-            if self.fixed_scope == event_service.EVENT_SCOPE_CLOSED_ONLY:
+            if self.fixed_scope == repository.EVENT_SCOPE_CLOSED_ONLY:
                 self._filter_event_type = "ANOMALY"
             else:
                 self._filter_event_type = self._event_type_for_scope(self.fixed_scope)
@@ -213,10 +215,16 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         control_outer.addLayout(actions_row)
 
-        # Row 2: pagination + new-event actions + secondary actions (export).
+        # Row 2 (action bar): source tag (left) + new-event / export actions (right).
         # The consolidated event page carries both 新增訪廠 and 新增異常; placing
         # them on the toolbar row (not the filter row) keeps the filter row within
         # the 1024-wide minimum without overlapping controls.
+        self.pagination = PaginationBar(
+            on_page_changed=self._on_page_changed,
+            on_page_size_changed=self._on_page_size_changed,
+            default_page_size=self._page_size,
+        )
+
         toolbar_row = QHBoxLayout()
         toolbar_row.setSpacing(8)
 
@@ -226,12 +234,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.source_tag_label.setToolTip("目前列表的資料流程來源")
             toolbar_row.addWidget(self.source_tag_label)
 
-        self.pagination = PaginationBar(
-            on_page_changed=self._on_page_changed,
-            on_page_size_changed=self._on_page_size_changed,
-            default_page_size=self._page_size,
-        )
-        toolbar_row.addWidget(self.pagination, 1)
+        toolbar_row.addStretch(1)
 
         # Shared new-event actions (deduplicated across modes).
         btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
@@ -252,6 +255,15 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self._sync_export_pdf_state()
 
         control_outer.addLayout(toolbar_row)
+
+        # Row 3 (dedicated pagination row): the shared PaginationBar needs ~584px for
+        # its 共 N 筆 / 每頁 / 跳至 controls. Sharing a row with the action buttons
+        # over-crowded it at high DPI / narrow widths (labels clipped or overlapped);
+        # giving it a full-width row guarantees no clipping at any DPI down to 1024.
+        pagination_row = QHBoxLayout()
+        pagination_row.setSpacing(8)
+        pagination_row.addWidget(self.pagination, 1)
+        control_outer.addLayout(pagination_row)
 
         root.addWidget(control_panel)
 
@@ -320,13 +332,13 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         btn_new_visit = None
         btn_new_anomaly = None
 
-        if not self.fixed_scope or self.fixed_scope == event_service.EVENT_SCOPE_VISIT_ONLY:
+        if not self.fixed_scope or self.fixed_scope == repository.EVENT_SCOPE_VISIT_ONLY:
             btn_new_visit = QPushButton("新增訪廠")
             btn_new_visit.setProperty("variant", "secondary")
             apply_clickable_affordance(btn_new_visit, tooltip="建立新的訪廠紀錄")
             btn_new_visit.clicked.connect(self.main_window.open_new_visit_dialog)
 
-        if not self.fixed_scope or self.fixed_scope in (event_service.EVENT_SCOPE_ANOMALY_ONLY, event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY):
+        if not self.fixed_scope or self.fixed_scope in (repository.EVENT_SCOPE_ANOMALY_ONLY, repository.EVENT_SCOPE_VISIT_WITH_ANOMALY):
             btn_new_anomaly = QPushButton("新增異常")
             btn_new_anomaly.setProperty("variant", "primary")
             apply_clickable_affordance(btn_new_anomaly, tooltip="建立新的異常單")
@@ -348,7 +360,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             filters["yyyymm"] = self._filter_yyyymm
         if self._filter_overdue_only:
             filters["overdue_only"] = True
-        self._all_rows = event_service.list_events(filters)
+        self._all_rows = _query_service.list_events(filters)
         self._apply_sort()
         self._current_page = 1
         self._render_current_page()
@@ -461,7 +473,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             return
 
         try:
-            default_name = event_service.default_event_pdf_filename(row)
+            default_name = _export_service.default_event_pdf_filename(row)
         except Exception:
             logger.exception("取得預設 PDF 檔名失敗")
             default_name = "SQE_事件單.pdf"
@@ -476,7 +488,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         if not target.lower().endswith(".pdf"):
             target = f"{target}.pdf"
 
-        ok, msg = event_service.export_event_pdf(target, row)
+        ok, msg = _export_service.export_event_pdf(target, row)
         if ok:
             QMessageBox.information(self, "成功", localize_popup_message(msg))
         else:
@@ -555,7 +567,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def send_line_brief_report(self, row: dict):
         from services import line_service
 
-        image = event_service.render_brief_event_image(row)
+        image = _export_service.render_brief_event_image(row)
         if image is None:
             QMessageBox.critical(self, "失敗", "無法產生精簡報告圖片")
             return

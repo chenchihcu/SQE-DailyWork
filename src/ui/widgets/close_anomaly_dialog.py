@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
@@ -76,7 +76,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         try:
             detail = event_service.get_anomaly_detail(self.anomaly_id)
             self.detail = detail
-            self.initial_category = str(detail.get("category") or "")
+            self.initial_category = str(detail.get("category_raw") or detail.get("category") or "")
             self.initial_anomaly_date = str(detail.get("anomaly_date") or "")
             self.initial_closed_at = str(detail.get("closed_at") or "")
             self.initial_improvement_desc = str(detail.get("improvement_desc") or "")

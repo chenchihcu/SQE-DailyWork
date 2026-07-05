@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from services import event_service
+from services.event import _anomaly_service, _visit_service
 from ui.widgets.common_widgets import safe_ui_operation, set_combo_current_data
 from ui.widgets.defect_form_widgets import VisitSelectionDialog, set_tone
 
@@ -97,7 +97,7 @@ class _AnomalyVisitSyncMixin:
             self._clear_same_day_visit_defaults_if_owned()
             return
         try:
-            ref = event_service.get_latest_visit_for_supplier_on_date(
+            ref = _anomaly_service.get_latest_visit_for_supplier_on_date(
                 supplier_id,
                 visit_date,
             )
@@ -172,7 +172,7 @@ class _AnomalyVisitSyncMixin:
             return
 
         def _unlink() -> None:
-            event_service.update_anomaly_link(self._anomaly_id, None)
+            _anomaly_service.update_anomaly_link(self._anomaly_id, None)
             self._initial_data["visit_id"] = None
             self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
             self._linked_visit_label.setVisible(False)
@@ -203,7 +203,7 @@ class _AnomalyVisitSyncMixin:
 
             def _link() -> None:
                 # 1. Update linkage in DB
-                event_service.update_anomaly_link(self._anomaly_id, visit_id)
+                _anomaly_service.update_anomaly_link(self._anomaly_id, visit_id)
 
                 # 2. Ask to sync date if different
                 current_date = self.date_edit.date().toString("yyyy-MM-dd")
@@ -225,7 +225,7 @@ class _AnomalyVisitSyncMixin:
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if ans_sync == QMessageBox.StandardButton.Yes:
-                    v_detail = event_service.get_visit_detail(visit_id)
+                    v_detail = _visit_service.get_visit_detail(visit_id)
                     v_product_id = v_detail.get("product_id")
                     if v_product_id:
                         set_combo_current_data(self.product_combo, v_product_id)
@@ -241,7 +241,7 @@ class _AnomalyVisitSyncMixin:
                 if visit_id:
                     self.unlink_visit_button.setVisible(True)
                     self._rc_group.setTitle("風險控管調查 (已關聯訪廠)")
-                    v_detail = event_service.get_visit_detail(visit_id)
+                    v_detail = _visit_service.get_visit_detail(visit_id)
                     v_date = v_detail.get("visit_date") or "?"
                     v_summary = (v_detail.get("summary") or "").strip() or "(無摘要)"
                     self._linked_visit_label.setText(

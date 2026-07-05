@@ -87,7 +87,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         for widget in self.range_selectors.widgets():
             control_row.addWidget(widget)
 
-        source_tag_label = QLabel("倉庫不合格品統計")
+        source_tag_label = QLabel("倉庫不合格品統計分析")
         source_tag_label.setProperty("role", "sourceTag")
         source_tag_label.setToolTip("此統計畫面之數據來源僅限於不合格品登記紀錄")
         control_row.addWidget(source_tag_label)
@@ -355,7 +355,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
     def export_ncr_excel(self):
         # 1. 彈出日期區間對話框
-        dialog = ExportRangeDialog("不合格品統計匯出設定", self)
+        dialog = ExportRangeDialog("不合格品統計分析匯出設定", self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
             

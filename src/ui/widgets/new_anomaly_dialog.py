@@ -29,7 +29,7 @@ from database.product_stage import (
     PRODUCT_STAGE_OPTIONS,
     normalize_product_stage_ui,
 )
-from services import event_service
+from services.event import _anomaly_service, _visit_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
@@ -462,7 +462,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                 self.anomaly_no_preview_input.setText(self._fixed_anomaly_no or "")
                 return
         try:
-            preview = event_service.preview_anomaly_no(anomaly_date)
+            preview = _anomaly_service.preview_anomaly_no(anomaly_date)
         except Exception:
             logger.exception("preview_anomaly_no failed for date %s", anomaly_date)
             preview = ""
@@ -486,7 +486,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self._ref_header_label.setText("請先選擇供應商以載入技轉參考資料")
             return
         try:
-            ref = event_service.get_latest_tech_transfer_for_supplier(supplier_id)
+            ref = _anomaly_service.get_latest_tech_transfer_for_supplier(supplier_id)
         except Exception:
             logger.exception(
                 "get_latest_tech_transfer_for_supplier failed for supplier_id=%s",
@@ -628,7 +628,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         if visit_id:
             self._rc_group.setTitle("風險控管調查 (已關聯訪廠)")
             try:
-                v_detail = event_service.get_visit_detail(visit_id)
+                v_detail = _visit_service.get_visit_detail(visit_id)
                 v_date = v_detail.get("visit_date") or "?"
                 v_summary = (v_detail.get("summary") or "").strip() or "(無摘要)"
                 self._linked_visit_label.setText(
@@ -698,12 +698,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         }
         try:
             if self._is_edit:
-                event_service.update_anomaly(self._anomaly_id, payload)
+                _anomaly_service.update_anomaly(self._anomaly_id, payload)
                 self.attachment_editor.save_to_anomaly(self._anomaly_id)
                 self._warn_if_attachment_rename_failures()
                 QMessageBox.information(self, "成功", localize_popup_message("異常資料已更新"))
             else:
-                result = event_service.create_anomaly_with_visit_link(payload)
+                result = _anomaly_service.create_anomaly_with_visit_link(payload)
                 anomaly_id = str(result.get("anomaly_id") or "").strip()
                 if anomaly_id:
                     self.attachment_editor.save_to_anomaly(anomaly_id)

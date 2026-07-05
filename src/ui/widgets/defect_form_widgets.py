@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from services import event_service
+from services.event import _visit_service as event_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     DIALOG_MIN_HEIGHT,

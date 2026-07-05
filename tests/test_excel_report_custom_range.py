@@ -76,8 +76,8 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
 
-    @patch("services.event_service.get_anomaly_category_pareto_by_range")
-    @patch("services.event_service.list_events_by_range")
+    @patch("services.event._query_service.get_anomaly_category_pareto_by_range")
+    @patch("services.event._query_service.list_events_by_range")
     def test_events_report_export_success(self, mock_list_events, mock_pareto) -> None:
         # 柏拉圖表格與頁面圖表、嵌入 PNG 共用同一 SQL 來源(單一實作)
         mock_pareto.return_value = [

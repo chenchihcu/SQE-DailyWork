@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from services import event_pdf_exporter, event_service, line_service
+from services.event import _anomaly_service
 
 
 class BriefPdfExportTests(unittest.TestCase):
@@ -126,14 +127,14 @@ class BriefPdfExportTests(unittest.TestCase):
             calls.append(("export_brief_event_pdf", args, kwargs))
             return True, "已匯出精簡版至：x.pdf"
 
-        original_get_anomaly_detail = event_service.get_anomaly_detail
+        original_get_anomaly_detail = _anomaly_service.get_anomaly_detail
         original_export_brief_event_pdf = event_service.event_pdf_exporter.export_brief_event_pdf
         try:
-            event_service.get_anomaly_detail = fake_get_anomaly_detail
+            _anomaly_service.get_anomaly_detail = fake_get_anomaly_detail
             event_service.event_pdf_exporter.export_brief_event_pdf = fake_export_brief_event_pdf
             ok, _msg = event_service.export_brief_event_pdf("x.pdf", row)
         finally:
-            event_service.get_anomaly_detail = original_get_anomaly_detail
+            _anomaly_service.get_anomaly_detail = original_get_anomaly_detail
             event_service.event_pdf_exporter.export_brief_event_pdf = original_export_brief_event_pdf
 
         self.assertTrue(ok)

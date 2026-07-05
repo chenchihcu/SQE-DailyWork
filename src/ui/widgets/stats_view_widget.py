@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QDialog,
 )
 
-from services import event_service
+from services.event import _export_service, _query_service
 from ui.layout_constants import (
     INLINE_SPACING,
     INLINE_TIGHT_SPACING,
@@ -224,14 +224,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         try:
             start_key, end_key = self._range_keys()
             # 保留此呼叫以觸發 monthly_stats_cache 刷新（回傳值不使用），錨定迄月
-            _ = event_service.get_monthly_stats(end_key)
+            _ = _query_service.get_monthly_stats(end_key)
 
             iso_start, iso_end = range_iso_dates(start_key, end_key)
             # 趨勢圖窗口 = 使用者選定的完整月份區間（服務端上限 12 個月）
-            trend_data = event_service.get_anomaly_trend_by_range(iso_start, iso_end)
-            visit_trend_data = event_service.get_visit_trend_by_range(iso_start, iso_end)
+            trend_data = _query_service.get_anomaly_trend_by_range(iso_start, iso_end)
+            visit_trend_data = _query_service.get_visit_trend_by_range(iso_start, iso_end)
             try:
-                resp_stats = event_service.get_responsible_person_stats_by_range(
+                resp_stats = _query_service.get_responsible_person_stats_by_range(
                     iso_start, iso_end
                 )
             except Exception:
@@ -241,7 +241,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 )
                 resp_stats = []
             try:
-                category_pareto_data = event_service.get_anomaly_category_pareto_by_range(
+                category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(
                     iso_start, iso_end
                 )
             except Exception:
@@ -453,11 +453,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         try:
             # 取得這段時間範圍的數據
-            trend_data = event_service.get_anomaly_trend_by_range(start_date, end_date)
-            visit_trend_data = event_service.get_visit_trend_by_range(start_date, end_date)
-            resp_stats = event_service.get_responsible_person_stats_by_range(start_date, end_date)
-            category_pareto_data = event_service.get_anomaly_category_pareto_by_range(start_date, end_date)
-            events_detail = event_service.list_events_by_range(start_date, end_date)
+            trend_data = _query_service.get_anomaly_trend_by_range(start_date, end_date)
+            visit_trend_data = _query_service.get_visit_trend_by_range(start_date, end_date)
+            resp_stats = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
+            category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(start_date, end_date)
+            events_detail = _query_service.list_events_by_range(start_date, end_date)
 
             has_data = len(events_detail) > 0
 
@@ -490,7 +490,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
 
             # 呼叫匯出服務
-            ok, msg = event_service.export_events_report(
+            ok, msg = _export_service.export_events_report(
                 file_path,
                 start_date,
                 end_date,

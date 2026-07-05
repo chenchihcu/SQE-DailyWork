@@ -2,10 +2,11 @@
 
 The original monolithic defect_form_widget.py was split into
 close_anomaly_dialog.py / anomaly_attachment_editor.py / defect_form_widgets.py /
-new_anomaly_dialog.py / new_visit_dialog.py. This module keeps only the names
-that external callers (tests, scripts/qt_visual_probe.py, event_actions.py)
-still import via this path (audit finding B11 trimmed the ~80 leftover unused
-imports). New code should import from the concrete modules directly.
+new_anomaly_dialog.py / new_visit_dialog.py. This module (renamed from
+defect_form_widget.py → defect_form_shim.py to clarify it is a backward-
+compatibility shim, not a primary widget module) keeps only the names that
+external callers (tests, scripts/qt_visual_probe.py, event_actions.py) still
+import via this path. New code should import from the concrete modules directly.
 """
 
 from __future__ import annotations

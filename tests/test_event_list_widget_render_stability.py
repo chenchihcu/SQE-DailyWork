@@ -43,7 +43,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self._list_events_patch = patch(
-            "ui.widgets.defect_list_widget.event_service.list_events",
+            "services.event._query_service.list_events",
             return_value=self._build_rows(),
         )
         self._list_events = self._list_events_patch.start()
@@ -357,7 +357,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
         with (
             patch(
-                "ui.widgets.defect_list_widget.event_service.default_event_pdf_filename",
+                "services.event._export_service.default_event_pdf_filename",
                 return_value="SQE_異常單_20260507001_供應商.pdf",
             ) as default_name,
             patch(
@@ -365,7 +365,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
                 return_value=("scratch\\selected_event", "PDF Files (*.pdf)"),
             ) as save_dialog,
             patch(
-                "ui.widgets.defect_list_widget.event_service.export_event_pdf",
+                "services.event._export_service.export_event_pdf",
                 return_value=(True, "已匯出至：scratch\\selected_event.pdf"),
             ) as export_pdf,
             patch("ui.widgets.defect_list_widget.QMessageBox.information") as info,

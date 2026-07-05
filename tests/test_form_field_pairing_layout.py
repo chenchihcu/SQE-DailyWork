@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTextEdit
 from database.connection import initialize_database
 from ui.layout_constants import FORM_MAX_WIDTH
 from ui.widgets.defect_form_widgets import ROOT_CAUSE_PARETO_OPTIONS
-from ui.widgets.defect_form_widget import CloseAnomalyDialog, ProductSectionEditor
+from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.master_data_dialogs import ProductFormDialog, SupplierFormDialog

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QListWidget
 from ui.main_window import MainWindow
 from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
-from ui.widgets.defect_form_widget import (
+from ui.widgets.defect_form_shim import (
     AttachmentEditor,
     TECH_TRANSFER_STATE_NA,
     TECH_TRANSFER_STATE_YES,

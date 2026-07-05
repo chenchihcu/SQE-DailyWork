@@ -169,7 +169,7 @@ class HomeCockpitPanelTests(unittest.TestCase):
         self.assertEqual(1, self.host.warehouse_material_calls)
         self.assertEqual(1, self.host.warehouse_unclassified_calls)
 
-    @patch("services.event_service.list_events")
+    @patch("services.event._query_service.list_events")
     def test_backlog_lists_pending_and_row_click_routes(self, mock_list) -> None:
         rows = [_backlog_row(i, supplier=f"供應商{i}") for i in range(3)]
         mock_list.return_value = rows
@@ -192,7 +192,7 @@ class HomeCockpitPanelTests(unittest.TestCase):
             widget.close()
             self.app.processEvents()
 
-    @patch("services.event_service.list_events", return_value=[])
+    @patch("services.event._query_service.list_events", return_value=[])
     def test_backlog_empty_state_when_no_pending(self, _mock) -> None:
         widget = HomeWidget(self.host)
         widget.show()

@@ -13,6 +13,7 @@ from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
 from services import event_pdf_exporter, event_service
+from services.event import _anomaly_service, _visit_service
 
 
 class EventPdfExportTests(unittest.TestCase):
@@ -399,17 +400,17 @@ class EventPdfExportTests(unittest.TestCase):
             calls.append(("export_event_pdf", args, kwargs))
             return True, "已匯出至：x.pdf"
 
-        original_get_anomaly_detail = event_service.get_anomaly_detail
-        original_get_visit_detail = event_service.get_visit_detail
+        original_get_anomaly_detail = _anomaly_service.get_anomaly_detail
+        original_get_visit_detail = _visit_service.get_visit_detail
         original_export_event_pdf = event_service.event_pdf_exporter.export_event_pdf
         try:
-            event_service.get_anomaly_detail = fake_get_anomaly_detail
-            event_service.get_visit_detail = fake_get_visit_detail
+            _anomaly_service.get_anomaly_detail = fake_get_anomaly_detail
+            _visit_service.get_visit_detail = fake_get_visit_detail
             event_service.event_pdf_exporter.export_event_pdf = fake_export_event_pdf
             ok, _msg = event_service.export_event_pdf("x.pdf", row)
         finally:
-            event_service.get_anomaly_detail = original_get_anomaly_detail
-            event_service.get_visit_detail = original_get_visit_detail
+            _anomaly_service.get_anomaly_detail = original_get_anomaly_detail
+            _visit_service.get_visit_detail = original_get_visit_detail
             event_service.event_pdf_exporter.export_event_pdf = original_export_event_pdf
 
         self.assertTrue(ok)

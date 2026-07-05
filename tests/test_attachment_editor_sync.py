@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from uuid import uuid4
 from PySide6.QtWidgets import QApplication, QListWidgetItem
-from ui.widgets.defect_form_widget import AttachmentEditor
+from ui.widgets.defect_form_shim import AttachmentEditor
 from services import attachment_manager
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

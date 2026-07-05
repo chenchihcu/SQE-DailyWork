@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
 
 from app_version import APP_TITLE
 from database.connection import get_connection
-from services import event_service
+from database import repository
+from services import event_service as event_service
+from services.event import _product_service, _query_service
 from ncr.db.database import DatabaseMigrationError
 from ncr.models.defect import (
     PROCESSING_LINE_MATERIAL,
@@ -81,7 +83,7 @@ _PAGE_TITLES = {
     HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
     EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
     STATS_PAGE_INDEX: ("異常事件統計", "供應商事件趨勢、責任人績效與供應商風險"),
-    NCR_STATS_PAGE_INDEX: ("不合格品統計", "倉庫實物不合格品統計圖表與比例分析"),
+    NCR_STATS_PAGE_INDEX: ("不合格品統計分析", "倉庫實物不合格品統計圖表與比例分析"),
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
 }
 
@@ -311,7 +313,7 @@ class MainWindow(QMainWindow):
     # ── Dialogs ─────────────────────────────────────────────────────────────
 
     def _ensure_has_active_suppliers(self) -> bool:
-        if event_service.has_active_suppliers():
+        if _product_service.has_active_suppliers():
             return True
         QMessageBox.warning(
             self,
@@ -398,12 +400,12 @@ class MainWindow(QMainWindow):
 
     def _refresh_sidebar_badge(self) -> None:
         try:
-            summary = event_service.get_dashboard_summary()
+            summary = _query_service.get_dashboard_summary()
             count = int(summary.get("standalone_open_count", 0))
         except Exception:
             logger.exception("重新整理事件徽章失敗")
             count = 0
-        self.sidebar.set_badge(("scope", event_service.EVENT_SCOPE_ANOMALY_ONLY), count)
+        self.sidebar.set_badge(("scope", repository.EVENT_SCOPE_ANOMALY_ONLY), count)
         try:
             with get_connection() as conn:
                 warehouse_counts = ncr_stats_service.get_pending_counts_by_processing_line(conn)

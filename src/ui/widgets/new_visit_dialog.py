@@ -31,7 +31,7 @@ from database.product_stage import (
     PRODUCT_STAGE_OPTIONS,
     normalize_product_stage_ui,
 )
-from services import event_service
+from services.event import _anomaly_service, _visit_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -571,10 +571,10 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         }
         try:
             if self._is_edit:
-                event_service.update_visit(self._visit_id, payload)
+                _visit_service.update_visit(self._visit_id, payload)
                 QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已更新"))
             else:
-                visit_id = event_service.create_visit(payload)
+                visit_id = _visit_service.create_visit(payload)
                 created_anomalies = self._create_confirmed_supplier_anomalies(
                     visit_id=visit_id,
                     payload=payload,
@@ -630,7 +630,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             return 0
         count = 0
         for note in visit_level_notes:
-            event_service.create_anomaly_with_visit_link(
+            _anomaly_service.create_anomaly_with_visit_link(
                 {
                     "visit_id": visit_id,
                     "sync_visit": False,
@@ -648,7 +648,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         for section in product_sections:
             section_product_id = str(section.get("product_id") or "").strip()
             for note in section.get("defect_notes") or []:
-                event_service.create_anomaly_with_visit_link(
+                _anomaly_service.create_anomaly_with_visit_link(
                     {
                         "visit_id": visit_id,
                         "sync_visit": False,

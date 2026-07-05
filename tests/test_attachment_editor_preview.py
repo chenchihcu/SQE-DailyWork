@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QListView
 
 from ui.theme import apply_app_theme
 from ui.widgets import anomaly_attachment_editor
-from ui.widgets.defect_form_widget import (
+from ui.widgets.defect_form_shim import (
     ATTACHMENT_ITEM_SIZE,
     AttachmentEditor,
 )

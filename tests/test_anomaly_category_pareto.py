@@ -55,7 +55,7 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
         self._create_anomaly("2026-01-09", "")
         self._create_anomaly("2026-02-01", "根因A")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             rows = event_service.get_anomaly_category_pareto_by_range(
                 "2026-01-01", "2026-01-31"
             )
@@ -76,7 +76,7 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
         self._create_anomaly("2026-01-06", "來料品質不良", root_cause_category="  ")
         self._create_anomaly("2026-01-07", "")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             rows = event_service.get_anomaly_category_pareto_by_range(
                 "2026-01-01", "2026-01-31"
             )
@@ -97,7 +97,7 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
         self._create_anomaly("2026-01-06", "其他　")
         self._create_anomaly("2026-01-07", "來料品質不良")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             rows = event_service.get_anomaly_category_pareto_by_range(
                 "2026-01-01", "2026-01-31"
             )
@@ -113,7 +113,7 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
         self._create_anomaly("2026-01-05", "來料品質不良", root_cause_category="製程參數失控")
         self._create_anomaly("2026-01-06", "規範文件缺漏")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             events = event_service.list_events_by_range("2026-01-01", "2026-01-31")
 
         by_date = {e["event_date"]: e for e in events}

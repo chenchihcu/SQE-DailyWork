@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from database import repository
 from ui.design_tokens import PALETTE as _PALETTE
 from ui.layout_constants import (
     SIDEBAR_LOGO_HEIGHT,
@@ -51,18 +51,18 @@ _NAV_GROUPS = [
         ("首頁", ("page", PAGE_HOME), False, "icons/home.svg"),
     ]),
     ("供應商事件", [
-        ("單獨異常", ("scope", event_service.EVENT_SCOPE_ANOMALY_ONLY), True, "icons/anomaly.svg"),
-        ("訪廠發現異常", ("scope", event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY), False, "icons/anomaly.svg"),
-        ("訪廠紀錄", ("scope", event_service.EVENT_SCOPE_VISIT_ONLY), False, "icons/anomaly.svg"),
-        ("已結案", ("scope", event_service.EVENT_SCOPE_CLOSED_ONLY), False, "icons/anomaly.svg"),
+        ("單獨異常", ("scope", repository.EVENT_SCOPE_ANOMALY_ONLY), True, "icons/anomaly.svg"),
+        ("訪廠發現異常", ("scope", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY), False, "icons/visit.svg"),
+        ("訪廠紀錄", ("scope", repository.EVENT_SCOPE_VISIT_ONLY), False, "icons/visit.svg"),
+        ("已結案", ("scope", repository.EVENT_SCOPE_CLOSED_ONLY), False, "icons/closed.svg"),
         ("異常事件統計", ("page", PAGE_STATS), False, "icons/stats.svg"),
     ]),
     ("倉庫不合格品", [
         ("建立不合格品", ("page", PAGE_NCR_CREATE), False, "icons/warehouse.svg"),
-        ("待處理委外加工", ("page", PAGE_NCR_PENDING_OUTSOURCE), True, "icons/warehouse.svg"),
-        ("待處理原物料", ("page", PAGE_NCR_PENDING_MATERIAL), True, "icons/warehouse.svg"),
+        ("待處理委外加工", ("page", PAGE_NCR_PENDING_OUTSOURCE), True, "icons/outsource.svg"),
+        ("待處理原物料", ("page", PAGE_NCR_PENDING_MATERIAL), True, "icons/material.svg"),
         ("歷史紀錄", ("page", PAGE_NCR_HISTORY), False, "icons/closed.svg"),
-        ("不合格品統計", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
+        ("不合格品統計分析", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
     ]),
     ("系統", [
         ("基礎資料", ("page", PAGE_MASTER), False, "icons/master.svg"),

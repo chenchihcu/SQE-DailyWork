@@ -8,7 +8,7 @@ from services import event_service
 
 class EventServiceProductRequiredTests(unittest.TestCase):
     def test_create_anomaly_requires_product_id(self) -> None:
-        with patch.object(event_service, "get_connection", side_effect=AssertionError):
+        with patch("database.connection.get_connection", side_effect=AssertionError):
             with self.assertRaises(ValueError) as ctx:
                 event_service.create_anomaly(
                     {
@@ -19,7 +19,7 @@ class EventServiceProductRequiredTests(unittest.TestCase):
         self.assertEqual("Product is required", str(ctx.exception))
 
     def test_create_anomaly_with_visit_link_requires_product_id(self) -> None:
-        with patch.object(event_service, "get_connection", side_effect=AssertionError):
+        with patch("database.connection.get_connection", side_effect=AssertionError):
             with self.assertRaises(ValueError) as ctx:
                 event_service.create_anomaly_with_visit_link(
                     {
@@ -30,7 +30,7 @@ class EventServiceProductRequiredTests(unittest.TestCase):
         self.assertEqual("Product is required", str(ctx.exception))
 
     def test_update_anomaly_requires_product_id(self) -> None:
-        with patch.object(event_service, "get_connection", side_effect=AssertionError):
+        with patch("database.connection.get_connection", side_effect=AssertionError):
             with self.assertRaises(ValueError) as ctx:
                 event_service.update_anomaly(
                     "anomaly-1",
@@ -42,7 +42,7 @@ class EventServiceProductRequiredTests(unittest.TestCase):
         self.assertEqual("Product is required", str(ctx.exception))
 
     def test_create_visit_requires_product_id(self) -> None:
-        with patch.object(event_service, "get_connection", side_effect=AssertionError):
+        with patch("database.connection.get_connection", side_effect=AssertionError):
             with self.assertRaises(ValueError) as ctx:
                 event_service.create_visit(
                     {
@@ -53,7 +53,7 @@ class EventServiceProductRequiredTests(unittest.TestCase):
         self.assertEqual("Product is required", str(ctx.exception))
 
     def test_update_visit_requires_product_id(self) -> None:
-        with patch.object(event_service, "get_connection", side_effect=AssertionError):
+        with patch("database.connection.get_connection", side_effect=AssertionError):
             with self.assertRaises(ValueError) as ctx:
                 event_service.update_visit(
                     "visit-1",

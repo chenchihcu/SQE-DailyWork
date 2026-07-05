@@ -8,8 +8,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QFrame, QLabel
 
+from services.event import _query_service as _query_service_mod, _visit_service as _visit_service_mod
 from ui.theme import apply_app_theme
-from ui.widgets import defect_list_widget, event_actions
+from ui.widgets import event_actions
 from ui.widgets.defect_list_widget import EventListWidget
 
 
@@ -38,20 +39,20 @@ class VisitDetailDisplayTests(unittest.TestCase):
             cls.app.quit()
 
     def setUp(self) -> None:
-        self._original_list_events = defect_list_widget.event_service.list_events
-        defect_list_widget.event_service.list_events = lambda _filters=None: []
+        self._original_list_events = _query_service_mod.list_events
+        _query_service_mod.list_events = lambda _filters=None: []
         try:
             self.widget = EventListWidget(_DummyMainWindow(), mode="query")
             self.widget.show()
             self.app.processEvents()
         except Exception:
-            defect_list_widget.event_service.list_events = self._original_list_events
+            _query_service_mod.list_events = self._original_list_events
             raise
 
     def tearDown(self) -> None:
         self.widget.close()
         self.app.processEvents()
-        defect_list_widget.event_service.list_events = self._original_list_events
+        _query_service_mod.list_events = self._original_list_events
 
     def _visit_detail_item_values(self, dialog: event_actions.VisitDetailDialog) -> dict[str, str]:
         item_values: dict[str, str] = {}
@@ -115,7 +116,7 @@ class VisitDetailDisplayTests(unittest.TestCase):
 
         requested_visit_ids: list[str] = []
         captured_dialogs: list[event_actions.VisitDetailDialog] = []
-        original_get_visit_detail = event_actions.event_service.get_visit_detail
+        original_get_visit_detail = _visit_service_mod.get_visit_detail
         original_exec = event_actions.VisitDetailDialog.exec
 
         def fake_get_visit_detail(visit_id: str) -> dict:
@@ -126,12 +127,12 @@ class VisitDetailDisplayTests(unittest.TestCase):
             captured_dialogs.append(dialog)
             return 0
 
-        event_actions.event_service.get_visit_detail = fake_get_visit_detail
+        _visit_service_mod.get_visit_detail = fake_get_visit_detail
         event_actions.VisitDetailDialog.exec = fake_exec
         try:
             self.widget.open_visit_detail("visit-001")
         finally:
-            event_actions.event_service.get_visit_detail = original_get_visit_detail
+            _visit_service_mod.get_visit_detail = original_get_visit_detail
             event_actions.VisitDetailDialog.exec = original_exec
 
         self.assertEqual(["visit-001"], requested_visit_ids)

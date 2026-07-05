@@ -204,7 +204,7 @@ class VisitDefectNotesTests(unittest.TestCase):
     def test_service_allows_visit_level_defect_without_product(self) -> None:
         supplier_id = self._create_supplier("Service Visit Defect Supplier")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             visit_id = event_service.create_visit(
                 {
                     "visit_date": "2026-05-22",
@@ -238,7 +238,7 @@ class VisitDefectNotesTests(unittest.TestCase):
             ],
         )
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             result = event_service.create_anomaly_with_visit_link(
                 {
                     "visit_id": visit_id,

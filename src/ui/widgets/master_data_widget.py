@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from services import event_service as event_service
+from services.event import _product_service, _supplier_service
 from ui.layout_constants import (
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
@@ -233,8 +234,8 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
 
     def refresh_data(self):
         self._has_loaded = True
-        self._supplier_rows = event_service.list_suppliers(include_inactive=True)
-        self._product_rows = event_service.list_products(include_inactive=True)
+        self._supplier_rows = _supplier_service.list_suppliers(include_inactive=True)
+        self._product_rows = _product_service.list_products(include_inactive=True)
         self._render_supplier_table()
         self._render_product_table()
         self._sync_action_buttons()

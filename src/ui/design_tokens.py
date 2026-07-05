@@ -101,8 +101,7 @@ PALETTE: dict[str, object] = {
     "hero_start": "#0E2233",
     "hero_mid": "#1B4D70",
     "hero_end": "#1F6FEB",
-    "on_hero_subtitle": "#CFE4F5",
-    "on_hero_meta": "#E4EFF8",
+
 
     # ── Radii (px) ─────────────────────────────────────────────────────────────
     "radius_sm": 4,

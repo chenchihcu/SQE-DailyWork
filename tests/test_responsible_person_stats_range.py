@@ -52,7 +52,7 @@ class ResponsiblePersonStatsRangeTests(unittest.TestCase):
         self._create_open_anomaly("2026-01-10", "張三")
         self._create_open_anomaly("2026-03-05", "張三")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             rows = event_service.get_responsible_person_stats_by_range(
                 "2026-02-01", "2026-07-31"
             )

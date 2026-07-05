@@ -16,6 +16,11 @@ from PySide6.QtWidgets import (
 from ui.layout_constants import PAGINATION_TOP_MARGIN
 from ui.widgets.common_widgets import apply_clickable_affordance
 
+# 分數倍率(1.25x/1.5x → DPR 2.5/3.0)下，QLabel.sizeHint 以 fontMetrics.horizontalAdvance
+# 估算，比實際繪製寬度短數個物理像素，末字右緣(共 N 筆→筆、每頁→頁、跳至→至)被裁切。
+# 給文字標籤「文字寬 + 護欄」的 minimumWidth，確保任一 DPI 下末字不裁切。
+_LABEL_CLIP_GUARD_PX = 4
+
 
 class PaginationBar(QWidget):
     def __init__(
@@ -60,7 +65,8 @@ class PaginationBar(QWidget):
 
         root.addSpacing(8)
 
-        root.addWidget(QLabel("每頁"))
+        self.every_page_label = QLabel("每頁")
+        root.addWidget(self.every_page_label)
         self.page_size_combo = QComboBox()
         for size in self._page_size_options:
             self.page_size_combo.addItem(str(size), size)
@@ -69,7 +75,8 @@ class PaginationBar(QWidget):
         self.page_size_combo.setStatusTip("調整每頁顯示筆數")
         self.page_size_combo.currentIndexChanged.connect(self._handle_page_size_changed)
         root.addWidget(self.page_size_combo)
-        root.addWidget(QLabel("筆"))
+        self.unit_label = QLabel("筆")
+        root.addWidget(self.unit_label)
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -142,12 +149,25 @@ class PaginationBar(QWidget):
         self.jump_label_suffix = QLabel("頁")
         root.addWidget(self.jump_label_suffix)
 
-        # 分數倍率(1.25x/1.5x)字寬捨入會讓非伸縮文字標籤末字被裁切(共 N→共、每頁→每、跳至→跳)：
-        # 以 sizeHint 為下限(Minimum policy)，靠右側彈性 spacer 吸收差額。
-        for _lbl in self.findChildren(QLabel):
+        # 文字標籤以 sizeHint 為下限(Minimum policy)並加寬度護欄，避免分數倍率末字裁切。
+        # 動態標籤(共 N 筆 / 目前頁 / 總頁)在 set_state 時重算護欄。見 _guard_label_width。
+        self._guarded_labels = (
+            self.total_label,
+            self.every_page_label,
+            self.unit_label,
+            self.page_info_label,
+            self.jump_label_prefix,
+            self.jump_label_suffix,
+        )
+        for _lbl in self._guarded_labels:
             _lbl.setSizePolicy(
                 QSizePolicy.Policy.Minimum, _lbl.sizePolicy().verticalPolicy()
             )
+            self._guard_label_width(_lbl)
+
+    def _guard_label_width(self, label: QLabel) -> None:
+        advance = label.fontMetrics().horizontalAdvance(label.text())
+        label.setMinimumWidth(advance + _LABEL_CLIP_GUARD_PX)
 
     def set_state(
         self, *, total_items: int, current_page: int, page_size: int | None = None
@@ -172,7 +192,9 @@ class PaginationBar(QWidget):
 
         self.total_label.setText(f"共 {self._total_items} 筆")
         self.page_info_label.setText(f"{self._current_page} / {total_pages}")
-        
+        self._guard_label_width(self.total_label)
+        self._guard_label_width(self.page_info_label)
+
         self.first_btn.setEnabled(self._current_page > 1)
         self.prev_btn.setEnabled(self._current_page > 1)
         self.next_btn.setEnabled(self._current_page < total_pages)

@@ -58,11 +58,11 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
             }
         ]
         self._list_suppliers_patch = patch(
-            "ui.widgets.master_data_widget.event_service.list_suppliers",
+            "ui.widgets.master_data_widget._supplier_service.list_suppliers",
             return_value=suppliers,
         )
         self._list_products_patch = patch(
-            "ui.widgets.master_data_widget.event_service.list_products",
+            "ui.widgets.master_data_widget._product_service.list_products",
             return_value=products,
         )
         self._list_suppliers_patch.start()

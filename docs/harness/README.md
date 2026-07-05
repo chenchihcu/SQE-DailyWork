@@ -14,6 +14,8 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 - Command policy: `.codex/rules/project.rules`
 - Product/runtime overview: `README.md`
 - Risk ledger: `docs/risk-ledger.md`
+- Agent orchestration protocol: `docs/harness/agent-orchestration.md`
+- Cross-tool contradiction log: `docs/harness/contradiction-log.md`
 
 ## Operating Model
 

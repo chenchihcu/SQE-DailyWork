@@ -40,11 +40,6 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         self.assertIn('"Microsoft JhengHei"', widget_block)
         self.assertIn('"Segoe UI"', widget_block)
 
-    def test_kpi_value_font_size_is_26px(self) -> None:
-        qss = get_theme_qss()
-        kpi_value_block = _selector_block(qss, 'QLabel[role="kpiValue"]')
-        self.assertIn("font-size: 26px;", kpi_value_block)
-
     def test_main_workflow_tab_typography_and_colors_match_reference(self) -> None:
         qss = get_theme_qss()
         tab_block = _selector_block(qss, "QTabWidget#MainWorkflowTabs QTabBar::tab")

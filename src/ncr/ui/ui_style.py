@@ -256,7 +256,7 @@ def app_stylesheet() -> str:
     QLabel[uiRole="sidebarBrandTitle"] {{
         color: {COLOR_TEXT_PRIMARY};
         font-size: 21px;
-        font-weight: 800;
+        font-weight: 700;
         letter-spacing: 1px;
         background: transparent;
     }}

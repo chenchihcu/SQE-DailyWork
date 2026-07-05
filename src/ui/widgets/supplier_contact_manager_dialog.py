@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 
-from services import event_service
+from services.event import _supplier_service as event_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_VERTICAL_SPACING,

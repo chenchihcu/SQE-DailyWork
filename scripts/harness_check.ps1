@@ -218,6 +218,8 @@ $requiredFiles = @(
     "docs\harness\quality-score.md",
     "docs\harness\doc-gardening.md",
     "docs\harness\closed-loop-log.md",
+    "docs\harness\agent-orchestration.md",
+    "docs\harness\contradiction-log.md",
     "docs\exec-plans\README.md",
     "docs\exec-plans\active\README.md",
     "docs\exec-plans\completed\README.md"
@@ -367,6 +369,16 @@ Require-Text "docs\harness\closed-loop-log.md" "Fix:" "closed-loop fix field"
 Require-Text "docs\harness\closed-loop-log.md" "Harness update needed:" "closed-loop harness update field"
 Require-Text "docs\harness\closed-loop-log.md" "Destination:" "closed-loop destination field"
 Require-Text "docs\harness\closed-loop-log.md" "Qt Visual Evidence Entry" "Qt visual RCA entry"
+
+Require-Text "AGENTS.md" "docs/harness/agent-orchestration.md" "agent orchestration pointer"
+Require-Text "docs\harness\agent-orchestration.md" "Role Assignment (RACI)" "orchestration RACI section"
+Require-Text "docs\harness\agent-orchestration.md" "Task Tiering" "orchestration task tiering section"
+Require-Text "docs\harness\agent-orchestration.md" "Evidence Standard" "orchestration evidence standard section"
+Require-Text "docs\harness\agent-orchestration.md" "Review Severity" "orchestration review severity section"
+Require-Text "docs\harness\agent-orchestration.md" "Routing Table" "orchestration routing table"
+Require-Text "docs\harness\agent-orchestration.md" "native Windows Qt" "orchestration native Qt verification"
+Require-Text "docs\harness\agent-orchestration.md" "contradiction-log.md" "orchestration error-learning pointer"
+Require-Text "docs\harness\contradiction-log.md" "Required user decision" "contradiction log format"
 
 Require-Text "scripts\verify.ps1" "harness_check.ps1" "verify harness check call"
 Require-Text "scripts\verify.ps1" "qt_visual_probe.py" "verify native Qt visual probe call"

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service
+from services.event import _supplier_service as event_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     apply_table_action_affordance,

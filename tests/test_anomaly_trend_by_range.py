@@ -84,7 +84,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         d = self._create_anomaly("2026-03-01")
         self._force_close(d, "2026-03-05")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("2026-01-01", "2026-03-31")
 
         by_month = {row["yyyymm"]: row for row in trend}
@@ -113,7 +113,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         self.assertEqual(2, by_month["2026-03"]["backlog_count"])  # B, C
 
     def test_empty_range_returns_zero_rows_for_untouched_months(self) -> None:
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("2026-05-01", "2026-05-31")
 
         self.assertEqual(1, len(trend))
@@ -135,7 +135,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
             closed_at="2026-03-05",
         )
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             initial = event_service.get_anomaly_trend_by_range("2026-01-01", "2026-04-30")
 
         initial_by_month = {row["yyyymm"]: row for row in initial}
@@ -148,7 +148,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
             closed_at="2026-04-10",
         )
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             updated = event_service.get_anomaly_trend_by_range("2026-01-01", "2026-04-30")
 
         updated_by_month = {row["yyyymm"]: row for row in updated}
@@ -160,7 +160,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         self._create_anomaly("2026-06-15")
         self._create_anomaly("2026-06-30")
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("2026-06-10", "2026-06-20")
 
         self.assertEqual(1, len(trend))
@@ -212,7 +212,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
             visit_id=future_visit,
         )
 
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_visit_trend_by_range("2026-06-10", "2026-06-20")
 
         self.assertEqual(
@@ -221,7 +221,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         )
 
     def test_invalid_date_range_returns_empty_list(self) -> None:
-        with patch.object(event_service, "get_connection", return_value=self.conn):
+        with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("not-a-date", "also-not-a-date")
         self.assertEqual([], trend)
 
