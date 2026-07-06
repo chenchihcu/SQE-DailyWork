@@ -58,6 +58,23 @@ def list_products(conn: sqlite3.Connection) -> list[dict[str, str]]:
     ]
 
 
+def list_products_by_supplier_name(
+    conn: sqlite3.Connection, supplier_name: str
+) -> list[dict[str, str]]:
+    """依供應商名稱篩選有效料號（嚴格模式）。
+
+    空 supplier_name 時傳回空串列。
+    結果只含 supplier_id IS NOT NULL 且主供/次供之一符合的料號。
+    """
+    return [
+        {
+            "item_no": str(row["item_no"] or ""),
+            "product_name": str(row["product_name"] or ""),
+        }
+        for row in crud.get_products_by_supplier_name(conn, supplier_name)
+    ]
+
+
 def sync_product_from_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     item_no = str(data.get("item_no", "")).strip()
     product_name = str(data.get("product_name", "")).strip()

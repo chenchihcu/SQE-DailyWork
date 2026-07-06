@@ -253,8 +253,9 @@ class DefectFieldsWidget(QWidget):
         self._product_name_by_item_no: dict[str, str] = {}
         self._build_ui()
         self.reset_fields()
-        self.refresh_product_options()
+        # 初始化順序：先載入供應商清單，再載入料號（料號依供應商篩選）
         self.refresh_supplier_options()
+        self.refresh_product_options()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -313,8 +314,14 @@ class DefectFieldsWidget(QWidget):
         self.outsource_supplier_combo.setEditable(False)
         self.outsource_supplier_combo.setPlaceholderText(PLACEHOLDER_OUTSOURCE_SUPPLIER)
         self.supplier_combo.currentTextChanged.connect(self._on_supplier_changed)
+        self.supplier_combo.currentTextChanged.connect(
+            self._on_supplier_changed_refresh_products
+        )
         self.outsource_supplier_combo.currentTextChanged.connect(
             self._on_outsource_supplier_changed
+        )
+        self.outsource_supplier_combo.currentTextChanged.connect(
+            self._on_supplier_changed_refresh_products
         )
         self.item_no_input.currentTextChanged.connect(self._on_item_no_changed)
 
@@ -382,13 +389,23 @@ class DefectFieldsWidget(QWidget):
             column_offset=4, field_column_span=1, required=True
         )
 
-        # Row 2: 退料單別 / 料號 / 產品名稱
+        # Row 2: 正式供應商 / 委外供應商（先選供應商，再選料號）
         self._add_compact_field(
-            form_grid, 2, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
+            form_grid, 2, LABEL_SUPPLIER_NAME, self.supplier_combo,
+            column_offset=0, field_column_span=2
+        )
+        self._add_compact_field(
+            form_grid, 2, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo,
+            column_offset=3, field_column_span=2
+        )
+
+        # Row 3: 退料單別 / 料號 / 產品名稱
+        self._add_compact_field(
+            form_grid, 3, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
             column_offset=0, field_column_span=1, required=True
         )
         self._add_compact_field(
-            form_grid, 2, LABEL_ITEM_NO, self.item_no_input,
+            form_grid, 3, LABEL_ITEM_NO, self.item_no_input,
             column_offset=2, field_column_span=1, required=True
         )
         self.product_name_input.setToolTip("由系統依料號自動帶出，不可手動輸入")
@@ -400,29 +417,20 @@ class DefectFieldsWidget(QWidget):
         product_name_layout.addWidget(self.quick_add_product_btn, 0)
         product_name_host.setMinimumWidth(FORM_COMPACT_FIELD_MIN_WIDTH + 84)
         self._add_compact_field(
-            form_grid, 2, LABEL_PRODUCT_NAME, product_name_host,
+            form_grid, 3, LABEL_PRODUCT_NAME, product_name_host,
             column_offset=4, field_column_span=1
         )
 
-        # Row 3: 廠內製令 / 委外製令
+        # Row 4: 廠內製令 / 委外製令
         self._add_compact_field(
-            form_grid, 3, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input,
+            form_grid, 4, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input,
             column_offset=0, field_column_span=2
         )
         self._add_compact_field(
-            form_grid, 3, LABEL_WORK_ORDER_NO, self.work_order_input,
+            form_grid, 4, LABEL_WORK_ORDER_NO, self.work_order_input,
             column_offset=3, field_column_span=2
         )
 
-        # Row 4: 正式供應商 / 委外供應商
-        self._add_compact_field(
-            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo,
-            column_offset=0, field_column_span=2
-        )
-        self._add_compact_field(
-            form_grid, 4, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo,
-            column_offset=3, field_column_span=2
-        )
         layout.addLayout(form_grid)
 
         self.supplier_hint_label = make_notice_label("", role="warningHint")
@@ -561,13 +569,39 @@ class DefectFieldsWidget(QWidget):
 
         self._sync_supplier_outsource_guard()
 
+    def _get_current_supplier_name(self) -> str:
+        """取當前有效的供應商名稱（正式或委外，互斥，至多一個有效）。
+
+        N/A 與空字串均視為無效，傳回空字串表示供應商未選定。
+        """
+        supplier_text = self.supplier_combo.currentText().strip()
+        if supplier_text and supplier_text != "N/A":
+            return supplier_text
+        outsource_text = self.outsource_supplier_combo.currentText().strip()
+        if outsource_text and outsource_text != "N/A":
+            return outsource_text
+        return ""
+
     def refresh_product_options(self, selected_item_no: str | None = None) -> None:
+        """依當前選定的供應商重建料號下拉清單。
+
+        若有供應商選定，嚴格篩選只顯示該供應商（主供/次供）的料號。
+        若供應商未選定，料號清單為空（只有佔位選項）。
+        若 selected_item_no 傳入，嘗試在重建後預選該值；
+        但若該值不在篩選結果中，則不強制注入（新增模式下的嚴格行為）。
+        """
         current_item_no = (
             selected_item_no.strip()
             if selected_item_no is not None
             else self.item_no_input.currentText().strip()
         )
-        products = product_service.list_products(self.conn)
+        supplier_name = self._get_current_supplier_name()
+        if supplier_name:
+            products = product_service.list_products_by_supplier_name(
+                self.conn, supplier_name
+            )
+        else:
+            products = []
         self._product_name_by_item_no = {
             (item["item_no"] or "").strip(): (item["product_name"] or "").strip()
             for item in products
@@ -586,10 +620,25 @@ class DefectFieldsWidget(QWidget):
                         f"{item_no} / {product_name}",
                         Qt.ItemDataRole.ToolTipRole,
                     )
+            # 舊資料載入（編輯模式）：若目前料號不在篩選結果中，仍注入以保持可見
             if current_item_no and self.item_no_input.findText(current_item_no) < 0:
                 self.item_no_input.addItem(current_item_no, current_item_no)
             self.item_no_input.setCurrentText(current_item_no)
         self.sync_product_name_from_item_no()
+
+    def _on_supplier_changed_refresh_products(self, _text: str) -> None:
+        """供應商改變時：清空料號與品名，依新供應商重建料號清單。
+
+        此方法在 supplier_combo 與 outsource_supplier_combo 的
+        currentTextChanged signal 觸發，但需等互斥邏輯（_on_supplier_changed /
+        _on_outsource_supplier_changed）執行完後才讀取最終狀態，
+        故以 currentText 實際值為準，不依賴傳入的 _text。
+        """
+        with block_signals(self.item_no_input):
+            self.item_no_input.setCurrentText("")
+        self.product_name_input.clear()
+        self.quick_add_product_btn.hide()
+        self.refresh_product_options("")
 
     _ALL_FIELD_GROUPS = frozenset({
         "date", "processing_line", "return_slip_type", "work_order", "transfer_slip",
@@ -663,20 +712,19 @@ class DefectFieldsWidget(QWidget):
         self.internal_work_order_input.setText(str(record.get("internal_work_order_no", "") or ""))
         self.transfer_slip_input.setText(str(record.get("transfer_slip_no", "") or ""))
         self.category_combo.setCurrentText(record.get("category", CATEGORY_OPTIONS[0]))
-        self.refresh_product_options(str(record.get("item_no", "") or ""))
-        self.sync_product_name_from_item_no()
         self.qty_spin.setValue(max(int(record.get("qty", 1)), 1))
         supplier_name = record.get("supplier_name", "")
         outsource_supplier_name = record.get("outsource_supplier_name", "")
-        
+
         # If both are filled and neither is N/A, favor supplier (legacy cleanup)
-        if (str(supplier_name).strip() and str(supplier_name).strip() != "N/A" and 
-            str(outsource_supplier_name).strip() and str(outsource_supplier_name).strip() != "N/A"):
+        if (str(supplier_name).strip() and str(supplier_name).strip() != "N/A" and
+                str(outsource_supplier_name).strip() and str(outsource_supplier_name).strip() != "N/A"):
             outsource_supplier_name = "N/A"
 
+        # 就設定順序：先載入供應商 → 再載入料號（料號依供應商篩選）
         # refresh_supplier_options 內部會自行解除 blockSignals，無法依賴外層封鎖跨越此呼叫。
         # 它已在封鎖狀態下載入並設定供應商；之後僅需在「設定委外索引」這段重新封鎖，
-        # 避免觸發互斥處理器把剛載入的供應商覆寫為 N/A，也避免載入即被標記為 dirty。
+        # 避免觸發互斥處理器把剛載入的供應商覆寫為 N/A。
         self.refresh_supplier_options(supplier_name)
         self.outsource_supplier_combo.blockSignals(True)
         try:
@@ -686,6 +734,10 @@ class DefectFieldsWidget(QWidget):
             self.outsource_supplier_combo.setCurrentIndex(target_outsource_index)
         finally:
             self.outsource_supplier_combo.blockSignals(False)
+
+        # 供應商已設定，再載入料號（篩選有效）
+        self.refresh_product_options(str(record.get("item_no", "") or ""))
+        self.sync_product_name_from_item_no()
         self.defect_desc_input.setPlainText(str(record.get("defect_desc", "") or ""))
         self.status_combo.setCurrentText(record.get("status", STATUS_OPTIONS[0]))
         disposition = record.get("disposition", "")

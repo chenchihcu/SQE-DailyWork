@@ -421,6 +421,49 @@ def get_products(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(cursor.fetchall())
 
 
+def get_products_by_supplier_name(
+    conn: sqlite3.Connection, supplier_name: str
+) -> list[sqlite3.Row]:
+    """依供應商名稱篩選料號（嚴格模式）。
+
+    只傳回 products.supplier_id 或 products.secondary_supplier_id 對應到
+    suppliers.supplier_name 的料號。supplier_id IS NULL 的老料號一律排除。
+    正式供應商與委外供應商均可篩選（透過 suppliers 表統一查詢）。
+
+    當 products/suppliers 為 VIEW（主應用架構）時正常執行。
+    若 products 或 suppliers 實體表不存在（如 NCR 單獨測試環境只有
+    product_records 獨立 TABLE），安全回傳空列表以避免 OperationalError。
+    """
+    normalized = (supplier_name or "").strip()
+    if not normalized:
+        return []
+    # 檢查 products 和 suppliers 實體表是否存在
+    # NCR 測試環境使用獨立 schema（product_records 為真實 TABLE，非 VIEW），
+    # 不含 products/suppliers 實體表，此時無法執行 JOIN，安全降級回傳 []。
+    has_products = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name='products'"
+    ).fetchone() is not None
+    has_suppliers = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name='suppliers'"
+    ).fetchone() is not None
+    if not has_products or not has_suppliers:
+        return []
+    cursor = conn.execute(
+        """
+        SELECT DISTINCT p.product_code AS item_no, p.product_name
+        FROM products p
+        JOIN suppliers s ON (s.id = p.supplier_id OR s.id = p.secondary_supplier_id)
+        WHERE s.supplier_name = ?
+          AND p.is_active = 1
+          AND p.supplier_id IS NOT NULL
+        ORDER BY p.product_code COLLATE NOCASE
+        """,
+        (normalized,),
+    )
+    return list(cursor.fetchall())
+
+
+
 def get_product_by_item_no(conn: sqlite3.Connection, item_no: str) -> sqlite3.Row | None:
     cursor = conn.execute(
         "SELECT id, item_no, product_name, created_at FROM product_records WHERE item_no = ?",

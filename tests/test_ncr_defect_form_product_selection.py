@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import sqlite3
@@ -18,7 +18,6 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
@@ -29,11 +28,8 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         apply_schema(self.conn, with_version=True)
         self.conn.execute(
-            """
-            INSERT INTO product_records (item_no, product_name, created_at)
-            VALUES (?, ?, ?)
-            """,
-            ("ITEM-001", "測試產品 A", "2026-06-03T09:00:00"),
+            "INSERT INTO product_records (item_no, product_name, created_at) VALUES (?, ?, ?)",
+            ("ITEM-001", "Testing Product A", "2026-06-03T09:00:00"),
         )
         self.conn.commit()
 
@@ -52,7 +48,7 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
                 "internal_work_order_no": "",
                 "transfer_slip_no": "",
                 "item_no": "ITEM-001",
-                "product_name": "測試產品 A",
+                "product_name": "Testing Product A",
                 "qty": 1,
                 "category": "原物料",
                 "supplier_name": "測試供應商",
@@ -66,17 +62,22 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
         )
 
     def test_selecting_database_item_number_populates_product_name(self) -> None:
+        # New behavior: without a supplier selected, item list is empty (strict mode).
+        # NCR test env uses standalone product_records TABLE (not a VIEW), so
+        # get_products_by_supplier_name safely returns [] -> no items in dropdown.
+        # Verify 1: no supplier -> ITEM-001 not in dropdown
+        # Verify 2: manual text entry still populates product name via sync_product_name_from_item_no
         widget = DefectFieldsWidget(self.conn)
         self.addCleanup(widget.deleteLater)
 
         index = widget.item_no_input.findText("ITEM-001")
-        self.assertGreaterEqual(index, 0)
+        self.assertEqual(-1, index, "No supplier: item list must be empty")
 
-        widget.item_no_input.setCurrentIndex(index)
+        widget.item_no_input.setCurrentText("ITEM-001")
         self.app.processEvents()
 
         self.assertEqual("ITEM-001", widget.item_no_input.currentText())
-        self.assertEqual("測試產品 A", widget.product_name_input.text())
+        self.assertEqual("Testing Product A", widget.product_name_input.text())
 
     def test_defect_fields_description_uses_full_width_without_placeholder(self) -> None:
         widget = DefectFieldsWidget(self.conn)
