@@ -355,42 +355,42 @@ class DefectFieldsWidget(QWidget):
         layout.setContentsMargins(*DEFECT_FORM_CONTENT_MARGINS)
         layout.setSpacing(SECTION_SPACING)
 
-        # 1. 基礎資訊（2 欄佈局：避免最小寬度 / 高 DPI 下第三欄較寬的 combo 切字）
-        form_grid = create_form_grid(field_count=2, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
+        # 1. 基礎資訊（3 欄佈局：密集排版以省高度，2 欄與 3 欄混排）
+        form_grid = create_form_grid(field_count=3, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
 
-        # Row 0
-        self._add_compact_field(form_grid, 0, LABEL_EVENT_DATE, self.event_date_edit, column_offset=0)
+        # Row 0: 發生日期 / 責任
         self._add_compact_field(
-            form_grid, 0, LABEL_PROCESSING_LINE, self.processing_line_combo,
-            column_offset=2, required=True,
-        )
-
-        # Row 1
-        self._add_compact_field(
-            form_grid, 1, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
-            column_offset=0, required=True,
-        )
-        self._add_compact_field(form_grid, 1, LABEL_CATEGORY, self.category_combo, column_offset=2)
-
-        # Row 2
-        add_labeled_field(
-            form_grid, 2, LABEL_QTY, self.qty_spin,
-            column_offset=0,
-            label_width_override=FORM_COMPACT_LABEL_WIDTH,
-            field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
-            required=True,
+            form_grid, 0, LABEL_EVENT_DATE, self.event_date_edit,
+            column_offset=0, field_column_span=2
         )
         self._add_compact_field(
-            form_grid, 2, LABEL_WORK_ORDER_NO, self.work_order_input, column_offset=2
+            form_grid, 0, LABEL_RESPONSIBILITY, self.responsibility_combo,
+            column_offset=3, field_column_span=2
         )
 
-        # Row 3
+        # Row 1: 類別 / 處理線 / 數量
         self._add_compact_field(
-            form_grid, 3, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input, column_offset=0
+            form_grid, 1, LABEL_CATEGORY, self.category_combo,
+            column_offset=0, field_column_span=1
         )
-        self._add_compact_field(form_grid, 3, LABEL_ITEM_NO, self.item_no_input, column_offset=2, required=True)
+        self._add_compact_field(
+            form_grid, 1, LABEL_PROCESSING_LINE, self.processing_line_combo,
+            column_offset=2, field_column_span=1, required=True
+        )
+        self._add_compact_field(
+            form_grid, 1, LABEL_QTY, self.qty_spin,
+            column_offset=4, field_column_span=1, required=True
+        )
 
-        # Row 4
+        # Row 2: 退料單別 / 料號 / 產品名稱
+        self._add_compact_field(
+            form_grid, 2, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
+            column_offset=0, field_column_span=1, required=True
+        )
+        self._add_compact_field(
+            form_grid, 2, LABEL_ITEM_NO, self.item_no_input,
+            column_offset=2, field_column_span=1, required=True
+        )
         self.product_name_input.setToolTip("由系統依料號自動帶出，不可手動輸入")
         product_name_host = QWidget()
         product_name_layout = QHBoxLayout(product_name_host)
@@ -399,19 +399,29 @@ class DefectFieldsWidget(QWidget):
         product_name_layout.addWidget(self.product_name_input, 1)
         product_name_layout.addWidget(self.quick_add_product_btn, 0)
         product_name_host.setMinimumWidth(FORM_COMPACT_FIELD_MIN_WIDTH + 84)
-        add_labeled_field(
-            form_grid, 4, LABEL_PRODUCT_NAME, product_name_host,
-            column_offset=0,
-            label_width_override=FORM_COMPACT_LABEL_WIDTH,
-            field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
-        )
         self._add_compact_field(
-            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo, column_offset=2
+            form_grid, 2, LABEL_PRODUCT_NAME, product_name_host,
+            column_offset=4, field_column_span=1
         )
 
-        # Row 5
+        # Row 3: 廠內製令 / 委外製令
         self._add_compact_field(
-            form_grid, 5, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo, column_offset=0
+            form_grid, 3, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input,
+            column_offset=0, field_column_span=2
+        )
+        self._add_compact_field(
+            form_grid, 3, LABEL_WORK_ORDER_NO, self.work_order_input,
+            column_offset=3, field_column_span=2
+        )
+
+        # Row 4: 正式供應商 / 委外供應商
+        self._add_compact_field(
+            form_grid, 4, LABEL_SUPPLIER_NAME, self.supplier_combo,
+            column_offset=0, field_column_span=2
+        )
+        self._add_compact_field(
+            form_grid, 4, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo,
+            column_offset=3, field_column_span=2
         )
         layout.addLayout(form_grid)
 
@@ -432,17 +442,19 @@ class DefectFieldsWidget(QWidget):
 
         layout.addSpacing(10)
 
-        # 3. 處理狀態（2 欄佈局）
-        handle_grid = create_form_grid(field_count=2, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
-        self._add_compact_field(handle_grid, 0, LABEL_STATUS, self.status_combo, column_offset=0)
+        # 3. 處理狀態（3 欄單列佈局）
+        handle_grid = create_form_grid(field_count=3, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(
-            handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo, column_offset=2
+            handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo,
+            column_offset=0, field_column_span=1
         )
         self._add_compact_field(
-            handle_grid, 1, LABEL_TRANSFER_SLIP_NO, self.transfer_slip_input, column_offset=0
+            handle_grid, 0, LABEL_TRANSFER_SLIP_NO, self.transfer_slip_input,
+            column_offset=2, field_column_span=1
         )
         self._add_compact_field(
-            handle_grid, 1, LABEL_RESPONSIBILITY, self.responsibility_combo, column_offset=2
+            handle_grid, 0, LABEL_STATUS, self.status_combo,
+            column_offset=4, field_column_span=1
         )
         layout.addLayout(handle_grid)
 
@@ -458,22 +470,22 @@ class DefectFieldsWidget(QWidget):
         """
         order = [
             self.event_date_edit,
-            self.processing_line_combo,
-            self.return_slip_type_combo,
+            self.responsibility_combo,
             self.category_combo,
+            self.processing_line_combo,
             self.qty_spin,
-            self.work_order_input,
-            self.internal_work_order_input,
+            self.return_slip_type_combo,
             self.item_no_input,
             self.product_name_input,
             self.quick_add_product_btn,
+            self.internal_work_order_input,
+            self.work_order_input,
             self.supplier_combo,
             self.outsource_supplier_combo,
             self.defect_desc_input,
-            self.status_combo,
             self.disposition_combo,
             self.transfer_slip_input,
-            self.responsibility_combo,
+            self.status_combo,
         ]
         for earlier, later in zip(order, order[1:], strict=False):
             self.setTabOrder(earlier, later)
@@ -486,6 +498,7 @@ class DefectFieldsWidget(QWidget):
         field: QWidget,
         *,
         column_offset: int = 0,
+        field_column_span: int = 1,
         required: bool = False,
     ) -> QLabel:
         return add_labeled_field(
@@ -494,6 +507,7 @@ class DefectFieldsWidget(QWidget):
             label_text,
             field,
             column_offset=column_offset,
+            field_column_span=field_column_span,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
             field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
             required=required,
