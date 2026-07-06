@@ -2539,10 +2539,14 @@ def list_active_products_for_supplier(
     sql += " WHERE p.is_active = 1"
     params: list[Any] = []
     if has_secondary_supplier_id:
-        sql += " AND (p.supplier_id = ? OR p.secondary_supplier_id = ? OR p.supplier_id IS NULL)"
+        # 嚴格模式：只顯示主供或次供符合的料號。
+        # 不包含 supplier_id IS NULL 的老料號（對齊 NCR 嚴格模式，audit finding SP-1）。
+        sql += " AND (p.supplier_id = ? OR p.secondary_supplier_id = ?)"
         params.extend([normalized_supplier_id, normalized_supplier_id])
     else:
-        sql += " AND (p.supplier_id IS NULL OR p.supplier_id = ?)"
+        # 舊版 schema（無 secondary_supplier_id 欄位）：只顯示主供符合的料號。
+        # 不包含 supplier_id IS NULL 的老料號（嚴格模式）。
+        sql += " AND p.supplier_id = ?"
         params.append(normalized_supplier_id)
     sql += " ORDER BY p.product_name COLLATE NOCASE, p.product_code COLLATE NOCASE"
     rows = conn.execute(sql, params).fetchall()
