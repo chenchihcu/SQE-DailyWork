@@ -6,7 +6,9 @@ import re
 from pathlib import Path
 
 
-ANOMALY_FOLDER_ROOT = Path(__file__).resolve().parents[3] / "Outputs" / "ncr number file"
+ANOMALY_FOLDER_ROOT = (
+    Path(__file__).resolve().parents[3] / "Outputs" / "ncr number file"
+)
 _INVALID_WINDOWS_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
@@ -32,3 +34,34 @@ def create_anomaly_folder(*, supplier_name: str, anomaly_no: str) -> Path:
     folder = prepare_anomaly_folder_root() / f"{safe_supplier}{safe_anomaly_no}"
     folder.mkdir(exist_ok=True)
     return folder
+
+
+def relocate_anomaly_folder(
+    *,
+    old_supplier_name: str,
+    old_anomaly_no: str,
+    new_supplier_name: str,
+    new_anomaly_no: str,
+) -> Path:
+    """Rename an existing working folder and its snapshot when identity changes."""
+    root = prepare_anomaly_folder_root()
+    old_name = (
+        f"{_safe_folder_component(old_supplier_name)}"
+        f"{_safe_folder_component(old_anomaly_no)}"
+    )
+    new_name = (
+        f"{_safe_folder_component(new_supplier_name)}"
+        f"{_safe_folder_component(new_anomaly_no)}"
+    )
+    old_folder = root / old_name
+    new_folder = root / new_name
+    if old_folder == new_folder or not old_folder.exists():
+        return new_folder
+    if new_folder.exists():
+        raise FileExistsError(f"Anomaly folder already exists: {new_folder}")
+    old_folder.rename(new_folder)
+    old_markdown = new_folder / f"{old_name}.md"
+    new_markdown = new_folder / f"{new_name}.md"
+    if old_markdown.is_file():
+        old_markdown.rename(new_markdown)
+    return new_folder

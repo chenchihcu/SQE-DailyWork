@@ -23,6 +23,19 @@ ALLOWED_IMAGE_SUFFIXES: frozenset[str] = frozenset({".jpg", ".jpeg", ".png"})
 CAPTIONS_FILENAME = "captions.json"
 
 
+def _sync_anomaly_markdown(anomaly_id: str) -> None:
+    """Refresh the anomaly snapshot after an attachment mutation."""
+    from services.event._anomaly_markdown import sync_anomaly_markdown_by_id
+
+    try:
+        sync_anomaly_markdown_by_id(anomaly_id)
+    except ValueError:
+        logger.debug(
+            "Skipped anomaly markdown sync because the anomaly row is unavailable",
+            exc_info=True,
+        )
+
+
 def _anomaly_dir(anomaly_id: str) -> Path:
     key = (anomaly_id or "").strip()
     if not key:
@@ -64,6 +77,8 @@ def import_anomaly_attachments(
         destination = _resolve_unique_name(target_dir, path.name)
         shutil.copy2(path, destination)
         stored.append(destination)
+    if stored:
+        _sync_anomaly_markdown(anomaly_id)
     return stored
 
 
@@ -104,9 +119,7 @@ def get_anomaly_captions(anomaly_id: str) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items() if str(v).strip()}
 
 
-def set_anomaly_captions(
-    anomaly_id: str, captions: dict[str, str]
-) -> None:
+def set_anomaly_captions(anomaly_id: str, captions: dict[str, str]) -> None:
     """Merge new captions into the captions.json file for an anomaly.
 
     Empty/whitespace-only captions are removed. Entries for filenames that no
@@ -135,12 +148,16 @@ def set_anomaly_captions(
             try:
                 captions_path.unlink()
             except OSError:
-                logger.debug("Could not remove empty anomaly captions file", exc_info=True)
+                logger.debug(
+                    "Could not remove empty anomaly captions file", exc_info=True
+                )
+        _sync_anomaly_markdown(key)
         return
     captions_path.write_text(
         json.dumps(pruned, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    _sync_anomaly_markdown(key)
 
 
 def delete_anomaly_attachment(anomaly_id: str, filename: str) -> bool:
@@ -189,6 +206,7 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
     if old.lower() == new.lower() and old != new:
         # On Windows, renaming A.jpg to a.jpg requires an intermediate step
         import uuid
+
         temp_name = f"{old}.{uuid.uuid4().hex}.tmp"
         temp_path = folder / temp_name
         try:
@@ -198,6 +216,7 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
             temp_path.rename(new_target_path)
             # Update captions with the actually used name
             _update_caption_key(key, old, new_target_path.name)
+            _sync_anomaly_markdown(key)
             return True
         except OSError:
             if temp_path.exists():
@@ -207,7 +226,8 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
                     logger.error(
                         "Attachment rename rollback failed, orphaned temp file "
                         "left at %s (original was %s); manual cleanup required.",
-                        temp_path, old_path,
+                        temp_path,
+                        old_path,
                     )
             return False
 
@@ -216,6 +236,7 @@ def rename_anomaly_attachment(anomaly_id: str, old_name: str, new_name: str) -> 
     try:
         old_path.rename(new_target_path)
         _update_caption_key(key, old, new_target_path.name)
+        _sync_anomaly_markdown(key)
         return True
     except OSError:
         return False
@@ -248,4 +269,5 @@ def import_single_anomaly_attachment(
 
     destination = _resolve_unique_name(target_dir, name)
     shutil.copy2(path, destination)
+    _sync_anomaly_markdown(anomaly_id)
     return destination

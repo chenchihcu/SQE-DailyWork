@@ -60,6 +60,15 @@ shared master-data area.
 - Folder creation is idempotent. Windows-invalid filename characters in the
   supplier-name component are replaced with `_`; the stored supplier name and
   anomaly number are never changed.
+- Each folder contains a same-stem `.md` file whose body is deterministic YAML.
+  All user-facing keys use Traditional Chinese. The canonical field order is owned by
+  `src/services/event/_anomaly_markdown.py`; absent scalar values remain as
+  empty strings and `attachments` remains an explicit list. Attachment entries
+  contain both filename and caption.
+- The service layer overwrites the YAML snapshot after create, edit, visit-link
+  update, close, closure-date adjustment, reopen, and attachment mutations.
+  SQLite and the attachment store remain authoritative; the Markdown file is a
+  synchronized operational snapshot, not a second writable data source.
 
 ## UI Entrypoint And Folder Boundaries
 

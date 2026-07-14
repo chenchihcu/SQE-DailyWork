@@ -5,13 +5,18 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-logger = logging.getLogger(__name__)
-
 from database import connection as _connection
 from database import repository
 
-from ._anomaly_folder import create_anomaly_folder, prepare_anomaly_folder_root
-from ._helpers import _require_product_id, _require_supplier_record, _resolve_product_name
+from ._anomaly_folder import prepare_anomaly_folder_root, relocate_anomaly_folder
+from ._anomaly_markdown import write_anomaly_markdown
+from ._helpers import (
+    _require_product_id,
+    _require_supplier_record,
+    _resolve_product_name,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def create_anomaly(payload: dict) -> str:
@@ -25,7 +30,7 @@ def create_anomaly(payload: dict) -> str:
 
     prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
-        supplier = _require_supplier_record(conn, supplier_id, require_active=True)
+        _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
             conn,
             supplier_id=supplier_id,
@@ -53,10 +58,13 @@ def create_anomaly(payload: dict) -> str:
             is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
             quality_report_required=payload.get("quality_report_required"),
         )
-    create_anomaly_folder(
-        supplier_name=str(supplier.get("supplier_name") or ""),
-        anomaly_no=anomaly_no,
-    )
+        row = conn.execute(
+            "SELECT id FROM anomalies WHERE anomaly_no = ?", (anomaly_no,)
+        ).fetchone()
+        detail = repository.get_anomaly_detail(conn, str(row["id"])) if row else None
+    if detail is None:
+        raise ValueError("Created anomaly could not be loaded")
+    write_anomaly_markdown(detail)
     return anomaly_no
 
 
@@ -74,7 +82,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
 
     prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
-        supplier = _require_supplier_record(conn, supplier_id, require_active=True)
+        _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
             conn,
             supplier_id=supplier_id,
@@ -106,10 +114,12 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             quality_report_required=payload.get("quality_report_required"),
             anomaly_no=payload.get("anomaly_no"),
         )
-    create_anomaly_folder(
-        supplier_name=str(supplier.get("supplier_name") or ""),
-        anomaly_no=str(result.get("anomaly_no") or ""),
-    )
+        detail = repository.get_anomaly_detail(
+            conn, str(result.get("anomaly_id") or "")
+        )
+    if detail is None:
+        raise ValueError("Created anomaly could not be loaded")
+    write_anomaly_markdown(detail)
     return result
 
 
@@ -136,6 +146,9 @@ def update_anomaly(anomaly_id: str, payload: dict) -> None:
         raise ValueError("Problem description is required")
 
     with _connection.get_connection() as conn:
+        existing = repository.get_anomaly_detail(conn, anomaly_key)
+        if existing is None:
+            raise ValueError("Anomaly not found")
         _require_supplier_record(conn, supplier_id, require_active=False)
         product_name = _resolve_product_name(
             conn,
@@ -166,6 +179,16 @@ def update_anomaly(anomaly_id: str, payload: dict) -> None:
             anomaly_no=payload.get("anomaly_no"),
         )
         conn.commit()
+        detail = repository.get_anomaly_detail(conn, anomaly_key)
+    if detail is None:
+        raise ValueError("Updated anomaly could not be loaded")
+    relocate_anomaly_folder(
+        old_supplier_name=str(existing.get("supplier_name") or ""),
+        old_anomaly_no=str(existing.get("anomaly_no") or ""),
+        new_supplier_name=str(detail.get("supplier_name") or ""),
+        new_anomaly_no=str(detail.get("anomaly_no") or ""),
+    )
+    write_anomaly_markdown(detail)
 
 
 def update_anomaly_link(anomaly_id: str, visit_id: str | None) -> None:
@@ -175,6 +198,10 @@ def update_anomaly_link(anomaly_id: str, visit_id: str | None) -> None:
     with _connection.get_connection() as conn:
         repository.update_anomaly_link(conn, anomaly_id, visit_id)
         conn.commit()
+        detail = repository.get_anomaly_detail(conn, anomaly_id)
+    if detail is None:
+        raise ValueError("Updated anomaly could not be loaded")
+    write_anomaly_markdown(detail)
 
 
 def delete_anomaly(anomaly_id: str) -> None:
@@ -238,6 +265,10 @@ def close_anomaly(
             root_cause_category=root_cause_category,
             closed_at=closed_at,
         )
+        detail = repository.get_anomaly_detail(conn, anomaly_id)
+    if detail is None:
+        raise ValueError("Closed anomaly could not be loaded")
+    write_anomaly_markdown(detail)
 
 
 def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> None:
@@ -249,6 +280,10 @@ def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> None:
             anomaly_id=anomaly_id,
             closed_at=closed_at,
         )
+        detail = repository.get_anomaly_detail(conn, anomaly_id)
+    if detail is None:
+        raise ValueError("Updated anomaly could not be loaded")
+    write_anomaly_markdown(detail)
 
 
 def reopen_anomaly(anomaly_id: str) -> None:
@@ -256,3 +291,7 @@ def reopen_anomaly(anomaly_id: str) -> None:
         raise ValueError("Anomaly id is required")
     with _connection.get_connection() as conn:
         repository.reopen_anomaly(conn, anomaly_id)
+        detail = repository.get_anomaly_detail(conn, anomaly_id)
+    if detail is None:
+        raise ValueError("Reopened anomaly could not be loaded")
+    write_anomaly_markdown(detail)

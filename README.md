@@ -154,6 +154,12 @@ dry run, reconciliation, and focused verification.
   formal anomaly, creates or reuses `Outputs/ncr number file/<供應商名稱><異常單號>/`.
   Windows-invalid filename characters in the supplier name are replaced with
   `_`; the anomaly database transaction remains the source of truth.
+- Each anomaly folder contains `<供應商名稱><異常單號>.md`, a deterministic YAML
+  snapshot with Traditional Chinese field labels for every anomaly-detail field
+  plus attachment filenames and captions. Missing scalar values remain present
+  as empty strings, and boolean values display as `是` / `否`. The file is
+  overwritten after anomaly edits, visit-link changes, closure-date changes,
+  close/reopen actions, and attachment changes.
 - Event PDF export: `src/services/event_pdf_exporter.py`.
 - Monthly Excel export: `src/services/event_service.py`.
 - Weekly PowerPoint report: `scripts/generate_weekly_report.py`.

@@ -5,13 +5,18 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-logger = logging.getLogger(__name__)
-
 from database import connection as _connection
 from database import repository
 
-from ._anomaly_folder import create_anomaly_folder, prepare_anomaly_folder_root
-from ._helpers import _require_product_id, _require_supplier_record, _resolve_product_name
+from ._anomaly_folder import prepare_anomaly_folder_root
+from ._anomaly_markdown import write_anomaly_markdown
+from ._helpers import (
+    _require_product_id,
+    _require_supplier_record,
+    _resolve_product_name,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _visit_note_has_content(notes: object) -> bool:
@@ -19,7 +24,14 @@ def _visit_note_has_content(notes: object) -> bool:
         item = dict(note or {})
         if any(
             str(item.get(key) or "").strip()
-            for key in ("defect_desc", "defect", "description", "improvement_desc", "note", "remark")
+            for key in (
+                "defect_desc",
+                "defect",
+                "description",
+                "improvement_desc",
+                "note",
+                "remark",
+            )
         ):
             return True
     return False
@@ -202,7 +214,9 @@ def list_pending_visit_defect_notes(*, limit: int | None = None) -> list[dict]:
         return repository.list_pending_visit_defect_notes(conn, limit=limit)
 
 
-def confirm_visit_defect_note_as_anomaly(note_id: str, payload: dict | None = None) -> dict:
+def confirm_visit_defect_note_as_anomaly(
+    note_id: str, payload: dict | None = None
+) -> dict:
     params = payload or {}
     prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
@@ -213,11 +227,10 @@ def confirm_visit_defect_note_as_anomaly(note_id: str, payload: dict | None = No
             responsible_person=params.get("responsible_person", ""),
             due_date=params.get("due_date", ""),
         )
-        anomaly = repository.get_anomaly_detail(conn, str(result.get("anomaly_id") or ""))
+        anomaly = repository.get_anomaly_detail(
+            conn, str(result.get("anomaly_id") or "")
+        )
     if anomaly is None:
         raise ValueError("Confirmed supplier anomaly could not be loaded")
-    create_anomaly_folder(
-        supplier_name=str(anomaly.get("supplier_name") or ""),
-        anomaly_no=str(result.get("anomaly_no") or ""),
-    )
+    write_anomaly_markdown(anomaly)
     return result
