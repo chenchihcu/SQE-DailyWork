@@ -332,31 +332,56 @@ def export_events_report(
             category_sheet.row_dimensions[r_idx].height = 20
         _auto_fit(category_sheet)
 
-        # 3. 異常事件明細頁
-        detail_sheet = workbook.create_sheet("異常事件明細")
-        detail_sheet.views.sheetView[0].showGridLines = True
+        # 3. 事件明細依權威 event_type 分成訪廠與異常兩個活頁。
+        def _build_event_detail_sheet(name, headers, rows, row_builder, centered_columns):
+            sheet = workbook.create_sheet(name)
+            sheet.views.sheetView[0].showGridLines = True
+            sheet.append(headers)
+            for col_idx in range(1, len(headers) + 1):
+                cell = sheet.cell(row=1, column=col_idx)
+                cell.font = STYLE_HEADER_FONT
+                cell.fill = STYLE_FILL_HEADER
+                cell.alignment = ALIGN_CENTER
+                cell.border = STYLE_BORDER_THIN
+            sheet.row_dimensions[1].height = 24
 
-        headers = ["異常單號", "日期", "類型", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期", "品質異常單要求"]
-        detail_sheet.append(headers)
-        for col_idx in range(1, len(headers) + 1):
-            cell = detail_sheet.cell(row=1, column=col_idx)
-            cell.font = STYLE_HEADER_FONT
-            cell.fill = STYLE_FILL_HEADER
-            cell.alignment = ALIGN_CENTER
-            cell.border = STYLE_BORDER_THIN
-        detail_sheet.row_dimensions[1].height = 24
+            for r_idx, row in enumerate(rows, start=2):
+                sheet.append(row_builder(row))
+                is_even = r_idx % 2 == 0
+                for c_idx in range(1, len(headers) + 1):
+                    cell = sheet.cell(row=r_idx, column=c_idx)
+                    cell.font = STYLE_FONT
+                    cell.border = STYLE_BORDER_THIN
+                    if is_even:
+                        cell.fill = STYLE_FILL_ZEBRA
+                    cell.alignment = ALIGN_CENTER if c_idx in centered_columns else ALIGN_LEFT
+                sheet.row_dimensions[r_idx].height = 20
+            _auto_fit(sheet)
 
-        for r_idx, row in enumerate(events, start=2):
-            if row.get("event_type") == "VISIT":
-                quality_report_required = "不適用"
-            elif row.get("quality_report_required") is None:
+        visit_rows = [row for row in events if row.get("event_type") == "VISIT"]
+        anomaly_rows = [row for row in events if row.get("event_type") == "ANOMALY"]
+
+        _build_event_detail_sheet(
+            "訪廠",
+            ["日期", "供應商名稱", "訪廠摘要說明", "當前狀態"],
+            visit_rows,
+            lambda row: [
+                row.get("event_date", ""),
+                row.get("supplier_name", ""),
+                row.get("content", ""),
+                row.get("status", ""),
+            ],
+            {1},
+        )
+
+        def _anomaly_detail_row(row):
+            if row.get("quality_report_required") is None:
                 quality_report_required = "未設定"
             else:
                 quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
-            data = [
-                str(row.get("ref_no") or "") or row.get("event_date", ""),
+            return [
+                str(row.get("ref_no") or ""),
                 row.get("event_date", ""),
-                "異常" if row.get("event_type") == "ANOMALY" else "訪廠",
                 row.get("supplier_name", ""),
                 row.get("content", ""),
                 row.get("status", ""),
@@ -365,23 +390,14 @@ def export_events_report(
                 row.get("closed_at", ""),
                 quality_report_required,
             ]
-            detail_sheet.append(data)
 
-            is_even = (r_idx % 2 == 0)
-            for c_idx in range(1, len(headers) + 1):
-                cell = detail_sheet.cell(row=r_idx, column=c_idx)
-                cell.font = STYLE_FONT
-                cell.border = STYLE_BORDER_THIN
-                if is_even:
-                    cell.fill = STYLE_FILL_ZEBRA
-
-                # 對齊方式
-                if c_idx in (1, 2, 5, 8):
-                    cell.alignment = ALIGN_CENTER
-                else:
-                    cell.alignment = ALIGN_LEFT
-            detail_sheet.row_dimensions[r_idx].height = 20
-        _auto_fit(detail_sheet)
+        _build_event_detail_sheet(
+            "異常",
+            ["異常單號", "日期", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期", "品質異常單要求"],
+            anomaly_rows,
+            _anomaly_detail_row,
+            {1, 2},
+        )
 
         # 4. 供應商排行榜頁
         rank_sheet = workbook.create_sheet("供應商排行榜")

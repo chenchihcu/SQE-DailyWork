@@ -175,12 +175,31 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             # 表格必須以與頁面圖表相同的區間參數取自同一實作
             mock_pareto.assert_called_once_with("2026-06-01", "2026-06-30")
 
-            detail_sheet = workbook["異常事件明細"]
+            self.assertNotIn("異常事件明細", workbook.sheetnames)
+            self.assertIn("訪廠", workbook.sheetnames)
+            self.assertIn("異常", workbook.sheetnames)
+
+            visit_sheet = workbook["訪廠"]
+            self.assertEqual(
+                [
+                    "日期",
+                    "供應商名稱",
+                    "訪廠摘要說明",
+                    "當前狀態",
+                ],
+                [visit_sheet.cell(row=1, column=col).value for col in range(1, 5)],
+            )
+            self.assertEqual(2, visit_sheet.max_row)
+            self.assertEqual(
+                ["2026-06-15", "供應商B", "例行訪廠交流", "已完成"],
+                [visit_sheet.cell(row=2, column=col).value for col in range(1, 5)],
+            )
+
+            anomaly_sheet = workbook["異常"]
             self.assertEqual(
                 [
                     "異常單號",
                     "日期",
-                    "類型",
                     "供應商名稱",
                     "問題與摘要說明",
                     "當前狀態",
@@ -189,9 +208,13 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "結案日期",
                     "品質異常單要求",
                 ],
-                [detail_sheet.cell(row=1, column=col).value for col in range(1, 11)],
+                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 10)],
             )
-            self.assertEqual("是", detail_sheet.cell(row=2, column=10).value)
-            self.assertEqual("否", detail_sheet.cell(row=3, column=10).value)
-            self.assertEqual("未設定", detail_sheet.cell(row=4, column=10).value)
-            self.assertEqual("不適用", detail_sheet.cell(row=5, column=10).value)
+            self.assertEqual(4, anomaly_sheet.max_row)
+            self.assertEqual("是", anomaly_sheet.cell(row=2, column=9).value)
+            self.assertEqual("否", anomaly_sheet.cell(row=3, column=9).value)
+            self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=9).value)
+            self.assertEqual(
+                len(mock_list_events.return_value),
+                (visit_sheet.max_row - 1) + (anomaly_sheet.max_row - 1),
+            )
