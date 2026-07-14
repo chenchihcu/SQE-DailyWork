@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QDateEdit
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QComboBox, QDateEdit
 
 from ui.theme import (
     PREFERRED_CJK_FONT_FAMILIES,
@@ -148,6 +148,40 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
             view.palette().color(QPalette.ColorRole.HighlightedText).name(),
         )
         calendar.close()
+
+    def test_combo_popup_uses_light_theme_and_high_contrast_selection(self) -> None:
+        qss = get_theme_qss()
+        popup_block = _selector_block(qss, "QComboBox QAbstractItemView")
+        self.assertIn(f'background-color: {TOKENS["panel_bg"]};', popup_block)
+        self.assertIn(f'color: {TOKENS["text_primary"]};', popup_block)
+        self.assertIn(f'selection-background-color: {TOKENS["primary_btn"]};', popup_block)
+        self.assertIn("selection-color: #FFFFFF;", popup_block)
+
+        disabled_block = _selector_block(qss, "QComboBox QAbstractItemView:disabled")
+        self.assertIn(f'background-color: {TOKENS["page_bg"]};', disabled_block)
+        self.assertIn(f'color: {TOKENS["text_disabled"]};', disabled_block)
+
+    def test_combo_native_popup_palette_has_opaque_light_base(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        apply_app_theme(app)
+        combo = QComboBox()
+        combo.addItems(["製程參數失控", "測試文件誤漏"])
+        combo.show()
+        app.processEvents()
+
+        for view in (combo.view(), combo.view().viewport()):
+            palette = view.palette()
+            self.assertEqual("#ffffff", palette.color(QPalette.ColorRole.Base).name())
+            self.assertEqual(
+                TOKENS["text_primary"].lower(),
+                palette.color(QPalette.ColorRole.Text).name(),
+            )
+            self.assertEqual(
+                "#ffffff",
+                palette.color(QPalette.ColorRole.HighlightedText).name(),
+            )
+        self.assertTrue(combo.view().viewport().autoFillBackground())
+        combo.close()
 
     def test_checkbox_indicator_styles_define_visible_box_and_tick_asset(self) -> None:
         qss = get_theme_qss()

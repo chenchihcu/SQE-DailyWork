@@ -137,6 +137,7 @@ def parse_args() -> argparse.Namespace:
         choices=(
             "main",
             "form-density",
+            "combo-popups",
             "stats-stress",
             "ncr-stats",
             "event-list",
@@ -226,6 +227,29 @@ def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication
     )
     pixmap.save(str(output_path))
     QTest.keyClick(date_edit, Qt.Key.Key_Escape)
+    dialog.close()
+    app.processEvents()
+    return str(output_path)
+
+
+def _capture_combo_popup(dialog, combo, output_path: Path, app: "QApplication") -> str:
+    """Capture a real native combo popup, which is a separate top-level window."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    dialog.show()
+    app.processEvents()
+    combo.showPopup()
+    app.processEvents()
+    popup = app.activePopupWidget() or combo.view()
+    top_left = popup.mapToGlobal(popup.rect().topLeft())
+    pixmap = app.primaryScreen().grabWindow(
+        0,
+        top_left.x(),
+        top_left.y(),
+        popup.width(),
+        popup.height(),
+    )
+    pixmap.save(str(output_path))
+    combo.hidePopup()
     dialog.close()
     app.processEvents()
     return str(output_path)
@@ -572,6 +596,55 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     return screenshots
 
 
+def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
+    """Cover the supplier-event and NCR combo theme paths with real popups."""
+    import sqlite3
+
+    from PySide6.QtWidgets import QComboBox, QDialog, QVBoxLayout
+
+    from database.connection import initialize_database
+    from ncr.db.database import apply_schema
+    from ncr.ui.defect_form import DefectFormWidget
+
+    initialize_database()
+    screenshots: list[str] = []
+
+    anomaly_dialog = QDialog()
+    anomaly_dialog.setWindowTitle("共用供應商事件下拉選單")
+    anomaly_combo = QComboBox(anomaly_dialog)
+    anomaly_combo.addItems(
+        ["製程參數失控", "規範文件缺漏", "檢驗把關失靈", "設計匹配不良"]
+    )
+    QVBoxLayout(anomaly_dialog).addWidget(anomaly_combo)
+    anomaly_dialog.resize(420, 120)
+    screenshots.append(
+        _capture_combo_popup(
+            anomaly_dialog,
+            anomaly_combo,
+            _target_output_path(output, "shared-theme-popup"),
+            app,
+        )
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    try:
+        apply_schema(conn, with_version=True)
+        warehouse_form = DefectFormWidget(conn)
+        warehouse_form.resize(1180, 720)
+        screenshots.append(
+            _capture_combo_popup(
+                warehouse_form,
+                warehouse_form.fields_widget.category_combo,
+                _target_output_path(output, "warehouse-category-popup"),
+                app,
+            )
+        )
+    finally:
+        conn.close()
+    return screenshots
+
+
 def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     from unittest.mock import patch
 
@@ -864,6 +937,8 @@ def main() -> int:
             screenshots = _capture_stats_stress(output, app, size)
         elif args.target == "form-density":
             screenshots = _capture_form_density(output, app)
+        elif args.target == "combo-popups":
+            screenshots = _capture_combo_popups(output, app)
         elif args.target == "ncr-stats":
             screenshots = _capture_ncr_stats(output, app, size)
         elif args.target == "event-list":

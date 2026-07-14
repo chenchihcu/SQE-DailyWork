@@ -81,6 +81,22 @@ def get_controls_qss() -> str:
             border-bottom-right-radius: {TOKENS["radius_sm"]}px;
         }}
 
+        /* Combo popups are separate native item views. On Windows their Base
+           palette can stay black even when the closed field is light. */
+        QComboBox QAbstractItemView {{
+            border: 1px solid {TOKENS["border"]};
+            background-color: {TOKENS["panel_bg"]};
+            alternate-background-color: {TOKENS["panel_bg"]};
+            color: {TOKENS["text_primary"]};
+            selection-background-color: {TOKENS["primary_btn"]};
+            selection-color: #FFFFFF;
+        }}
+
+        QComboBox QAbstractItemView:disabled {{
+            background-color: {TOKENS["page_bg"]};
+            color: {TOKENS["text_disabled"]};
+        }}
+
         QPushButton {{
             min-height: {CONTROL_MIN_HEIGHT}px;
             padding: {BUTTON_PADDING_VERTICAL}px {BUTTON_PADDING_HORIZONTAL}px;

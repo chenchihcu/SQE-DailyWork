@@ -72,6 +72,11 @@
   text colors. `apply_app_theme` also installs the shared native-calendar
   palette guard because Windows ignores the QSS background for the internal
   `QTableView` Base role; both layers prevent dark dates on a dark grid.
+- Combo-box popup lists follow the same two-layer contract: shared
+  `QComboBox QAbstractItemView` QSS defines normal, selected, and disabled
+  colors, while `apply_app_theme` installs an opaque native popup palette guard.
+  Every combo in supplier-event, master-data, statistics, pagination, and NCR
+  workflows inherits this contract; page-local popup colors are forbidden.
 - Keep desktop pages dense and scan-friendly: direct labels, stable table sizing, visible action rows, and no nested page-wrapper cards.
 - Do not change workflow order, data contracts, object names, or signal behavior for layout-only work.
 - Supplier event pages and warehouse nonconforming-product pages must stay visually
