@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -35,11 +34,12 @@ from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
     FORM_MAX_WIDTH,
-    FORM_VERTICAL_SPACING,
     INLINE_SPACING,
     REF_GRID_SPACING_H,
     REF_GRID_SPACING_V,
-    ROW_GAP,
+    VISIT_FORM_CONTENT_SPACING,
+    VISIT_FORM_VERTICAL_SPACING,
+    VISIT_SUMMARY_VISIBLE_ROWS,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
@@ -118,7 +118,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.visitor_input.setPlaceholderText("訪廠人員（選填）")
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("活動摘要（選填）")
-        set_text_edit_visible_rows(self.summary_input, 5)
+        set_text_edit_visible_rows(self.summary_input, VISIT_SUMMARY_VISIBLE_ROWS)
 
         self.work_order_input = QLineEdit()
         self.time_slot_input = QLineEdit()
@@ -128,23 +128,19 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.tech_transfer_check = QCheckBox("已技轉")
         self.tech_transfer_check.toggled.connect(self._on_tech_transfer_toggled)
 
-        # 2. 單一可捲動表單；底部按鈕列固定在外層。
-        self.form_scroll = QScrollArea()
-        self.form_scroll.setObjectName("VisitFormScroll")
-        self.form_scroll.setWidgetResizable(True)
-        self.form_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        form_content = QWidget()
-        form_content.setObjectName("VisitFormContent")
-        content_layout = QVBoxLayout(form_content)
+        # 2. 固定欄位表單直接參與對話框佈局，避免整頁捲軸壓縮可用寬度。
+        self.form_content = QWidget()
+        self.form_content.setObjectName("VisitFormContent")
+        content_layout = QVBoxLayout(self.form_content)
         content_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        content_layout.setSpacing(ROW_GAP)
+        content_layout.setSpacing(VISIT_FORM_CONTENT_SPACING)
 
         basic_title = QLabel("基本資訊")
         basic_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(basic_title)
         form = QFormLayout()
         form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-        form.setVerticalSpacing(FORM_VERTICAL_SPACING)
+        form.setVerticalSpacing(VISIT_FORM_VERTICAL_SPACING)
 
         product_row = QWidget()
         pr_layout = QHBoxLayout(product_row)
@@ -170,16 +166,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self._product_guard_label.setProperty("role", "messageText")
         self._product_guard_label.setVisible(False)
         form.addRow("", self._product_guard_label)
-        form.addRow("活動摘要", self.summary_input)
-        content_layout.addLayout(form)
-
-        advanced_title = QLabel("進階與技轉")
-        advanced_title.setProperty("role", "sectionTitle")
-        content_layout.addWidget(advanced_title)
-
         adv_form = QFormLayout()
         adv_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-        adv_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
+        adv_form.setVerticalSpacing(VISIT_FORM_VERTICAL_SPACING)
         adv_form.addRow(
             make_paired_form_row(
                 "VisitAdvancedTimeOrderRow",
@@ -198,7 +187,25 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
                 self.tech_transfer_check,
             )
         )
-        content_layout.addLayout(adv_form)
+        details_grid = QGridLayout()
+        details_grid.setContentsMargins(0, 0, 0, 0)
+        details_grid.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+        details_grid.addLayout(form, 0, 0)
+
+        secondary_layout = QVBoxLayout()
+        secondary_layout.setContentsMargins(0, 0, 0, 0)
+        secondary_layout.setSpacing(VISIT_FORM_CONTENT_SPACING)
+        secondary_layout.addWidget(QLabel("活動摘要"))
+        secondary_layout.addWidget(self.summary_input)
+        advanced_title = QLabel("進階與技轉")
+        advanced_title.setProperty("role", "sectionTitle")
+        secondary_layout.addWidget(advanced_title)
+        secondary_layout.addLayout(adv_form)
+        secondary_layout.addStretch(1)
+        details_grid.addLayout(secondary_layout, 0, 1)
+        details_grid.setColumnStretch(0, 1)
+        details_grid.setColumnStretch(1, 1)
+        content_layout.addLayout(details_grid)
 
         cards_container = QWidget()
         cards_grid = QGridLayout(cards_container)
@@ -208,15 +215,13 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         for idx, (field_key, field_label) in enumerate(VISIT_TECH_TRANSFER_ITEMS):
             card = TechTransferCard(field_key, field_label, self)
             card.yes_radio.toggled.connect(self._on_any_tech_transfer_item_toggled)
-            cards_grid.addWidget(card, idx // 3, idx % 3)
+            cards_grid.addWidget(card, 0, idx)
             self._tech_transfer_cards[field_key] = card
             self._tech_transfer_groups[field_key] = card.group
 
         content_layout.addWidget(QLabel("技轉要目確認"))
         content_layout.addWidget(cards_container)
         content_layout.addStretch(1)
-        self.form_scroll.setWidget(form_content)
-
         # 3. 按鈕與佈局
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
@@ -226,14 +231,13 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
 
-        apply_dialog_layout(self, self.form_scroll, buttons)
+        apply_dialog_layout(self, self.form_content, buttons)
         fit_dialog_to_available_screen(
             self,
             preferred_width=ANOMALY_DIALOG_PREFERRED_WIDTH,
             preferred_height=ANOMALY_DIALOG_PREFERRED_HEIGHT,
             maximum_width=FORM_MAX_WIDTH,
         )
-        self.form_scroll.verticalScrollBar().setValue(0)
 
     def _apply_read_only(self) -> None:
         """Disable all input widgets to prevent modification."""

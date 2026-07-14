@@ -578,18 +578,17 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertFalse(captured.get("functional_test", True))
         self.assertFalse(captured.get("packaging_requirement", True))
 
-    def test_visit_dialog_is_single_scroll_page_without_defect_controls(self) -> None:
+    def test_visit_dialog_is_direct_form_without_scroll_or_defect_controls(self) -> None:
         dialog = self.NewVisitDialog()
         self.addCleanup(dialog.close)
 
-        self.assertIsInstance(dialog.form_scroll, QScrollArea)
-        self.assertTrue(dialog.form_scroll.widgetResizable())
+        self.assertEqual([], dialog.findChildren(QScrollArea))
         self.assertEqual([], dialog.findChildren(QTabWidget))
         self.assertFalse(hasattr(dialog, "visit_defect_table"))
         self.assertFalse(hasattr(dialog, "primary_defect_table"))
         section_titles = {
             label.text()
-            for label in dialog.form_scroll.findChildren(QLabel)
+            for label in dialog.form_content.findChildren(QLabel)
             if label.property("role") == "sectionTitle"
         }
         self.assertEqual({"基本資訊", "進階與技轉"}, section_titles)

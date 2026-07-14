@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -157,6 +158,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.category_input.setEditable(True)
         self.category_input.addItems(ANOMALY_CATEGORY_OPTIONS)
 
+        # Long supplier/product labels must not dictate the dialog's minimum width.
+        for combo in (self.supplier_combo, self.product_combo, self.category_input):
+            combo.setMinimumWidth(0)
+            combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(12)
+
         self.problem_input = QTextEdit()
         self.problem_input.setPlaceholderText("輸入不良現象、異常描述與補充說明（必填）")
         set_text_edit_visible_rows(self.problem_input, 5)
@@ -193,10 +201,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         grid = QGridLayout()
         grid.setHorizontalSpacing(GRID_GUTTER)
         grid.setVerticalSpacing(ROW_GAP)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        grid.setColumnStretch(4, 1)
-        grid.setColumnStretch(5, 1)
+        # Give the long-name column more room while keeping the compact metadata
+        # column bounded inside the scroll viewport.
+        grid.setColumnStretch(1, 3)
+        grid.setColumnStretch(2, 0)
+        grid.setColumnStretch(4, 2)
+        grid.setColumnStretch(5, 0)
 
         _LEFT_TOP = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         grid.addWidget(RequiredFieldLabel("供應商"), 0, 0)

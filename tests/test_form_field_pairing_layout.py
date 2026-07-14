@@ -5,7 +5,14 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QScrollArea,
+    QTextEdit,
+    QWidget,
+)
 
 from database.connection import initialize_database
 from ui.layout_constants import (
@@ -75,6 +82,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.attachment_editor.list_widget.height(),
         )
         self.assertEqual(0, dialog.form_scroll.verticalScrollBar().value())
+        self.assertEqual(0, dialog.form_scroll.horizontalScrollBar().maximum())
         self._assert_compacted_text_edit(dialog.problem_input, 180)
         self._assert_compacted_text_edit(dialog.pending_items_input, 100)
         paired_rows = [
@@ -117,7 +125,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self.assertEqual(anomaly_dialog.size(), visit_dialog.size())
         self.assertLessEqual(visit_dialog.width(), ANOMALY_DIALOG_PREFERRED_WIDTH)
         self.assertLessEqual(visit_dialog.height(), ANOMALY_DIALOG_PREFERRED_HEIGHT)
-        self.assertEqual(0, visit_dialog.form_scroll.verticalScrollBar().value())
+        self.assertEqual([], visit_dialog.findChildren(QScrollArea))
 
     def test_product_section_pairs_time_and_work_order_only(self) -> None:
         editor = ProductSectionEditor("產品區段")

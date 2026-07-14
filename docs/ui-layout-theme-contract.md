@@ -155,6 +155,15 @@
   by visible row count; warehouse nonconforming-product description is full
   width; quick product creation uses a direct form instead of a decorative card;
   edit dialogs keep record context plus fixed bottom actions.
+- Visit form fit - 2026-07-14: the fixed-field visit dialog renders its form
+  directly without a whole-form `QScrollArea`; the activity summary uses one
+  visible rows and the five tech-transfer checks share one row. The fixed bottom
+  action bar remains visible. Verify at 100% / 125% / 150% DPI with
+  `scripts/qt_visual_probe.py --target form-density --scale 1.0,1.25,1.5`.
+- Anomaly form horizontal fit - 2026-07-14: long supplier, product, and category
+  values may elide inside their controls but must not expand the form beyond the
+  visible viewport. The left descriptive column receives more stretch than the
+  compact right metadata column; the horizontal scrollbar range must remain zero.
 - UI/UX workbench check - 2026-06-05: verify clickable home KPI routing,
   disabled event PDF export before row selection, context-aware warehouse
   shortcut buttons, decision-summary routing/fallback, and master-data action
