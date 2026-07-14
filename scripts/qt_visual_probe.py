@@ -201,6 +201,36 @@ def _capture_widget(widget, output_path: Path, app: "QApplication") -> str:
     return str(output_path)
 
 
+def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication") -> str:
+    """Capture the real native calendar popup, including Windows palette/QSS."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    dialog.show()
+    app.processEvents()
+    QTest.mouseClick(
+        date_edit,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(date_edit.width() - 10, date_edit.height() // 2),
+    )
+    app.processEvents()
+    calendar = date_edit.calendarWidget()
+    top_left = calendar.mapToGlobal(calendar.rect().topLeft())
+    pixmap = app.primaryScreen().grabWindow(
+        0,
+        top_left.x(),
+        top_left.y(),
+        calendar.width(),
+        calendar.height(),
+    )
+    pixmap.save(str(output_path))
+    QTest.keyClick(date_edit, Qt.Key.Key_Escape)
+    dialog.close()
+    app.processEvents()
+    return str(output_path)
+
+
 class _ProbeHost:
     """Minimal stand-in for MainWindow callbacks used by embedded widgets."""
 
@@ -456,12 +486,31 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from ncr.db.database import apply_schema
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget, QuickProductCreateDialog
-    from ui.widgets.defect_form_shim import NewVisitDialog
+    from ui.widgets.defect_form_shim import NewAnomalyDialog, NewVisitDialog
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
     initialize_database()
     screenshots: list[str] = []
+
+    anomaly_dialog = NewAnomalyDialog()
+    screenshots.append(
+        _capture_widget(
+            anomaly_dialog,
+            _target_output_path(output, "anomaly-form"),
+            app,
+        )
+    )
+
+    anomaly_calendar_dialog = NewAnomalyDialog()
+    screenshots.append(
+        _capture_date_popup(
+            anomaly_calendar_dialog,
+            anomaly_calendar_dialog.date_edit,
+            _target_output_path(output, "anomaly-calendar"),
+            app,
+        )
+    )
 
     visit_dialog = NewVisitDialog()
     screenshots.append(

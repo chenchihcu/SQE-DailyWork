@@ -31,7 +31,20 @@ shared master-data area.
    `defect_records.processing_line`, not by labels, hidden UI filters,
    `category`, or `return_slip_type`. Runtime values are `原物料`, `委外加工`, and
    migrated/cleanup-only `未分流`. New and edited rows must save as `原物料` or
-   `委外加工`; existing rows default to `未分流` until a user classifies them.
+    `委外加工`; existing rows default to `未分流` until a user classifies them.
+
+## Supplier Anomaly Quality-Report Requirement
+
+- `anomalies.quality_report_required` is the nullable source of truth for
+  「品質異常單要求」: `1` means 是, `0` means 否, and `NULL` means a legacy row
+  that has not been classified. Schema upgrades add the column without
+  backfilling or guessing historical values.
+- `NewAnomalyDialog` requires an explicit 是／否 selection before a new or
+  edited anomaly can be saved. Read-only preview preserves the stored state.
+- The supplier-event Excel sheet `異常事件明細` exports 是／否／未設定 for
+  anomaly rows and 不適用 for visit rows. This field supports downstream
+  filtering and statistics without changing existing charts or warehouse NCR
+  reports.
 
 ## UI Entrypoint And Folder Boundaries
 

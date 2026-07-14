@@ -336,7 +336,7 @@ def export_events_report(
         detail_sheet = workbook.create_sheet("異常事件明細")
         detail_sheet.views.sheetView[0].showGridLines = True
 
-        headers = ["異常單號", "日期", "類型", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期"]
+        headers = ["異常單號", "日期", "類型", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期", "品質異常單要求"]
         detail_sheet.append(headers)
         for col_idx in range(1, len(headers) + 1):
             cell = detail_sheet.cell(row=1, column=col_idx)
@@ -347,6 +347,12 @@ def export_events_report(
         detail_sheet.row_dimensions[1].height = 24
 
         for r_idx, row in enumerate(events, start=2):
+            if row.get("event_type") == "VISIT":
+                quality_report_required = "不適用"
+            elif row.get("quality_report_required") is None:
+                quality_report_required = "未設定"
+            else:
+                quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
             data = [
                 str(row.get("ref_no") or "") or row.get("event_date", ""),
                 row.get("event_date", ""),
@@ -356,7 +362,8 @@ def export_events_report(
                 row.get("status", ""),
                 row.get("category", ""),
                 row.get("improvement_desc", ""),
-                row.get("closed_at", "")
+                row.get("closed_at", ""),
+                quality_report_required,
             ]
             detail_sheet.append(data)
 

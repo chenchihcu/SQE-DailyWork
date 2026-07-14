@@ -139,6 +139,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             pending_items TEXT NOT NULL DEFAULT '',
             responsible_person TEXT NOT NULL DEFAULT '',
             due_date TEXT NOT NULL DEFAULT '',
+            quality_report_required INTEGER CHECK (quality_report_required IN (0, 1)),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
@@ -464,6 +465,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
         conn, "anomalies", "responsible_person", "TEXT NOT NULL DEFAULT ''"
     )
     _ensure_column(conn, "anomalies", "due_date", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(
+        conn,
+        "anomalies",
+        "quality_report_required",
+        "INTEGER CHECK (quality_report_required IN (0, 1))",
+    )
     _ensure_column(conn, "visits", "product_id", "TEXT")
     _ensure_column(conn, "visits", "product_name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "visits", "product_stage", "TEXT NOT NULL DEFAULT '量產'")
@@ -2687,6 +2694,7 @@ def create_anomaly(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    quality_report_required: bool | None = None,
 ) -> str:
     inputs = _prepare_anomaly_inputs(
         conn,
@@ -2719,6 +2727,7 @@ def create_anomaly(
         rc_in_transit=rc_in_transit,
         rc_internal_inventory=rc_internal_inventory,
         is_tech_transfer=is_tech_transfer,
+        quality_report_required=quality_report_required,
     )
     conn.commit()
     refresh_monthly_cache(conn, inputs.normalized_date[:7].replace("-", ""))
@@ -2761,6 +2770,7 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.rc_in_transit AS rc_in_transit,
             a.rc_internal_inventory AS rc_internal_inventory,
             a.is_tech_transfer AS is_tech_transfer,
+            a.quality_report_required AS quality_report_required,
             a.created_at AS created_at,
             a.updated_at AS updated_at
         FROM anomalies a
@@ -2777,6 +2787,10 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
     result["batch_qty"] = _as_int(result.get("batch_qty"), 0)
     result["product_stage"] = _normalize_product_stage(result.get("product_stage"))
     result["is_tech_transfer"] = bool(_as_int(result.get("is_tech_transfer"), 0))
+    if result.get("quality_report_required") is not None:
+        result["quality_report_required"] = bool(
+            _as_int(result.get("quality_report_required"), 0)
+        )
     return result
 
 
@@ -2802,6 +2816,7 @@ def update_anomaly(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
 ) -> None:
     anomaly_key = (anomaly_id or "").strip()
@@ -2870,6 +2885,7 @@ def update_anomaly(
                 rc_in_transit = ?,
                 rc_internal_inventory = ?,
                 is_tech_transfer = ?,
+                quality_report_required = ?,
                 updated_at = ?
             WHERE id = ?
             """,
@@ -2893,6 +2909,7 @@ def update_anomaly(
                 (rc_in_transit or "unconfirmed").strip(),
                 (rc_internal_inventory or "unconfirmed").strip(),
                 1 if is_tech_transfer else 0,
+                None if quality_report_required is None else int(quality_report_required),
                 _now_iso(),
                 anomaly_key,
             ),
@@ -3632,6 +3649,7 @@ def create_anomaly_with_visit_link(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
 ) -> dict[str, str | None]:
     inputs = _prepare_anomaly_inputs(
@@ -3740,6 +3758,7 @@ def create_anomaly_with_visit_link(
         rc_in_transit=rc_in_transit,
         rc_internal_inventory=rc_internal_inventory,
         is_tech_transfer=is_tech_transfer,
+        quality_report_required=quality_report_required,
     )
     id_row = conn.execute(
         "SELECT id FROM anomalies WHERE anomaly_no = ?",
@@ -3949,7 +3968,8 @@ def list_events(
                 a.batch_qty AS batch_qty,
                 a.improvement_desc AS improvement_desc,
                 {pending_items_expr},
-                a.closed_at AS closed_at
+                a.closed_at AS closed_at,
+                a.quality_report_required AS quality_report_required
             FROM anomalies a
             JOIN suppliers s ON s.id = a.supplier_id
             LEFT JOIN visits v ON v.id = a.visit_id
@@ -4006,7 +4026,8 @@ def list_events(
                 0 AS batch_qty,
                 '' AS improvement_desc,
                 '' AS pending_items,
-                NULL AS closed_at
+                NULL AS closed_at,
+                NULL AS quality_report_required
             FROM visits v
             JOIN suppliers s ON s.id = v.supplier_id
             LEFT JOIN products p ON p.id = v.product_id
@@ -4582,6 +4603,7 @@ def _insert_anomaly_row(
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
+    quality_report_required: bool | None = None,
 ) -> str:
     normalized_date = _normalize_strict_iso_date(
         anomaly_date,
@@ -4606,8 +4628,8 @@ def _insert_anomaly_row(
                 status, improvement_desc, closed_at, created_at, updated_at,
                 pending_items, responsible_person, due_date,
                 rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
-                is_tech_transfer
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_tech_transfer, quality_report_required
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _gen_id(),
@@ -4633,6 +4655,7 @@ def _insert_anomaly_row(
                 (rc_in_transit or "unconfirmed").strip(),
                 (rc_internal_inventory or "unconfirmed").strip(),
                 1 if is_tech_transfer else 0,
+                None if quality_report_required is None else int(quality_report_required),
             ),
         )
 
@@ -5479,6 +5502,7 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
             pending_items TEXT NOT NULL DEFAULT '',
             responsible_person TEXT NOT NULL DEFAULT '',
             due_date TEXT NOT NULL DEFAULT '',
+            quality_report_required INTEGER CHECK (quality_report_required IN (0, 1)),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
@@ -5494,7 +5518,7 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
             problem_desc, category, product_lot_no, product_name, product_stage,
             outsource_work_order, batch_qty, status, improvement_desc, closed_by,
             root_cause_category, closed_at, pending_items, responsible_person,
-            due_date, created_at, updated_at
+            due_date, quality_report_required, created_at, updated_at
         )
         SELECT
             id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
@@ -5510,7 +5534,8 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
                 WHEN status IN ('CLOSED', '已結案') THEN closed_at
                 ELSE NULL
             END AS closed_at,
-            pending_items, responsible_person, due_date, created_at, updated_at
+            pending_items, responsible_person, due_date, quality_report_required,
+            created_at, updated_at
         FROM anomalies
         """
     )

@@ -7,9 +7,16 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QDateEdit
 
-from ui.theme import PREFERRED_CJK_FONT_FAMILIES, TOKENS, apply_app_theme, get_theme_qss
+from ui.theme import (
+    PREFERRED_CJK_FONT_FAMILIES,
+    TOKENS,
+    _apply_calendar_palette,
+    apply_app_theme,
+    get_theme_qss,
+)
 
 
 def _selector_block(qss: str, selector: str) -> str:
@@ -95,10 +102,52 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', nav_button_block)
         self.assertIn(f'color: {TOKENS["text_primary"]};', nav_button_block)
 
-        date_grid_block = _selector_block(qss, "QCalendarWidget QAbstractItemView")
-        self.assertIn(f'background: {TOKENS["panel_bg"]};', date_grid_block)
+        date_grid_block = _selector_block_pattern(
+            qss, r"QCalendarWidget QAbstractItemView,\s*QCalendarWidget QTableView"
+        )
+        self.assertIn(
+            f'background-color: {TOKENS["panel_bg"]};', date_grid_block
+        )
+        self.assertIn(
+            f'alternate-background-color: {TOKENS["panel_bg"]};', date_grid_block
+        )
+        self.assertIn(f'color: {TOKENS["text_primary"]};', date_grid_block)
         self.assertIn(f'selection-background-color: {TOKENS["primary_btn"]};', date_grid_block)
         self.assertIn("selection-color: #FFFFFF;", date_grid_block)
+
+        disabled_date_grid_block = _selector_block_pattern(
+            qss,
+            r"QCalendarWidget QAbstractItemView:disabled,\s*QCalendarWidget QTableView:disabled",
+        )
+        self.assertIn(
+            f'color: {TOKENS["text_disabled"]};', disabled_date_grid_block
+        )
+
+    def test_calendar_native_view_palette_has_opaque_light_base(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        apply_app_theme(app)
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        calendar = date_edit.calendarWidget()
+        calendar.show()
+        app.processEvents()
+        # Offscreen Qt does not deliver the native popup's Show event in the
+        # same order as Windows; exercise the shared guard directly here. The
+        # native visual probe covers the installed event-filter integration.
+        _apply_calendar_palette(calendar)
+
+        view = calendar.findChild(QAbstractItemView)
+        self.assertIsNotNone(view)
+        self.assertEqual("#ffffff", view.palette().color(QPalette.ColorRole.Base).name())
+        self.assertEqual(
+            TOKENS["text_primary"].lower(),
+            view.palette().color(QPalette.ColorRole.Text).name(),
+        )
+        self.assertEqual(
+            "#ffffff",
+            view.palette().color(QPalette.ColorRole.HighlightedText).name(),
+        )
+        calendar.close()
 
     def test_checkbox_indicator_styles_define_visible_box_and_tick_asset(self) -> None:
         qss = get_theme_qss()

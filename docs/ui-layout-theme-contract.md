@@ -13,7 +13,7 @@
 | Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
-| New / edit anomaly | Anomaly buttons | `src/ui/widgets/defect_form_widget.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| New / edit anomaly | Anomaly buttons | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險與參考 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Close anomaly | Event action menu | `src/ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
@@ -49,12 +49,20 @@
   - `ProductFormDialog`: `料號 + 階段`.
 - Keep large text, attachment, table, and long-selection fields as single-row blocks unless a later visual probe proves the paired version stays readable.
 - Long text boxes use row-count-based initial heights instead of legacy large fixed heights; they remain single-column fields.
+- `NewAnomalyDialog` is a single-page form. Its content scrolls inside
+  `AnomalyFormScroll`, while 儲存／取消 remain outside the scroll area. The
+  「品質異常單要求」是／否 radios are paired in 基本資訊 and begin unselected
+  for new or legacy-unclassified records.
 - Deferred conditional candidates: `主要產品 + 料號`, `主供應商 + 次要供應商`, and other long combo-box rows. These require long supplier/product-name checks before implementation.
 - Verify form density changes with focused structural tests plus `scripts/qt_visual_probe.py --target form-density` before treating CJK rendering and button visibility as confirmed.
 
 ## Theme Rules
 
 - Keep colors, radius, typography, and control sizing in shared modules instead of page-local styles.
+- Calendar popup QSS defines the light grid and explicit normal/disabled date
+  text colors. `apply_app_theme` also installs the shared native-calendar
+  palette guard because Windows ignores the QSS background for the internal
+  `QTableView` Base role; both layers prevent dark dates on a dark grid.
 - Keep desktop pages dense and scan-friendly: direct labels, stable table sizing, visible action rows, and no nested page-wrapper cards.
 - Do not change workflow order, data contracts, object names, or signal behavior for layout-only work.
 - Supplier event pages and warehouse nonconforming-product pages must stay visually

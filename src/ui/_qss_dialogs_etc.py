@@ -53,11 +53,19 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
             color: {TOKENS["text_primary"]};
         }}
 
-        QCalendarWidget QAbstractItemView {{
-            background: {TOKENS["panel_bg"]};
+        QCalendarWidget QAbstractItemView,
+        QCalendarWidget QTableView {{
+            background-color: {TOKENS["panel_bg"]};
+            alternate-background-color: {TOKENS["panel_bg"]};
+            color: {TOKENS["text_primary"]};
             selection-background-color: {TOKENS["primary_btn"]};
             selection-color: #FFFFFF;
             border: none;
+        }}
+
+        QCalendarWidget QAbstractItemView:disabled,
+        QCalendarWidget QTableView:disabled {{
+            color: {TOKENS["text_disabled"]};
         }}
 
         QCheckBox {{

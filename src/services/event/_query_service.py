@@ -59,7 +59,8 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
             a.root_cause_category AS root_cause_category,
             a.improvement_desc AS improvement_desc,
-            a.closed_at AS closed_at
+            a.closed_at AS closed_at,
+            a.quality_report_required AS quality_report_required
         FROM anomalies a
         JOIN suppliers s ON s.id = a.supplier_id
         WHERE a.anomaly_date BETWEEN ? AND ?
@@ -76,7 +77,8 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             '' AS category,
             '' AS root_cause_category,
             '' AS improvement_desc,
-            NULL AS closed_at
+            NULL AS closed_at,
+            NULL AS quality_report_required
         FROM visits v
         JOIN suppliers s ON s.id = v.supplier_id
         WHERE v.visit_date BETWEEN ? AND ?

@@ -102,7 +102,36 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "category": "進料品質",
                 "root_cause_category": "物料/來料品質異常",
                 "improvement_desc": "已要求廠商重工",
-                "closed_at": "2026-06-12"
+                "closed_at": "2026-06-12",
+                "quality_report_required": True,
+            },
+            {
+                "event_id": "EVT-103",
+                "ref_no": "AN-2026-002",
+                "event_date": "2026-06-11",
+                "event_type": "ANOMALY",
+                "supplier_name": "供應商A",
+                "content": "不要求品質異常單",
+                "status": "待處理",
+                "category": "其他",
+                "root_cause_category": "",
+                "improvement_desc": "",
+                "closed_at": None,
+                "quality_report_required": False,
+            },
+            {
+                "event_id": "EVT-104",
+                "ref_no": "AN-2026-003",
+                "event_date": "2026-06-12",
+                "event_type": "ANOMALY",
+                "supplier_name": "供應商A",
+                "content": "歷史資料",
+                "status": "待處理",
+                "category": "其他",
+                "root_cause_category": "",
+                "improvement_desc": "",
+                "closed_at": None,
+                "quality_report_required": None,
             },
             {
                 "event_id": "EVT-102",
@@ -145,3 +174,24 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             ])
             # 表格必須以與頁面圖表相同的區間參數取自同一實作
             mock_pareto.assert_called_once_with("2026-06-01", "2026-06-30")
+
+            detail_sheet = workbook["異常事件明細"]
+            self.assertEqual(
+                [
+                    "異常單號",
+                    "日期",
+                    "類型",
+                    "供應商名稱",
+                    "問題與摘要說明",
+                    "當前狀態",
+                    "類別",
+                    "改善說明",
+                    "結案日期",
+                    "品質異常單要求",
+                ],
+                [detail_sheet.cell(row=1, column=col).value for col in range(1, 11)],
+            )
+            self.assertEqual("是", detail_sheet.cell(row=2, column=10).value)
+            self.assertEqual("否", detail_sheet.cell(row=3, column=10).value)
+            self.assertEqual("未設定", detail_sheet.cell(row=4, column=10).value)
+            self.assertEqual("不適用", detail_sheet.cell(row=5, column=10).value)

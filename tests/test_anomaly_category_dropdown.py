@@ -7,7 +7,14 @@ from types import ModuleType
 from unittest.mock import patch
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import QApplication, QComboBox, QTableWidgetItem
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLabel,
+    QScrollArea,
+    QTabWidget,
+    QTableWidgetItem,
+)
 
 import services.event._anomaly_service as _anomaly_service_mod
 import services.event._visit_service as _visit_service_mod
@@ -137,6 +144,57 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         ]
         self.assertEqual(self.category_options, options)
 
+    def test_anomaly_form_is_single_scroll_page_without_tab_host(self) -> None:
+        dialog = self.NewAnomalyDialog()
+        self.addCleanup(dialog.close)
+
+        self.assertIsInstance(dialog.form_scroll, QScrollArea)
+        self.assertTrue(dialog.form_scroll.widgetResizable())
+        self.assertEqual([], dialog.findChildren(QTabWidget))
+        section_titles = {
+            label.text()
+            for label in dialog.form_scroll.findChildren(QLabel)
+            if label.property("role") == "sectionTitle"
+        }
+        self.assertEqual(
+            {"基本資訊", "問題描述", "風險與參考", "現場照片"},
+            section_titles,
+        )
+
+    def test_quality_report_requirement_must_be_selected_before_submit(self) -> None:
+        dialog = self.NewAnomalyDialog()
+        self.addCleanup(dialog.close)
+        self.assertEqual(-1, dialog.quality_report_required_group.checkedId())
+
+        self.widget_module.QMessageBox.warning.reset_mock()
+        _anomaly_service_mod.create_anomaly_with_visit_link.reset_mock()
+        dialog._on_submit()
+
+        self.widget_module.QMessageBox.warning.assert_called_once()
+        self.assertIn(
+            "品質異常單要求",
+            self.widget_module.QMessageBox.warning.call_args.args[2],
+        )
+        _anomaly_service_mod.create_anomaly_with_visit_link.assert_not_called()
+
+    def test_quality_report_requirement_rehydrates_yes_no_and_legacy_unset(self) -> None:
+        for stored_value, expected_id in ((True, 1), (False, 0), (None, -1)):
+            with self.subTest(stored_value=stored_value):
+                dialog = self.NewAnomalyDialog(
+                    anomaly_id="anomaly-quality",
+                    initial_data={
+                        "anomaly_no": "20260702002",
+                        "anomaly_date": "2026-07-02",
+                        "supplier_id": "sup-1",
+                        "supplier_name": "供應商A",
+                        "quality_report_required": stored_value,
+                    },
+                )
+                self.addCleanup(dialog.close)
+                self.assertEqual(
+                    expected_id, dialog.quality_report_required_group.checkedId()
+                )
+
     def test_category_dropdown_uses_root_cause_pareto_taxonomy(self) -> None:
         self.assertEqual(
             [
@@ -249,6 +307,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                     dialog.product_combo.setCurrentIndex(product_idx)
                     dialog.problem_input.setPlainText("測試問題描述")
                     dialog.category_input.setCurrentText(expected)
+                    dialog.quality_report_no_radio.setChecked(True)
                     dialog._on_submit()
 
                 self.assertEqual(expected, captured.get("category"))
@@ -296,6 +355,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             self.assertEqual("試產", dialog.product_stage_combo.currentText())
             self.assertFalse(dialog.product_stage_combo.isEnabled())
             dialog.problem_input.setPlainText("測試問題描述")
+            dialog.quality_report_yes_radio.setChecked(True)
             dialog._on_submit()
 
         self.assertEqual("prd-1", captured.get("product_id"))
@@ -851,9 +911,11 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         ):
             dialog_closed.category_input.setCurrentText("來料品質不良")
             dialog_closed.problem_input.setPlainText("測試問題描述")
+            dialog_closed.quality_report_no_radio.setChecked(True)
             dialog_closed._on_submit()
 
         self.assertEqual("來料品質不良", captured.get("category"))
+        self.assertIs(False, captured.get("quality_report_required"))
 
         reopened = self.NewAnomalyDialog(
             anomaly_id="anomaly-456",

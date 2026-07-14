@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QFont, QFontDatabase
-from PySide6.QtWidgets import QApplication
+import re
+
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QCalendarWidget
 
 # ── 向後相容的重新匯出 (Re-exports for backward compatibility) ─────
 # 外部呼叫端仍可 `from ui.theme import TOKENS, get_theme_qss, asset_path`。
@@ -57,6 +60,60 @@ def apply_preferred_cjk_font(app: QApplication | None = None) -> None:
     target_app.setFont(app_font)
 
 
+def _apply_calendar_palette(calendar: QCalendarWidget) -> None:
+    """Force a light native calendar grid on Windows, where QSS alone is ignored."""
+    def _palette_color(value: str) -> QColor:
+        rgba_match = re.fullmatch(
+            r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[\d.]+\s*\)",
+            value,
+        )
+        if rgba_match is not None:
+            # Palette Base must be opaque; a translucent Base composites against
+            # the native popup's black backing store on Windows.
+            return QColor(*(int(component) for component in rgba_match.groups()))
+        return QColor(value)
+
+    palette = calendar.palette()
+    role_colors = {
+        QPalette.ColorRole.Window: TOKENS["panel_bg"],
+        QPalette.ColorRole.Base: TOKENS["panel_bg"],
+        QPalette.ColorRole.AlternateBase: TOKENS["panel_bg"],
+        QPalette.ColorRole.WindowText: TOKENS["text_primary"],
+        QPalette.ColorRole.Text: TOKENS["text_primary"],
+        QPalette.ColorRole.Highlight: TOKENS["primary_btn"],
+        QPalette.ColorRole.HighlightedText: "#FFFFFF",
+    }
+    for role, color in role_colors.items():
+        palette.setColor(role, _palette_color(color))
+    palette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.Text,
+        _palette_color(TOKENS["text_disabled"]),
+    )
+    calendar.setPalette(palette)
+
+    view = calendar.findChild(QAbstractItemView)
+    if view is not None:
+        view.setPalette(palette)
+        view.viewport().setPalette(palette)
+        view.viewport().setAutoFillBackground(True)
+
+
+class _CalendarPaletteFilter(QObject):
+    def eventFilter(self, watched, event):
+        if isinstance(watched, QCalendarWidget) and event.type() in {
+            QEvent.Type.Polish,
+            QEvent.Type.Show,
+        }:
+            _apply_calendar_palette(watched)
+        return super().eventFilter(watched, event)
+
+
 def apply_app_theme(app: QApplication) -> None:
     apply_preferred_cjk_font(app)
     app.setStyleSheet(get_theme_qss())
+    calendar_filter = getattr(app, "_sqe_calendar_palette_filter", None)
+    if calendar_filter is None:
+        calendar_filter = _CalendarPaletteFilter(app)
+        app._sqe_calendar_palette_filter = calendar_filter
+        app.installEventFilter(calendar_filter)

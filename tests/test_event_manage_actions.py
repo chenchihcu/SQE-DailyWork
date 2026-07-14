@@ -186,6 +186,84 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual(88, detail["batch_qty"])
         self.assertEqual(product_b, detail["product_id"])
 
+    def test_quality_report_required_preserves_legacy_null_and_round_trips_bool(self) -> None:
+        supplier_id = self._create_supplier("Quality Report Supplier")
+        product_id = self._create_product(
+            supplier_id,
+            code="QR-001",
+            name="Quality Report Product",
+        )
+        legacy_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="legacy unset",
+            product_id=product_id,
+        )
+        legacy_id = self._find_anomaly_id(legacy_no)
+        self.assertIsNone(
+            repository.get_anomaly_detail(self.conn, legacy_id)[
+                "quality_report_required"
+            ]
+        )
+
+        required_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-17",
+            supplier_id=supplier_id,
+            problem_desc="required yes",
+            product_id=product_id,
+            quality_report_required=True,
+        )
+        required_id = self._find_anomaly_id(required_no)
+        self.assertIs(
+            True,
+            repository.get_anomaly_detail(self.conn, required_id)[
+                "quality_report_required"
+            ],
+        )
+
+        repository.update_anomaly(
+            self.conn,
+            anomaly_id=required_id,
+            anomaly_date="2026-04-17",
+            supplier_id=supplier_id,
+            problem_desc="required no",
+            product_id=product_id,
+            quality_report_required=False,
+        )
+        self.assertIs(
+            False,
+            repository.get_anomaly_detail(self.conn, required_id)[
+                "quality_report_required"
+            ],
+        )
+
+    def test_schema_upgrade_adds_quality_report_required_without_backfill(self) -> None:
+        supplier_id = self._create_supplier("Legacy Schema Supplier")
+        anomaly_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="legacy row",
+        )
+        anomaly_id = self._find_anomaly_id(anomaly_no)
+        self.conn.execute("ALTER TABLE anomalies DROP COLUMN quality_report_required")
+        self.conn.commit()
+
+        repository.create_schema(self.conn)
+
+        columns = {
+            str(row["name"])
+            for row in self.conn.execute("PRAGMA table_info(anomalies)").fetchall()
+        }
+        self.assertIn("quality_report_required", columns)
+        self.assertIsNone(
+            repository.get_anomaly_detail(self.conn, anomaly_id)[
+                "quality_report_required"
+            ]
+        )
+
     def test_create_anomaly_allows_secondary_source_product_match(self) -> None:
         supplier_primary = self._create_supplier("Primary Supplier")
         supplier_secondary = self._create_supplier("Secondary Supplier")
