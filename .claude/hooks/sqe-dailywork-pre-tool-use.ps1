@@ -23,6 +23,7 @@ if (($lower -match "data[\\/].*\.db" -or $lower -match "data.*sqe.*\.db") -and
     Write-SqeDailyWorkBlock "SQE DailyWork guardrail: direct data/*.db manipulation is blocked. Use the repository migration/verification path and get explicit approval."
 }
 
+# 政策正本: .claude/rules/visual_evidence_rules.md §1(hook 無法執行期讀 markdown,此為字面副本;改政策文字時兩處同批更新)
 if ($lower -match "playwright" -and ($lower -match "screenshot|visual|font|cjk|qt|ui")) {
     Write-SqeDailyWorkBlock "SQE DailyWork guardrail: Playwright is not valid visual evidence for this PySide6 desktop app. Use scripts\qt_visual_probe.py on native Windows Qt."
 }

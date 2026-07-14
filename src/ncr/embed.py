@@ -16,7 +16,7 @@ from ncr.db.database import initialize_database
 from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
 from ncr.ui.defect_form import DefectFormWidget
 from ncr.ui.defect_list import DefectListWidget
-from ncr.ui.ui_style import app_stylesheet
+from ui.layout_constants import PAGE_OUTER_MARGINS
 
 # Host page-stack offset: warehouse defect page sits after the three SQE DailyWork
 # pages (首頁 / 事件管理 / 異常事件統計).
@@ -38,12 +38,9 @@ class NcrWorkflowPage(QWidget):
         self.setObjectName(object_name)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 16, 8, 0)
+        layout.setContentsMargins(*PAGE_OUTER_MARGINS)
         layout.setSpacing(0)
         layout.addWidget(body)
-
-        # Apply NCR specific QSS to each stack page.
-        self.setStyleSheet(app_stylesheet())
 
 
 class NcrController(QObject):

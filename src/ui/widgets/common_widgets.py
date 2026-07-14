@@ -36,6 +36,7 @@ from database.product_stage import (
 logger = logging.getLogger(__name__)
 
 EMPTY_DISPLAY = "—"
+EMPTY_PLACEHOLDER = EMPTY_DISPLAY
 
 T = TypeVar("T")
 

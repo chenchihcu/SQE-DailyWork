@@ -1,5 +1,6 @@
 ---
 name: sqe-dailywork-data-contract
+version: 1.0.0
 description: 用於 SQE DailyWork 的 SQLite schema、migration、visit/anomaly 契約、儲存路徑、匯出、報告資料,以及 PDF / Excel / PPTX 契約變更。Use this skill 當要新增或修改上述資料契約時。觸發詞包含「SQLite」「schema」「migration」「data contract」「匯出」「export」「PDF」「Excel」「PPTX」「資料契約」。
 allowed-tools: Read, Grep, Glob, Bash
 ---
@@ -27,3 +28,8 @@ Use this skill when a change touches schema, migrations, `src/database/`, `src/s
 - Prefer `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1`.
 - If full verification is not practical, run focused tests for the affected contract and name the gap.
 - For export changes, inspect the generated artifact path or test output, not only code.
+
+## 何時不要觸發
+
+- 只是要決定「該改哪 / 跑什麼驗證」的跨層路由 → 用 `sqe-dailywork-change-router`
+- UI 視覺 / 字體 / 截圖證據 → 用 `sqe-dailywork-visual-qa`

@@ -33,6 +33,9 @@ from database.product_stage import (
 )
 from services.event import _anomaly_service, _visit_service
 from ui.layout_constants import (
+    ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
+    ANOMALY_DIALOG_PREFERRED_HEIGHT,
+    ANOMALY_DIALOG_PREFERRED_WIDTH,
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
     GRID_GUTTER,
@@ -43,6 +46,7 @@ from ui.layout_constants import (
     REF_GRID_SPACING_V,
     ROW_GAP,
 )
+from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.close_anomaly_dialog import AttachmentEditor
 from ui.widgets.common_widgets import (
@@ -155,11 +159,11 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
         self.problem_input = QTextEdit()
         self.problem_input.setPlaceholderText("輸入不良現象、異常描述與補充說明（必填）")
-        set_text_edit_visible_rows(self.problem_input, 7)
+        set_text_edit_visible_rows(self.problem_input, 5)
 
         self.pending_items_input = QTextEdit()
         self.pending_items_input.setPlaceholderText("確認事項（選填，每行一項）")
-        set_text_edit_visible_rows(self.pending_items_input, 4)
+        set_text_edit_visible_rows(self.pending_items_input, 3)
 
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
         self.sync_visit_check.setChecked(True)
@@ -353,6 +357,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         photo_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(photo_title)
         self.attachment_editor = AttachmentEditor(self)
+        self.attachment_editor.set_preview_height(ANOMALY_ATTACHMENT_COMPACT_HEIGHT)
         content_layout.addWidget(self.attachment_editor)
         content_layout.addStretch(1)
         self.form_scroll.setWidget(form_content)
@@ -367,6 +372,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         buttons.rejected.connect(self.reject)
 
         apply_dialog_layout(self, self.form_scroll, buttons)
+        fit_dialog_to_available_screen(
+            self,
+            preferred_width=ANOMALY_DIALOG_PREFERRED_WIDTH,
+            preferred_height=ANOMALY_DIALOG_PREFERRED_HEIGHT,
+            maximum_width=FORM_MAX_WIDTH,
+        )
+        self.form_scroll.verticalScrollBar().setValue(0)
         self._update_anomaly_no_preview()
         self.product_stage_combo.currentTextChanged.connect(
             lambda _: self._update_outsource_row_visibility()

@@ -83,7 +83,12 @@ def get_sidebar_qss() -> str:
             background: {TOKENS["sidebar_active_bg"]};
             color: {TOKENS["sidebar_text_active"]};
             border-left: 4px solid {TOKENS["sidebar_active_indicator"]};
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
             font-weight: 700;
+        }}
+
+        QPushButton#NavButton[nav_active="true"]:hover {{
+            background: {TOKENS["sidebar_active_bg"]};
         }}
 
         QPushButton#NavButton[nav_active="true"] QLabel {{
@@ -101,9 +106,10 @@ def get_sidebar_qss() -> str:
             color: #FFFFFF;
             font-size: 10px;
             font-weight: 700;
-            border-radius: 8px;
-            padding: 1px 5px;
-            min-width: 16px;
+            border-radius: 10px;
+            padding: 2px 7px;
+            min-width: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }}
 
         /* 側欄領域分組標題（非按鈕，靜態語意標籤） */

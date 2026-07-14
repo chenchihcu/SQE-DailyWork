@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
     def open_new_visit_defect_dialog(self):
         if not self._ensure_has_active_suppliers():
             return
-        dialog = NewVisitDialog(self, focus_defect_note=True)
+        dialog = NewVisitDialog(self)
         if dialog.exec():
             self.refresh_all_views()
 

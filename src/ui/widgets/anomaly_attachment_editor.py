@@ -88,6 +88,10 @@ class AttachmentEditor(QWidget):
         col.addWidget(hint)
         col.addLayout(button_row)
 
+    def set_preview_height(self, height: int) -> None:
+        """Set a dialog-specific preview height while keeping list scrolling available."""
+        self.list_widget.setFixedHeight(max(1, height))
+
     def set_read_only(self, read_only: bool) -> None:
         self.add_button.setEnabled(not read_only)
         self.remove_button.setEnabled(not read_only)

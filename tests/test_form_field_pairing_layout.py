@@ -8,7 +8,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTextEdit, QWidget
 
 from database.connection import initialize_database
-from ui.layout_constants import FORM_MAX_WIDTH
+from ui.layout_constants import (
+    ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
+    ANOMALY_DIALOG_PREFERRED_HEIGHT,
+    ANOMALY_DIALOG_PREFERRED_WIDTH,
+    FORM_MAX_WIDTH,
+)
 from ui.widgets.defect_form_widgets import ROOT_CAUSE_PARETO_OPTIONS
 from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
@@ -62,6 +67,14 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
     def test_anomaly_dialog_compacts_long_text_fields_without_new_pairs(self) -> None:
         dialog = self._show_dialog(NewAnomalyDialog())
 
+        self.assertLessEqual(dialog.width(), ANOMALY_DIALOG_PREFERRED_WIDTH)
+        self.assertGreaterEqual(dialog.width(), dialog.minimumWidth())
+        self.assertLessEqual(dialog.height(), ANOMALY_DIALOG_PREFERRED_HEIGHT)
+        self.assertEqual(
+            ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
+            dialog.attachment_editor.list_widget.height(),
+        )
+        self.assertEqual(0, dialog.form_scroll.verticalScrollBar().value())
         self._assert_compacted_text_edit(dialog.problem_input, 180)
         self._assert_compacted_text_edit(dialog.pending_items_input, 100)
         paired_rows = [
@@ -96,6 +109,15 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.tech_transfer_check,
         )
         self._assert_compacted_text_edit(dialog.summary_input, 200)
+
+    def test_visit_dialog_matches_anomaly_dialog_working_size(self) -> None:
+        anomaly_dialog = self._show_dialog(NewAnomalyDialog())
+        visit_dialog = self._show_dialog(NewVisitDialog())
+
+        self.assertEqual(anomaly_dialog.size(), visit_dialog.size())
+        self.assertLessEqual(visit_dialog.width(), ANOMALY_DIALOG_PREFERRED_WIDTH)
+        self.assertLessEqual(visit_dialog.height(), ANOMALY_DIALOG_PREFERRED_HEIGHT)
+        self.assertEqual(0, visit_dialog.form_scroll.verticalScrollBar().value())
 
     def test_product_section_pairs_time_and_work_order_only(self) -> None:
         editor = ProductSectionEditor("產品區段")

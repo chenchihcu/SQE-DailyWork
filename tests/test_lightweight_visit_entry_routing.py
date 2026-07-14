@@ -82,7 +82,7 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
 
         self.assertEqual([{}], _DialogProbe.calls)
 
-    def test_main_window_lightweight_defect_entry_focuses_defect_note(self) -> None:
+    def test_main_window_legacy_defect_entry_opens_merged_visit_form(self) -> None:
         _DialogProbe.calls = []
         with patch("ui.main_window.event_service.has_active_suppliers", return_value=True), patch(
             "ui.main_window.NewVisitDialog",
@@ -92,7 +92,7 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
             self.addCleanup(window.close)
             window.open_new_visit_defect_dialog()
 
-        self.assertEqual([{"focus_defect_note": True}], _DialogProbe.calls)
+        self.assertEqual([{}], _DialogProbe.calls)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from database import connection as _connection
 from database import repository
 
+from ._anomaly_folder import create_anomaly_folder, prepare_anomaly_folder_root
 from ._helpers import _require_product_id, _require_supplier_record, _resolve_product_name
 
 
@@ -203,11 +204,20 @@ def list_pending_visit_defect_notes(*, limit: int | None = None) -> list[dict]:
 
 def confirm_visit_defect_note_as_anomaly(note_id: str, payload: dict | None = None) -> dict:
     params = payload or {}
+    prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
-        return repository.confirm_visit_defect_note_as_anomaly(
+        result = repository.confirm_visit_defect_note_as_anomaly(
             conn,
             note_id=note_id,
             product_id=params.get("product_id"),
             responsible_person=params.get("responsible_person", ""),
             due_date=params.get("due_date", ""),
         )
+        anomaly = repository.get_anomaly_detail(conn, str(result.get("anomaly_id") or ""))
+    if anomaly is None:
+        raise ValueError("Confirmed supplier anomaly could not be loaded")
+    create_anomaly_folder(
+        supplier_name=str(anomaly.get("supplier_name") or ""),
+        anomaly_no=str(result.get("anomaly_no") or ""),
+    )
+    return result

@@ -49,6 +49,18 @@ shared master-data area.
   supports downstream filtering without changing existing charts, summary
   totals, supplier ranking, or warehouse NCR reports.
 
+## Supplier Anomaly Working Folders
+
+- Every successfully created `anomalies` row gets a working folder under
+  `Outputs/ncr number file/` named `<供應商名稱><異常單號>`.
+- The same rule applies to standalone anomalies, anomalies linked or
+  synchronized to a visit, and legacy visit defect notes explicitly confirmed
+  as formal supplier anomalies. Creating a visit or a lightweight visit defect
+  note alone does not create this folder.
+- Folder creation is idempotent. Windows-invalid filename characters in the
+  supplier-name component are replaced with `_`; the stored supplier name and
+  anomaly number are never changed.
+
 ## UI Entrypoint And Folder Boundaries
 
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.

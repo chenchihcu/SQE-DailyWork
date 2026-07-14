@@ -14,7 +14,7 @@
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
 | New / edit anomaly | Anomaly buttons | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險與參考 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
-| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/defect_form_widget.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 進階與技轉 sections and fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Close anomaly | Event action menu | `src/ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
@@ -52,7 +52,16 @@
 - `NewAnomalyDialog` is a single-page form. Its content scrolls inside
   `AnomalyFormScroll`, while 儲存／取消 remain outside the scroll area. The
   「品質異常單要求」是／否 radios are paired in 基本資訊 and begin unselected
-  for new or legacy-unclassified records.
+  for new or legacy-unclassified records. The dialog prefers a 900 x 780
+  working size, remains capped to the active screen and `FORM_MAX_WIDTH`, opens
+  at the top of the form, and uses a compact scrollable attachment preview so
+  an empty photo area does not consume the visible workflow.
+- `NewVisitDialog` is also a single-page form. `VisitFormScroll` merges 基本資訊
+  and 進階與技轉 into one continuous body while 儲存／取消 remain fixed outside
+  the scroll area. It uses the same 900 x 780 preferred working size and active-
+  screen clamp as `NewAnomalyDialog`. The retired defect-note tab and its nested group containers
+  must not be recreated; editing legacy visits preserves their stored defect-note
+  and additional product-section payloads without exposing hidden editor widgets.
 - Deferred conditional candidates: `主要產品 + 料號`, `主供應商 + 次要供應商`, and other long combo-box rows. These require long supplier/product-name checks before implementation.
 - Verify form density changes with focused structural tests plus `scripts/qt_visual_probe.py --target form-density` before treating CJK rendering and button visibility as confirmed.
 

@@ -1,5 +1,6 @@
 ---
 name: sqe-dailywork-visual-qa
+version: 1.0.0
 description: 用於 SQE DailyWork 的 PySide6 UI、截圖、中文(CJK)文字渲染、字體排版、間距與視覺審查;需要原生 Windows Qt 的視覺證據。Use this skill 當要做 UI 視覺檢查或截圖分析時。觸發詞包含「PySide6」「UI」「截圖」「screenshot」「CJK」「中文渲染」「typography」「視覺審查」「visual QA」。
 allowed-tools: Read, Grep, Glob, Bash
 ---
@@ -17,7 +18,7 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 - Read `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `docs/harness/README.md`, and the target `src/ui/` file.
 - Before adding any styling, check `src/ui/theme.py` and `src/ui/layout_constants.py` and reuse shared widgets. Prefer QSS `role` / `variant` and theme tokens over per-widget `setStyleSheet` (AGENTS.md §3–4). Pull layout values from `src/ui/layout_constants.py` (`FORM_MAX_WIDTH`, `GRID_GUTTER`, `ROW_GAP`, `PANEL_MARGINS`) instead of hardcoding pixels — those constants are the single source of truth (pinned by `tests/test_layout_constants.py`).
 - The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (首頁 / 事件管理 / 異常事件統計 / 不合格品 / 不合格品統計分析 / 基礎資料); the former anomaly / visit / closed lists are now scope tabs inside the consolidated 事件管理 page (see `src/ui/main_window.py` and `README.md`). Keep the home screen operational (no hero/cover panels). Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
-- **Single font source of truth:** the CJK font fallback chain lives only in `src/ui/theme.py` (`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`); `src/ncr/ui/ui_style.py` imports it. Do not reintroduce a second list. Live Qt QSS must use only `font-weight` 400 / 700 — never 500 / 600 (Windows renders CJK inconsistently at medium weights). Both rules are pinned by `tests/test_font_source_single_truth.py` and `tests/test_theme_typography_consistency.py`.
+- **Single font source of truth:** the CJK font fallback chain lives only in `src/ui/theme.py` (`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`); `src/ncr/ui/ui_style.py` imports it. Do not reintroduce a second list. Font-weight policy (CJK 400/700 only) 的正本與出處見 `.claude/rules/visual_evidence_rules.md` §2(上游為 Institution 06 §6);兩條規則的機械防線與測試釘點也記錄在該檔。
 
 ## Visual Evidence Rule
 
@@ -25,7 +26,7 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 - Visual screenshots, CJK rendering, font, and typography judgments must use native Windows Qt via `scripts\qt_visual_probe.py` (it auto-forces `QT_QPA_PLATFORM=windows` on Windows).
 - **Read the PNG, not the console.** The probe prints CJK to the console as cp950 mojibake — that is a display artifact, NOT broken data. Judge CJK only from the saved PNG.
 - **`grab()` cannot capture top-level popups.** `QMenu` (e.g. the event action menu), `QComboBox` dropdown lists, and tooltips render as separate native surfaces that a parent-widget `grab()` does not include. Verify those with a **structural assert** (e.g. `widget.toolTip()` / `accessibleName()` is set for elided cells, menu actions exist), not a screenshot.
-- Playwright is not visual evidence for this PySide6 desktop app — nor are any browser/web tools.
+- Playwright / browser-tool policy: authority is `.claude/rules/visual_evidence_rules.md` §1 — not visual evidence for this desktop app; do not restate the rule elsewhere.
 
 ## Running the probe
 
@@ -68,10 +69,16 @@ A visual claim is "done" only after the relevant dimensions below are checked (s
 5. **CJK font — three sources** — JSON `cjk_font_ok` AND `ncr_cjk_font_ok` AND (for exports) `pdf_cjk_font_ok` all true.
 6. **Popups / menus / tooltips** — structural assert (`toolTip()` / `accessibleName()` / menu actions), because `grab()` cannot capture them.
 7. **QSS validity** — `qss_unknown_property_warnings == 0` (catches box-shadow / transition / transform / opacity etc. that Qt silently drops).
-8. **Typography static audit** — no `font-weight: 500|600` in live Qt QSS (theme + ncr); single CJK font source. Pinned by tests; re-grep if you touched styling.
+8. **Typography static audit** — no `font-weight: 500|600` in live Qt QSS (theme + ncr); single CJK font source (政策正本:`.claude/rules/visual_evidence_rules.md` §2). Pinned by tests; re-grep if you touched styling.
 9. **Charts (§10)** — figure vs plot background are separate tokens (`apply_chart_surface` in `src/ui/widgets/chart_style.py`; plot uses `chart_plot_bg`); legend label colour/size readable; long CJK category labels do not overlap (read `stats-stress` / `ncr-stats` PNGs).
 10. **Sidebar colour roles** — rail base, logo/footer panel, group labels, active item, active indicator, badges, primary + secondary quick actions are distinguishable (per `docs/ui-layout-theme-contract.md`).
 11. **Visual regression** — `qt_visual_regress.py` passes or skips with a stated reason (never an unexplained pass).
 
 - Structural UI behavior (startup, widget existence, signal wiring): focused unittest or offscreen smoke is acceptable, but label it structural.
 - Always include the screenshot path(s) and the probe JSON (`visual_trustworthy` / `cjk_font_ok` / `ncr_cjk_font_ok` / `qss_unknown_property_warnings`) in the final verification summary. If native Qt is genuinely unavailable, say so and downgrade the claim to structural — do not pass off offscreen output as visual evidence.
+
+## 何時不要觸發
+
+- schema / migration / 匯出資料契約 → 用 `sqe-dailywork-data-contract`
+- 跨層變更的路由分類(改哪裡、跑什麼) → 用 `sqe-dailywork-change-router`
+- 瀏覽器 / web E2E 測試不屬本技能;Playwright 在本專案也不是視覺證據(`.claude/rules/visual_evidence_rules.md` §1)

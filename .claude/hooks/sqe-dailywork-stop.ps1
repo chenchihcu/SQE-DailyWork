@@ -13,6 +13,7 @@ try {
     return
 }
 
+# 欄位清單與 .claude/skills/sqe-dailywork-change-router/SKILL.md 的 Delivery 行互為鏡像,改其一須同批改另一
 $required = @("Changes", "Impact", "Verification", "Residual risk", "Next action")
 $missing = @()
 foreach ($field in $required) {

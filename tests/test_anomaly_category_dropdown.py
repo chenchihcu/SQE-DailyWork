@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QScrollArea,
     QTabWidget,
-    QTableWidgetItem,
 )
 
 import services.event._anomaly_service as _anomaly_service_mod
@@ -579,15 +578,23 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertFalse(captured.get("functional_test", True))
         self.assertFalse(captured.get("packaging_requirement", True))
 
-    def test_visit_dialog_focus_defect_note_opens_shared_defect_tab(self) -> None:
-        dialog = self.NewVisitDialog(focus_defect_note=True)
+    def test_visit_dialog_is_single_scroll_page_without_defect_controls(self) -> None:
+        dialog = self.NewVisitDialog()
         self.addCleanup(dialog.close)
 
-        self.assertEqual("缺失紀錄", dialog.tabs.tabText(dialog.tabs.currentIndex()))
-        self.assertEqual(1, dialog.visit_defect_table.rowCount())
-        self.assertEqual(0, dialog.visit_defect_table.currentColumn())
+        self.assertIsInstance(dialog.form_scroll, QScrollArea)
+        self.assertTrue(dialog.form_scroll.widgetResizable())
+        self.assertEqual([], dialog.findChildren(QTabWidget))
+        self.assertFalse(hasattr(dialog, "visit_defect_table"))
+        self.assertFalse(hasattr(dialog, "primary_defect_table"))
+        section_titles = {
+            label.text()
+            for label in dialog.form_scroll.findChildren(QLabel)
+            if label.property("role") == "sectionTitle"
+        }
+        self.assertEqual({"基本資訊", "進階與技轉"}, section_titles)
 
-    def test_visit_dialog_submits_visit_level_and_product_defect_notes(self) -> None:
+    def test_visit_dialog_submits_without_new_defect_notes(self) -> None:
         captured: dict = {}
         products = [
             {
@@ -629,28 +636,13 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             dialog.product_combo.setCurrentIndex(product_idx)
             dialog.time_slot_input.setText("上午")
             dialog.work_order_input.setText("WO-A")
-            dialog.primary_defect_table.add_empty_note()
-            dialog.primary_defect_table.setItem(0, 0, QTableWidgetItem("材料未全檢"))
-            dialog.primary_defect_table.setItem(0, 1, QTableWidgetItem("已建立 SOP"))
-            dialog.visit_defect_table.add_empty_note()
-            dialog.visit_defect_table.setItem(0, 0, QTableWidgetItem("共通現場問題"))
-
-            extra = dialog._add_extra_product_section()
-            extra.product_combo.setCurrentIndex(extra.product_combo.findData("prd-2"))
-            extra.time_slot_input.setText("下午")
-            extra.defect_table.add_empty_note()
-            extra.defect_table.setItem(0, 0, QTableWidgetItem("規格書未收到"))
-            extra.defect_table.setItem(0, 2, QTableWidgetItem("下次補看"))
             dialog._on_submit()
 
-        self.assertEqual("共通現場問題", captured["defect_notes"][0]["defect_desc"])
-        self.assertEqual(2, len(captured["product_sections"]))
+        self.assertEqual([], captured["defect_notes"])
+        self.assertEqual(1, len(captured["product_sections"]))
         self.assertEqual("prd-1", captured["product_sections"][0]["product_id"])
         self.assertEqual("上午", captured["product_sections"][0]["time_slot"])
-        self.assertEqual("材料未全檢", captured["product_sections"][0]["defect_notes"][0]["defect_desc"])
-        self.assertEqual("prd-2", captured["product_sections"][1]["product_id"])
-        self.assertEqual("下午", captured["product_sections"][1]["time_slot"])
-        self.assertEqual("", captured["product_sections"][1]["defect_notes"][0]["improvement_desc"])
+        self.assertEqual([], captured["product_sections"][0]["defect_notes"])
 
     def test_visit_dialog_item_yes_auto_checks_tech_transfer(self) -> None:
         captured: dict = {}
@@ -744,6 +736,65 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             self.widget_module.TECH_TRANSFER_STATE_YES,
             dialog._get_tech_transfer_state("carrier_requirement"),
         )
+
+    def test_visit_dialog_edit_preserves_hidden_legacy_defect_data(self) -> None:
+        captured: dict = {}
+        products = [
+            {
+                "id": "prd-1",
+                "product_code": "P-001",
+                "product_name": "產品一號",
+                "product_stage": "量產",
+            }
+        ]
+        visit_note = {"id": "note-v", "defect_desc": "訪廠層級歷史缺失"}
+        primary_note = {"id": "note-p", "defect_desc": "主要產品歷史缺失"}
+        extra_section = {
+            "id": "section-2",
+            "product_id": "prd-2",
+            "product_name": "產品二號",
+            "defect_notes": [{"id": "note-e", "defect_desc": "其他產品歷史缺失"}],
+            "sort_order": 1,
+        }
+
+        with patch.object(
+            self.widget_module.event_service,
+            "list_active_products_for_supplier",
+            return_value=products,
+        ), patch.object(
+            _visit_service_mod,
+            "update_visit",
+            side_effect=lambda _visit_id, payload: captured.update(payload),
+        ):
+            dialog = self.NewVisitDialog(
+                visit_id="visit-1",
+                initial_data={
+                    "visit_date": "2026-04-16",
+                    "supplier_id": "sup-1",
+                    "supplier_name": "供應商A",
+                    "product_id": "prd-1",
+                    "product_name": "產品一號",
+                    "product_code": "P-001",
+                    "defect_notes": [visit_note],
+                    "product_sections": [
+                        {
+                            "id": "section-1",
+                            "product_id": "prd-1",
+                            "product_name": "產品一號",
+                            "defect_notes": [primary_note],
+                            "sort_order": 0,
+                        },
+                        extra_section,
+                    ],
+                },
+            )
+            self.addCleanup(dialog.close)
+            dialog.summary_input.setPlainText("只更新摘要")
+            dialog._on_submit()
+
+        self.assertEqual([visit_note], captured["defect_notes"])
+        self.assertEqual([primary_note], captured["product_sections"][0]["defect_notes"])
+        self.assertEqual(extra_section, captured["product_sections"][1])
 
     def test_visit_dialog_tech_transfer_cards_use_right_side_dot_indicator_style(self) -> None:
         dialog = self.NewVisitDialog()

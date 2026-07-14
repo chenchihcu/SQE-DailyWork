@@ -43,9 +43,11 @@ no separate launcher window, and no standalone NCR main window.
   `status <> '已結案' AND processing_line = '委外加工'`, and one for
   `status <> '已結案' AND processing_line = '原物料'`. `未分流` is shown as a
   cleanup warning/to-do, not merged into either formal badge.
-- `登錄訪廠紀錄` and `登錄訪廠缺失` use the visit form.
-- Visit/audit defect notes can be manually confirmed into formal supplier
-  anomalies while retaining the `visit_id` link.
+- `新增訪廠` / 編輯訪廠使用單一可捲動表單，直接呈現基本資訊與進階技轉欄位；
+  表單不再提供訪廠缺失輸入。編輯舊訪廠時會保留既有缺失與產品區段資料，
+  避免只更新一般欄位便清除歷史紀錄。
+- 正式供應商異常由 `新增異常` 流程建立；既有訪廠缺失資料仍保留於資料庫與既有
+  查詢／報表契約中。
 - Supplier anomaly closure uses the user-selected `closed_at` date from the
   close dialog; closed anomalies can adjust that date without reopening, and
   supplier-event trend charts group closures by the same date.
@@ -148,6 +150,10 @@ dry run, reconciliation, and focused verification.
 
 ## Outputs
 
+- Each newly created supplier anomaly, including a visit defect confirmed as a
+  formal anomaly, creates or reuses `Outputs/ncr number file/<供應商名稱><異常單號>/`.
+  Windows-invalid filename characters in the supplier name are replaced with
+  `_`; the anomaly database transaction remains the source of truth.
 - Event PDF export: `src/services/event_pdf_exporter.py`.
 - Monthly Excel export: `src/services/event_service.py`.
 - Weekly PowerPoint report: `scripts/generate_weekly_report.py`.

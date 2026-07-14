@@ -37,41 +37,64 @@ from ui.theme import (
     PREFERRED_CJK_FONT_FAMILIES as PREFERRED_CJK_FONT_FAMILIES,
 )
 from ui.status_colors import get_status_tone
-from ui.layout_constants import HERO_BANNER_MARGINS, INLINE_SPACING
+from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
+from ui.layout_constants import (
+    HERO_BANNER_MARGINS,
+    INLINE_SPACING,
+    NCR_PAGE_MARGIN,
+    NCR_SECTION_SPACING,
+    NCR_FIELD_SPACING_X,
+    NCR_FIELD_SPACING_Y,
+    NCR_FORM_COMPACT_FIELD_MIN_WIDTH,
+    NCR_FORM_TWO_COLUMN_SPACING,
+    NCR_DEFECT_FORM_CONTENT_MARGINS,
+    NCR_EDIT_DIALOG_CARD_MARGINS,
+    NCR_LABEL_MIN_WIDTH,
+    NCR_LABEL_TEXT_HORIZONTAL_PADDING,
+    NCR_LABEL_WIDTH,
+    NCR_DEFAULT_INPUT_MIN_WIDTH,
+    NCR_INPUT_HEIGHT,
+    NCR_BUTTON_HEIGHT,
+    NCR_ACTION_BUTTON_MIN_WIDTH,
+    NCR_FILTER_BUTTON_MIN_WIDTH,
+    NCR_FILTER_BUTTON_MAX_WIDTH,
+    NCR_DATE_FIELD_MIN_WIDTH,
+    NCR_QUICK_ADD_BUTTON_MIN_WIDTH,
+    NCR_TABLE_ROW_HEIGHT,
+    NCR_DASHBOARD_CHART_CARD_MIN_HEIGHT,
+    NCR_ITEMS_PER_PAGE,
+    NCR_WINDOW_SCREEN_WIDTH_RATIO,
+    NCR_WINDOW_SCREEN_HEIGHT_RATIO,
+)
 
 
-PAGE_MARGIN = 8
-SECTION_SPACING = 22
-FIELD_SPACING_X = 20
-FIELD_SPACING_Y = 16
-FORM_TWO_COLUMN_SPACING = 24
-DEFECT_FORM_CONTENT_MARGINS = (16, 12, 16, 12)
-# Edit-dialog main-card inner padding; slightly roomier than the embedded
-# form card (audit finding D15: was hardcoded inline in DefectEditDialog).
-EDIT_DIALOG_CARD_MARGINS = (18, 16, 18, 16)
-LABEL_MIN_WIDTH = 92
-LABEL_TEXT_HORIZONTAL_PADDING = 18
-LABEL_WIDTH = LABEL_MIN_WIDTH
-DEFAULT_INPUT_MIN_WIDTH = 250
-INPUT_HEIGHT = 30
-BUTTON_HEIGHT = 30
-ACTION_BUTTON_MIN_WIDTH = 96
-DIALOG_ACTION_BUTTON_MIN_WIDTH = 112
-# Filter-toolbar buttons (重置/查詢) are narrower than action buttons and get a
-# max width so the filter row stays compact (audit finding D14: was hardcoded
-# per-widget in defect_list.py).
-FILTER_BUTTON_MIN_WIDTH = 90
-FILTER_BUTTON_MAX_WIDTH = 110
-# Min width so "yyyy-MM-dd" + the calendar drop-down stay intact at 150% DPI
-# (geometry-audited via qt_visual_probe --scale 1.5; do not lower without re-checking).
-DATE_FIELD_MIN_WIDTH = 150
-QUICK_ADD_BUTTON_MIN_WIDTH = 76
-TABLE_ROW_HEIGHT = 28
-DASHBOARD_CHART_CARD_MIN_HEIGHT = 400
-EMPTY_PLACEHOLDER = "—"
-ITEMS_PER_PAGE = 12
-WINDOW_SCREEN_WIDTH_RATIO = 0.94
-WINDOW_SCREEN_HEIGHT_RATIO = 0.92
+# Layout constants — imported from ui.layout_constants (single source of truth)
+# NCR-specific constants are prefixed with NCR_ in layout_constants.py
+PAGE_MARGIN = NCR_PAGE_MARGIN
+SECTION_SPACING = NCR_SECTION_SPACING
+FIELD_SPACING_X = NCR_FIELD_SPACING_X
+FIELD_SPACING_Y = NCR_FIELD_SPACING_Y
+FORM_TWO_COLUMN_SPACING = NCR_FORM_TWO_COLUMN_SPACING
+FORM_COMPACT_FIELD_MIN_WIDTH = NCR_FORM_COMPACT_FIELD_MIN_WIDTH
+DEFECT_FORM_CONTENT_MARGINS = NCR_DEFECT_FORM_CONTENT_MARGINS
+EDIT_DIALOG_CARD_MARGINS = NCR_EDIT_DIALOG_CARD_MARGINS
+LABEL_MIN_WIDTH = NCR_LABEL_MIN_WIDTH
+LABEL_TEXT_HORIZONTAL_PADDING = NCR_LABEL_TEXT_HORIZONTAL_PADDING
+LABEL_WIDTH = NCR_LABEL_WIDTH
+DEFAULT_INPUT_MIN_WIDTH = NCR_DEFAULT_INPUT_MIN_WIDTH
+INPUT_HEIGHT = NCR_INPUT_HEIGHT
+BUTTON_HEIGHT = NCR_BUTTON_HEIGHT
+ACTION_BUTTON_MIN_WIDTH = NCR_ACTION_BUTTON_MIN_WIDTH
+DIALOG_ACTION_BUTTON_MIN_WIDTH = NCR_ACTION_BUTTON_MIN_WIDTH
+FILTER_BUTTON_MIN_WIDTH = NCR_FILTER_BUTTON_MIN_WIDTH
+FILTER_BUTTON_MAX_WIDTH = NCR_FILTER_BUTTON_MAX_WIDTH
+DATE_FIELD_MIN_WIDTH = NCR_DATE_FIELD_MIN_WIDTH
+QUICK_ADD_BUTTON_MIN_WIDTH = NCR_QUICK_ADD_BUTTON_MIN_WIDTH
+TABLE_ROW_HEIGHT = NCR_TABLE_ROW_HEIGHT
+DASHBOARD_CHART_CARD_MIN_HEIGHT = NCR_DASHBOARD_CHART_CARD_MIN_HEIGHT
+ITEMS_PER_PAGE = NCR_ITEMS_PER_PAGE
+WINDOW_SCREEN_WIDTH_RATIO = NCR_WINDOW_SCREEN_WIDTH_RATIO
+WINDOW_SCREEN_HEIGHT_RATIO = NCR_WINDOW_SCREEN_HEIGHT_RATIO
 # PREFERRED_CJK_FONT_FAMILIES and CJK_FONT_FAMILY_CSS are imported from ui.theme
 # (single source of truth). Re-exported here for existing call sites and probes.
 
@@ -229,636 +252,9 @@ def fit_window_to_available_screen(
 
 
 def app_stylesheet() -> str:
-    date_icon_url = stylesheet_url(DATE_ICON_PATH)
-    return f"""
-    QWidget {{
-        background: {COLOR_SURFACE_APP};
-        color: {COLOR_TEXT_PRIMARY};
-        font-family: {CJK_FONT_FAMILY_CSS};
-        font-size: {BASE_TEXT_PX}px;
-    }}
-    QMainWindow {{
-        background: {COLOR_SURFACE_APP};
-    }}
-    QDialog {{
-        background: {COLOR_SURFACE_APP};
-        color: {COLOR_TEXT_PRIMARY};
-    }}
-    QStatusBar {{
-        background: {COLOR_SIDEBAR_BG};
-        color: {COLOR_TEXT_SECONDARY};
-        border-top: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QFrame#appSidebar {{
-        background: {COLOR_SIDEBAR_BG};
-        border-right: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QLabel[uiRole="sidebarBrandTitle"] {{
-        color: {COLOR_TEXT_PRIMARY};
-        font-size: 21px;
-        font-weight: 700;
-        letter-spacing: 1px;
-        background: transparent;
-    }}
-    QLabel[uiRole="sidebarBrandSubtitle"] {{
-        color: {COLOR_INFO_TEXT};
-        font-size: 11px;
-        font-weight: 700;
-        background: transparent;
-    }}
-    QLabel[uiRole="sidebarGroupLabel"] {{
-        color: {COLOR_SIDEBAR_MUTED};
-        font-size: 11px;
-        font-weight: 700;
-        padding: 14px 4px 4px 6px;
-        background: transparent;
-    }}
-    QLabel[uiRole="sidebarFooter"] {{
-        color: {COLOR_SIDEBAR_MUTED};
-        background: {COLOR_SIDEBAR_PANEL};
-        border: 1px solid {COLOR_BORDER_SOFT};
-        border-radius: 12px;
-        padding: 10px 12px;
-        font-size: 11px;
-    }}
-    QFrame[uiRole="sidebarDivider"] {{
-        background: {COLOR_BORDER_SOFT};
-        border: none;
-        min-height: 1px;
-        max-height: 1px;
-        margin: 10px 0px 8px 0px;
-    }}
-    QPushButton[navRole="sidebarItem"] {{
-        min-height: 38px;
-        text-align: left;
-        padding: 0 12px 0 14px;
-        border-radius: 12px;
-        border: 1px solid transparent;
-        border-left: 3px solid transparent;
-        background: transparent;
-        color: {COLOR_SIDEBAR_TEXT};
-        font-weight: 700;
-    }}
-    QPushButton[navRole="sidebarItem"]:hover {{
-        background: {COLOR_ACCENT_OVERLAY};
-        border-color: {COLOR_BORDER_SOFT};
-        border-left: 3px solid {COLOR_ACCENT_HOVER};
-    }}
-    QPushButton[navRole="sidebarItem"]:checked {{
-        background: {COLOR_ACCENT_OVERLAY};
-        color: {COLOR_TEXT_PRIMARY};
-        border: 1px solid {COLOR_INFO_BORDER};
-        border-left: 3px solid {COLOR_ACCENT};
-    }}
-    QStackedWidget#workflowStack {{
-        background: {COLOR_SURFACE_APP};
-    }}
-    QTabWidget::pane {{
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        background: {COLOR_SURFACE_BASE};
-        top: -1px;
-        border-radius: 12px;
-    }}
-    QTabBar::tab {{
-        background: {COLOR_TAB_BG};
-        color: {COLOR_TEXT_SECONDARY};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        padding: 8px 16px;
-        min-width: 0;
-        font-weight: 700;
-        margin-right: 2px;
-        border-top-left-radius: 10px;
-        border-top-right-radius: 10px;
-    }}
-    QTabBar::tab:hover {{
-        background: {COLOR_SURFACE_SUBTLE};
-        color: {COLOR_TEXT_PRIMARY};
-        border-bottom-color: {COLOR_BORDER_DEFAULT};
-    }}
-    QTabBar::tab:selected {{
-        background: {COLOR_SURFACE_BASE};
-        color: {COLOR_ACCENT};
-        border-bottom-color: {COLOR_SURFACE_BASE};
-        border-top: 2px solid {COLOR_ACCENT};
-        font-weight: 700;
-    }}
-    QLabel[uiRole="pageTitle"] {{
-        font-size: {PAGE_TITLE_TEXT_PX}px;
-        font-weight: 700;
-        color: {COLOR_TEXT_PRIMARY};
-    }}
-    QLabel[uiRole="pageSubtitle"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-    }}
-    QLabel[uiRole="sectionTitle"] {{
-        font-size: {SECTION_TITLE_TEXT_PX}px;
-        font-weight: 700;
-        color: {COLOR_TEXT_PRIMARY};
-        background: transparent;
-    }}
-    QLabel[uiRole="sectionSubtitle"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-        background: transparent;
-    }}
-    QLabel[uiRole="fieldLabel"] {{
-        font-weight: 700;
-        color: {COLOR_TEXT_SECONDARY};
-        background: transparent;
-        font-size: {BASE_TEXT_PX}px;
-        padding-right: 12px;
-    }}
-    QLabel[uiRole="metaLabel"] {{
-        font-weight: 700;
-        color: {COLOR_TEXT_SECONDARY};
-        background: transparent;
-    }}
-    QLabel[uiRole="metaValue"] {{
-        font-weight: 400;
-        color: {COLOR_TEXT_PRIMARY};
-        background: transparent;
-    }}
-    QLabel[uiRole="hint"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-        background: transparent;
-    }}
-    QLabel[uiRole="notice"] {{
-        color: {COLOR_INFO_TEXT};
-        background: {COLOR_INFO_BG};
-        border: 1px solid {COLOR_INFO_BORDER};
-        border-radius: 12px;
-        padding: 10px 14px;
-    }}
-    QLabel[uiRole="paginationStatus"] {{
-        color: {COLOR_TEXT_PRIMARY};
-        font-weight: 700;
-        font-size: {BASE_TEXT_PX}px;
-    }}
-    QLabel[uiRole="compactNotice"] {{
-        color: {COLOR_INFO_TEXT};
-        background: {COLOR_INFO_BG};
-        border: 1px solid {COLOR_INFO_BORDER};
-        border-radius: 8px;
-        padding: 6px 12px;
-        font-size: {SECONDARY_TEXT_PX}px;
-    }}
-    QLabel[uiRole="warningHint"] {{
-        color: {COLOR_WARNING_TEXT};
-        background: {COLOR_WARNING_BG};
-        border: 1px solid {COLOR_WARNING_BORDER};
-        border-radius: 10px;
-        padding: 10px 14px;
-        font-size: {SECONDARY_TEXT_PX}px;
-    }}
-    QLabel[uiRole="successHint"] {{
-        color: {COLOR_SUCCESS_TEXT};
-        background: {COLOR_SUCCESS_BG};
-        border: 1px solid {COLOR_SUCCESS_BORDER};
-        border-radius: 10px;
-        padding: 10px 14px;
-        font-size: {SECONDARY_TEXT_PX}px;
-    }}
-    QLabel[role="statusBadge"] {{
-        background: {COLOR_SURFACE_MUTED};
-        color: {COLOR_TEXT_SECONDARY};
-        border: 1px solid {COLOR_BORDER_SOFT};
-        border-radius: 9px;
-        padding: 1px 6px;
-        font-weight: 700;
-        font-size: {MONOSPACE_TEXT_PX}px;
-    }}
-    QLabel[role="statusBadge"][tone="pending"] {{
-        background: {COLOR_WARNING_BG};
-        color: {COLOR_WARNING_TEXT};
-        border: 1px solid {COLOR_WARNING_BORDER};
-    }}
-    QLabel[role="statusBadge"][tone="success"] {{
-        background: {COLOR_SUCCESS_BG};
-        color: {COLOR_SUCCESS_TEXT};
-        border: 1px solid {COLOR_SUCCESS_BORDER};
-    }}
-    QLabel[role="statusBadge"][tone="danger"] {{
-        background: {COLOR_DANGER_BG_HOVER};
-        color: {COLOR_DANGER_TEXT};
-        border: 1px solid {COLOR_DANGER_BORDER};
-    }}
-    QLabel[role="statusBadge"][tone="info"] {{
-        background: {COLOR_INFO_BG};
-        color: {COLOR_INFO_TEXT};
-        border: 1px solid {COLOR_INFO_BORDER};
-    }}
-    QLabel[role="statusBadge"][tone="na"] {{
-        background: {COLOR_SURFACE_MUTED};
-        color: {COLOR_TEXT_MUTED};
-        border: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QLabel[uiRole="emptyStateTitle"] {{
-        color: {COLOR_TEXT_SECONDARY};
-        font-size: {SECTION_TITLE_TEXT_PX}px;
-        font-weight: 700;
-        background: transparent;
-    }}
-    QLabel[uiRole="emptyStateDesc"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-        background: transparent;
-    }}
-    QLabel[uiRole="summaryValue"] {{
-        font-size: {SUMMARY_VALUE_TEXT_PX}px;
-        font-weight: 700;
-        color: {COLOR_TEXT_PRIMARY};
-        background: transparent;
-    }}
-    QLabel[uiRole="summaryLabel"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-        background: transparent;
-    }}
-    QLabel[uiRole="summaryIcon"] {{
-        background: transparent;
-    }}
-    QFrame[uiRole="pageCard"],
-    QFrame[uiRole="sectionCard"] {{
-        background: {COLOR_SURFACE_BASE};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-radius: 16px;
-    }}
-    QFrame[uiRole="summaryCard"] {{
-        background: {COLOR_SURFACE_BASE};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-left: 4px solid {COLOR_ACCENT};
-        border-radius: 12px;
-    }}
-    QFrame[uiRole="summaryCard"]:hover {{
-        background: {COLOR_ACCENT_FAINT};
-        border-color: {COLOR_INFO_BORDER};
-    }}
-    QFrame[uiRole="summaryCard"][accentRole="info"] {{
-        border-left: 4px solid {COLOR_INFO_TEXT};
-    }}
-    QFrame[uiRole="summaryCard"][accentRole="success"] {{
-        border-left: 4px solid {COLOR_SUCCESS_TEXT};
-    }}
-    QFrame[uiRole="summaryCard"][accentRole="warning"] {{
-        border-left: 4px solid {COLOR_WARNING_TEXT};
-    }}
-    QFrame[uiRole="summaryCard"][accentRole="danger"] {{
-        border-left: 4px solid {COLOR_DANGER_TEXT};
-    }}
-    QFrame[uiRole="divider"] {{
-        background: {COLOR_BORDER_SOFT};
-        border: none;
-        min-height: 1px;
-        max-height: 1px;
-    }}
-    QFrame[uiRole="pageCard"] {{
-        padding: 0px;
-    }}
-    QFrame[uiRole="photoContainer"] {{
-        background: {COLOR_SURFACE_MUTED};
-        border: 1px dashed {COLOR_BORDER_DEFAULT};
-        border-radius: 12px;
-        min-height: 100px;
-    }}
-    QFrame[uiRole="defectDescPlaceholder"] {{
-        background: {COLOR_SURFACE_MUTED};
-        border: 1px dashed {COLOR_BORDER_DEFAULT};
-        border-radius: 8px;
-    }}
-    QLabel[uiRole="thumbnail"] {{
-        background: {COLOR_SURFACE_BASE};
-        border: 1px solid {COLOR_BORDER_SOFT};
-        border-radius: 6px;
-    }}
-    QLabel[uiRole="thumbnail"]:hover {{
-        border: 1px solid {COLOR_ACCENT};
-    }}
-    QLabel[uiRole="photoHint"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: {SECONDARY_TEXT_PX}px;
-        font-style: italic;
-    }}
-    QLabel[uiRole="defectDescPlaceholderHint"] {{
-        color: {COLOR_TEXT_DISABLED};
-    }}
-    QLineEdit,
-    QTextEdit {{
-        background: {COLOR_SURFACE_BASE};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-radius: 10px;
-        selection-background-color: {COLOR_SELECTION_BG};
-    }}
-    QComboBox,
-    QDateEdit,
-    QAbstractSpinBox {{
-        background: {COLOR_SURFACE_BASE};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-radius: 10px;
-        selection-background-color: {COLOR_SELECTION_BG};
-    }}
-    QLineEdit:disabled,
-    QComboBox:disabled,
-    QDateEdit:disabled,
-    QAbstractSpinBox:disabled,
-    QTextEdit:disabled {{
-        background: {COLOR_SURFACE_DISABLED};
-        color: {COLOR_TEXT_DISABLED};
-        border: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QComboBox:disabled QLineEdit {{
-        color: {COLOR_TEXT_DISABLED};
-    }}
-    QLineEdit:hover,
-    QComboBox:hover,
-    QDateEdit:hover,
-    QAbstractSpinBox:hover,
-    QTextEdit:hover {{
-        border: 1px solid {COLOR_ACCENT};
-        background: {COLOR_SURFACE_BASE};
-    }}
-    QLineEdit,
-    QTextEdit {{
-        padding: 6px 14px;
-    }}
-    QComboBox,
-    QDateEdit {{
-        padding: 0 36px 0 14px;
-    }}
-    QAbstractSpinBox {{
-        padding: 0 42px 0 14px;
-    }}
-    QComboBox QLineEdit {{
-        border: none;
-        background: transparent;
-        padding: 0;
-        min-height: 0px;
-    }}
-    QLineEdit:focus,
-    QComboBox:focus,
-    QDateEdit:focus,
-    QAbstractSpinBox:focus,
-    QTextEdit:focus {{
-        border: 1px solid {COLOR_ACCENT};
-        background: {COLOR_SURFACE_BASE};
-    }}
-    QComboBox::drop-down,
-    QDateEdit::drop-down {{
-        subcontrol-origin: padding;
-        subcontrol-position: top right;
-        border: none;
-        border-left: 1px solid {COLOR_BORDER_DEFAULT};
-        background: {COLOR_ACCENT_OVERLAY};
-        width: 34px;
-        border-top-right-radius: 10px;
-        border-bottom-right-radius: 10px;
-    }}
-    QComboBox::drop-down:hover,
-    QDateEdit::drop-down:hover {{
-        background: {COLOR_ACCENT_OVERLAY_HOVER};
-    }}
-    QDateEdit::down-arrow {{
-        image: url("{date_icon_url}");
-        width: 14px;
-        height: 14px;
-    }}
-    QAbstractSpinBox::up-button,
-    QAbstractSpinBox::down-button {{
-        subcontrol-origin: border;
-        width: 28px;
-        background: {COLOR_ACCENT_OVERLAY};
-        border: none;
-        border-left: 1px solid {COLOR_BORDER_DEFAULT};
-    }}
-    QAbstractSpinBox::up-button:hover,
-    QAbstractSpinBox::down-button:hover {{
-        background: {COLOR_ACCENT_OVERLAY_HOVER};
-    }}
-    QAbstractSpinBox::up-button {{
-        subcontrol-position: top right;
-        border-top-right-radius: 10px;
-    }}
-    QAbstractSpinBox::down-button {{
-        subcontrol-position: bottom right;
-        border-bottom-right-radius: 10px;
-    }}
-    QPushButton {{
-        min-height: {BUTTON_HEIGHT}px;
-        padding: 0 18px;
-        border-radius: 10px;
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        background: {COLOR_SURFACE_BASE};
-        color: {COLOR_TEXT_PRIMARY};
-        font-weight: 700;
-    }}
-    QPushButton:disabled {{
-        background: {COLOR_SURFACE_DISABLED};
-        color: {COLOR_TEXT_DISABLED};
-        border: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QPushButton:hover {{
-        background: {COLOR_SURFACE_SUBTLE};
-        border-color: {COLOR_BORDER_DEFAULT};
-    }}
-    QPushButton[buttonRole="primary"] {{
-        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {COLOR_ACCENT}, stop:1 {COLOR_ACCENT_HOVER});
-        color: {COLOR_TEXT_INVERSE};
-        border: 1px solid {COLOR_ACCENT};
-    }}
-    QPushButton[buttonRole="primary"]:hover {{
-        background: {COLOR_ACCENT_HOVER};
-    }}
-    QPushButton[buttonRole="secondary"] {{
-        background: {COLOR_SURFACE_BASE};
-        color: {COLOR_TEXT_SECONDARY};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-    }}
-    QPushButton[buttonRole="utility"] {{
-        background: {COLOR_ACCENT_FAINT};
-        color: {COLOR_INFO_TEXT};
-        border: 1px solid {COLOR_INFO_BORDER};
-    }}
-    QPushButton[buttonRole="utility"]:hover {{
-        background: {COLOR_INFO_BG};
-        border-color: {COLOR_INFO_BORDER};
-    }}
-    QPushButton[buttonRole="danger"] {{
-        background: {COLOR_SURFACE_BASE};
-        color: {COLOR_DANGER_TEXT};
-        border: 1px solid {COLOR_DANGER_BORDER};
-    }}
-    QPushButton[buttonRole="danger"]:hover {{
-        background: {COLOR_DANGER_BG_HOVER};
-    }}
-    QPushButton[buttonRole="reset"] {{
-        background: {COLOR_SURFACE_MUTED};
-        color: {COLOR_TEXT_MUTED};
-        border: 1px solid {COLOR_BORDER_SOFT};
-    }}
-    QPushButton[buttonRole="reset"]:hover {{
-        background: {COLOR_SURFACE_SUBTLE};
-        border-color: {COLOR_BORDER_DEFAULT};
-        color: {COLOR_TEXT_SECONDARY};
-    }}
-    QPushButton[buttonRole="sidebar"] {{
-        background: transparent;
-        color: {COLOR_SIDEBAR_TEXT};
-        border: 1px solid transparent;
-    }}
-    QPushButton[navRole="sidebarItem"] {{
-        min-height: 38px;
-        text-align: left;
-        padding: 0 12px 0 14px;
-        border-radius: 12px;
-        border: 1px solid transparent;
-        border-left: 3px solid transparent;
-        background: transparent;
-        color: {COLOR_SIDEBAR_TEXT};
-        font-weight: 700;
-    }}
-    QPushButton[navRole="sidebarItem"]:hover {{
-        background: {COLOR_ACCENT_OVERLAY};
-        border-color: {COLOR_BORDER_SOFT};
-        border-left: 3px solid {COLOR_ACCENT_HOVER};
-    }}
-    QPushButton[navRole="sidebarItem"]:checked {{
-        background: {COLOR_ACCENT_OVERLAY};
-        color: {COLOR_TEXT_PRIMARY};
-        border: 1px solid {COLOR_INFO_BORDER};
-        border-left: 3px solid {COLOR_ACCENT};
-    }}
-    QTextBrowser {{
-        background: {COLOR_SURFACE_BASE};
-        color: {COLOR_TEXT_SECONDARY};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-radius: 12px;
-        font-family: {CJK_FONT_FAMILY_CSS};
-        padding: 10px;
-    }}
-    QTableWidget {{
-        background: {COLOR_SURFACE_BASE};
-        alternate-background-color: {COLOR_TABLE_ALT_BG};
-        gridline-color: {COLOR_GRID};
-        border: 1px solid {COLOR_BORDER_DEFAULT};
-        border-radius: 12px;
-        selection-background-color: {COLOR_SELECTION_BG};
-        selection-color: {COLOR_TEXT_PRIMARY};
-    }}
-    QTableCornerButton::section {{
-        background: {COLOR_SURFACE_SUBTLE};
-        border-top: 1px solid {COLOR_BORDER_DEFAULT};
-        border-left: 1px solid {COLOR_BORDER_DEFAULT};
-        border-right: 1px solid {COLOR_GRID};
-        border-bottom: 1px solid {COLOR_BORDER_DEFAULT};
-    }}
-    QHeaderView::section {{
-        background: {COLOR_SURFACE_SUBTLE};
-        color: {COLOR_TEXT_SECONDARY};
-        padding: 8px 10px;
-        border-top: 1px solid {COLOR_BORDER_DEFAULT};
-        border-right: 1px solid {COLOR_GRID};
-        border-bottom: 1px solid {COLOR_BORDER_DEFAULT};
-        font-weight: 700;
-    }}
-    QHeaderView::section:first {{
-        border-left: 1px solid {COLOR_BORDER_DEFAULT};
-    }}
-    QPushButton:pressed {{
-        background: {COLOR_SURFACE_SUBTLE};
-        border-color: {COLOR_BORDER_DEFAULT};
-    }}
-    QPushButton[buttonRole="primary"]:pressed {{
-        background: {COLOR_ACCENT_HOVER};
-        border-color: {COLOR_ACCENT_HOVER};
-    }}
-    QPushButton[buttonRole="danger"]:pressed {{
-        background: {COLOR_DANGER_BG_HOVER};
-    }}
-    QScrollBar:vertical {{
-        background: {COLOR_SURFACE_MUTED};
-        width: 8px;
-        border-radius: 4px;
-        margin: 0px;
-    }}
-    QScrollBar::handle:vertical {{
-        background: {COLOR_BORDER_DEFAULT};
-        border-radius: 4px;
-        min-height: 24px;
-    }}
-    QScrollBar::handle:vertical:hover {{
-        background: {COLOR_TEXT_MUTED};
-    }}
-    QScrollBar::add-line:vertical,
-    QScrollBar::sub-line:vertical {{
-        height: 0px;
-        background: none;
-    }}
-    QScrollBar::add-page:vertical,
-    QScrollBar::sub-page:vertical {{
-        background: none;
-    }}
-    QScrollBar:horizontal {{
-        background: {COLOR_SURFACE_MUTED};
-        height: 8px;
-        border-radius: 4px;
-        margin: 0px;
-    }}
-    QScrollBar::handle:horizontal {{
-        background: {COLOR_BORDER_DEFAULT};
-        border-radius: 4px;
-        min-width: 24px;
-    }}
-    QScrollBar::handle:horizontal:hover {{
-        background: {COLOR_TEXT_MUTED};
-    }}
-    QScrollBar::add-line:horizontal,
-    QScrollBar::sub-line:horizontal {{
-        width: 0px;
-        background: none;
-    }}
-    QScrollBar::add-page:horizontal,
-    QScrollBar::sub-page:horizontal {{
-        background: none;
-    }}
-    QFrame[uiRole="heroCard"] {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-            stop:0 {COLOR_HERO_START}, stop:1 {COLOR_HERO_END});
-        border: none;
-        border-top-left-radius: 14px;
-        border-top-right-radius: 14px;
-        border-bottom-left-radius: 0px;
-        border-bottom-right-radius: 0px;
-    }}
-    QLabel[uiRole="heroTitle"] {{
-        color: {COLOR_TEXT_INVERSE};
-        font-size: {PAGE_TITLE_TEXT_PX}px;
-        font-weight: 700;
-        background: transparent;
-    }}
-    QLabel[uiRole="heroMeta"] {{
-        color: {COLOR_TEXT_INVERSE};
-        font-size: 12px;
-        background: transparent;
-    }}
-    QFrame[uiRole="infoChip"] {{
-        background: {COLOR_ACCENT_FAINT};
-        border: 1px solid {COLOR_INFO_BORDER};
-        border-radius: 8px;
-    }}
-    QLabel[uiRole="chipLabel"] {{
-        color: {COLOR_TEXT_MUTED};
-        font-size: 12px;
-        font-weight: 700;
-        background: transparent;
-    }}
-    QLabel[uiRole="chipValue"] {{
-        color: {COLOR_TEXT_PRIMARY};
-        font-size: 12px;
-        font-weight: 700;
-        background: transparent;
-    }}
-    """
+    import warnings
+    warnings.warn("app_stylesheet() is deprecated. Use the main theme system.", DeprecationWarning)
+    return ""
 
 
 def set_button_role(button: QPushButton, role: str) -> None:

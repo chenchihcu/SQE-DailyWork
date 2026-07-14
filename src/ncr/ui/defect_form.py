@@ -5,7 +5,18 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
-from ui.layout_constants import DIALOG_OUTER_MARGINS
+from ui.layout_constants import (
+    DIALOG_OUTER_MARGINS,
+    NCR_DATE_FIELD_MIN_WIDTH,
+    NCR_DEFECT_FORM_CONTENT_MARGINS,
+    NCR_EDIT_DIALOG_CARD_MARGINS,
+    NCR_FIELD_SPACING_Y,
+    NCR_FORM_COMPACT_FIELD_MIN_WIDTH,
+    NCR_FORM_TWO_COLUMN_SPACING,
+    NCR_INPUT_HEIGHT,
+    NCR_QUICK_ADD_BUTTON_MIN_WIDTH,
+    NCR_SECTION_SPACING,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
@@ -71,17 +82,8 @@ from ncr.models.labels import (
 )
 from ncr.services import defect_service, product_service
 from ncr.ui.ui_style import (
-    DATE_FIELD_MIN_WIDTH,
-    DEFECT_FORM_CONTENT_MARGINS,
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
-    EDIT_DIALOG_CARD_MARGINS,
-    FIELD_SPACING_Y,
-    FORM_COMPACT_FIELD_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
-    FORM_TWO_COLUMN_SPACING,
-    INPUT_HEIGHT,
-    QUICK_ADD_BUTTON_MIN_WIDTH,
-    SECTION_SPACING,
     STATUS_TIMEOUT_ERROR,
     STATUS_TIMEOUT_PERSIST,
     STATUS_TIMEOUT_SUCCESS,
@@ -163,7 +165,7 @@ class QuickProductCreateDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        layout.setSpacing(FIELD_SPACING_Y)
+        layout.setSpacing(NCR_FIELD_SPACING_Y)
 
         form_grid = create_form_grid(field_count=1)
         self.item_no_input = QLineEdit(item_no.strip())
@@ -259,13 +261,13 @@ class DefectFieldsWidget(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setSpacing(SECTION_SPACING)
+        layout.setSpacing(NCR_SECTION_SPACING)
 
         self.event_date_edit = QDateEdit()
         self.event_date_edit.setCalendarPopup(True)
         self.event_date_edit.setDisplayFormat("yyyy-MM-dd")
         # 確保 yyyy-MM-dd 與日曆鈕在 1.5x DPI 不被裁成 yyyy-MM
-        self.event_date_edit.setMinimumWidth(DATE_FIELD_MIN_WIDTH)
+        self.event_date_edit.setMinimumWidth(NCR_DATE_FIELD_MIN_WIDTH)
 
         self.return_slip_type_combo = QComboBox()
         self.return_slip_type_combo.addItem("")
@@ -298,13 +300,13 @@ class DefectFieldsWidget(QWidget):
         self.quick_add_product_btn.setToolTip("快速建立目前料號的產品名稱")
         self.quick_add_product_btn.setAccessibleName("快速建立產品名稱")
         self.quick_add_product_btn.setVisible(False)
-        self.quick_add_product_btn.setMinimumWidth(QUICK_ADD_BUTTON_MIN_WIDTH)
+        self.quick_add_product_btn.setMinimumWidth(NCR_QUICK_ADD_BUTTON_MIN_WIDTH)
         set_button_role(self.quick_add_product_btn, "utility")
         self.quick_add_product_btn.clicked.connect(self.open_quick_product_create_dialog)
 
         self.qty_spin = QSpinBox()
         self.qty_spin.setRange(1, 1_000_000)
-        self.qty_spin.setMinimumHeight(INPUT_HEIGHT)
+        self.qty_spin.setMinimumHeight(NCR_INPUT_HEIGHT)
         self.qty_spin.setButtonSymbols(QSpinBox.ButtonSymbols.UpDownArrows)
 
         self.supplier_combo = QComboBox()
@@ -359,11 +361,11 @@ class DefectFieldsWidget(QWidget):
             ]
         )
 
-        layout.setContentsMargins(*DEFECT_FORM_CONTENT_MARGINS)
-        layout.setSpacing(SECTION_SPACING)
+        layout.setContentsMargins(*NCR_DEFECT_FORM_CONTENT_MARGINS)
+        layout.setSpacing(NCR_SECTION_SPACING)
 
         # 1. 基礎資訊（3 欄佈局：密集排版以省高度，2 欄與 3 欄混排）
-        form_grid = create_form_grid(field_count=3, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
+        form_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
 
         # Row 0: 發生日期 / 責任
         self._add_compact_field(
@@ -415,7 +417,7 @@ class DefectFieldsWidget(QWidget):
         product_name_layout.setSpacing(8)
         product_name_layout.addWidget(self.product_name_input, 1)
         product_name_layout.addWidget(self.quick_add_product_btn, 0)
-        product_name_host.setMinimumWidth(FORM_COMPACT_FIELD_MIN_WIDTH + 84)
+        product_name_host.setMinimumWidth(NCR_FORM_COMPACT_FIELD_MIN_WIDTH + 84)
         self._add_compact_field(
             form_grid, 3, LABEL_PRODUCT_NAME, product_name_host,
             column_offset=4, field_column_span=1
@@ -451,7 +453,7 @@ class DefectFieldsWidget(QWidget):
         layout.addSpacing(10)
 
         # 3. 處理狀態（3 欄單列佈局）
-        handle_grid = create_form_grid(field_count=3, horizontal_spacing=FORM_TWO_COLUMN_SPACING)
+        handle_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(
             handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo,
             column_offset=0, field_column_span=1
@@ -517,7 +519,7 @@ class DefectFieldsWidget(QWidget):
             column_offset=column_offset,
             field_column_span=field_column_span,
             label_width_override=FORM_COMPACT_LABEL_WIDTH,
-            field_minimum_width=FORM_COMPACT_FIELD_MIN_WIDTH,
+            field_minimum_width=NCR_FORM_COMPACT_FIELD_MIN_WIDTH,
             required=required,
         )
 
@@ -1145,7 +1147,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
 
         # Unified Main Card for Dialog
         main_card, main_card_layout = create_section_card("")
-        main_card_layout.setContentsMargins(*EDIT_DIALOG_CARD_MARGINS)
+        main_card_layout.setContentsMargins(*NCR_EDIT_DIALOG_CARD_MARGINS)
         main_card_layout.setSpacing(10)
 
         # Record context

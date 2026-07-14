@@ -3,20 +3,23 @@ $hookInput = Read-SqeDailyWorkHookInput
 $text = (ConvertTo-SqeDailyWorkText $hookInput).ToLowerInvariant()
 $messages = [System.Collections.Generic.List[string]]::new()
 
-if ($text -match "ui|visual|screenshot|font|typography|cjk|qt|pyside|pyside6") {
-    $messages.Add("UI or visual work detected: use native Windows Qt evidence through scripts\qt_visual_probe.py; do not treat offscreen screenshots or Playwright as PySide6 visual evidence.") | Out-Null
+# 關鍵詞/訊息定義正本: sqe-dailywork-route-keywords.json 的 promptReminders 段
+# (2026-07-10 起與 post-tool-use 共用一份資料檔; ui 組訊息的政策出處見 ../rules/visual_evidence_rules.md §1。
+#  舊硬編碼 5 組 if-regex 行為由 JSON 逐字承接, 回退比對見 git 歷史。)
+$kwPath = Join-Path $PSScriptRoot "sqe-dailywork-route-keywords.json"
+$kw = $null
+try {
+    $kw = Get-Content -Raw -LiteralPath $kwPath -ErrorAction Stop | ConvertFrom-Json
+} catch {}
+if (-not $kw -or -not $kw.promptReminders) {
+    "SQE DailyWork automation reminders:`n- WARNING: sqe-dailywork-route-keywords.json missing or unreadable ($kwPath); prompt reminders inactive until the data file is fixed." | Write-Output
+    exit 0
 }
-if ($text -match "schema|migration|sqlite|database|data contract|visit_product_sections|visit_defect_notes") {
-    $messages.Add("Data contract work detected: read README.md, docs\risk-ledger.md, database\repository.py, and related tests before editing; preserve v2 storage paths unless explicitly changed.") | Out-Null
-}
-if ($text -match "export|pdf|pptx|excel|report") {
-    $messages.Add("Export/report work detected: verify the affected PDF, Excel, or PPTX path and preserve report contract parity.") | Out-Null
-}
-if ($text -match "delete|remove-item|del /s|rm -rf|--apply") {
-    $messages.Add("Destructive or apply-style work detected: require explicit approval, avoid direct data/*.db changes, and report rollback/verification evidence.") | Out-Null
-}
-if ($text -match "\bmcp\b|model context protocol") {
-    $messages.Add("MCP is deferred for SQE DailyWork phase 1; do not add MCP servers unless the user asks for a new plan.") | Out-Null
+
+foreach ($rule in $kw.promptReminders) {
+    if ($text -match $rule.regex) {
+        $messages.Add($rule.message) | Out-Null
+    }
 }
 
 if ($messages.Count -gt 0) {

@@ -1,0 +1,47 @@
+{
+  "_authority": "SQE DailyWork 路由關鍵詞正本。消費者: sqe-dailywork-user-prompt-submit.ps1 (promptReminders, 比對使用者輸入文字) 與 sqe-dailywork-post-tool-use.ps1 (pathReminders, 比對已變更內容/路徑)。改關鍵詞或訊息只改本檔; ui 組訊息的政策出處見 ../rules/visual_evidence_rules.md §1。regex 為 PowerShell -match 語法, 輸入已先 ToLowerInvariant。",
+  "promptReminders": [
+    {
+      "key": "ui",
+      "regex": "ui|visual|screenshot|font|typography|cjk|qt|pyside|pyside6",
+      "message": "UI or visual work detected: use native Windows Qt evidence through scripts\\qt_visual_probe.py; do not treat offscreen screenshots or Playwright as PySide6 visual evidence."
+    },
+    {
+      "key": "data-contract",
+      "regex": "schema|migration|sqlite|database|data contract|visit_product_sections|visit_defect_notes",
+      "message": "Data contract work detected: read README.md, docs\\risk-ledger.md, database\\repository.py, and related tests before editing; preserve v2 storage paths unless explicitly changed."
+    },
+    {
+      "key": "export",
+      "regex": "export|pdf|pptx|excel|report",
+      "message": "Export/report work detected: verify the affected PDF, Excel, or PPTX path and preserve report contract parity."
+    },
+    {
+      "key": "destructive",
+      "regex": "delete|remove-item|del /s|rm -rf|--apply",
+      "message": "Destructive or apply-style work detected: require explicit approval, avoid direct data/*.db changes, and report rollback/verification evidence."
+    },
+    {
+      "key": "mcp",
+      "regex": "\\bmcp\\b|model context protocol",
+      "message": "MCP is deferred for SQE DailyWork phase 1; do not add MCP servers unless the user asks for a new plan."
+    }
+  ],
+  "pathReminders": [
+    {
+      "key": "ui",
+      "regex": "ui[\\\\/]|main\\.py|qt_visual_probe|theme\\.py|widgets[\\\\/]",
+      "message": "UI surface changed: run focused tests, and use scripts\\qt_visual_probe.py for visual/CJK/font evidence."
+    },
+    {
+      "key": "data-service",
+      "regex": "database[\\\\/]|services[\\\\/]|run_mig\\.py|migrate|schema",
+      "message": "Data/service contract changed: run scripts\\verify.ps1 when practical, or the closest focused unittest plus residual risk."
+    },
+    {
+      "key": "harness",
+      "regex": "docs[\\\\/]harness|agents\\.md|\\.codex[\\\\/]|\\.claude[\\\\/]|harness_check\\.ps1",
+      "message": "Harness or Claude automation changed: run scripts\\harness_check.ps1 and inspect Claude hooks/agents/skills manually where possible."
+    }
+  ]
+}

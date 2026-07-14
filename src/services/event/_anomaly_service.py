@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from database import connection as _connection
 from database import repository
 
+from ._anomaly_folder import create_anomaly_folder, prepare_anomaly_folder_root
 from ._helpers import _require_product_id, _require_supplier_record, _resolve_product_name
 
 
@@ -22,15 +23,16 @@ def create_anomaly(payload: dict) -> str:
     product_id = _require_product_id(payload)
     anomaly_date = payload.get("anomaly_date") or date.today().isoformat()
 
+    prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
-        _require_supplier_record(conn, supplier_id, require_active=True)
+        supplier = _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
             conn,
             supplier_id=supplier_id,
             product_id=product_id,
             require_active=True,
         )
-        return repository.create_anomaly(
+        anomaly_no = repository.create_anomaly(
             conn,
             anomaly_date=anomaly_date,
             supplier_id=supplier_id,
@@ -51,6 +53,11 @@ def create_anomaly(payload: dict) -> str:
             is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
             quality_report_required=payload.get("quality_report_required"),
         )
+    create_anomaly_folder(
+        supplier_name=str(supplier.get("supplier_name") or ""),
+        anomaly_no=anomaly_no,
+    )
+    return anomaly_no
 
 
 def create_anomaly_with_visit_link(payload: dict) -> dict:
@@ -65,15 +72,16 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
     sync_visit = bool(payload.get("sync_visit", True))
     visit_summary = payload.get("visit_summary", "")
 
+    prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
-        _require_supplier_record(conn, supplier_id, require_active=True)
+        supplier = _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
             conn,
             supplier_id=supplier_id,
             product_id=product_id,
             require_active=True,
         )
-        return repository.create_anomaly_with_visit_link(
+        result = repository.create_anomaly_with_visit_link(
             conn,
             anomaly_date=anomaly_date,
             supplier_id=supplier_id,
@@ -98,6 +106,11 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             quality_report_required=payload.get("quality_report_required"),
             anomaly_no=payload.get("anomaly_no"),
         )
+    create_anomaly_folder(
+        supplier_name=str(supplier.get("supplier_name") or ""),
+        anomaly_no=str(result.get("anomaly_no") or ""),
+    )
+    return result
 
 
 def get_anomaly_detail(anomaly_id: str) -> dict:

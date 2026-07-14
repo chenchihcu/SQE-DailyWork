@@ -59,11 +59,11 @@ from ncr.models.labels import (
 )
 from ncr.services import export_service, stats_service
 from ncr.ui.defect_form import DefectEditDialog
+from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
 from ncr.ui.ui_style import (
     ACTION_BUTTON_MIN_WIDTH,
     FILTER_BUTTON_MAX_WIDTH,
     FILTER_BUTTON_MIN_WIDTH,
-    EMPTY_PLACEHOLDER,
     add_labeled_field,
     align_table_header_left,
     apply_button_icon,
@@ -77,8 +77,9 @@ from ncr.ui.ui_style import (
     make_notice_label,
     set_button_role,
     style_table,
-    ITEMS_PER_PAGE,
     create_table_item,
+    NCR_ITEMS_PER_PAGE,
+    setup_column_persistence,
 )
 from ui.widgets.pagination_bar import PaginationBar
 from ui.layout_constants import GRID_GUTTER, INLINE_SPACING, ROW_GAP
@@ -396,7 +397,7 @@ class DefectListWidget(QWidget):
         self.pagination = PaginationBar(
             on_page_changed=self._on_page_changed,
             on_page_size_changed=self._on_page_size_changed,
-            default_page_size=ITEMS_PER_PAGE,
+            default_page_size=NCR_ITEMS_PER_PAGE,
         )
         main_layout.addWidget(self.pagination)
 
@@ -532,7 +533,7 @@ class DefectListWidget(QWidget):
         self.pagination.set_state(
             total_items=len(active_results),
             current_page=self.current_page,
-            page_size=ITEMS_PER_PAGE,
+            page_size=NCR_ITEMS_PER_PAGE,
         )
 
         if self.workflow == "tracking":
@@ -559,7 +560,7 @@ class DefectListWidget(QWidget):
     def _on_page_size_changed(self, page_size: int) -> None:
         if page_size <= 0:
             return
-        #ITEMS_PER_PAGE 是 ncr 模組的固定切片單位(用於 rows[start:end] 與 actual_index 計算),
+        #NCR_ITEMS_PER_PAGE 是 ncr 模組的固定切片單位(用於 rows[start:end] 與 actual_index 計算),
         #不隨 PaginationBar 的 page_size 變動,因此這裡只重置頁碼並重渲染,保持切片邏輯一致。
         self.current_page = 1
         self.update_display()
@@ -627,13 +628,13 @@ class DefectListWidget(QWidget):
 
     def populate_table(self, table: QTableWidget, rows: list[sqlite3.Row], is_active: bool = True) -> None:
         if is_active:
-            start_idx = (self.current_page - 1) * ITEMS_PER_PAGE
-            end_idx = start_idx + ITEMS_PER_PAGE
+            start_idx = (self.current_page - 1) * NCR_ITEMS_PER_PAGE
+            end_idx = start_idx + NCR_ITEMS_PER_PAGE
             page_rows = rows[start_idx:end_idx]
         else:
             # If not active, we can either show first page or just leave it.
             # Showing first page is better for consistency if user just clicks tab.
-            page_rows = rows[:ITEMS_PER_PAGE]
+            page_rows = rows[:NCR_ITEMS_PER_PAGE]
 
         table.setRowCount(len(page_rows))
         for row_index, row in enumerate(page_rows):
@@ -730,7 +731,7 @@ class DefectListWidget(QWidget):
 
     def open_edit_dialog(self, row: int, _column: int) -> None:
         results = self._get_active_results()
-        actual_index = (self.current_page - 1) * ITEMS_PER_PAGE + row
+        actual_index = (self.current_page - 1) * NCR_ITEMS_PER_PAGE + row
         defect_id = int(results[actual_index]["id"])
         try:
             dialog = DefectEditDialog(self.conn, defect_id, self)
@@ -750,7 +751,7 @@ class DefectListWidget(QWidget):
             return
 
         results = self._get_active_results()
-        actual_index = (self.current_page - 1) * ITEMS_PER_PAGE + row_index
+        actual_index = (self.current_page - 1) * NCR_ITEMS_PER_PAGE + row_index
         defect = results[actual_index]
         result = QMessageBox.question(
             self,
