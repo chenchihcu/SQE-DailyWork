@@ -197,6 +197,9 @@ def export_events_report(
         close_rate = totals["close_rate"]
         anomaly_visit_ratio = totals["anomaly_visit_ratio"]
         supplier_coverage = totals["supplier_coverage"]
+        closure_activity_count = _query_service.get_anomaly_closure_activity_by_range(
+            start_date, end_date
+        )
 
         workbook = Workbook()
 
@@ -252,7 +255,7 @@ def export_events_report(
         report_sheet.cell(row=4, column=1).alignment = ALIGN_CENTER
         report_sheet.cell(row=4, column=1).fill = STYLE_FILL_KPI_BG
 
-        report_sheet.cell(row=5, column=1, value=f"總異常件數: {total_anomalies} 件").font = STYLE_FONT
+        report_sheet.cell(row=5, column=1, value=f"期間新增異常: {total_anomalies} 件").font = STYLE_FONT
         report_sheet.cell(row=5, column=1).alignment = ALIGN_CENTER
         report_sheet.cell(row=5, column=2, value=f"總訪廠件數: {total_visits} 件").font = STYLE_FONT
         report_sheet.cell(row=5, column=2).alignment = ALIGN_CENTER
@@ -265,11 +268,11 @@ def export_events_report(
         report_sheet.cell(row=4, column=5).alignment = ALIGN_CENTER
         report_sheet.cell(row=4, column=5).fill = STYLE_FILL_KPI_BG
 
-        report_sheet.cell(row=5, column=5, value=f"已結案/未結案: {closed_anomalies} / {open_anomalies}").font = STYLE_FONT
+        report_sheet.cell(row=5, column=5, value=f"期間新增異常－其中目前已結案/未結案: {closed_anomalies} / {open_anomalies}").font = STYLE_FONT
         report_sheet.cell(row=5, column=5).alignment = ALIGN_CENTER
-        report_sheet.cell(row=5, column=6, value=f"結案率: {close_rate:.1f}%").font = STYLE_FONT
+        report_sheet.cell(row=5, column=6, value=f"期間新增異常目前結案率: {close_rate:.1f}%").font = STYLE_FONT
         report_sheet.cell(row=5, column=6).alignment = ALIGN_CENTER
-        report_sheet.cell(row=5, column=7, value=f"供應商覆蓋數: {supplier_coverage} 家").font = STYLE_FONT
+        report_sheet.cell(row=5, column=7, value=f"期間結案件數（依結案日期）: {closure_activity_count} 件；供應商 {supplier_coverage} 家").font = STYLE_FONT
         report_sheet.cell(row=5, column=7).alignment = ALIGN_CENTER
 
         for r in [4, 5]:
@@ -403,7 +406,7 @@ def export_events_report(
         rank_sheet = workbook.create_sheet("供應商排行榜")
         rank_sheet.views.sheetView[0].showGridLines = True
 
-        rank_headers = ["排名", "供應商名稱", "異常事件數", "訪廠次數", "已結案數", "未結案數", "結案率(%)"]
+        rank_headers = ["排名", "供應商名稱", "期間新增異常", "訪廠次數", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
         rank_sheet.append(rank_headers)
         for col_idx in range(1, len(rank_headers) + 1):
             cell = rank_sheet.cell(row=1, column=col_idx)

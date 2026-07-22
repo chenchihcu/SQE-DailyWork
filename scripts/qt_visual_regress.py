@@ -11,7 +11,7 @@ is SKIPPED with a printed reason — never reported as a pass. Baselines must be
 generated on the target machine with ``--update`` (do not commit baselines made on
 a host without the production CJK fonts).
 
-Exit codes: 0 = pass or skipped (env mismatch / no baseline) · 1 = regression.
+Exit codes: 0 = pass · 1 = regression or required baseline missing · 2 = environment mismatch.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROBE = REPO_ROOT / "scripts" / "qt_visual_probe.py"
 DEFAULT_BASELINE_ROOT = REPO_ROOT / "tests" / "visual_baseline"
+TARGET_MANIFEST = REPO_ROOT / "scripts" / "qt_probe_targets.json"
 MANIFEST_NAME = "baseline_manifest.json"
 ENV_KEYS = ("qt_platform", "selected_font", "scale", "device_pixel_ratio")
 
@@ -113,6 +114,13 @@ def _write_diff_png(path_a: Path, path_b: Path, out_path: Path) -> None:
 
 def main() -> int:
     args = _parse_args()
+    target_manifest = json.loads(TARGET_MANIFEST.read_text(encoding="utf-8"))
+    target_rules = {
+        str(item["name"]): item for item in target_manifest["targets"]
+    }
+    if args.target not in target_rules:
+        raise SystemExit(f"target is not registered in {TARGET_MANIFEST}: {args.target}")
+    baseline_required = bool(target_rules[args.target].get("baseline_required"))
     probe_json = _run_probe(args)
     screenshots = [Path(p) for p in probe_json.get("screenshots", []) if p]
     if not screenshots and probe_json.get("screenshot"):
@@ -139,7 +147,7 @@ def main() -> int:
             "reason": f"no baseline for '{args.target}' — run with --update on the target machine first",
             "baseline_dir": str(baseline_dir),
         }, ensure_ascii=False, indent=2))
-        return 0
+        return 1 if baseline_required else 0
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     current = _current_env(probe_json)
@@ -150,9 +158,27 @@ def main() -> int:
             "baseline_env": manifest.get("env"),
             "current_env": current,
         }, ensure_ascii=False, indent=2))
-        return 0
+        return 2
+
+    if baseline_required and not screenshots:
+        print(json.dumps({
+            "result": "fail",
+            "reason": "required target produced no screenshots",
+            "target": args.target,
+        }, ensure_ascii=False, indent=2))
+        return 1
 
     failures = []
+    captured_names = [shot.name for shot in screenshots]
+    manifest_names = list(manifest.get("files") or [])
+    if captured_names != manifest_names:
+        failures.append(
+            {
+                "reason": "probe/baseline manifest file mapping mismatch",
+                "captured": captured_names,
+                "manifest": manifest_names,
+            }
+        )
     for shot in screenshots:
         baseline_png = baseline_dir / shot.name
         if not baseline_png.exists():

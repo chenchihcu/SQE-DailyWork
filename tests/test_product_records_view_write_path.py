@@ -243,6 +243,39 @@ class ProductRecordsViewWritePathTests(unittest.TestCase):
             seen, "product synced from a no-supplier defect was not committed"
         )
 
+    def test_create_defect_with_existing_supplier_syncs_through_supplier_view(self) -> None:
+        supplier_id = self.conn.execute(
+            """
+            INSERT INTO suppliers(id, supplier_name, category, is_active, created_at, updated_at)
+            VALUES ('supplier-existing', 'Existing Supplier', '正式供應商', 1, '2026-06-25', '2026-06-25')
+            RETURNING id
+            """
+        ).fetchone()["id"]
+        self.assertEqual(supplier_id, "supplier-existing")
+        defect_no = defect_service.create_defect(
+            self.conn,
+            {
+                "event_date": "2026-06-25",
+                "work_order_no": "WO-2",
+                "internal_work_order_no": "",
+                "transfer_slip_no": "TS-2",
+                "item_no": "P-070",
+                "product_name": "Delta",
+                "qty": 4,
+                "category": "原物料",
+                "processing_line": "原物料",
+                "supplier_name": "Existing Supplier",
+                "outsource_supplier_name": "",
+                "defect_desc": "外觀刮傷",
+                "return_slip_type": "廠內退料",
+            },
+        )
+        self.assertTrue(defect_no)
+        row = self.conn.execute(
+            "SELECT category FROM suppliers WHERE id = 'supplier-existing'"
+        ).fetchone()
+        self.assertEqual(str(row["category"]), "正式供應商")
+
 
 if __name__ == "__main__":
     unittest.main()

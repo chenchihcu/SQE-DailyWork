@@ -340,6 +340,73 @@ class ProductMasterImportServiceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_same_code_for_different_suppliers_in_one_workbook_is_not_duplicate(self) -> None:
+        conn = self.create_connection()
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [
+                        ("SHARED-001", "Supplier A Product", "Supplier A", "量產"),
+                        ("SHARED-001", "Supplier B Product", "Supplier B", "量產"),
+                    ],
+                )
+                preview = master_import_service.preview_product_master_import(
+                    conn, workbook_path
+                )
+                self.assertTrue(preview.can_import)
+                self.assertEqual(2, preview.add_count)
+                result = master_import_service.apply_product_master_import(
+                    conn, preview, source_file=workbook_path
+                )
+                self.assertEqual(2, result.added_count)
+                self.assertEqual(
+                    2,
+                    conn.execute(
+                        "SELECT COUNT(*) FROM products WHERE product_code = 'SHARED-001'"
+                    ).fetchone()[0],
+                )
+        finally:
+            conn.close()
+
+    def test_existing_product_stage_difference_is_blocking_conflict(self) -> None:
+        conn = self.create_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO suppliers(id, supplier_name, is_active, created_at, updated_at)
+                VALUES ('supplier-stage', 'Stage Supplier', 1, '2026-06-03', '2026-06-03')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO products(
+                    id, product_code, product_name, product_stage, supplier_id,
+                    is_active, created_at, updated_at
+                ) VALUES (
+                    'product-stage', 'STAGE-001', 'Stage Product', '試產',
+                    'supplier-stage', 1, '2026-06-03', '2026-06-03'
+                )
+                """
+            )
+            conn.commit()
+            with tempfile.TemporaryDirectory() as temp_dir:
+                workbook_path = Path(temp_dir) / "erp_products.xlsx"
+                self.write_workbook(
+                    workbook_path,
+                    [("STAGE-001", "Stage Product", "Stage Supplier", "量產")],
+                )
+                preview = master_import_service.preview_product_master_import(
+                    conn, workbook_path
+                )
+                self.assertFalse(preview.can_import)
+                self.assertEqual(master_import_service.STATUS_BLOCKED, preview.rows[0].status)
+                self.assertEqual("試產", preview.rows[0].current_product_stage)
+                self.assertIn("階段變更流程", preview.rows[0].message)
+        finally:
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "required_scales": ["1.0", "1.25", "1.5"],
+  "targets": [
+    {"name": "main", "baseline_required": true, "min_width": true},
+    {"name": "form-density", "baseline_required": true, "min_width": false},
+    {"name": "combo-popups", "baseline_required": true, "min_width": false},
+    {"name": "stats-stress", "baseline_required": true, "min_width": true},
+    {"name": "ncr-stats", "baseline_required": true, "min_width": true},
+    {"name": "event-list", "baseline_required": true, "min_width": true},
+    {"name": "master-data", "baseline_required": true, "min_width": true},
+    {"name": "ncr-tracker", "baseline_required": true, "min_width": true},
+    {"name": "empty-states", "baseline_required": true, "min_width": true},
+    {"name": "pdf-export", "baseline_required": false, "min_width": false}
+  ]
+}

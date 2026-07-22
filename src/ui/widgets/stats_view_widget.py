@@ -46,6 +46,7 @@ from ui.widgets.stats_dashboard_helpers import (
     range_display_text,
     range_iso_dates,
     render_chart_to_png,
+    missing_chart_labels,
 )
 from ui.widgets.stats_chart_mixin import _StatsChartMixin
 from ui.widgets.export_range_dialog import ExportRangeDialog
@@ -113,7 +114,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self.source_tag_label.setMinimumWidth(126)
         self.source_tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.source_tag_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計」頁")
+        self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計分析」頁")
         month_row.addWidget(self.source_tag_label)
         month_row.addStretch(1)
 
@@ -463,31 +464,40 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
             # 如果有數據，則在背景繪製圖表並 grab 儲存
             active_temp_paths = {}
+            requested_chart_keys = []
             if has_data:
                 # 1. Trend chart
-                if trend_data and render_chart_to_png(
-                    lambda: self._build_trend_chart(trend_data), temp_paths["trend"]
-                ):
-                    active_temp_paths["trend"] = temp_paths["trend"]
+                if trend_data:
+                    requested_chart_keys.append("trend")
+                    if render_chart_to_png(
+                        lambda: self._build_trend_chart(trend_data), temp_paths["trend"]
+                    ):
+                        active_temp_paths["trend"] = temp_paths["trend"]
 
                 # 2. Visit anomaly chart
-                if visit_trend_data and render_chart_to_png(
-                    lambda: self._build_visit_trend_chart(visit_trend_data), temp_paths["visit_anomaly"]
-                ):
-                    active_temp_paths["visit_anomaly"] = temp_paths["visit_anomaly"]
+                if visit_trend_data:
+                    requested_chart_keys.append("visit_anomaly")
+                    if render_chart_to_png(
+                        lambda: self._build_visit_trend_chart(visit_trend_data), temp_paths["visit_anomaly"]
+                    ):
+                        active_temp_paths["visit_anomaly"] = temp_paths["visit_anomaly"]
 
                 # 3. Responsible stacked chart
-                if resp_stats and render_chart_to_png(
-                    lambda: self._build_responsible_stacked_chart(resp_stats), temp_paths["responsible"]
-                ):
-                    active_temp_paths["responsible"] = temp_paths["responsible"]
+                if resp_stats:
+                    requested_chart_keys.append("responsible")
+                    if render_chart_to_png(
+                        lambda: self._build_responsible_stacked_chart(resp_stats), temp_paths["responsible"]
+                    ):
+                        active_temp_paths["responsible"] = temp_paths["responsible"]
 
                 # 4. Category Pareto chart
-                if category_pareto_data and render_chart_to_png(
-                    lambda: self._build_category_pareto_chart(category_pareto_data),
-                    temp_paths["category_pareto"],
-                ):
-                    active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
+                if category_pareto_data:
+                    requested_chart_keys.append("category_pareto")
+                    if render_chart_to_png(
+                        lambda: self._build_category_pareto_chart(category_pareto_data),
+                        temp_paths["category_pareto"],
+                    ):
+                        active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
 
             # 呼叫匯出服務
             ok, msg = _export_service.export_events_report(
@@ -498,7 +508,26 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             )
 
             if ok:
-                QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+                missing_charts = missing_chart_labels(
+                    requested_chart_keys,
+                    active_temp_paths,
+                    {
+                        "trend": "異常趨勢圖",
+                        "visit_anomaly": "訪廠與異常趨勢圖",
+                        "responsible": "責任人統計圖",
+                        "category_pareto": "異常類別柏拉圖",
+                    },
+                )
+                if missing_charts:
+                    QMessageBox.warning(
+                        self,
+                        "完成但有警告",
+                        "Excel 資料已匯出，但以下圖表未產生：\n- "
+                        + "\n- ".join(missing_charts)
+                        + f"\n\n{msg}",
+                    )
+                else:
+                    QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
 

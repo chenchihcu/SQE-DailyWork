@@ -146,3 +146,18 @@ Fix: Pass user-selected `closed_at` through the close path, add a closed-date-on
 Harness update needed: no
 Destination: `tests/test_event_manage_actions.py`, `tests/test_anomaly_trend_by_range.py`, `tests/test_event_list_widget_render_stability.py`, `tests/test_anomaly_category_dropdown.py`, `docs/harness/closed-loop-log.md`
 
+## Hidden-Error Production Closeout Entry
+
+Date: 2026-07-14
+Task: Repair confirmed hidden P1/P2 defects without running migration or tests on the formal database.
+Changes: Replaced raw WAL copies with verified SQLite online backup; isolated verification/probes behind `SQE_DB_PATH`; made anomaly/cache and legacy migration boundaries atomic; converted post-commit snapshot failure to a recoverable warning; centralized repository invariants; separated import/report semantics; and made native target/baseline plus repository-membership drift executable gates.
+Impact: A failed cache update cannot leave a reported-failed committed anomaly, snapshot failure no longer invites duplicate retry, migration cannot silently complete after row loss, cross-supplier links and invalid anomaly numbers are rejected below the UI, partial chart exports disclose missing charts, and Full verification covers every required Windows Qt target at 100/125/150% DPI.
+Verification: `scripts/verify.ps1 -Profile Focused` passed; full unittest passed 434 tests in 901.780 seconds; offscreen structural smoke, definite-error Ruff, compileall, native 28-check Windows Qt visual belt at 100/125/150%, all nine required pixel-regression targets, harness, and `git diff --check` passed. Formal DB read-only integrity/count parity passed at 14 tables and 246 rows; business rows match the Phase 0 snapshot.
+Residual risk: One live supplier/product ownership row is `VERIFY`; it is exported for user classification and is never auto-modified. Phase 0 and closeout raw DB hashes differ only through two older `monthly_stats_cache.updated_at` values in the closeout source; the cause is not uniquely provable, so no live restore or cache write was performed.
+Next action: Classify the `VERIFY` row in a separate controlled data-correction task; do not combine it with this code closeout.
+Debug/RCA (when applicable):
+Observed: Existing tests and harness could pass while raw backup omitted WAL data, formal DB initialization remained reachable, row-level migration errors wrote completion metadata, themed form overflow was order-dependent, and visual probes/baselines no longer described the same surfaces.
+Root cause: Authoritative DB mutations, derived outputs, verification data paths, and governance manifests had independent boundaries without executable parity checks.
+Fix: Make the SQLite transaction or verified snapshot the authoritative boundary; downgrade only post-commit derived-output failures to explicit warnings; route repeated defects into focused tests and machine-readable manifests; compare the harness against live Git membership and real baseline files.
+Harness update needed: yes
+Destination: `tests/test_database_backup.py`, `tests/test_database_isolation.py`, `tests/test_anomaly_transaction_boundaries.py`, `tests/test_migration_atomicity.py`, `scripts/verify.ps1`, `scripts/harness_check.ps1`, `scripts/qt_probe_targets.json`, `docs/harness/source-baseline-manifest.md`, `docs/harness/closed-loop-log.md`

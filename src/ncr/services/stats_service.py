@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from services.date_range import validate_date_range
+
 from ncr.models.defect import (
     PROCESSING_LINE_MATERIAL,
     PROCESSING_LINE_OUTSOURCE,
@@ -245,6 +247,7 @@ def _get_top_entity_stats_filtered(
     current_month = date.today().month
 
     if start_date and end_date:
+        start_date, end_date = validate_date_range(start_date, end_date)
         time_clause = "event_date BETWEEN ? AND ?"
         params = [start_date, end_date]
     elif not yyyymm or yyyymm == "ALL":
@@ -300,6 +303,7 @@ def _get_grouped_stats_filtered(
     current_month = date.today().month
 
     if start_date and end_date:
+        start_date, end_date = validate_date_range(start_date, end_date)
         time_clause = "event_date BETWEEN ? AND ?"
         time_params = [start_date, end_date]
     elif not yyyymm or yyyymm == "ALL":
@@ -349,6 +353,7 @@ def _get_return_slip_ratio_filtered(
     current_month = date.today().month
 
     if start_date and end_date:
+        start_date, end_date = validate_date_range(start_date, end_date)
         time_clause = "event_date BETWEEN ? AND ?"
         params = [start_date, end_date]
     elif not yyyymm or yyyymm == "ALL":
@@ -477,6 +482,7 @@ def get_defects_detail_by_range(
     conn: sqlite3.Connection, start_date: str, end_date: str
 ) -> list[sqlite3.Row]:
     """取得指定日期範圍內的所有不合格品明細。"""
+    start_date, end_date = validate_date_range(start_date, end_date)
     cursor = conn.execute(
         """
         SELECT *

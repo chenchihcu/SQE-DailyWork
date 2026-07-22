@@ -21,6 +21,8 @@ data_backups/
 Outputs/
 scratch/
 import_err.txt
+/SQE_Quality_Report_*.xlsx
+.playwright-mcp/
 
 # Claude local-only state
 .claude/settings.local.json
@@ -33,6 +35,11 @@ import_err.txt
 
 # Development / session / agent-scaffolding artifacts (not part of the shipped app)
 .omo/
+.agents/*
+!.agents/rules/
+!.agents/rules/**
+!.agents/skills/
+!.agents/skills/**
 artifacts/visual/
 artifacts/visual-probes/
 .code_diff.txt

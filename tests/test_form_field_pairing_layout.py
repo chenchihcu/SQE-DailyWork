@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -14,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from database.connection import initialize_database
+from database import connection as database_connection
 from ui.layout_constants import (
     ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
@@ -26,19 +28,31 @@ from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.master_data_dialogs import ProductFormDialog, SupplierFormDialog
+from ui.theme import apply_app_theme
 
 
 class FormFieldPairingLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        initialize_database()
+        cls._database_temp_dir = tempfile.TemporaryDirectory()
+        cls._original_db_path = database_connection.DB_PATH
+        cls._original_legacy_db_path = database_connection.LEGACY_DB_PATH
+        temp_root = Path(cls._database_temp_dir.name)
+        database_connection.DB_PATH = temp_root / "sqe_v2.db"
+        database_connection.LEGACY_DB_PATH = temp_root / "sqe.db"
+        database_connection.initialize_database()
         cls.app = QApplication.instance() or QApplication([])
+        cls.app.setStyle("Fusion")
+        apply_app_theme(cls.app)
 
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
             cls.app.quit()
+        database_connection.DB_PATH = cls._original_db_path
+        database_connection.LEGACY_DB_PATH = cls._original_legacy_db_path
+        cls._database_temp_dir.cleanup()
 
     def tearDown(self) -> None:
         self.app.processEvents()

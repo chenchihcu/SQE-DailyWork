@@ -6,9 +6,8 @@
     "device_pixel_ratio": 2.0
   },
   "files": [
-    "stats-stress_stats-trend.png",
-    "stats-stress_stats-responsible.png",
-    "stats-stress_stats-supplier-risk.png",
-    "stats-stress_stats-warehouse.png"
+    "stats-stress_stats-overview.png",
+    "stats-stress_stats-pareto.png",
+    "stats-stress_stats-risk.png"
   ]
 }

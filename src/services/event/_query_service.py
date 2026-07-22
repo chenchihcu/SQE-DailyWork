@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 from database import connection as _connection
 from database import repository
+from services.date_range import DateRangeFormatError, validate_date_range
 
 from ._helpers import _month_now
 
@@ -47,6 +48,10 @@ def get_responsible_person_stats(yyyymm: str | None = None) -> list[dict]:
 
 def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
     """取得指定日期範圍內的所有異常事件與訪廠事件。"""
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
     anomaly_sql = """
         SELECT
             a.id AS event_id,
@@ -185,6 +190,11 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
     """
     from collections import defaultdict
 
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
+
     sql = """
         SELECT
             COALESCE(
@@ -214,6 +224,7 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
 
 def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> list[dict]:
     """計算指定日期範圍內各責任人的異常件數與平均處理時效。"""
+    start_date, end_date = validate_date_range(start_date, end_date)
     sql = """
         SELECT
             COALESCE(NULLIF(TRIM(responsible_person), ''), '未指定') AS person,
@@ -259,14 +270,30 @@ def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> lis
     return results
 
 
+def get_anomaly_closure_activity_by_range(start_date: str, end_date: str) -> int:
+    """Count anomalies closed in the range, regardless of creation cohort."""
+    start_date, end_date = validate_date_range(start_date, end_date)
+    with _connection.get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM anomalies
+            WHERE status = '已結案' AND closed_at BETWEEN ? AND ?
+            """,
+            (start_date, end_date),
+        ).fetchone()
+    return int(row["count"] or 0)
+
+
 def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     """計算指定日期範圍內各月份的訪廠數與訪廠發現的異常數（最多限制 12 個月）。"""
     from datetime import datetime
     try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-    except Exception:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
         return []
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
 
     months_list = []
     curr_y, curr_m = start_dt.year, start_dt.month
@@ -281,8 +308,6 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
 
     if len(months_list) > 12:
         months_list = months_list[-12:]
-    elif not months_list:
-        months_list = [start_date[:7]]
 
     with _connection.get_connection() as conn:
         visit_rows = conn.execute(
@@ -322,10 +347,11 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     import calendar
     from datetime import datetime
     try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-    except Exception:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
         return []
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
 
     months_list = []
     curr_y, curr_m = start_dt.year, start_dt.month
@@ -340,8 +366,6 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
 
     if len(months_list) > 12:
         months_list = months_list[-12:]
-    elif not months_list:
-        months_list = [start_date[:7]]
 
     def _month_end_date(yyyymm: str) -> str:
         year, month = int(yyyymm[:4]), int(yyyymm[5:])

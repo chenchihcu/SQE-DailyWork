@@ -1,5 +1,7 @@
 param(
-    [string]$PythonExe
+    [string]$PythonExe,
+    [ValidateSet("Focused", "Full")]
+    [string]$Profile = "Full"
 )
 
 Set-StrictMode -Version Latest
@@ -39,6 +41,12 @@ function Test-PythonRuntime {
     }
 
     try {
+        $previousPythonPath = $env:PYTHONPATH
+        $runtimeRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+        $sitePackages = Join-Path $runtimeRepoRoot ".venv\Lib\site-packages"
+        if (Test-Path -LiteralPath $sitePackages -PathType Container) {
+            $env:PYTHONPATH = @($sitePackages, $previousPythonPath) -join [System.IO.Path]::PathSeparator
+        }
         & $PythonPath -V *> $null
         if ($LASTEXITCODE -ne 0) {
             return $false
@@ -50,6 +58,12 @@ function Test-PythonRuntime {
         return $true
     } catch {
         return $false
+    } finally {
+        if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
+            Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+        } else {
+            $env:PYTHONPATH = $previousPythonPath
+        }
     }
 }
 
@@ -83,29 +97,88 @@ function Resolve-PythonExe {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
 
+$hadDbPath = Test-Path Env:SQE_DB_PATH
+$previousDbPath = $env:SQE_DB_PATH
+$hadDisposableGuard = Test-Path Env:SQE_REQUIRE_DISPOSABLE_DB
+$previousDisposableGuard = $env:SQE_REQUIRE_DISPOSABLE_DB
+$sourceDbPath = if (-not [string]::IsNullOrWhiteSpace($env:SQE_DB_PATH)) {
+    [System.IO.Path]::GetFullPath($env:SQE_DB_PATH)
+} else {
+    Join-Path $repoRoot "data\sqe_v2.db"
+}
+$verificationRoot = Join-Path $repoRoot "scratch\verify"
+$verificationDir = Join-Path $verificationRoot ([Guid]::NewGuid().ToString("N"))
+$verificationDb = Join-Path $verificationDir "sqe_v2.db"
+New-Item -ItemType Directory -Path $verificationDir -Force | Out-Null
+
+try {
+    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to create verified disposable database for verification"
+    }
+} catch {
+    if (Test-Path -LiteralPath $verificationDir -PathType Container) {
+        Remove-Item -LiteralPath $verificationDir -Recurse -Force
+    }
+    throw
+}
+
+$env:SQE_DB_PATH = $verificationDb
+$env:SQE_REQUIRE_DISPOSABLE_DB = "1"
+
 Write-Host "Using Python: $resolvedPython"
+Write-Host "Verification profile: $Profile"
+Write-Host "Disposable database: $verificationDb"
 
 Push-Location $repoRoot
 try {
-    $env:PYTHONPATH = @((Join-Path $repoRoot "src"), $repoRoot) -join [System.IO.Path]::PathSeparator
+    $sitePackages = Join-Path $repoRoot ".venv\Lib\site-packages"
+    $pythonPathEntries = @((Join-Path $repoRoot "src"), $repoRoot)
+    if (Test-Path -LiteralPath $sitePackages -PathType Container) {
+        $pythonPathEntries += $sitePackages
+    }
+    $env:PYTHONPATH = $pythonPathEntries -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
 
     Write-Host ""
-    Write-Host "[1/5] python -m compileall main.py src scripts run_mig.py tests"
+    Write-Host "[1/6] python -m compileall main.py src scripts run_mig.py tests"
     & $resolvedPython -m compileall main.py src scripts run_mig.py tests
     if ($LASTEXITCODE -ne 0) {
         throw "compileall failed with exit code $LASTEXITCODE"
     }
 
     Write-Host ""
-    Write-Host "[2/5] python -m unittest discover -s tests"
-    & $resolvedPython -m unittest discover -s tests
-    if ($LASTEXITCODE -ne 0) {
-        throw "unittest failed with exit code $LASTEXITCODE"
+    if ($Profile -eq "Focused") {
+        Write-Host "[2/6] focused unittest safety and contract regressions"
+        $focusedPatterns = @(
+            "test_database_backup.py",
+            "test_database_isolation.py",
+            "test_anomaly_transaction_boundaries.py",
+            "test_migration_atomicity.py",
+            "test_anomaly_repository_invariants.py",
+            "test_master_import_service.py",
+            "test_date_range_and_export_warnings.py",
+            "test_qt_message_handler.py",
+            "test_excel_report_custom_range.py",
+            "test_form_field_pairing_layout.py",
+            "test_form_inline_validation_and_dirty.py"
+        )
+        foreach ($pattern in $focusedPatterns) {
+            & $resolvedPython -m unittest discover -s tests -p $pattern
+            if ($LASTEXITCODE -ne 0) {
+                throw "focused unittest failed for $pattern with exit code $LASTEXITCODE"
+            }
+        }
+    } else {
+        Write-Host "[2/6] python -m unittest discover -s tests"
+        & $resolvedPython -m unittest discover -s tests
+        if ($LASTEXITCODE -ne 0) {
+            throw "unittest failed with exit code $LASTEXITCODE"
+        }
     }
 
     Write-Host ""
-    Write-Host "[3/5] offscreen UI structural smoke (not visual evidence)"
+    Write-Host "[3/6] offscreen UI structural smoke (not visual evidence)"
     $previousQtPlatform = $env:QT_QPA_PLATFORM
     $env:QT_QPA_PLATFORM = "offscreen"
     try {
@@ -118,13 +191,17 @@ try {
     }
 
     Write-Host ""
-    Write-Host "[4/5] native Qt visual probe"
+    Write-Host "[4/6] native Qt visual probe belt"
     $previousQtPlatform = $env:QT_QPA_PLATFORM
     try {
         Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-        & $resolvedPython scripts\qt_visual_probe.py
+        if ($Profile -eq "Full") {
+            & $resolvedPython scripts\qt_visual_belt.py
+        } else {
+            & $resolvedPython scripts\qt_visual_probe.py --target form-density
+        }
         if ($LASTEXITCODE -ne 0) {
-            throw "native Qt visual probe failed with exit code $LASTEXITCODE"
+            throw "native Qt visual belt failed with exit code $LASTEXITCODE"
         }
     } finally {
         if ([string]::IsNullOrWhiteSpace($previousQtPlatform)) {
@@ -135,7 +212,32 @@ try {
     }
 
     Write-Host ""
-    Write-Host "[5/5] scripts\harness_check.ps1"
+    Write-Host "[5/6] native visual regression"
+    if ($Profile -eq "Full") {
+        $targetManifest = Get-Content -LiteralPath "scripts\qt_probe_targets.json" -Raw | ConvertFrom-Json
+        foreach ($target in $targetManifest.targets) {
+            if (-not $target.baseline_required) {
+                continue
+            }
+            $regressArgs = @(
+                "scripts\qt_visual_regress.py",
+                "--target", [string]$target.name,
+                "--scale", "1.0"
+            )
+            if ($target.min_width) {
+                $regressArgs += "--min-width"
+            }
+            & $resolvedPython @regressArgs
+            if ($LASTEXITCODE -ne 0) {
+                throw "visual regression failed for $($target.name) with exit code $LASTEXITCODE"
+            }
+        }
+    } else {
+        Write-Host "Focused profile skips pixel baselines; native form-density probe already ran."
+    }
+
+    Write-Host ""
+    Write-Host "[6/6] scripts\harness_check.ps1"
     & (Join-Path $repoRoot "scripts\harness_check.ps1")
     if ($LASTEXITCODE -ne 0) {
         throw "harness_check failed with exit code $LASTEXITCODE"
@@ -145,4 +247,25 @@ try {
     Write-Host "Verification passed."
 } finally {
     Pop-Location
+    if ($hadDbPath) {
+        $env:SQE_DB_PATH = $previousDbPath
+    } else {
+        Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
+    }
+    if ($hadDisposableGuard) {
+        $env:SQE_REQUIRE_DISPOSABLE_DB = $previousDisposableGuard
+    } else {
+        Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $verificationDir -PathType Container) {
+        $resolvedVerificationRoot = [System.IO.Path]::GetFullPath($verificationRoot)
+        $resolvedVerificationDir = [System.IO.Path]::GetFullPath($verificationDir)
+        if (-not $resolvedVerificationDir.StartsWith(
+            $resolvedVerificationRoot + [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Refusing to clean verification path outside scratch/verify: $resolvedVerificationDir"
+        }
+        Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+    }
 }

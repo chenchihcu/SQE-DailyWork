@@ -147,6 +147,16 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.due_date_edit.setEnabled(False)
         self.due_date_check.toggled.connect(self.due_date_edit.setEnabled)
 
+        # QDateEdit's themed minimumSizeHint includes calendar-button padding.
+        # Let the grid allocate the available width instead of forcing the
+        # scroll content wider than the 760px dialog contract.
+        for date_control in (self.date_edit, self.due_date_edit):
+            date_control.setMinimumWidth(0)
+            date_control.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Fixed,
+            )
+
         self.is_tech_transfer_check = QCheckBox("技轉訪廠")
         self.quality_report_required_group = QButtonGroup(self)
         self.quality_report_required_group.setExclusive(True)
@@ -749,10 +759,10 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         }
         try:
             if self._is_edit:
-                _anomaly_service.update_anomaly(self._anomaly_id, payload)
+                result = _anomaly_service.update_anomaly(self._anomaly_id, payload)
                 self.attachment_editor.save_to_anomaly(self._anomaly_id)
                 self._warn_if_attachment_rename_failures()
-                QMessageBox.information(self, "成功", localize_popup_message("異常資料已更新"))
+                completion_text = "異常資料已更新"
             else:
                 result = _anomaly_service.create_anomaly_with_visit_link(payload)
                 anomaly_id = str(result.get("anomaly_id") or "").strip()
@@ -766,10 +776,25 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                     visit_text = "訪廠已重用（同供應商同日期）"
                 else:
                     visit_text = "未同步訪廠"
+                completion_text = f"已建立異常單：{result['anomaly_no']}\n{visit_text}"
+            warnings = (
+                list(result.get("warnings") or [])
+                if isinstance(result, dict)
+                else list(getattr(result, "warnings", ()) or ())
+            )
+            if warnings:
+                QMessageBox.warning(
+                    self,
+                    "完成但有警告",
+                    localize_popup_message(
+                        completion_text + "\n\n" + "\n".join(str(item) for item in warnings)
+                    ),
+                )
+            else:
                 QMessageBox.information(
                     self,
                     "成功",
-                    localize_popup_message(f"已建立異常單：{result['anomaly_no']}\n{visit_text}"),
+                    localize_popup_message(completion_text),
                 )
             self._dirty = False
             self.accept()

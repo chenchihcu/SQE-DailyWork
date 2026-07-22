@@ -96,8 +96,49 @@ prefix_rule(
     match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Focused",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Full",
     ],
     not_match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",
+    ],
+)
+
+prefix_rule(
+    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\qt_visual_belt.py"],
+    decision = "allow",
+    justification = "The manifest-driven native Qt belt uses only a verified disposable SQE database and generated Outputs evidence.",
+    match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
+        "python scripts\\qt_visual_belt.py",
+    ],
+    not_match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main --update",
+    ],
+)
+
+prefix_rule(
+    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\qt_visual_regress.py"],
+    decision = "prompt",
+    justification = "Visual regression may update tracked binary baselines when --update is supplied and therefore requires review.",
+    match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main",
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main --update",
+    ],
+    not_match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
+    ],
+)
+
+prefix_rule(
+    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\sqlite_backup.py"],
+    decision = "prompt",
+    justification = "Verified SQLite backup is data-safe but writes a caller-selected destination and must be reviewed.",
+    match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\sqlite_backup.py data\\sqe_v2.db scratch\\verify\\sqe_v2.db",
+        "python scripts\\sqlite_backup.py data\\sqe_v2.db data_backups\\sqe_v2.db",
+    ],
+    not_match = [
+        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
     ],
 )

@@ -2706,6 +2706,11 @@ def create_anomaly(
         product_stage=product_stage,
         batch_qty=batch_qty,
     )
+    _validate_visit_supplier(
+        conn,
+        visit_id=visit_id,
+        supplier_id=inputs.normalized_supplier_id,
+    )
     anomaly_no = _insert_anomaly_row(
         conn,
         anomaly_date=inputs.normalized_date,
@@ -2729,8 +2734,16 @@ def create_anomaly(
         is_tech_transfer=is_tech_transfer,
         quality_report_required=quality_report_required,
     )
-    conn.commit()
-    refresh_monthly_cache(conn, inputs.normalized_date[:7].replace("-", ""))
+    try:
+        refresh_monthly_cache(
+            conn,
+            inputs.normalized_date[:7].replace("-", ""),
+            _commit=False,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return anomaly_no
 
 
@@ -2826,10 +2839,6 @@ def update_anomaly(
     if existing is None:
         raise ValueError("Anomaly not found")
 
-    resolved_anomaly_no = (anomaly_no or "").strip() or existing.get("anomaly_no") or ""
-    if not resolved_anomaly_no:
-        raise ValueError("Anomaly number is required")
-
     normalized_problem_desc = (problem_desc or "").strip()
     if not normalized_problem_desc:
         raise ValueError("Problem description is required")
@@ -2846,6 +2855,25 @@ def update_anomaly(
         fallback=existing["anomaly_date"],
     )
     _ensure_date_not_in_future(normalized_date, field_name="Anomaly date")
+    explicit_anomaly_no = (anomaly_no or "").strip()
+    existing_anomaly_no = str(existing.get("anomaly_no") or "").strip()
+    if explicit_anomaly_no:
+        resolved_anomaly_no = explicit_anomaly_no
+    elif existing_anomaly_no.startswith(normalized_date.replace("-", "")):
+        resolved_anomaly_no = existing_anomaly_no
+    else:
+        resolved_anomaly_no = _next_anomaly_no(conn, normalized_date)
+    validate_anomaly_number(
+        conn,
+        resolved_anomaly_no,
+        normalized_date,
+        exclude_anomaly_id=anomaly_key,
+    )
+    _validate_visit_supplier(
+        conn,
+        visit_id=existing.get("visit_id"),
+        supplier_id=normalized_supplier_id,
+    )
     resolved_product_id, resolved_product_name, resolved_product_stage = _resolve_product_selection(
         conn,
         supplier_id=normalized_supplier_id,
@@ -2920,8 +2948,6 @@ def update_anomaly(
         raise
     if cur.rowcount == 0:
         raise ValueError("Anomaly not found")
-    conn.commit()
-
     months_to_refresh = {
         month
         for month in (
@@ -2931,16 +2957,38 @@ def update_anomaly(
         )
         if month
     }
-    for month in months_to_refresh:
-        refresh_monthly_cache(conn, month)
+    try:
+        for month in months_to_refresh:
+            refresh_monthly_cache(conn, month, _commit=False)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def update_anomaly_link(conn: sqlite3.Connection, anomaly_id: str, visit_id: str | None) -> None:
     """Manually update the visit association for an existing anomaly."""
-    conn.execute(
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        raise ValueError("Anomaly id is required")
+    anomaly = get_anomaly_detail(conn, anomaly_key)
+    if anomaly is None:
+        raise ValueError("Anomaly not found")
+    normalized_visit_id = (visit_id or "").strip() or None
+    if normalized_visit_id:
+        visit = get_visit_detail(conn, normalized_visit_id)
+        if visit is None:
+            raise ValueError("Visit not found")
+        if str(visit.get("supplier_id") or "").strip() != str(
+            anomaly.get("supplier_id") or ""
+        ).strip():
+            raise ValueError("Visit supplier does not match anomaly supplier")
+    cur = conn.execute(
         "UPDATE anomalies SET visit_id = ?, updated_at = ? WHERE id = ?",
-        (visit_id, _now_iso(), anomaly_id),
+        (normalized_visit_id, _now_iso(), anomaly_key),
     )
+    if cur.rowcount == 0:
+        raise ValueError("Anomaly not found")
     conn.commit()
     # No need to refresh monthly cache as linking doesn't change monthly counts
     # unless we later add per-month visit-anomaly linkage stats.
@@ -3025,8 +3073,16 @@ def close_anomaly(
     if cur.rowcount == 0:
         raise ValueError("Open anomaly not found")
 
-    conn.commit()
-    refresh_monthly_cache(conn, close_date[:7].replace("-", ""))
+    try:
+        refresh_monthly_cache(
+            conn,
+            close_date[:7].replace("-", ""),
+            _commit=False,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def update_anomaly_closed_at(
@@ -3188,8 +3244,16 @@ def create_visit(
         product_sections=normalized_sections,
         defect_notes=defect_notes,
     )
-    conn.commit()
-    refresh_monthly_cache(conn, normalized_date[:7].replace("-", ""))
+    try:
+        refresh_monthly_cache(
+            conn,
+            normalized_date[:7].replace("-", ""),
+            _commit=False,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return visit_id
 
 
@@ -3491,6 +3555,19 @@ def update_visit(
         raise ValueError("Supplier is required")
     if get_supplier(conn, normalized_supplier_id) is None:
         raise ValueError("Supplier not found")
+    linked_supplier_rows = conn.execute(
+        """
+        SELECT DISTINCT supplier_id
+        FROM anomalies
+        WHERE visit_id = ?
+        """,
+        (visit_key,),
+    ).fetchall()
+    if any(
+        str(row["supplier_id"] or "").strip() != normalized_supplier_id
+        for row in linked_supplier_rows
+    ):
+        raise ValueError("Visit supplier does not match linked anomaly supplier")
 
     normalized_date = _normalize_strict_iso_date(
         visit_date,
@@ -3765,8 +3842,16 @@ def create_anomaly_with_visit_link(
         (resolved_anomaly_no,),
     ).fetchone()
     anomaly_id = str(id_row["id"]) if id_row else None
-    conn.commit()
-    refresh_monthly_cache(conn, normalized_date[:7].replace("-", ""))
+    try:
+        refresh_monthly_cache(
+            conn,
+            normalized_date[:7].replace("-", ""),
+            _commit=False,
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return {
         "anomaly_no": resolved_anomaly_no,
         "anomaly_id": anomaly_id,
@@ -4426,7 +4511,11 @@ def refresh_monthly_cache(conn: sqlite3.Connection, yyyymm: str, *, _commit: boo
         conn.commit()
 
 
-def rebuild_all_monthly_cache(conn: sqlite3.Connection) -> None:
+def rebuild_all_monthly_cache(
+    conn: sqlite3.Connection,
+    *,
+    _commit: bool = True,
+) -> None:
     months: set[str] = set()
     for row in conn.execute(
         "SELECT DISTINCT replace(substr(anomaly_date,1,7), '-', '') AS yyyymm FROM anomalies"
@@ -4440,7 +4529,8 @@ def rebuild_all_monthly_cache(conn: sqlite3.Connection) -> None:
             months.add(str(row["yyyymm"]))
     for month in sorted(months):
         refresh_monthly_cache(conn, month, _commit=False)
-    conn.commit()
+    if _commit:
+        conn.commit()
 
 
 def count_rows(conn: sqlite3.Connection) -> dict:
@@ -4564,6 +4654,57 @@ def _resolve_product_selection(
         _normalize_product_stage_for_read(product.get("product_stage")),
     )
 _STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_ANOMALY_NO_PATTERN = re.compile(r"^\d{11}$")
+
+
+def validate_anomaly_number(
+    conn: sqlite3.Connection,
+    anomaly_no: str,
+    anomaly_date: str,
+    *,
+    exclude_anomaly_id: str | None = None,
+) -> str:
+    """Validate the canonical YYYYMMDDNNN anomaly-number contract."""
+    normalized_no = str(anomaly_no or "").strip()
+    normalized_date = _normalize_strict_iso_date(
+        anomaly_date,
+        field_name="Anomaly date",
+    )
+    if not _ANOMALY_NO_PATTERN.fullmatch(normalized_no):
+        raise ValueError("異常單號必須為 11 碼純數字（YYYYMMDDNNN）")
+    expected_prefix = normalized_date.replace("-", "")
+    if not normalized_no.startswith(expected_prefix):
+        raise ValueError(
+            f"異常單號前 8 碼必須與異常日期 {normalized_date} 一致"
+        )
+    params: list[Any] = [normalized_no]
+    sql = "SELECT id FROM anomalies WHERE anomaly_no = ?"
+    excluded = str(exclude_anomaly_id or "").strip()
+    if excluded:
+        sql += " AND id <> ?"
+        params.append(excluded)
+    if conn.execute(sql + " LIMIT 1", params).fetchone() is not None:
+        raise ValueError("異常單號已存在，請使用其他單號。")
+    return normalized_no
+
+
+def _validate_visit_supplier(
+    conn: sqlite3.Connection,
+    *,
+    visit_id: Any,
+    supplier_id: str,
+) -> None:
+    normalized_visit_id = str(visit_id or "").strip()
+    if not normalized_visit_id:
+        return
+    row = conn.execute(
+        "SELECT supplier_id FROM visits WHERE id = ?",
+        (normalized_visit_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("Visit not found")
+    if str(row["supplier_id"] or "").strip() != str(supplier_id or "").strip():
+        raise ValueError("Visit supplier does not match selected supplier")
 
 
 def _normalize_optional_iso_date(value: Any, *, field_name: str) -> str:
@@ -4664,9 +4805,14 @@ def _insert_anomaly_row(
         # embeds it into a visit summary text before reaching here), so a
         # collision here is a genuine caller bug, not a race -- retrying with a
         # different number would desync it from that already-written text.
+        validated_no = validate_anomaly_number(
+            conn,
+            anomaly_no,
+            normalized_date,
+        )
         try:
-            _do_insert(anomaly_no)
-            return anomaly_no
+            _do_insert(validated_no)
+            return validated_no
         except sqlite3.IntegrityError as exc:
             if "UNIQUE constraint failed" in str(exc) and "anomaly_no" in str(exc):
                 raise ValueError("異常單號已存在，請使用其他單號。") from exc

@@ -415,7 +415,6 @@ class DefectListWidget(QWidget):
         return True
 
     def _setup_table_headers(self, table: QTableWidget) -> None:
-        from ncr.ui.ui_style import setup_column_persistence
         setup_column_persistence(table, "defect_list_columns", self.conn, LIST_FIELD_ORDER)
 
         header = table.horizontalHeader()

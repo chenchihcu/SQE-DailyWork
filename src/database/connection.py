@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
-import shutil
 from datetime import datetime
 from pathlib import Path
+
+from database.backup import backup_sqlite_database
 
 logger = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-DB_PATH = DATA_DIR / "sqe_v2.db"
-LEGACY_DB_PATH = DATA_DIR / "sqe.db"
+DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "sqe_v2.db"
+_ENV_DB_PATH = os.environ.get("SQE_DB_PATH", "").strip()
+DB_PATH = (
+    Path(_ENV_DB_PATH).expanduser().resolve()
+    if _ENV_DB_PATH
+    else DEFAULT_DB_PATH
+)
+DATA_DIR = DEFAULT_DATA_DIR
+LEGACY_DB_PATH = DB_PATH.parent / "sqe.db"
 
 
 def _backup_database_file(path: Path, *, reason: str) -> Path:
@@ -22,8 +31,19 @@ def _backup_database_file(path: Path, *, reason: str) -> Path:
     backup_path = path.with_name(
         f"{path.stem}_backup_{reason}_{stamp}{path.suffix}"
     )
-    shutil.copy2(path, backup_path)
+    backup_sqlite_database(path, backup_path)
     return backup_path
+
+
+def _require_disposable_target(path: Path) -> None:
+    required = os.environ.get("SQE_REQUIRE_DISPOSABLE_DB", "").strip().lower()
+    if required not in {"1", "true", "yes", "on"}:
+        return
+    if path.expanduser().resolve() == DEFAULT_DB_PATH.resolve():
+        raise RuntimeError(
+            "Refusing the formal SQE database while "
+            "SQE_REQUIRE_DISPOSABLE_DB is enabled"
+        )
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -41,7 +61,9 @@ class ClosingConnection(sqlite3.Connection):
 
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     """Create SQLite connection with row mapping and foreign key support."""
-    target = db_path or DB_PATH
+    target = Path(db_path or DB_PATH).expanduser().resolve()
+    _require_disposable_target(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
@@ -66,7 +88,8 @@ def initialize_database() -> dict:
         upsert_migration_meta,
     )
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _require_disposable_target(DB_PATH)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection(DB_PATH) as conn:
         create_schema(conn)
 

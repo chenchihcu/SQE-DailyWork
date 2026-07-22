@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from database.backup import backup_sqlite_database
 from database.product_stage import normalize_product_stage_ui
 from database.repo_helpers import _as_int, _table_exists
 from database.repository import (
@@ -20,6 +20,14 @@ from database.repository import (
     rebuild_all_monthly_cache,
     upsert_migration_meta,
 )
+
+
+class LegacyMigrationError(RuntimeError):
+    """Raised after an all-or-nothing legacy migration is rolled back."""
+
+    def __init__(self, message: str, report: dict[str, Any]):
+        super().__init__(message)
+        self.report = report
 
 
 def _pick(row: sqlite3.Row, *keys: str, default: Any = "") -> Any:
@@ -83,6 +91,7 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
     try:
         v2_conn.row_factory = sqlite3.Row
         create_schema(v2_conn)
+        v2_conn.commit()
         report["counts_before"] = count_rows(v2_conn)
         if get_migration_meta(v2_conn, "legacy_migrated") == "1":
             v2_conn.commit()
@@ -110,9 +119,10 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
         timestamp = datetime.now().strftime("%Y%m%d")
         backup_path = legacy_path.parent / f"sqe_legacy_{timestamp}.db"
         if not backup_path.exists():
-            shutil.copy2(legacy_path, backup_path)
+            backup_sqlite_database(legacy_path, backup_path)
         report["backup_path"] = str(backup_path)
 
+        v2_conn.execute("BEGIN IMMEDIATE")
         legacy_conn = sqlite3.connect(legacy_path)
         try:
             legacy_conn.row_factory = sqlite3.Row
@@ -122,14 +132,32 @@ def migrate_legacy_data_if_needed(v2_path: Path, legacy_path: Path) -> dict:
         finally:
             legacy_conn.close()
 
-        rebuild_all_monthly_cache(v2_conn)
+        rebuild_all_monthly_cache(v2_conn, _commit=False)
+        if report["errors"]:
+            raise ValueError("Legacy migration reconciliation contains row errors")
         upsert_migration_meta(v2_conn, "legacy_migrated", "1")
         report["counts_after"] = count_rows(v2_conn)
         report["migrated"] = True
         v2_conn.commit()
-    except Exception:
+    except Exception as exc:
         v2_conn.rollback()
-        raise
+        if not report["errors"]:
+            report["errors"].append(str(exc))
+        report["migrated"] = False
+        try:
+            report["counts_after"] = count_rows(v2_conn)
+        except Exception:
+            report["counts_after"] = {}
+        reconciliation_path = v2_path.with_name(
+            f"{v2_path.stem}_migration_VERIFY.json"
+        )
+        write_migration_report(reconciliation_path, report)
+        report["reconciliation_report_path"] = str(reconciliation_path)
+        raise LegacyMigrationError(
+            "Legacy migration failed and was rolled back; "
+            f"see {reconciliation_path}",
+            report,
+        ) from exc
     finally:
         v2_conn.close()
     return report
@@ -234,7 +262,7 @@ def _migrate_anomalies(
 
             v2_conn.execute(
                 """
-                INSERT OR IGNORE INTO anomalies(
+                INSERT INTO anomalies(
                     id, anomaly_no, anomaly_date, supplier_id, problem_desc, category,
                     product_lot_no, product_name, outsource_work_order, batch_qty,
                     status, improvement_desc, closed_at, created_at, updated_at
@@ -257,7 +285,9 @@ def _migrate_anomalies(
                 ),
             )
         except Exception as exc:
-            report["errors"].append(f"issues.id={_pick(row, 'id', default='?')}: {exc}")
+            message = f"issues.id={_pick(row, 'id', default='?')}: {exc}"
+            report["errors"].append(message)
+            raise ValueError(message) from exc
 
 
 def _migrate_visits(
@@ -284,7 +314,7 @@ def _migrate_visits(
             )
             v2_conn.execute(
                 """
-                INSERT OR IGNORE INTO visits(
+                INSERT INTO visits(
                     id, visit_date, supplier_id, product_id, product_name, product_stage, summary, work_order_no,
                     production_qty, tech_transfer, tech_transfer_doc, carrier_requirement,
                     dispensing_process, functional_test, packaging_requirement,
@@ -307,9 +337,11 @@ def _migrate_visits(
                 ),
             )
         except Exception as exc:
-            report["errors"].append(
+            message = (
                 f"supplier_visits.id={_pick(row, 'id', default='?')}: {exc}"
             )
+            report["errors"].append(message)
+            raise ValueError(message) from exc
 
 
 def write_migration_report(path: Path, report: dict) -> None:

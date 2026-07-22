@@ -156,8 +156,8 @@ class MainWindow(QMainWindow):
         self.stack.setObjectName("PageStack")
 
         self.home_widget = HomeWidget(self)
-        # Consolidated event-management page: a single EventListWidget whose scope
-        # tabs cover 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 (see EVENT_QUERY_SCOPE_TABS).
+        # Consolidated event-management page: one EventListWidget whose scope is
+        # selected by the sidebar rows 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案.
         self.events_widget = EventListWidget(self, mode="query", fixed_scope=None, lazy_load=True)
         self.stats_widget = StatsViewWidget(self, lazy_load=True)
         self.ncr_stats_widget = NcrStatsWidget(self, lazy_load=True)
@@ -167,7 +167,7 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(EVENT_PAGE_INDEX, self.events_widget)
         self.stack.insertWidget(STATS_PAGE_INDEX, self.stats_widget)
 
-        # ── 嵌入倉庫不合格品實物管理模組頁面（索引 3/4/5）──
+        # ── 嵌入倉庫不合格品實物管理模組頁面（索引 3/4/5/6）──
         # NCR 資料庫問題不可拖垮主程式；失敗時以 placeholder 佔位並保持索引對齊。
         try:
             self.ncr = NcrController(self, lazy_load=True)
@@ -178,10 +178,10 @@ class MainWindow(QMainWindow):
             self._insert_ncr_placeholders(str(exc))
         self.home_widget.refresh_data()
 
-        # ── 不合格品統計（索引 6）──
+        # ── 不合格品統計分析（索引 7）──
         self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self.ncr_stats_widget)
 
-        # ── 基礎資料（索引 7）──
+        # ── 基礎資料（索引 8）──
         self.stack.insertWidget(MASTER_PAGE_INDEX, self.master_widget)
 
         # Compatibility aliases used by tests / older callers. Every former event

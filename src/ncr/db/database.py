@@ -7,7 +7,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-from database.connection import DB_PATH
+from database import connection as database_connection
 SCHEMA_VERSION = 12
 
 
@@ -134,7 +134,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 
 
 def get_connection() -> sqlite3.Connection:
-    return _connect(DB_PATH)
+    return _connect(database_connection.DB_PATH)
 
 
 def apply_schema(conn: sqlite3.Connection, *, with_version: bool = False) -> None:

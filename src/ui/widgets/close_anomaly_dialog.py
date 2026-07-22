@@ -231,13 +231,13 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         closed_at = self.closed_at_input.date().toString("yyyy-MM-dd")
         try:
             if self.date_adjustment_only:
-                event_service.update_anomaly_closed_at(
+                result = event_service.update_anomaly_closed_at(
                     self.anomaly_id,
                     closed_at=closed_at,
                 )
-                QMessageBox.information(self, "成功", "結案日期已更新")
+                completion_text = "結案日期已更新"
             else:
-                event_service.close_anomaly(
+                result = event_service.close_anomaly(
                     self.anomaly_id,
                     text,
                     closed_by=closer,
@@ -252,7 +252,22 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
                         "以下附件改名未成功，檔名可能維持原狀：\n"
                         + "\n".join(self.attachment_editor._last_rename_failures),
                     )
-                QMessageBox.information(self, "成功", localize_popup_message("異常已結案"))
+                completion_text = "異常已結案"
+            warnings = list(result.get("warnings") or [])
+            if warnings:
+                QMessageBox.warning(
+                    self,
+                    "完成但有警告",
+                    localize_popup_message(
+                        completion_text + "\n\n" + "\n".join(str(item) for item in warnings)
+                    ),
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "成功",
+                    localize_popup_message(completion_text),
+                )
             self._dirty = False
             self.accept()
         except ValueError as exc:

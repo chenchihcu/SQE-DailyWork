@@ -68,6 +68,7 @@ from services.event._anomaly_service import (  # noqa: E402, F401
     close_anomaly,
     update_anomaly_closed_at,
     reopen_anomaly,
+    resync_anomaly_snapshot,
 )
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,7 @@ from services.event._query_service import (  # noqa: E402, F401
     get_responsible_person_stats_by_range,
     get_visit_trend_by_range,
     get_anomaly_trend_by_range,
+    get_anomaly_closure_activity_by_range,
 )
 
 # ---------------------------------------------------------------------------

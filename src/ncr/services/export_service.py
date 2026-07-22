@@ -134,6 +134,9 @@ def export_ncr_excel_report(
 ) -> tuple[bool, str]:
     """匯出格式優化後的倉庫不合格品統計報告，包含視覺總覽與明細/統計表格。"""
     try:
+        from services.date_range import validate_date_range
+
+        start_date, end_date = validate_date_range(start_date, end_date)
         defect_rows = _normalize_rows(defects)
         product_rows = _summarize_rows(defect_rows, "product_name", skip_blank=False)
         supplier_rows = _summarize_rows(defect_rows, "supplier_name", skip_blank=True)

@@ -1,0 +1,16 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.0",
+    "device_pixel_ratio": 2.0
+  },
+  "files": [
+    "combo-popups_anomaly-editable-popup.png",
+    "combo-popups_anomaly-calendar-popup.png",
+    "combo-popups_anomaly-disabled-selected.png",
+    "combo-popups_master-product-stage-popup.png",
+    "combo-popups_stats-range-popup.png",
+    "combo-popups_warehouse-category-popup.png"
+  ]
+}

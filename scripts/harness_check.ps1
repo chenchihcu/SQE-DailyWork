@@ -3,6 +3,11 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $failures = [System.Collections.Generic.List[string]]::new()
+$gitExe = if (Test-Path -LiteralPath "C:\Program Files\Git\cmd\git.exe") {
+    "C:\Program Files\Git\cmd\git.exe"
+} else {
+    (Get-Command git -ErrorAction Stop).Source
+}
 
 function Add-Failure {
     param([string]$Message)
@@ -92,6 +97,111 @@ function Require-Json {
         Get-Content -LiteralPath $path -Raw | ConvertFrom-Json | Out-Null
     } catch {
         Add-Failure "Invalid JSON in ${RelativePath}: $($_.Exception.Message)"
+    }
+}
+
+function Get-GitLines {
+    param([string[]]$Arguments)
+    $lines = @(& $script:gitExe -C $repoRoot @Arguments)
+    if ($LASTEXITCODE -ne 0) {
+        Add-Failure "Git inspection failed: git $($Arguments -join ' ')"
+        return @()
+    }
+    return @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Require-LiveReleaseMembership {
+    param([string]$RelativePath)
+    $path = Join-RepoPath $RelativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Add-Failure "Cannot check live release membership; missing file: $RelativePath"
+        return
+    }
+    $content = Get-Content -LiteralPath $path -Raw
+    $match = [regex]::Match(
+        $content,
+        '(?m)^\| Live release membership count \|[^|]*\|\s*`?(\d+)`?\s*\|'
+    )
+    if (-not $match.Success) {
+        Add-Failure "Source baseline lacks a parseable Live release membership count"
+        return
+    }
+    $expected = [int]$match.Groups[1].Value
+    $members = Get-GitLines @("ls-files", "--cached", "--others", "--exclude-standard")
+    $existing = @(
+        $members | Where-Object {
+            Test-Path -LiteralPath (Join-Path $repoRoot $_)
+        }
+    )
+    if ($existing.Count -ne $expected) {
+        Add-Failure "Live release membership drift: expected $expected existing tracked/non-ignored files, found $($existing.Count)"
+    }
+}
+
+function Require-DoNotTrackBoundary {
+    $tracked = Get-GitLines @("ls-files")
+    $forbidden = @(
+        $tracked | Where-Object {
+            $_ -match "^\.playwright-mcp/" -or
+            $_ -match "^SQE_Quality_Report_.*\.xlsx$" -or
+            $_ -match "^(Outputs|scratch|data_backups)/"
+        }
+    )
+    if ($forbidden.Count -gt 0) {
+        Add-Failure "Do-not-track boundary violated: $($forbidden -join ', ')"
+    }
+}
+
+function Require-ActivePlanLifecycle {
+    $activeDir = Join-RepoPath "docs\exec-plans\active"
+    $plans = @(
+        Get-ChildItem -LiteralPath $activeDir -Filter "*.md" |
+            Where-Object { $_.Name -ne "README.md" }
+    )
+    foreach ($plan in $plans) {
+        $content = Get-Content -LiteralPath $plan.FullName -Raw
+        if (-not $content.Contains("Plan status: active")) {
+            Add-Failure "Active execution plan lacks 'Plan status: active': $($plan.Name)"
+        }
+        if ($content.Contains("Plan status: completed")) {
+            Add-Failure "Completed execution plan remains in active/: $($plan.Name)"
+        }
+    }
+}
+
+function Require-VisualTargetBaselines {
+    $manifestPath = Join-RepoPath "scripts\qt_probe_targets.json"
+    try {
+        $targetManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    } catch {
+        Add-Failure "Cannot check visual target mapping: $($_.Exception.Message)"
+        return
+    }
+    foreach ($target in $targetManifest.targets) {
+        if (-not $target.baseline_required) {
+            continue
+        }
+        $baselineDir = Join-RepoPath ("tests\visual_baseline\" + [string]$target.name)
+        $baselineManifestPath = Join-Path $baselineDir "baseline_manifest.json"
+        if (-not (Test-Path -LiteralPath $baselineManifestPath -PathType Leaf)) {
+            Add-Failure "Missing required visual baseline manifest: $($target.name)"
+            continue
+        }
+        try {
+            $baseline = Get-Content -LiteralPath $baselineManifestPath -Raw | ConvertFrom-Json
+        } catch {
+            Add-Failure "Invalid visual baseline manifest for $($target.name): $($_.Exception.Message)"
+            continue
+        }
+        $files = @($baseline.files)
+        if ($files.Count -eq 0) {
+            Add-Failure "Required visual target has no baseline files: $($target.name)"
+        }
+        foreach ($file in $files) {
+            if (-not (Test-Path -LiteralPath (Join-Path $baselineDir ([string]$file)) -PathType Leaf)) {
+                Add-Failure "Visual target/baseline mapping missing file: $($target.name)/$file"
+            }
+        }
     }
 }
 
@@ -193,8 +303,14 @@ $requiredFiles = @(
     ".cursor\rules\agents_gateway.mdc",
     ".codex\rules\project.rules",
     "scripts\verify.ps1",
+    "scripts\audit_source_baseline.ps1",
+    "scripts\audit_report_parity.py",
     "scripts\harness_check.ps1",
     "scripts\qt_visual_probe.py",
+    "scripts\qt_visual_belt.py",
+    "scripts\qt_visual_regress.py",
+    "scripts\qt_probe_targets.json",
+    "scripts\sqlite_backup.py",
     ".claude\settings.json",
     ".claude\hooks\sqe-dailywork-hook-common.ps1",
     ".claude\hooks\sqe-dailywork-session-start.ps1",
@@ -340,6 +456,10 @@ Require-Text "docs\harness\ai-rules-compatibility.md" "docs/harness/source-basel
 Require-Text "docs\harness\ai-rules-compatibility.md" "one writer per worktree" "one-writer protocol"
 Require-Text "docs\harness\ai-rules-compatibility.md" "New Worktree Mode" "Antigravity worktree protocol"
 Require-SourceBaselineManifest "docs\harness\source-baseline-manifest.md"
+Require-LiveReleaseMembership "docs\harness\source-baseline-manifest.md"
+Require-DoNotTrackBoundary
+Require-ActivePlanLifecycle
+Require-VisualTargetBaselines
 Require-Text "docs\harness\quality-score.md" "Knowledge map" "quality score knowledge row"
 Require-Text "docs\harness\doc-gardening.md" "Report only" "report-first automation rule"
 Require-Text "docs\harness\doc-gardening.md" "Do not edit files from automation" "automation mutation boundary"
@@ -381,7 +501,11 @@ Require-Text "docs\harness\agent-orchestration.md" "contradiction-log.md" "orche
 Require-Text "docs\harness\contradiction-log.md" "Required user decision" "contradiction log format"
 
 Require-Text "scripts\verify.ps1" "harness_check.ps1" "verify harness check call"
+Require-Text "scripts\audit_source_baseline.ps1" "tracked_do_not_track" "source baseline audit output"
+Require-Text "scripts\audit_report_parity.py" "EvidenceRow" "report parity evidence schema"
 Require-Text "scripts\verify.ps1" "qt_visual_probe.py" "verify native Qt visual probe call"
+Require-Text "scripts\verify.ps1" "qt_visual_belt.py" "verify full native visual belt call"
+Require-Text "scripts\verify.ps1" "qt_visual_regress.py" "verify visual regression call"
 Require-Text ".codex\rules\project.rules" "harness_check.ps1" "project rule for harness check"
 Require-Text ".codex\rules\project.rules" "scripts/verify.ps1" "project rule for verify"
 Require-Text ".codex\rules\project.rules" "qt_visual_probe.py" "project rule for native Qt visual probe"
@@ -396,6 +520,8 @@ Require-CharBudget ".agents\rules\agents_gateway.md" 12000 "Antigravity gateway 
 Require-Text ".gitignore" ".env" "local environment file is ignored"
 Require-Text ".gitignore" "data/" "runtime data directory is ignored"
 Require-Text ".gitignore" "Outputs/" "generated Outputs are ignored"
+Require-Text ".gitignore" ".playwright-mcp/" "Playwright local state is ignored"
+Require-Text ".gitignore" "/SQE_Quality_Report_*.xlsx" "generated root quality reports are ignored"
 Require-Text ".gitignore" ".claude/settings.local.json" "Claude local settings are ignored"
 Require-Text ".gitignore" "!.cursor/rules/**" "Cursor shared rules are versionable"
 

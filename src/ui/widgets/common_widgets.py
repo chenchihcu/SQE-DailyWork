@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from collections.abc import Mapping
 from typing import TypeVar
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -61,7 +62,18 @@ def safe_ui_operation(
 
     try:
         result = operation()
-        if success_msg:
+        result_warnings = (
+            list(result.get("warnings") or [])
+            if isinstance(result, Mapping)
+            else []
+        )
+        if result_warnings:
+            QMessageBox.warning(
+                parent,
+                "完成但有警告",
+                localize_popup_message("\n".join(str(item) for item in result_warnings)),
+            )
+        elif success_msg:
             QMessageBox.information(parent, success_title, localize_popup_message(success_msg))
         return result
     except ValueError as exc:

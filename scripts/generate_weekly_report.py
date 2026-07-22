@@ -18,7 +18,12 @@ from lxml import etree
 
 # ── 路徑設定 ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH  = BASE_DIR / "data" / "sqe_v2.db"
+SRC_DIR = BASE_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from database.connection import DB_PATH  # noqa: E402
+
 OUT_DIR  = BASE_DIR / "Outputs"
 
 # ── Mitcorp 品牌色系 ──────────────────────────────────────
@@ -53,7 +58,7 @@ BOTTOM_RESERVE_CM = 1.2   # 底部與 footer 留白
 # ── 資料層 ────────────────────────────────────────────────
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 

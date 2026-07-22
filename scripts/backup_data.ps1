@@ -1,11 +1,19 @@
 param(
-    [string]$DestinationRoot
+    [string]$DestinationRoot,
+    [string]$PythonExe
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+    $PythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
+}
+if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
+    throw "Python executable not found: $PythonExe"
+}
 
 if ([string]::IsNullOrWhiteSpace($DestinationRoot)) {
     $DestinationRoot = Join-Path $repoRoot "data_backups"
@@ -52,7 +60,10 @@ foreach ($db in @($databases + $optionalDatabases)) {
         continue
     }
     $targetPath = Join-Path $backupDir $db.Target
-    Copy-Item -LiteralPath $db.Source -Destination $targetPath -Force
+    & $PythonExe (Join-Path $repoRoot "scripts\sqlite_backup.py") $db.Source $targetPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Verified SQLite backup failed: $($db.Source)"
+    }
     $item = Get-Item -LiteralPath $targetPath
     $results += [pscustomobject]@{
         Label = $db.Label
@@ -60,6 +71,7 @@ foreach ($db in @($databases + $optionalDatabases)) {
         Backup = $targetPath
         Length = $item.Length
         LastWriteTime = $item.LastWriteTime
+        Verified = $true
     }
 }
 

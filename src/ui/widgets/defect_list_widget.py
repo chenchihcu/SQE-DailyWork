@@ -54,8 +54,8 @@ from ui.widgets.event_actions import (
 from ui.widgets.pagination_bar import PaginationBar
 from ui.widgets.event_list_filter_mixin import _EventListFilterMixin
 
-# Consolidated event-management page: one widget, scope tabs cover every supplier
-# event view (including 已結案查詢). Order = most-used first; default = 單獨異常.
+# Consolidated event-management page: one widget; these compatibility definitions
+# drive every sidebar supplier-event scope (including 已結案). Default = 單獨異常.
 EVENT_QUERY_SCOPE_TABS = (
     ("單獨異常", repository.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
     ("訪廠發現異常", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),

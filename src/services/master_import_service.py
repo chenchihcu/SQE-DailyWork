@@ -49,6 +49,7 @@ class ProductMasterImportRow:
     message: str
     will_create_supplier: bool = False
     will_assign_supplier: bool = False
+    current_product_stage: str = ""
 
     @property
     def can_add(self) -> bool:
@@ -216,6 +217,28 @@ def _product_by_code(
     ).fetchone()
 
 
+def _unassigned_product_by_code(
+    conn: sqlite3.Connection, product_code: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT
+            p.id,
+            p.product_code,
+            p.product_name,
+            p.product_stage,
+            p.supplier_id,
+            '' AS supplier_name
+        FROM products p
+        WHERE p.product_code = ?
+          AND p.supplier_id IS NULL
+          AND p.is_active = 1
+        LIMIT 1
+        """,
+        (product_code,),
+    ).fetchone()
+
+
 def preview_product_master_import(
     conn: sqlite3.Connection, file_path: str | Path
 ) -> ProductMasterImportPreview:
@@ -241,7 +264,7 @@ def preview_product_master_import(
         return ProductMasterImportPreview(rows=[], file_errors=["Excel 沒有可匯入的資料列。"])
 
     normalized_rows: list[tuple[int, str, str, str, str]] = []
-    code_counts: dict[str, int] = {}
+    code_counts: dict[tuple[str, str], int] = {}
     for row_number, values in data_rows:
         product_code = _cell(values, code_index)
         product_name = _cell(values, name_index)
@@ -253,7 +276,8 @@ def preview_product_master_import(
             (row_number, product_code, product_name, supplier_name, product_stage)
         )
         if product_code:
-            code_counts[product_code] = code_counts.get(product_code, 0) + 1
+            scoped_key = (supplier_name, product_code)
+            code_counts[scoped_key] = code_counts.get(scoped_key, 0) + 1
 
     for row_number, product_code, product_name, supplier_name, product_stage in normalized_rows:
         if not product_code:
@@ -301,7 +325,7 @@ def preview_product_master_import(
                 )
             )
             continue
-        if code_counts.get(product_code, 0) > 1:
+        if code_counts.get((supplier_name, product_code), 0) > 1:
             preview_rows.append(
                 ProductMasterImportRow(
                     row_number,
@@ -312,7 +336,7 @@ def preview_product_master_import(
                     product_stage,
                     "",
                     "",
-                    "Excel 內部有重複料號，請先整理來源資料。",
+                    "Excel 內同一供應商有重複料號，請先整理來源資料。",
                 )
             )
             continue
@@ -335,7 +359,15 @@ def preview_product_master_import(
             continue
 
         supplier_id_for_lookup = str(supplier["id"]) if supplier is not None else None
-        existing = _product_by_code(conn, product_code, supplier_id=supplier_id_for_lookup)
+        existing = (
+            _product_by_code(
+                conn,
+                product_code,
+                supplier_id=supplier_id_for_lookup,
+            )
+            if supplier_id_for_lookup
+            else _unassigned_product_by_code(conn, product_code)
+        )
         will_create_supplier = supplier is None
         if existing is None:
             preview_rows.append(
@@ -356,6 +388,7 @@ def preview_product_master_import(
 
         current_supplier = str(existing["supplier_name"] or "").strip()
         current_name = str(existing["product_name"] or "").strip()
+        current_stage = normalize_product_stage_ui(existing["product_stage"])
         if current_supplier and current_supplier != supplier_name:
             preview_rows.append(
                 ProductMasterImportRow(
@@ -368,6 +401,23 @@ def preview_product_master_import(
                     current_name,
                     current_supplier,
                     "料號已屬於不同主供應商，請人工確認後再調整。",
+                )
+            )
+            continue
+
+        if current_stage != product_stage:
+            preview_rows.append(
+                ProductMasterImportRow(
+                    row_number,
+                    STATUS_BLOCKED,
+                    product_code,
+                    product_name,
+                    supplier_name,
+                    product_stage,
+                    current_name,
+                    current_supplier,
+                    "產品階段與現有主檔不同；請先使用既有階段變更流程並留下異動紀錄。",
+                    current_product_stage=current_stage,
                 )
             )
             continue
@@ -623,15 +673,15 @@ def apply_product_master_import(
                 added_count += 1
                 continue
 
-            # A row whose supplier was newly created didn't exist at preview
-            # time either, so preview looked it up with supplier_id=None
-            # (matching any supplier). Looking it up here with the
-            # freshly-minted supplier_id would never match the existing row
-            # (whose supplier_id is still NULL/different), spuriously
-            # raising "Product disappeared" and rolling back the whole
-            # import (audit finding A2). Mirror preview's lookup condition.
-            lookup_supplier_id = None if row.will_create_supplier else supplier_id
-            existing = _product_by_code(conn, row.product_code, supplier_id=lookup_supplier_id)
+            existing = (
+                _unassigned_product_by_code(conn, row.product_code)
+                if row.will_create_supplier
+                else _product_by_code(
+                    conn,
+                    row.product_code,
+                    supplier_id=supplier_id,
+                )
+            )
             if existing is None:
                 raise sqlite3.IntegrityError(f"Product disappeared: {row.product_code}")
             conn.execute(

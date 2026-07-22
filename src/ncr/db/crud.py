@@ -259,15 +259,27 @@ def upsert_supplier_by_name(conn: sqlite3.Connection, data: dict[str, Any]) -> N
     """
     If supplier name exists, update category. Otherwise insert.
     """
-    conn.execute(
-        """
-        INSERT INTO supplier_records (name, category, created_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(name) DO UPDATE SET
-            category = excluded.category
-        """,
-        (data["name"], data["category"], data["created_at"]),
-    )
+    existing = conn.execute(
+        "SELECT id FROM supplier_records WHERE name = ?",
+        (data["name"],),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """
+            INSERT INTO supplier_records (name, category, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (data["name"], data["category"], data["created_at"]),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE supplier_records
+            SET category = ?
+            WHERE id = ?
+            """,
+            (data["category"], existing["id"]),
+        )
     conn.commit()
 
 

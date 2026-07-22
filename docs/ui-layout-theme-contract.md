@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
 | Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
-| Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus `src/ui/widgets/defect_form_widget.py` dialogs | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination + visit dialog body scroll; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
+| Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination + visit dialog body scroll; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
 | Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | Continuous-entry form layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending outsource | Sidebar `待處理委外加工` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="委外加工"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending material | Sidebar `待處理原物料` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="原物料"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
@@ -14,9 +14,9 @@
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
 | New / edit anomaly | Anomaly buttons | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險與參考 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
-| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 進階與技轉 sections and fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
-| Close anomaly | Event action menu | `src/ui/widgets/defect_form_widget.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
-| Visit detail | Event action menu | `src/ui/widgets/event_actions.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
+| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
+| Close anomaly | Event action menu | `src/ui/widgets/close_anomaly_dialog.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
+| Visit detail | Event action menu | `src/ui/widgets/visit_detail_dialog.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
 
 ## Screen-Fit Rules
@@ -56,9 +56,9 @@
   working size, remains capped to the active screen and `FORM_MAX_WIDTH`, opens
   at the top of the form, and uses a compact scrollable attachment preview so
   an empty photo area does not consume the visible workflow.
-- `NewVisitDialog` is also a single-page form. `VisitFormScroll` merges 基本資訊
-  and 進階與技轉 into one continuous body while 儲存／取消 remain fixed outside
-  the scroll area. It uses the same 900 x 780 preferred working size and active-
+- `NewVisitDialog` is also a single-page form. 基本資訊 and 進階與技轉 are
+  rendered directly without a whole-form `QScrollArea`, while 儲存／取消 remain
+  in a fixed footer. It uses the same 900 x 780 preferred working size and active-
   screen clamp as `NewAnomalyDialog`. The retired defect-note tab and its nested group containers
   must not be recreated; editing legacy visits preserves their stored defect-note
   and additional product-section payloads without exposing hidden editor widgets.
@@ -226,12 +226,10 @@
   `page_changed(int)`; `MainWindow` owns the `_PAGE_KEY_TO_INDEX` map and
   `EventListWidget.set_event_scope` preserves supplier/month filters across scope
   switches.
-- Warehouse workflow tabs promoted to first-class sidebar rows - 2026-07-01:
-  `建立不合格品`, `待處理不合格品`, and `歷史紀錄` now occupy stack indexes 3/4/5;
-  `不合格品統計分析` moves to index 6 and `基礎資料` to index 7. The warehouse
-  pending badge rides `待處理不合格品`; `open_warehouse_nonconforming_tracker()`
-  routes there, while `open_warehouse_nonconforming_create()` routes to
-  `建立不合格品`.
+- Warehouse workflow tabs were promoted to first-class sidebar rows on
+  2026-07-01. The later 2026-07-04 dual-entry split is authoritative: indexes
+  3/4/5/6 are 建立不合格品 / 待處理委外加工 / 待處理原物料 / 歷史紀錄,
+  followed by 不合格品統計分析 at 7 and 基礎資料 at 8.
 - Supplier statistics UI cleanup - 2026-07-01: `異常事件統計` follows the
   `不合格品統計分析` dashboard pattern: no visible page tabs, no visible
   risk/overdue/latest summary cards, one shared explanation banner, flattened

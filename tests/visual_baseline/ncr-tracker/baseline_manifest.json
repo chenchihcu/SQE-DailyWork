@@ -7,7 +7,8 @@
   },
   "files": [
     "ncr-tracker_ncr-create.png",
-    "ncr-tracker_ncr-pending.png",
+    "ncr-tracker_ncr-pending-outsource.png",
+    "ncr-tracker_ncr-pending-material.png",
     "ncr-tracker_ncr-history.png"
   ]
 }

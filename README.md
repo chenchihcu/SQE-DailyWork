@@ -133,6 +133,8 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
 ## Import And Migration
 
 - Legacy `data/sqe.db` migration remains handled by `src/database/migration.py`.
+  It is all-or-nothing: any row error rolls back the batch, does not write
+  `legacy_migrated`, and emits a `*_migration_VERIFY.json` reconciliation file.
 - Legacy NCR `ncr/data/defect.db` was migrated once into `data/sqe_v2.db` by
   `src/database/ncr_migration.py`; the old source is archived as
   `ncr/data/defect.db.migrated`. Warehouse schema upgrades backfill
@@ -141,7 +143,9 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
 - Shared product master import is implemented in
   `src/services/master_import_service.py`. It writes only `suppliers/products` after
   preview, conflict checks, and DB backup, then records the attempt in
-  `import_batches/import_batch_rows`.
+  `import_batches/import_batch_rows`. Duplicate identity is
+  `(supplier, product_code)`; an existing stage mismatch is a blocking conflict
+  that must use the normal product-stage change flow.
 - Warehouse compatibility import services under `src/ncr/services/` are retained
   for warehouse-module support data and must be labeled as warehouse-scoped.
 
@@ -159,7 +163,9 @@ dry run, reconciliation, and focused verification.
   plus attachment filenames and captions. Missing scalar values remain present
   as empty strings, and boolean values display as `是` / `否`. The file is
   overwritten after anomaly edits, visit-link changes, closure-date changes,
-  close/reopen actions, and attachment changes.
+  close/reopen actions, and attachment changes. SQLite is authoritative: a
+  snapshot/folder failure returns success with a visible warning and may be
+  repaired idempotently; users must not repeat the primary mutation.
 - Event PDF export: `src/services/event_pdf_exporter.py`.
 - Monthly Excel export: `src/services/event_service.py`.
 - Weekly PowerPoint report: `scripts/generate_weekly_report.py`.
@@ -180,7 +186,13 @@ dry run, reconciliation, and focused verification.
 
 ```powershell
 .\scripts\verify.ps1
+.\scripts\verify.ps1 -Profile Focused
 ```
+
+`Full` is the default. Both profiles create a verified disposable database via
+SQLite online backup, set `SQE_DB_PATH`, and fail fast if verification resolves
+to the formal `data/sqe_v2.db`. `Full` additionally runs every manifest target
+at 100% / 125% / 150% DPI plus required pixel baselines.
 
 ## Backup
 
@@ -189,7 +201,10 @@ dry run, reconciliation, and focused verification.
 ```
 
 This backs up root `data/sqe_v2.db` and the archived NCR source database when
-present.
+present. Active SQLite databases are copied with the SQLite online-backup API,
+then reopened read-only for `integrity_check` and per-table count parity; raw
+file copy is not used for WAL databases. The same verified helper is available
+as `python scripts\sqlite_backup.py <source> <destination>`.
 
 Focused checks should cover:
 
@@ -211,4 +226,9 @@ Native visual probes:
 python scripts\qt_visual_probe.py --target main
 python scripts\qt_visual_probe.py --target form-density
 python scripts\qt_visual_probe.py --target stats-stress
+python scripts\qt_visual_belt.py
 ```
+
+The canonical target and DPI list lives in `scripts/qt_probe_targets.json`.
+Required targets must have a matching `tests/visual_baseline/<target>/` manifest;
+missing baselines are a gate failure, not a successful skip.

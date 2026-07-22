@@ -8,8 +8,8 @@ from datetime import date
 from database import connection as _connection
 from database import repository
 
-from ._anomaly_folder import prepare_anomaly_folder_root, relocate_anomaly_folder
-from ._anomaly_markdown import write_anomaly_markdown
+from ._anomaly_folder import relocate_anomaly_folder
+from ._anomaly_markdown import sync_anomaly_markdown_by_id, write_anomaly_markdown
 from ._helpers import (
     _require_product_id,
     _require_supplier_record,
@@ -17,6 +17,33 @@ from ._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AnomalyNumberResult(str):
+    """Backward-compatible anomaly number carrying post-commit warnings."""
+
+    warnings: list[str]
+
+    def __new__(cls, value: str, warnings: list[str]):
+        instance = str.__new__(cls, value)
+        instance.warnings = list(warnings)
+        return instance
+
+
+def _post_commit_warning(action: str, exc: Exception) -> str:
+    return (
+        f"資料庫已完成{action}，但異常 Markdown／資料夾快照同步失敗：{exc}。"
+        "請勿重複執行主要動作；可稍後重新同步快照。"
+    )
+
+
+def _write_snapshot_with_warning(detail: dict, *, action: str) -> list[str]:
+    try:
+        write_anomaly_markdown(detail)
+    except Exception as exc:
+        logger.exception("異常資料已提交，但快照同步失敗")
+        return [_post_commit_warning(action, exc)]
+    return []
 
 
 def create_anomaly(payload: dict) -> str:
@@ -28,7 +55,6 @@ def create_anomaly(payload: dict) -> str:
     product_id = _require_product_id(payload)
     anomaly_date = payload.get("anomaly_date") or date.today().isoformat()
 
-    prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
         _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
@@ -64,8 +90,8 @@ def create_anomaly(payload: dict) -> str:
         detail = repository.get_anomaly_detail(conn, str(row["id"])) if row else None
     if detail is None:
         raise ValueError("Created anomaly could not be loaded")
-    write_anomaly_markdown(detail)
-    return anomaly_no
+    warnings = _write_snapshot_with_warning(detail, action="新增")
+    return AnomalyNumberResult(anomaly_no, warnings)
 
 
 def create_anomaly_with_visit_link(payload: dict) -> dict:
@@ -80,7 +106,6 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
     sync_visit = bool(payload.get("sync_visit", True))
     visit_summary = payload.get("visit_summary", "")
 
-    prepare_anomaly_folder_root()
     with _connection.get_connection() as conn:
         _require_supplier_record(conn, supplier_id, require_active=True)
         product_name = _resolve_product_name(
@@ -119,7 +144,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
         )
     if detail is None:
         raise ValueError("Created anomaly could not be loaded")
-    write_anomaly_markdown(detail)
+    result["warnings"] = _write_snapshot_with_warning(detail, action="新增")
     return result
 
 
@@ -133,7 +158,7 @@ def get_anomaly_detail(anomaly_id: str) -> dict:
     return row
 
 
-def update_anomaly(anomaly_id: str, payload: dict) -> None:
+def update_anomaly(anomaly_id: str, payload: dict) -> dict:
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
         raise ValueError("Anomaly id is required")
@@ -182,16 +207,22 @@ def update_anomaly(anomaly_id: str, payload: dict) -> None:
         detail = repository.get_anomaly_detail(conn, anomaly_key)
     if detail is None:
         raise ValueError("Updated anomaly could not be loaded")
-    relocate_anomaly_folder(
-        old_supplier_name=str(existing.get("supplier_name") or ""),
-        old_anomaly_no=str(existing.get("anomaly_no") or ""),
-        new_supplier_name=str(detail.get("supplier_name") or ""),
-        new_anomaly_no=str(detail.get("anomaly_no") or ""),
-    )
-    write_anomaly_markdown(detail)
+    warnings: list[str] = []
+    try:
+        relocate_anomaly_folder(
+            old_supplier_name=str(existing.get("supplier_name") or ""),
+            old_anomaly_no=str(existing.get("anomaly_no") or ""),
+            new_supplier_name=str(detail.get("supplier_name") or ""),
+            new_anomaly_no=str(detail.get("anomaly_no") or ""),
+        )
+    except Exception as exc:
+        logger.exception("異常資料已更新，但資料夾重新定位失敗")
+        warnings.append(_post_commit_warning("更新", exc))
+    warnings.extend(_write_snapshot_with_warning(detail, action="更新"))
+    return {"anomaly_id": anomaly_key, "warnings": warnings}
 
 
-def update_anomaly_link(anomaly_id: str, visit_id: str | None) -> None:
+def update_anomaly_link(anomaly_id: str, visit_id: str | None) -> dict:
     """Manually update the visit association for an existing anomaly."""
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
@@ -201,7 +232,8 @@ def update_anomaly_link(anomaly_id: str, visit_id: str | None) -> None:
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Updated anomaly could not be loaded")
-    write_anomaly_markdown(detail)
+    warnings = _write_snapshot_with_warning(detail, action="更新連結")
+    return {"anomaly_id": anomaly_id, "warnings": warnings}
 
 
 def delete_anomaly(anomaly_id: str) -> None:
@@ -250,7 +282,7 @@ def close_anomaly(
     closed_by: str = "",
     root_cause_category: str = "",
     closed_at: str | None = None,
-) -> None:
+) -> dict:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
     text = (improvement_desc or "").strip()
@@ -268,10 +300,11 @@ def close_anomaly(
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Closed anomaly could not be loaded")
-    write_anomaly_markdown(detail)
+    warnings = _write_snapshot_with_warning(detail, action="結案")
+    return {"anomaly_id": anomaly_id, "warnings": warnings}
 
 
-def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> None:
+def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> dict:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
     with _connection.get_connection() as conn:
@@ -283,10 +316,11 @@ def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> None:
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Updated anomaly could not be loaded")
-    write_anomaly_markdown(detail)
+    warnings = _write_snapshot_with_warning(detail, action="更新結案日期")
+    return {"anomaly_id": anomaly_id, "warnings": warnings}
 
 
-def reopen_anomaly(anomaly_id: str) -> None:
+def reopen_anomaly(anomaly_id: str) -> dict:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
     with _connection.get_connection() as conn:
@@ -294,4 +328,11 @@ def reopen_anomaly(anomaly_id: str) -> None:
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Reopened anomaly could not be loaded")
-    write_anomaly_markdown(detail)
+    warnings = _write_snapshot_with_warning(detail, action="重新處理")
+    return {"anomaly_id": anomaly_id, "warnings": warnings}
+
+
+def resync_anomaly_snapshot(anomaly_id: str) -> dict:
+    """Idempotently rebuild the derived Markdown snapshot for one anomaly."""
+    path = sync_anomaly_markdown_by_id(anomaly_id)
+    return {"anomaly_id": anomaly_id, "snapshot_path": str(path), "warnings": []}

@@ -428,12 +428,12 @@ class ProductImportServiceTests(DatabaseTestCase):
 class InitializeDatabaseTests(DatabaseTestCase):
     def test_initialize_database_uses_shared_sqe_dailywork_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            original_path = database.DB_PATH
-            database.DB_PATH = Path(temp_dir) / "sqe_v2.db"
+            original_path = database.database_connection.DB_PATH
+            database.database_connection.DB_PATH = Path(temp_dir) / "sqe_v2.db"
             conn: sqlite3.Connection | None = None
             try:
                 conn = database.initialize_database()
-                self.assertTrue(database.DB_PATH.exists())
+                self.assertTrue(database.database_connection.DB_PATH.exists())
                 objects = {
                     (row["type"], row["name"])
                     for row in conn.execute(
@@ -469,7 +469,7 @@ class InitializeDatabaseTests(DatabaseTestCase):
             finally:
                 if conn is not None:
                     conn.close()
-                database.DB_PATH = original_path
+                database.database_connection.DB_PATH = original_path
 
     def test_apply_schema_still_supports_memory_core_tests(self) -> None:
         conn = sqlite3.connect(":memory:")

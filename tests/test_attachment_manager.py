@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from database.connection import DATA_DIR, PROJECT_ROOT
@@ -10,6 +11,9 @@ from services import attachment_manager
 
 class AttachmentManagerTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._snapshot_sync = patch.object(attachment_manager, "_sync_anomaly_markdown")
+        self._snapshot_sync.start()
+        self.addCleanup(self._snapshot_sync.stop)
         self.scratch = Path("scratch") / f"attach_src_{uuid4().hex}"
         self.scratch.mkdir(parents=True, exist_ok=True)
         self.anomaly_id = f"anomaly-{uuid4().hex}"

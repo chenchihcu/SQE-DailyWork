@@ -1,0 +1,17 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.0",
+    "device_pixel_ratio": 2.0
+  },
+  "files": [
+    "form-density_anomaly-form.png",
+    "form-density_anomaly-calendar.png",
+    "form-density_visit-form.png",
+    "form-density_supplier-form.png",
+    "form-density_product-form.png",
+    "form-density_warehouse-form.png",
+    "form-density_quick-product-form.png"
+  ]
+}

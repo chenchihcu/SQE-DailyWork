@@ -370,6 +370,18 @@ def render_chart_to_png(
         view = chart_view_factory()
         view.resize(*size)
         ok = view.grab().save(output_path)
+        if not ok or not os.path.exists(output_path):
+            logger.warning("Chart PNG was not written: %s", output_path)
         return bool(ok) and os.path.exists(output_path)
     except Exception:
+        logger.exception("Chart PNG rendering failed: %s", output_path)
         return False
+
+
+def missing_chart_labels(
+    requested_keys: list[str],
+    active_paths: dict[str, str],
+    labels: dict[str, str],
+) -> list[str]:
+    """Return user-visible labels for charts requested but not rendered."""
+    return [labels.get(key, key) for key in requested_keys if key not in active_paths]

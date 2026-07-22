@@ -108,7 +108,7 @@ class InsertAnomalyRowRetryTests(unittest.TestCase):
             anomaly_date="2026-07-01",
             supplier_id=self.supplier_id,
             problem_desc="occupies fixed number",
-            anomaly_no="FIXED-001",
+            anomaly_no="20260701009",
         )
         self.conn.commit()
 
@@ -118,7 +118,7 @@ class InsertAnomalyRowRetryTests(unittest.TestCase):
                 anomaly_date="2026-07-01",
                 supplier_id=self.supplier_id,
                 problem_desc="duplicate fixed number",
-                anomaly_no="FIXED-001",
+                anomaly_no="20260701009",
             )
 
     def test_update_anomaly_checks_unique_collision(self) -> None:

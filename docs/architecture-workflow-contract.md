@@ -140,3 +140,23 @@ After each change, verify:
 - focused tests cover the affected boundary
 - `scripts/verify.ps1` passes for source, script, UI, data-boundary, and
   governance changes
+
+## Transaction, Migration, And Reporting Boundaries
+
+- `SQE_DB_PATH` is resolved only by `src/database/connection.py`; main, embedded
+  NCR, tests, reports, and probes must consume that connection boundary rather
+  than defining their own formal database path.
+- Anomaly mutation plus monthly-cache refresh is one SQLite transaction. Derived
+  Markdown/folder snapshots run after commit and return non-destructive warnings;
+  they must never make the UI imply that the authoritative row was not saved.
+- Legacy migration is all-or-nothing. A row error rolls back imported business
+  rows, leaves completion metadata absent, and emits reconciliation evidence.
+- Repository validation owns anomaly-number format/date-prefix/uniqueness and
+  anomaly/visit supplier consistency. UI validation is feedback, not the data
+  integrity boundary.
+- Product import identity is `(supplier, product_code)`. Only a truly unassigned
+  product may be adopted by a new supplier; stage mismatch blocks apply and uses
+  the existing stage-change process.
+- Excel labels keep anomaly-date cohort state separate from `closed_at` period
+  activity. Chart renderer failures preserve workbook data but surface
+  `完成但有警告` with the exact missing-chart list.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import subprocess
@@ -12,6 +13,7 @@ from typing import TYPE_CHECKING
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
+TARGET_MANIFEST_PATH = REPO_ROOT / "scripts" / "qt_probe_targets.json"
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
@@ -38,6 +40,28 @@ def _ensure_repo_imports() -> None:
         path_text = str(path)
         if path_text not in sys.path:
             sys.path.insert(0, path_text)
+
+
+def _prepare_disposable_database() -> str:
+    """Route all probe initialization to a verified disposable snapshot."""
+    from database.backup import backup_sqlite_database
+
+    configured = os.environ.get("SQE_DB_PATH", "").strip()
+    disposable_required = os.environ.get(
+        "SQE_REQUIRE_DISPOSABLE_DB", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if configured and disposable_required:
+        return str(Path(configured).expanduser().resolve())
+    source = Path(configured).expanduser().resolve() if configured else (
+        REPO_ROOT / "data" / "sqe_v2.db"
+    ).resolve()
+    temp_dir = tempfile.TemporaryDirectory(prefix="sqe-qt-probe-")
+    atexit.register(temp_dir.cleanup)
+    destination = Path(temp_dir.name) / "sqe_v2.db"
+    backup_sqlite_database(source, destination)
+    os.environ["SQE_DB_PATH"] = str(destination)
+    os.environ["SQE_REQUIRE_DISPOSABLE_DB"] = "1"
+    return str(destination)
 
 
 def _prepare_native_qt_platform(*, allow_offscreen: bool) -> dict[str, str | bool]:
@@ -110,6 +134,8 @@ def _install_qss_warning_collector() -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    manifest = json.loads(TARGET_MANIFEST_PATH.read_text(encoding="utf-8"))
+    target_names = tuple(item["name"] for item in manifest["targets"])
     parser = argparse.ArgumentParser(
         description=(
             "Capture SQE DailyWork with a native Qt platform so CJK rendering can be "
@@ -134,18 +160,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--target",
-        choices=(
-            "main",
-            "form-density",
-            "combo-popups",
-            "stats-stress",
-            "ncr-stats",
-            "event-list",
-            "master-data",
-            "ncr-tracker",
-            "empty-states",
-            "pdf-export",
-        ),
+        choices=target_names,
         default="main",
         help="Which surface family to capture.",
     )
@@ -196,18 +211,39 @@ def _capture_widget(widget, output_path: Path, app: "QApplication") -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     widget.show()
     app.processEvents()
-    widget.grab().save(str(output_path))
+    _save_widget_capture(widget, output_path)
     widget.close()
     app.processEvents()
     return str(output_path)
 
 
+def _save_widget_capture(widget, output_path: Path) -> None:
+    """Save an opaque capture using the real application page background."""
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+
+    from ui.theme_tokens import TOKENS
+
+    captured = widget.grab()
+    canvas = QPixmap(captured.size())
+    canvas.setDevicePixelRatio(captured.devicePixelRatio())
+    canvas.fill(QColor(TOKENS["page_bg"]))
+    painter = QPainter(canvas)
+    painter.drawPixmap(0, 0, captured)
+    painter.end()
+    if not canvas.save(str(output_path)):
+        raise RuntimeError(f"Failed to save visual evidence: {output_path}")
+
+
 def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication") -> str:
     """Capture the real native calendar popup, including Windows palette/QSS."""
-    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtCore import QDate, QPoint, Qt
     from PySide6.QtTest import QTest
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    probe_date = QDate(2026, 7, 14)
+    date_edit.setDate(probe_date)
+    date_edit.calendarWidget().setSelectedDate(probe_date)
+    date_edit.calendarWidget().setCurrentPage(probe_date.year(), probe_date.month())
     dialog.show()
     app.processEvents()
     QTest.mouseClick(
@@ -215,18 +251,16 @@ def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication
         Qt.MouseButton.LeftButton,
         pos=QPoint(date_edit.width() - 10, date_edit.height() // 2),
     )
+    QTest.qWait(150)
     app.processEvents()
     calendar = date_edit.calendarWidget()
-    top_left = calendar.mapToGlobal(calendar.rect().topLeft())
-    pixmap = app.primaryScreen().grabWindow(
-        0,
-        top_left.x(),
-        top_left.y(),
-        calendar.width(),
-        calendar.height(),
-    )
-    pixmap.save(str(output_path))
-    QTest.keyClick(date_edit, Qt.Key.Key_Escape)
+    popup = calendar.window()
+    if not popup.isVisible():
+        raise RuntimeError(f"Calendar popup did not become visible: {date_edit.objectName()}")
+    pixmap = app.primaryScreen().grabWindow(int(popup.winId()))
+    if not pixmap.save(str(output_path)):
+        raise RuntimeError(f"Failed to save calendar evidence: {output_path}")
+    QTest.keyClick(popup, Qt.Key.Key_Escape)
     dialog.close()
     app.processEvents()
     return str(output_path)
@@ -234,20 +268,25 @@ def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication
 
 def _capture_combo_popup(dialog, combo, output_path: Path, app: "QApplication") -> str:
     """Capture a real native combo popup, which is a separate top-level window."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
     app.processEvents()
-    combo.showPopup()
-    app.processEvents()
-    popup = app.activePopupWidget() or combo.view()
-    top_left = popup.mapToGlobal(popup.rect().topLeft())
-    pixmap = app.primaryScreen().grabWindow(
-        0,
-        top_left.x(),
-        top_left.y(),
-        popup.width(),
-        popup.height(),
+    QTest.mouseClick(
+        combo,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(combo.width() - 10, combo.height() // 2),
     )
+    QTest.qWait(150)
+    app.processEvents()
+    popup = combo.view().window()
+    if not popup.isVisible():
+        raise RuntimeError(f"Combo popup did not become visible: {combo.objectName()}")
+    pixmap = app.primaryScreen().grabWindow(int(popup.winId()))
     pixmap.save(str(output_path))
     combo.hidePopup()
     dialog.close()
@@ -366,7 +405,7 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
                 scope_tab_bar.setCurrentIndex(index)
                 app.processEvents()
             target = _target_output_path(output, f"event-list-scope{index}")
-            widget.grab().save(str(target))
+            _save_widget_capture(widget, target)
             screenshots.append(str(target))
         widget.close()
         app.processEvents()
@@ -394,7 +433,7 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
             widget.tabs.setCurrentIndex(index)
             app.processEvents()
             target = _target_output_path(output, suffix)
-            widget.grab().save(str(target))
+            _save_widget_capture(widget, target)
             screenshots.append(str(target))
         widget.close()
         app.processEvents()
@@ -403,6 +442,8 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
 
 def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     import sqlite3
+
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
 
     from ncr.db.database import apply_schema
     from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
@@ -449,13 +490,17 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
         ]
         output.parent.mkdir(parents=True, exist_ok=True)
         for page, suffix in pages:
-            page.resize(*(size or (1180, 720)))
-            page.show()
+            host = QWidget()
+            host.setObjectName("AppRoot")
+            host_layout = QVBoxLayout(host)
+            host_layout.setContentsMargins(0, 0, 0, 0)
+            host_layout.addWidget(page)
+            host.resize(*(size or (1180, 720)))
+            host.show()
             app.processEvents()
             target = _target_output_path(output, suffix)
-            page.grab().save(str(target))
-            screenshots.append(str(target))
-            page.close()
+            screenshots.append(_capture_widget(host, target, app))
+            host.close()
             app.processEvents()
     finally:
         conn.close()
@@ -600,28 +645,66 @@ def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
     """Cover the supplier-event and NCR combo theme paths with real popups."""
     import sqlite3
 
-    from PySide6.QtWidgets import QComboBox, QDialog, QVBoxLayout
+    from PySide6.QtCore import QDate
 
     from database.connection import initialize_database
     from ncr.db.database import apply_schema
     from ncr.ui.defect_form import DefectFormWidget
+    from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
+    from ui.widgets.product_form_dialog import ProductFormDialog
+    from ui.widgets.stats_view_widget import StatsViewWidget
 
     initialize_database()
     screenshots: list[str] = []
 
-    anomaly_dialog = QDialog()
-    anomaly_dialog.setWindowTitle("共用供應商事件下拉選單")
-    anomaly_combo = QComboBox(anomaly_dialog)
-    anomaly_combo.addItems(
-        ["製程參數失控", "規範文件缺漏", "檢驗把關失靈", "設計匹配不良"]
-    )
-    QVBoxLayout(anomaly_dialog).addWidget(anomaly_combo)
-    anomaly_dialog.resize(420, 120)
+    anomaly_dialog = NewAnomalyDialog()
+    probe_date = QDate(2026, 7, 14)
+    anomaly_dialog.date_edit.setDate(probe_date)
+    anomaly_dialog.due_date_edit.setDate(probe_date.addDays(7))
+    anomaly_dialog._on_date_changed(probe_date)
     screenshots.append(
         _capture_combo_popup(
             anomaly_dialog,
-            anomaly_combo,
-            _target_output_path(output, "shared-theme-popup"),
+            anomaly_dialog.category_input,
+            _target_output_path(output, "anomaly-editable-popup"),
+            app,
+        )
+    )
+    screenshots.append(
+        _capture_date_popup(
+            anomaly_dialog,
+            anomaly_dialog.date_edit,
+            _target_output_path(output, "anomaly-calendar-popup"),
+            app,
+        )
+    )
+    screenshots.append(
+        _capture_widget(
+            anomaly_dialog,
+            _target_output_path(output, "anomaly-disabled-selected"),
+            app,
+        )
+    )
+
+    product_dialog = ProductFormDialog(
+        [{"id": "supplier-1", "supplier_name": "基礎資料供應商"}]
+    )
+    screenshots.append(
+        _capture_combo_popup(
+            product_dialog,
+            product_dialog.product_stage_combo,
+            _target_output_path(output, "master-product-stage-popup"),
+            app,
+        )
+    )
+
+    stats_widget = StatsViewWidget(lazy_load=True)
+    stats_widget.resize(1024, 680)
+    screenshots.append(
+        _capture_combo_popup(
+            stats_widget,
+            stats_widget.range_selectors.end_month,
+            _target_output_path(output, "stats-range-popup"),
             app,
         )
     )
@@ -746,7 +829,7 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
                     bar.setValue(target_value)
                 app.processEvents()
                 target = _target_output_path(output, suffix)
-                widget.grab().save(str(target))
+                _save_widget_capture(widget, target)
                 screenshots.append(str(target))
         finally:
             widget.close()
@@ -774,6 +857,7 @@ def _capture_ncr_stats(output: Path, app: "QApplication", size: tuple[int, int] 
     _MOCK_RETURN_SLIPS = [
         {"return_slip_type": "廠內退料", "case_count": 20, "total_qty": 60},
         {"return_slip_type": "託外退料", "case_count": 12, "total_qty": 36},
+        {"return_slip_type": "未註明", "case_count": 4, "total_qty": 9},
     ]
 
     from ui.widgets.ncr_stats_widget import NcrStatsWidget
@@ -803,7 +887,7 @@ def _capture_ncr_stats(output: Path, app: "QApplication", size: tuple[int, int] 
         app.processEvents()
         output.parent.mkdir(parents=True, exist_ok=True)
         target = _target_output_path(output, "ncr-stats")
-        widget.grab().save(str(target))
+        _save_widget_capture(widget, target)
         screenshots.append(str(target))
         widget.close()
         app.processEvents()
@@ -895,6 +979,7 @@ def main() -> int:
         os.environ["QT_SCALE_FACTOR"] = scale
 
     _ensure_repo_imports()
+    disposable_db = _prepare_disposable_database()
     platform_info = _prepare_native_qt_platform(
         allow_offscreen=bool(args.allow_offscreen)
     )
@@ -975,6 +1060,7 @@ def main() -> int:
         "qss_unknown_property_warnings": len(_QSS_WARNINGS),
         "visual_trustworthy": visual_trustworthy,
         "screenshot": screenshot_path,
+        "disposable_database": disposable_db,
     }
     if screenshots:
         result["screenshots"] = screenshots

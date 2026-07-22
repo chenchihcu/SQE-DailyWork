@@ -41,6 +41,7 @@ from ui.widgets.stats_dashboard_helpers import (
     range_display_text,
     range_iso_dates,
     render_chart_to_png,
+    missing_chart_labels,
 )
 from ui.widgets.ncr_stats_chart_mixin import (
     _NcrStatsChartMixin,
@@ -396,39 +397,48 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
             # 如果有數據，則在背景繪製圖表並 grab 儲存
             active_temp_paths = {}
+            requested_chart_keys = []
             if has_data:
                 # 1. Supplier chart
-                if top_suppliers and render_chart_to_png(
-                    lambda: self._build_horizontal_bar_chart(top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"]),
-                    temp_paths["supplier"],
-                ):
-                    active_temp_paths["supplier"] = temp_paths["supplier"]
+                if top_suppliers:
+                    requested_chart_keys.append("supplier")
+                    if render_chart_to_png(
+                        lambda: self._build_horizontal_bar_chart(top_suppliers, "supplier_name", "Top 5 不合格品供應商", PALETTE["info_chart"]),
+                        temp_paths["supplier"],
+                    ):
+                        active_temp_paths["supplier"] = temp_paths["supplier"]
 
                 # 2. Product chart
-                if top_products and render_chart_to_png(
-                    lambda: self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6"),
-                    temp_paths["product"],
-                ):
-                    active_temp_paths["product"] = temp_paths["product"]
+                if top_products:
+                    requested_chart_keys.append("product")
+                    if render_chart_to_png(
+                        lambda: self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6"),
+                        temp_paths["product"],
+                    ):
+                        active_temp_paths["product"] = temp_paths["product"]
 
                 # 3. Scrap/Rework chart
-                if scrap_rework and render_chart_to_png(
-                    lambda: self._build_donut_chart(scrap_rework, "disposition", "報廢 / 重工 比例佔比", {"報廢": _C_DANGER, "重工": _C_SUCCESS}),
-                    temp_paths["disposition"],
-                ):
-                    active_temp_paths["disposition"] = temp_paths["disposition"]
+                if scrap_rework:
+                    requested_chart_keys.append("disposition")
+                    if render_chart_to_png(
+                        lambda: self._build_donut_chart(scrap_rework, "disposition", "報廢 / 重工 比例佔比", {"報廢": _C_DANGER, "重工": _C_SUCCESS}),
+                        temp_paths["disposition"],
+                    ):
+                        active_temp_paths["disposition"] = temp_paths["disposition"]
 
                 # 4. Return slip chart
-                if return_slips and render_chart_to_png(
-                    lambda: self._build_donut_chart(
-                        return_slips,
-                        "return_slip_type",
-                        "退料來源比例佔比",
-                        {"廠內退料": _C_INFO, "託外退料": _C_PENDING, "未註明": _C_NA},
-                    ),
-                    temp_paths["return_slip"],
-                ):
-                    active_temp_paths["return_slip"] = temp_paths["return_slip"]
+                if return_slips:
+                    requested_chart_keys.append("return_slip")
+                    if render_chart_to_png(
+                        lambda: self._build_donut_chart(
+                            return_slips,
+                            "return_slip_type",
+                            "退料來源比例佔比",
+                            {"廠內退料": _C_INFO, "託外退料": _C_PENDING, "未註明": _C_NA},
+                        ),
+                        temp_paths["return_slip"],
+                    ):
+                        active_temp_paths["return_slip"] = temp_paths["return_slip"]
 
             # 呼叫匯出服務
             ok, msg = ncr_export_service.export_ncr_excel_report(
@@ -440,7 +450,26 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             )
 
             if ok:
-                QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+                missing_charts = missing_chart_labels(
+                    requested_chart_keys,
+                    active_temp_paths,
+                    {
+                        "supplier": "供應商 Top 5 圖",
+                        "product": "產品 Top 5 圖",
+                        "disposition": "報廢／重工比例圖",
+                        "return_slip": "退料來源比例圖",
+                    },
+                )
+                if missing_charts:
+                    QMessageBox.warning(
+                        self,
+                        "完成但有警告",
+                        "Excel 資料已匯出，但以下圖表未產生：\n- "
+                        + "\n- ".join(missing_charts)
+                        + f"\n\n{msg}",
+                    )
+                else:
+                    QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
 

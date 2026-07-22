@@ -9,14 +9,16 @@ silently regress.
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QLineEdit
 
-from database.connection import initialize_database
+from database import connection as database_connection
 from ui.widgets.common_widgets import DirtyTrackingMixin, set_field_invalid
 from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
@@ -29,7 +31,13 @@ from ui.widgets.supplier_contact_manager_dialog import SupplierContactManagerDia
 class InlineValidationAndDirtyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        initialize_database()
+        cls._database_temp_dir = tempfile.TemporaryDirectory()
+        cls._original_db_path = database_connection.DB_PATH
+        cls._original_legacy_db_path = database_connection.LEGACY_DB_PATH
+        temp_root = Path(cls._database_temp_dir.name)
+        database_connection.DB_PATH = temp_root / "sqe_v2.db"
+        database_connection.LEGACY_DB_PATH = temp_root / "sqe.db"
+        database_connection.initialize_database()
         cls.app = QApplication.instance() or QApplication([])
         DirtyTrackingMixin._confirm_discard = lambda self: True
 
@@ -37,6 +45,9 @@ class InlineValidationAndDirtyTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         if cls.app is not None:
             cls.app.quit()
+        database_connection.DB_PATH = cls._original_db_path
+        database_connection.LEGACY_DB_PATH = cls._original_legacy_db_path
+        cls._database_temp_dir.cleanup()
 
     def tearDown(self) -> None:
         self.app.processEvents()

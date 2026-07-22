@@ -177,6 +177,7 @@ class EventManageActionsTests(unittest.TestCase):
         detail = repository.get_anomaly_detail(self.conn, anomaly_id)
         self.assertIsNotNone(detail)
         self.assertEqual("2026-04-18", detail["anomaly_date"])
+        self.assertTrue(detail["anomaly_no"].startswith("20260418"))
         self.assertEqual(supplier_b, detail["supplier_id"])
         self.assertEqual("after update", detail["problem_desc"])
         self.assertEqual("CAT-A", detail["category"])

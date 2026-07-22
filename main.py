@@ -14,11 +14,6 @@ for _path in (_repo_root / "src", _repo_root):
     if _path_text not in sys.path:
         sys.path.insert(0, _path_text)
 
-from app_version import __version__
-from database.connection import initialize_database
-from ui.main_window import MainWindow
-from ui.theme import apply_app_theme
-
 # 載入 .env 環境變數 (若存在)
 try:
     from dotenv import load_dotenv
@@ -30,16 +25,10 @@ if load_dotenv is not None:
     if env_path.exists():
         load_dotenv(env_path)
 
-# 可透過環境變數覆蓋資料庫路徑
-_env_db_path = os.environ.get("SQE_DB_PATH", "").strip()
-if _env_db_path:
-    import database.connection as _conn_mod
-    _override_db = Path(_env_db_path).resolve()
-    _conn_mod.DB_PATH = _override_db
-    # 讓衍生的資料目錄與 legacy DB 路徑跟著覆蓋值走，否則 initialize_database()
-    # 會建立/尋找預設 repo data/ 目錄，導致覆蓋路徑的父目錄不會被自動建立。
-    _conn_mod.DATA_DIR = _override_db.parent
-    _conn_mod.LEGACY_DB_PATH = _override_db.parent / "sqe.db"
+from app_version import __version__
+from database.connection import initialize_database
+from ui.main_window import MainWindow
+from ui.theme import apply_app_theme
 
 # 可透過環境變數設定日誌層級
 _log_level = os.environ.get("SQE_LOG_LEVEL", "INFO").strip().upper()
@@ -59,13 +48,16 @@ _logger = logging.getLogger("SQE")
 
 def _qt_message_handler(msg_type: QtMsgType, context, message: str) -> None:
     """Qt 訊息處理 — 只記錄警告層級以上訊息。"""
-    if msg_type >= QtMsgType.Warning or "Unknown property" not in message:
+    if msg_type in {
+        QtMsgType.QtWarningMsg,
+        QtMsgType.QtCriticalMsg,
+        QtMsgType.QtFatalMsg,
+    }:
         level = {
-            QtMsgType.Debug: logging.DEBUG,
-            QtMsgType.Warning: logging.WARNING,
-            QtMsgType.Critical: logging.ERROR,
-            QtMsgType.Fatal: logging.CRITICAL,
-        }.get(msg_type, logging.INFO)
+            QtMsgType.QtWarningMsg: logging.WARNING,
+            QtMsgType.QtCriticalMsg: logging.ERROR,
+            QtMsgType.QtFatalMsg: logging.CRITICAL,
+        }[msg_type]
         _logger.log(level, "Qt: %s", message)
 
 

@@ -76,9 +76,12 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
 
+    @patch("services.event._query_service.get_anomaly_closure_activity_by_range")
     @patch("services.event._query_service.get_anomaly_category_pareto_by_range")
     @patch("services.event._query_service.list_events_by_range")
-    def test_events_report_export_success(self, mock_list_events, mock_pareto) -> None:
+    def test_events_report_export_success(
+        self, mock_list_events, mock_pareto, mock_closure_activity
+    ) -> None:
         # 柏拉圖表格與頁面圖表、嵌入 PNG 共用同一 SQL 來源(單一實作)
         mock_pareto.return_value = [
             {
@@ -89,6 +92,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "cumulative_percent": 100.0,
             }
         ]
+        mock_closure_activity.return_value = 7
         # Mock 範圍事件列表
         mock_list_events.return_value = [
             {
@@ -164,6 +168,12 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
 
             workbook = load_workbook(file_path)
             self.assertIn("異常類別柏拉圖", workbook.sheetnames)
+            report_sheet = workbook["統計報告"]
+            self.assertIn("期間新增異常", report_sheet["A5"].value)
+            self.assertIn("其中", report_sheet["E5"].value)
+            self.assertIn("目前結案率", report_sheet["F5"].value)
+            self.assertIn("依結案日期", report_sheet["G5"].value)
+            self.assertIn("7", report_sheet["G5"].value)
             sheet = workbook["異常類別柏拉圖"]
             self.assertEqual(
                 ["排名", "異常類別", "件數", "佔比(%)", "累積佔比(%)"],
