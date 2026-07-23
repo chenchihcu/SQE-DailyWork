@@ -30,8 +30,10 @@ from services import master_import_service
 from services.event import _product_service as event_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
+    SortableTableWidgetItem,
     apply_table_action_affordance,
     create_status_item,
+    preserve_table_sorting,
     safe_ui_operation,
     style_table,
     text_table_item,
@@ -194,24 +196,25 @@ class _MasterDataProductMixin:
         end = start + self._product_page_size
         page_rows = visible_rows[start:end]
 
-        self.product_table.setRowCount(0)
-        selected_row_index: int | None = None
-        for idx, row in enumerate(page_rows):
-            self.product_table.insertRow(idx)
-            status_text = "啟用" if row["is_active"] else "停用"
-            product_stage = normalize_product_stage_ui(row.get("product_stage"))
-            primary_supplier_text = row.get("supplier_name") or "（未指定）"
-            secondary_supplier_text = row.get("secondary_supplier_name") or "（未指定）"
-            self.product_table.setItem(idx, 0, QTableWidgetItem(row["product_code"]))
-            self.product_table.setItem(idx, 1, text_table_item(row["product_name"]))
-            self.product_table.setItem(idx, 2, QTableWidgetItem(product_stage))
-            self.product_table.setItem(idx, 3, text_table_item(primary_supplier_text))
-            self.product_table.setItem(idx, 4, text_table_item(secondary_supplier_text))
-            status_item = create_status_item(status_text)
-            self.product_table.setItem(idx, 5, status_item)
-            self.product_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
-            if row["id"] == selected_product_id:
-                selected_row_index = idx
+        with preserve_table_sorting(self.product_table):
+            self.product_table.setRowCount(0)
+            selected_row_index: int | None = None
+            for idx, row in enumerate(page_rows):
+                self.product_table.insertRow(idx)
+                status_text = "啟用" if row["is_active"] else "停用"
+                product_stage = normalize_product_stage_ui(row.get("product_stage"))
+                primary_supplier_text = row.get("supplier_name") or "（未指定）"
+                secondary_supplier_text = row.get("secondary_supplier_name") or "（未指定）"
+                self.product_table.setItem(idx, 0, SortableTableWidgetItem(row["product_code"], sort_key=str(row["product_code"] or "")))
+                self.product_table.setItem(idx, 1, text_table_item(row["product_name"]))
+                self.product_table.setItem(idx, 2, SortableTableWidgetItem(product_stage, sort_key=product_stage))
+                self.product_table.setItem(idx, 3, text_table_item(primary_supplier_text))
+                self.product_table.setItem(idx, 4, text_table_item(secondary_supplier_text))
+                status_item = create_status_item(status_text, sort_key=status_text)
+                self.product_table.setItem(idx, 5, status_item)
+                self.product_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
+                if row["id"] == selected_product_id:
+                    selected_row_index = idx
 
         self.product_pagination.set_state(
             total_items=total_items,

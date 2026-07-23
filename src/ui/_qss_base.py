@@ -134,6 +134,17 @@ def get_base_qss() -> str:
             color: {TOKENS["danger"]};
         }}
 
+        QLabel[role="messageText"][tone="success"] {{
+            background: {TOKENS["success_bg"]};
+            border: 1px solid {TOKENS["status_success_border"]};
+            color: {TOKENS["success"]};
+        }}
+
+        QFrame[role="separator"] {{
+            background: {TOKENS["border_soft"]};
+            border: none;
+        }}
+
         QLabel[role="counterText"] {{
             background: transparent;
             color: {TOKENS["text_muted"]};

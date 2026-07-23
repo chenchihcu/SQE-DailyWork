@@ -114,7 +114,6 @@ def build_event_pdf_html(
                 [
                     ("日期", detail.get("visit_date")),
                     ("供應商", detail.get("supplier_name")),
-                    ("訪廠人員", detail.get("visitor_name")),
                     ("品名", detail.get("product_name")),
                     ("階段", detail.get("product_stage")),
                     ("工單", detail.get("work_order_no")),

@@ -29,12 +29,17 @@ from ui.widgets.home_widget import HomeWidget
 from ui.widgets.pagination_bar import PaginationBar
 
 
-def _backlog_row(idx: int, *, supplier: str, status: str = "待處理") -> dict:
+def _backlog_row(idx: int, *, supplier: str, status: str = "待處理", responsible_person: str = "") -> dict:
     return {
         "event_id": f"evt-{idx}",
+        "ref_no": f"2026060100{idx}",
         "event_type": "ANOMALY",
         "event_date": f"2026-06-0{idx % 9 + 1}",
         "supplier_name": supplier,
+        "product_code": f"P00{idx}",
+        "product_name": f"產品名稱{idx}",
+        "quality_report_required": 1 if idx % 2 == 0 else 0,
+        "responsible_person": responsible_person,
         "content": f"待辦摘要 {idx}",
         "status": status,
     }
@@ -200,6 +205,43 @@ class HomeCockpitPanelTests(unittest.TestCase):
         try:
             self.assertFalse(widget._backlog_table.isVisible())
             self.assertTrue(widget._backlog_empty.isVisible())
+        finally:
+            widget.close()
+            self.app.processEvents()
+
+    @patch("services.event._query_service.list_events")
+    def test_backlog_table_columns_and_cell_rendering(self, mock_list) -> None:
+        rows = [_backlog_row(i, supplier=f"供應商{i}", responsible_person=f"工程師{i}") for i in range(2)]
+        mock_list.return_value = rows
+        widget = HomeWidget(self.host)
+        widget.show()
+        self.app.processEvents()
+        try:
+            table = widget._backlog_table
+            self.assertEqual(8, table.columnCount())
+            headers = [table.horizontalHeaderItem(c).text() for c in range(8)]
+            expected_headers = [
+                "異常單號",
+                "供應商名稱",
+                "產品料號",
+                "產品品名",
+                "品質異常單要求",
+                "責任人",
+                "問題/摘要",
+                "狀態",
+            ]
+            self.assertEqual(expected_headers, headers)
+
+            self.assertEqual("20260601000", table.item(0, 0).text())
+            self.assertEqual("供應商0", table.item(0, 1).text())
+            self.assertEqual("P000", table.item(0, 2).text())
+            self.assertEqual("產品名稱0", table.item(0, 3).text())
+            self.assertEqual("是", table.item(0, 4).text())
+            self.assertEqual("工程師0", table.item(0, 5).text())
+            self.assertEqual("待辦摘要 0", table.item(0, 6).text())
+            self.assertEqual("待處理", table.item(0, 7).text())
+
+            self.assertEqual("否", table.item(1, 4).text())
         finally:
             widget.close()
             self.app.processEvents()

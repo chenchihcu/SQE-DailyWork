@@ -87,6 +87,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             '已完成' AS status,
             '' AS category,
             '' AS improvement_desc,
+            v.visitor_name AS responsible_person,
             NULL AS closed_at,
             NULL AS quality_report_required
         FROM visits v

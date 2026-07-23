@@ -27,8 +27,10 @@ from PySide6.QtWidgets import (
 from services.event import _supplier_service as event_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
+    SortableTableWidgetItem,
     apply_table_action_affordance,
     create_status_item,
+    preserve_table_sorting,
     safe_ui_operation,
     style_table,
     text_table_item,
@@ -179,21 +181,23 @@ class _MasterDataSupplierMixin:
         end = start + self._supplier_page_size
         page_rows = visible_rows[start:end]
 
-        self.supplier_table.setRowCount(0)
-        selected_row_index: int | None = None
-        for idx, row in enumerate(page_rows):
-            self.supplier_table.insertRow(idx)
-            status_text = "啟用" if row["is_active"] else "停用"
-            self.supplier_table.setItem(idx, 0, text_table_item(row["supplier_name"], empty=""))
-            self.supplier_table.setItem(idx, 1, text_table_item(row.get("contact_name", ""), empty=""))
-            self.supplier_table.setItem(idx, 2, text_table_item(row.get("department", ""), empty=""))
-            self.supplier_table.setItem(idx, 3, text_table_item(row.get("contact_email", ""), empty=""))
-            self.supplier_table.setItem(idx, 4, QTableWidgetItem(row.get("phone", "")))
-            status_item = create_status_item(status_text)
-            self.supplier_table.setItem(idx, 5, status_item)
-            self.supplier_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
-            if row["id"] == selected_supplier_id:
-                selected_row_index = idx
+        with preserve_table_sorting(self.supplier_table):
+            self.supplier_table.setRowCount(0)
+            selected_row_index: int | None = None
+            for idx, row in enumerate(page_rows):
+                self.supplier_table.insertRow(idx)
+                status_text = "啟用" if row["is_active"] else "停用"
+                self.supplier_table.setItem(idx, 0, text_table_item(row["supplier_name"], empty=""))
+                self.supplier_table.setItem(idx, 1, text_table_item(row.get("contact_name", ""), empty=""))
+                self.supplier_table.setItem(idx, 2, text_table_item(row.get("department", ""), empty=""))
+                self.supplier_table.setItem(idx, 3, text_table_item(row.get("contact_email", ""), empty=""))
+                phone_str = str(row.get("phone", "") or "")
+                self.supplier_table.setItem(idx, 4, text_table_item(phone_str, empty=""))
+                status_item = create_status_item(status_text, sort_key=status_text)
+                self.supplier_table.setItem(idx, 5, status_item)
+                self.supplier_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
+                if row["id"] == selected_supplier_id:
+                    selected_row_index = idx
 
         self.supplier_pagination.set_state(
             total_items=total_items,

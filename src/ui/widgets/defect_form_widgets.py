@@ -77,6 +77,43 @@ TECH_TRANSFER_STATE_YES = "yes"
 TECH_TRANSFER_STATE_NO = "no"
 TECH_TRANSFER_STATE_NA = "na"
 
+VISIT_TIME_SLOT_OPTIONS = ["上午", "下午", "全天"]
+
+
+def create_status_pill(text: str, tone: str = "info") -> QLabel:
+    """Create a styled pill label for status indicator using design tokens."""
+    pill = QLabel(text)
+    pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    pill.setProperty("role", "statusBadge")
+    pill.setProperty("tone", tone)
+    return pill
+
+
+def get_due_date_status_tone(due_date_str: str, is_closed: bool = False) -> tuple[str, str]:
+    """Calculate status text and tone ('success', 'warning', 'danger', 'neutral') based on due date."""
+    if is_closed:
+        return ("已結案", "success")
+    if not due_date_str or not due_date_str.strip():
+        return ("待處理", "info")
+
+    try:
+        from PySide6.QtCore import QDate
+
+        parts = [int(p) for p in due_date_str.strip().replace("-", "/").split("/")]
+        due_qdate = QDate(parts[0], parts[1], parts[2])
+        today = QDate.currentDate()
+        days_left = today.daysTo(due_qdate)
+
+        if days_left < 0:
+            return (f"逾期 {abs(days_left)} 天", "danger")
+        elif days_left <= 3:
+            return (f"即將到期 ({days_left}天)", "warning")
+        else:
+            return (f"進行中 ({days_left}天)", "info")
+    except Exception:
+        return ("進行中", "info")
+
+
 
 # ── Shared Helper Functions ────────────────────────────────────────────────────
 
@@ -120,14 +157,19 @@ def style_dialog_buttons(buttons: QDialogButtonBox) -> QPushButton:
     return save_button
 
 
-def set_text_edit_visible_rows(editor: QTextEdit, rows: int) -> None:
-    line_height = editor.fontMetrics().lineSpacing()
-    document_margin = int(editor.document().documentMargin() * 2)
-    frame_height = editor.frameWidth() * 2
-    vertical_padding = 14
-    editor.setFixedHeight(
-        line_height * max(rows, 1) + vertical_padding + document_margin + frame_height
-    )
+def set_text_edit_visible_rows(editor: QWidget, rows: int) -> None:
+    if hasattr(editor, "document"):
+        line_height = editor.fontMetrics().lineSpacing()
+        document_margin = int(editor.document().documentMargin() * 2)
+        frame_height = editor.frameWidth() * 2
+        vertical_padding = 14
+        editor.setFixedHeight(
+            line_height * max(rows, 1) + vertical_padding + document_margin + frame_height
+        )
+    else:
+        # Custom widgets such as BulletListWidget
+        editor.setFixedHeight(22 * max(rows, 1) + 20)
+
 
 
 def apply_dialog_layout(

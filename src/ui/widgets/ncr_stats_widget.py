@@ -233,7 +233,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         # 2. Top 5 產品名稱 (水平條形圖)
         product_view = self._build_horizontal_bar_chart(
-            top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6"
+            top_products, "product_name", "Top 5 不合格品產品名稱", PALETTE["accent_cyan"]
         )
         self.grid_layout.addWidget(product_view, 0, 1)
 
@@ -412,7 +412,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 if top_products:
                     requested_chart_keys.append("product")
                     if render_chart_to_png(
-                        lambda: self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", "#8B5CF6"),
+                        lambda: self._build_horizontal_bar_chart(top_products, "product_name", "Top 5 不合格品產品名稱", PALETTE["accent_cyan"]),
                         temp_paths["product"],
                     ):
                         active_temp_paths["product"] = temp_paths["product"]

@@ -345,6 +345,12 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
             border: 1px solid {TOKENS["status_pending_border"]};
         }}
 
+        QLabel[role="statusBadge"][tone="warning"] {{
+            background: {TOKENS["status_pending_bg"]};
+            color: {TOKENS["status_pending_fg"]};
+            border: 1px solid {TOKENS["status_pending_border"]};
+        }}
+
         QLabel[role="statusBadge"][tone="danger"] {{
             background: {TOKENS["status_danger_bg"]};
             color: {TOKENS["status_danger_fg"]};

@@ -127,7 +127,8 @@ def get_controls_qss() -> str:
         }}
 
         QPushButton[variant="primary"],
-        QPushButton[variant="toolbarPrimary"] {{
+        QPushButton[variant="toolbarPrimary"],
+        QPushButton[buttonRole="primary"] {{
             min-height: {TOOLBAR_CONTROL_MIN_HEIGHT}px;
             padding: {TOOLBAR_BUTTON_PADDING_VERTICAL}px {TOOLBAR_PRIMARY_PADDING_HORIZONTAL}px;
             border: 1px solid {TOKENS["primary_btn"]};
@@ -137,13 +138,17 @@ def get_controls_qss() -> str:
         }}
 
         QPushButton[variant="primary"]:hover,
-        QPushButton[variant="toolbarPrimary"]:hover {{
+        QPushButton[variant="toolbarPrimary"]:hover,
+        QPushButton[buttonRole="primary"]:hover {{
             background: {TOKENS["primary_btn_hover"]};
             border-color: {TOKENS["primary_btn_hover"]};
         }}
 
         QPushButton[variant="secondary"],
-        QPushButton[variant="toolbarSecondary"] {{
+        QPushButton[variant="toolbarSecondary"],
+        QPushButton[buttonRole="secondary"],
+        QPushButton[buttonRole="reset"],
+        QPushButton[buttonRole="cancel"] {{
             min-height: {TOOLBAR_CONTROL_MIN_HEIGHT}px;
             padding: {BUTTON_SECONDARY_PADDING_VERTICAL}px {BUTTON_SECONDARY_PADDING_HORIZONTAL}px;
             border: 1px solid {TOKENS["border"]};
@@ -153,7 +158,10 @@ def get_controls_qss() -> str:
         }}
 
         QPushButton[variant="secondary"]:hover,
-        QPushButton[variant="toolbarSecondary"]:hover {{
+        QPushButton[variant="toolbarSecondary"]:hover,
+        QPushButton[buttonRole="secondary"]:hover,
+        QPushButton[buttonRole="reset"]:hover,
+        QPushButton[buttonRole="cancel"]:hover {{
             background: {TOKENS["surface_hover"]};
             color: {TOKENS["text_primary"]};
         }}
@@ -279,8 +287,47 @@ def get_controls_qss() -> str:
         QPushButton[variant="secondary"]:focus,
         QPushButton[variant="toolbarSecondary"]:focus,
         QPushButton[variant="toolbarGhost"]:focus,
-        QPushButton[variant="danger"]:focus {{
+        QPushButton[variant="danger"]:focus,
+        QPushButton[variant="dangerOutline"]:focus,
+        QPushButton[variant="dashedPrimary"]:focus {{
             border: 2px solid {TOKENS["focus_ring"]};
+        }}
+
+        QPushButton[variant="dangerOutline"] {{
+            background: transparent;
+            border: 1px solid {TOKENS["danger_border"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+            color: {TOKENS["danger"]};
+            padding: 2px 6px;
+            font-size: {TYPOGRAPHY["caption"]}px;
+            font-weight: 700;
+        }}
+
+        QPushButton[variant="dangerOutline"]:hover {{
+            background: {TOKENS["danger_hover"]};
+            border-color: {TOKENS["danger_border"]};
+            color: {TOKENS["danger"]};
+        }}
+
+        QPushButton[variant="dashedPrimary"] {{
+            background-color: {TOKENS["subtle_bg"]};
+            color: {TOKENS["brand_primary"]};
+            border: 1px dashed {TOKENS["border"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+            padding: 6px 12px;
+            font-size: {TYPOGRAPHY["body_small"]}px;
+            font-weight: 700;
+        }}
+
+        QPushButton[variant="dashedPrimary"]:hover {{
+            background-color: {TOKENS["primary_faint"]};
+            color: {TOKENS["primary_btn_hover"]};
+            border-color: {TOKENS["focus_ring"]};
+        }}
+
+        QLabel[uiRole="bulletIndexLabel"] {{
+            font-weight: 700;
+            color: {TOKENS["text_muted"]};
         }}
 
         QPushButton[role="pageBtn"] {{

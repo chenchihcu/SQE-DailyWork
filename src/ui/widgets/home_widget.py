@@ -34,9 +34,12 @@ from ui.layout_constants import (
 from ui.widgets.common_widgets import (
     BrandDivider,
     EmptyStateWidget,
+    SortableTableWidgetItem,
     apply_table_action_affordance,
     create_status_item,
+    preserve_table_sorting,
     style_table,
+    text_table_item,
 )
 
 
@@ -220,23 +223,24 @@ class HomeWidget(QWidget):
         self._backlog_table.setVisible(has_rows)
         self._backlog_empty.setVisible(not has_rows)
 
-        self._backlog_table.setRowCount(0)
-        for idx, row in enumerate(rows):
-            self._backlog_table.insertRow(idx)
-            no_val = row.get("ref_no") or row.get("event_date") or "—"
-            no_item = QTableWidgetItem(str(no_val))
-            no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-            self._backlog_table.setItem(idx, 0, no_item)
-            full_name = str(row.get("supplier_name") or "—")
-            name_item = QTableWidgetItem(full_name)
-            name_item.setToolTip(full_name)
-            self._backlog_table.setItem(idx, 1, name_item)
-            self._backlog_table.setItem(
-                idx, 2, QTableWidgetItem(str(row.get("content") or "—"))
-            )
-            self._backlog_table.setItem(
-                idx, 3, create_status_item(str(row.get("status") or "待處理"))
-            )
+        with preserve_table_sorting(self._backlog_table):
+            self._backlog_table.setRowCount(0)
+            for idx, row in enumerate(rows):
+                self._backlog_table.insertRow(idx)
+                no_val = row.get("ref_no") or row.get("event_date") or "—"
+                no_item = SortableTableWidgetItem(str(no_val), sort_key=str(no_val))
+                no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+                self._backlog_table.setItem(idx, 0, no_item)
+                full_name = str(row.get("supplier_name") or "—")
+                name_item = text_table_item(full_name)
+                name_item.setToolTip(full_name)
+                self._backlog_table.setItem(idx, 1, name_item)
+                content_str = str(row.get("content") or "—")
+                self._backlog_table.setItem(idx, 2, text_table_item(content_str))
+                status_str = str(row.get("status") or "待處理")
+                self._backlog_table.setItem(
+                    idx, 3, create_status_item(status_str, sort_key=status_str)
+                )
 
         # Cap supplier column so very long names don't crowd the problem/summary column.
         actual_w = self._backlog_table.horizontalHeader().sectionSize(1)

@@ -4065,8 +4065,13 @@ def list_events(
             anomaly_sql += " AND a.due_date <> '' AND a.due_date < date('now', 'localtime')"
 
         if keyword:
-            anomaly_sql += " AND lower(s.supplier_name) LIKE ?"
-            anomaly_params.append(f"%{keyword}%")
+            kw = f"%{keyword.lower()}%"
+            if keyword.strip() == "未指定":
+                anomaly_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(a.responsible_person) LIKE ? OR TRIM(COALESCE(a.responsible_person, '')) = '')"
+                anomaly_params.extend([kw, kw])
+            else:
+                anomaly_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(a.responsible_person) LIKE ?)"
+                anomaly_params.extend([kw, kw])
         anomaly_sql += anomaly_period_sql
         anomaly_params.extend(anomaly_period_params)
 
@@ -4097,6 +4102,7 @@ def list_events(
                 0 AS batch_qty,
                 '' AS improvement_desc,
                 '' AS pending_items,
+                v.visitor_name AS responsible_person,
                 NULL AS closed_at,
                 NULL AS quality_report_required
             FROM visits v
@@ -4125,8 +4131,13 @@ def list_events(
             visit_sql += " AND v.status = ?"
             visit_params.append(status)
         if keyword:
-            visit_sql += " AND lower(s.supplier_name) LIKE ?"
-            visit_params.append(f"%{keyword}%")
+            kw = f"%{keyword.lower()}%"
+            if keyword.strip() == "未指定":
+                visit_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(v.visitor_name) LIKE ? OR TRIM(COALESCE(v.visitor_name, '')) = '')"
+                visit_params.extend([kw, kw])
+            else:
+                visit_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(v.visitor_name) LIKE ?)"
+                visit_params.extend([kw, kw])
         visit_sql += visit_period_sql
         visit_params.extend(visit_period_params)
         for row in conn.execute(visit_sql, visit_params).fetchall():

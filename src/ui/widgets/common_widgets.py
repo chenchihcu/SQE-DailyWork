@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from collections.abc import Mapping
-from typing import TypeVar
+from contextlib import contextmanager
+from typing import Any, TypeVar
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
@@ -137,6 +138,78 @@ def apply_clickable_affordance(
     return widget
 
 
+class SortableTableWidgetItem(QTableWidgetItem):
+    """QTableWidgetItem subclass supporting type-aware custom sort keys.
+
+    Overrides __lt__ to handle numeric values, dates, and explicit sort keys safely,
+    avoiding TypeError crashes when ItemDataRole.UserRole stores dict payloads.
+    """
+
+    def __init__(self, text: Any, sort_key: Any = None) -> None:
+        super().__init__(str(text if text is not None else ""))
+        self._sort_key = sort_key
+
+    def set_sort_key(self, sort_key: Any) -> None:
+        self._sort_key = sort_key
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        if not isinstance(other, QTableWidgetItem):
+            return super().__lt__(other)
+
+        my_key = getattr(self, "_sort_key", None)
+        other_key = getattr(other, "_sort_key", None)
+
+        if my_key is not None and other_key is not None:
+            if type(my_key) is type(other_key):
+                try:
+                    return my_key < other_key
+                except TypeError:
+                    pass
+            return str(my_key) < str(other_key)
+        elif my_key is not None:
+            return True
+        elif other_key is not None:
+            return False
+
+        t1 = self.text().strip()
+        t2 = other.text().strip()
+
+        # Handle placeholders (—, -, etc.) putting them after valid values when ascending
+        empty_symbols = ("—", "-", "", "無", "未指定")
+        if t1 in empty_symbols and t2 not in empty_symbols:
+            return False
+        if t2 in empty_symbols and t1 not in empty_symbols:
+            return True
+
+        if t1.isdigit() and t2.isdigit():
+            return int(t1) < int(t2)
+        try:
+            f1, f2 = float(t1), float(t2)
+            return f1 < f2
+        except ValueError:
+            pass
+
+        return t1 < t2
+
+
+@contextmanager
+def preserve_table_sorting(table: QTableWidget):
+    """Context manager that pauses table sorting during row population and restores sort state afterwards."""
+    header = table.horizontalHeader()
+    current_col = header.sortIndicatorSection()
+    current_order = header.sortIndicatorOrder()
+    is_sorting = table.isSortingEnabled()
+
+    table.setSortingEnabled(False)
+    try:
+        yield
+    finally:
+        if is_sorting:
+            table.setSortingEnabled(True)
+            if 0 <= current_col < table.columnCount():
+                table.sortByColumn(current_col, current_order)
+
+
 def apply_table_action_affordance(table: QTableWidget, tooltip: str) -> None:
     table.setMouseTracking(True)
     table.setToolTip(tooltip)
@@ -146,7 +219,7 @@ def apply_table_action_affordance(table: QTableWidget, tooltip: str) -> None:
     apply_clickable_affordance(viewport, tooltip=tooltip, status_tip=tooltip)
 
 
-def style_table(table: QTableWidget, *, single_selection: bool = True) -> None:
+def style_table(table: QTableWidget, *, single_selection: bool = True, enable_sorting: bool = True) -> None:
     table.setAlternatingRowColors(True)
     table.setShowGrid(True)
     table.verticalHeader().setVisible(False)
@@ -157,6 +230,9 @@ def style_table(table: QTableWidget, *, single_selection: bool = True) -> None:
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
     align_table_header_left(table)
     table.horizontalHeader().setStretchLastSection(False)
+    if enable_sorting:
+        table.setSortingEnabled(True)
+        table.horizontalHeader().setSortIndicatorShown(True)
 
 
 def align_table_header_left(table: QTableWidget) -> None:
@@ -168,15 +244,14 @@ def align_table_header_left(table: QTableWidget) -> None:
             header_item.setTextAlignment(alignment)
 
 
-def create_status_item(status: str) -> QTableWidgetItem:
+def create_status_item(status: str, sort_key: Any = None) -> SortableTableWidgetItem:
     text = str(status or "").strip() or EMPTY_DISPLAY
     palette = get_status_palette(text)
-    item = QTableWidgetItem(text)
+    item = SortableTableWidgetItem(text, sort_key=sort_key)
     item.setForeground(QBrush(QColor(palette.foreground)))
     item.setBackground(QBrush(QColor(palette.background)))
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     return item
-
 
 
 class RequiredFieldLabel(QLabel):
@@ -234,14 +309,14 @@ def make_inline_error_label() -> QLabel:
     return label
 
 
-def text_table_item(value, *, empty: str = EMPTY_DISPLAY) -> QTableWidgetItem:
+def text_table_item(value, *, empty: str = EMPTY_DISPLAY, sort_key: Any = None) -> SortableTableWidgetItem:
     """Table cell whose tooltip shows the full CJK text when the column elides it.
 
     Long Traditional-Chinese names/contents must not be silently truncated
     (ui-ux-universal §6); the tooltip restores the full value on hover.
     """
     text = str(value or "").strip() or empty
-    item = QTableWidgetItem(text)
+    item = SortableTableWidgetItem(text, sort_key=sort_key)
     item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     if text and text != empty:
         item.setToolTip(text)

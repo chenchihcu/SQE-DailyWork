@@ -88,12 +88,11 @@ from ncr.ui.ui_style import (
     STATUS_TIMEOUT_PERSIST,
     STATUS_TIMEOUT_SUCCESS,
     add_labeled_field,
-    apply_button_icon,
     apply_form_inputs,
     create_form_grid,
     create_page_shell,
     create_section_card,
-    create_section_title_with_icon,
+    create_section_title,
     fit_window_to_available_screen,
     make_hint_label,
     make_notice_label,
@@ -177,7 +176,7 @@ class QuickProductCreateDialog(QDialog):
         add_labeled_field(form_grid, 1, LABEL_PRODUCT_NAME, self.product_name_input)
         layout.addLayout(form_grid)
 
-        self.feedback_label = make_notice_label("", role="warningHint")
+        self.feedback_label = make_notice_label("", role="messageText")
         layout.addWidget(self.feedback_label)
 
         actions = QHBoxLayout()
@@ -188,8 +187,6 @@ class QuickProductCreateDialog(QDialog):
         self.save_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         set_button_role(self.cancel_button, "secondary")
         set_button_role(self.save_button, "primary")
-        apply_button_icon(self.cancel_button, "cancel")
-        apply_button_icon(self.save_button, "save")
         self.cancel_button.clicked.connect(self.reject)
         self.save_button.clicked.connect(self.create_product)
         actions.addWidget(self.save_button)
@@ -301,7 +298,7 @@ class DefectFieldsWidget(QWidget):
         self.quick_add_product_btn.setAccessibleName("快速建立產品名稱")
         self.quick_add_product_btn.setVisible(False)
         self.quick_add_product_btn.setMinimumWidth(NCR_QUICK_ADD_BUTTON_MIN_WIDTH)
-        set_button_role(self.quick_add_product_btn, "utility")
+        set_button_role(self.quick_add_product_btn, "secondary")
         self.quick_add_product_btn.clicked.connect(self.open_quick_product_create_dialog)
 
         self.qty_spin = QSpinBox()
@@ -365,6 +362,7 @@ class DefectFieldsWidget(QWidget):
         layout.setSpacing(NCR_SECTION_SPACING)
 
         # 1. 基礎資訊（3 欄佈局：密集排版以省高度，2 欄與 3 欄混排）
+        layout.addWidget(create_section_title("基礎資訊"))
         form_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
 
         # Row 0: 發生日期 / 責任
@@ -435,24 +433,21 @@ class DefectFieldsWidget(QWidget):
 
         layout.addLayout(form_grid)
 
-        self.supplier_hint_label = make_notice_label("", role="warningHint")
+        self.supplier_hint_label = make_notice_label("", role="messageText")
         layout.addWidget(self.supplier_hint_label)
 
         # 分隔線或間距也可以在此加
         layout.addSpacing(10)
 
         # 2. 不良現象紀錄
-        layout.addWidget(
-            create_section_title_with_icon(
-                LABEL_DEFECT_DESC, "section_description", required=True
-            )
-        )
+        layout.addWidget(create_section_title(LABEL_DEFECT_DESC, required=True))
 
         layout.addWidget(self.defect_desc_input)
 
         layout.addSpacing(10)
 
         # 3. 處理狀態（3 欄單列佈局）
+        layout.addWidget(create_section_title("處理狀態"))
         handle_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(
             handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo,
@@ -921,9 +916,6 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         set_button_role(self.reset_button, "reset")
         set_button_role(self.clear_button, "secondary")
         set_button_role(self.save_button, "primary")
-        apply_button_icon(self.reset_button, "reset")
-        apply_button_icon(self.clear_button, "clear")
-        apply_button_icon(self.save_button, "save")
         self.save_button.clicked.connect(self.save_record)
         self.clear_button.clicked.connect(self.clear_form)
         self.reset_button.clicked.connect(self.reset_form)
@@ -933,12 +925,12 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         toolbar.addWidget(self.save_button)
         main_card_layout.addLayout(toolbar)
 
-        self.feedback_label = make_notice_label("")
+        self.feedback_label = make_notice_label("", role="messageText")
         main_card_layout.addWidget(self.feedback_label)
 
         # Divider
         line = QFrame()
-        line.setProperty("uiRole", "divider")
+        line.setProperty("role", "separator")
         line.setFixedHeight(1)
         main_card_layout.addWidget(line)
 
@@ -968,7 +960,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self._mark_dirty()
         self._show_feedback(
             f"已建立產品 {item_no} / {product_name}，可繼續完成不良品登錄。",
-            role="successHint",
+            tone="success",
         )
         self.data_changed.emit()
         self.status_message.emit("快速產品已建立。", STATUS_TIMEOUT_SUCCESS)
@@ -982,8 +974,12 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
     def has_unsaved_changes(self) -> bool:
         return self._is_dirty
 
-    def _show_feedback(self, message: str, *, role: str = "notice", visible: bool = True) -> None:
-        self.feedback_label.setProperty("uiRole", role)
+    def _show_feedback(self, message: str, *, tone: str | None = None, visible: bool = True) -> None:
+        # role="messageText" is the shared inline-feedback style app-wide (see
+        # ui.widgets.common_widgets.make_inline_error_label / new_anomaly_dialog.py);
+        # tone selects the warning/danger/success color variant defined in _qss_base.py.
+        self.feedback_label.setProperty("role", "messageText")
+        self.feedback_label.setProperty("tone", tone)
         self.feedback_label.setText(message)
         self.feedback_label.style().unpolish(self.feedback_label)
         self.feedback_label.style().polish(self.feedback_label)
@@ -1054,7 +1050,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
             return True
         if self.show_popups:
             QMessageBox.warning(self, "欄位驗證", message)
-        self._show_feedback(MSG_SAVE_FAILED.format(message), role="warningHint")
+        self._show_feedback(MSG_SAVE_FAILED.format(message), tone="warning")
         self.status_message.emit(MSG_SAVE_FAILED.format(message), STATUS_TIMEOUT_ERROR)
         return False
 
@@ -1064,7 +1060,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         if not self._validate_item_no_product_mapping():
             return False
         self._set_save_busy_state(True)
-        self._show_feedback(MSG_SAVING, role="notice")
+        self._show_feedback(MSG_SAVING)
         self.status_message.emit(MSG_SAVING, STATUS_TIMEOUT_PERSIST)
         defect_no, save_error = _run_defect_save(
             lambda: defect_service.create_defect(
@@ -1076,7 +1072,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
             if self.show_popups:
                 show = QMessageBox.warning if severity == "warning" else QMessageBox.critical
                 show(self, title, str(exc))
-            self._show_feedback(MSG_SAVE_FAILED.format(exc), role="warningHint")
+            self._show_feedback(MSG_SAVE_FAILED.format(exc), tone="warning")
             self.status_message.emit(MSG_SAVE_FAILED.format(exc), STATUS_TIMEOUT_ERROR)
             self._set_save_busy_state(False)
             return False
@@ -1084,7 +1080,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         # Success feedback uses inline label + status bar; modal popup is redundant
         # (and prior behavior was triple-channel — see UX consistency audit C4).
         self._prepare_next_entry_after_save()
-        self._show_feedback(MSG_SAVE_SUCCESS.format(defect_no), role="successHint")
+        self._show_feedback(MSG_SAVE_SUCCESS.format(defect_no), tone="success")
         self.saved.emit()
         self.data_changed.emit()
         self.status_message.emit(MSG_SAVE_SUCCESS.format(defect_no), STATUS_TIMEOUT_SUCCESS)
@@ -1115,7 +1111,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
             self.fields_widget.refresh_supplier_options()
             self._track_changes = True
             self._mark_clean()
-            self._show_feedback("未儲存變更已捨棄。", role="warningHint")
+            self._show_feedback("未儲存變更已捨棄。", tone="warning")
             self.status_message.emit("未儲存變更已捨棄。", STATUS_TIMEOUT_SUCCESS)
             return True
         return self.save_record()
@@ -1152,7 +1148,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
 
         # Record context
         self.info_label = QLabel()
-        self.info_label.setProperty("uiRole", "pageSubtitle")
+        self.info_label.setProperty("role", "helperText")
         self.info_label.setWordWrap(True)
 
         main_card_layout.addWidget(self.info_label)
@@ -1173,7 +1169,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
 
         # Bottom Buttons (Inside card)
         line2 = QFrame()
-        line2.setProperty("uiRole", "divider")
+        line2.setProperty("role", "separator")
         line2.setFixedHeight(1)
         main_card_layout.addWidget(line2)
 
@@ -1187,8 +1183,6 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
         self.cancel_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         set_button_role(self.save_button, "primary")
         set_button_role(self.cancel_button, "secondary")
-        apply_button_icon(self.save_button, "edit_save")
-        apply_button_icon(self.cancel_button, "cancel")
 
         self.save_button.clicked.connect(self.save_changes)
         self.cancel_button.clicked.connect(self.reject)

@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -14,12 +14,10 @@ from PySide6.QtWidgets import (
     QDateEdit,
     QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -40,7 +38,6 @@ from ui.status_colors import get_status_tone
 from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
 from ui.layout_constants import (
     HERO_BANNER_MARGINS,
-    INLINE_SPACING,
     NCR_PAGE_MARGIN,
     NCR_SECTION_SPACING,
     NCR_FIELD_SPACING_X,
@@ -176,20 +173,6 @@ FORM_COMPACT_FIELD_MIN_WIDTH = 120
 FORM_FIELD_MAX_WIDTH = 400
 DATE_ICON_PATH = Path(__file__).resolve().parent / "assets" / "calendar.svg"
 
-ICON_PIXMAP_NAMES: dict[str, str] = {
-    "save": "SP_DialogSaveButton",
-    "clear": "SP_DialogResetButton",
-    "reset": "SP_BrowserReload",
-    "search": "SP_FileDialogStart",
-    "export": "SP_DialogOpenButton",
-    "delete": "SP_TrashIcon",
-    "cancel": "SP_DialogCancelButton",
-    "edit_save": "SP_DialogApplyButton",
-    "section_description": "SP_MessageBoxInformation",
-    "sync": "SP_ArrowDown",
-    "import": "SP_DialogOpenButton",
-}
-
 
 def stylesheet_url(path: Path) -> str:
     return path.resolve().as_posix()
@@ -263,52 +246,16 @@ def set_button_role(button: QPushButton, role: str) -> None:
     button.style().polish(button)
 
 
-def _resolve_standard_pixmap(icon_key: str | None) -> QStyle.StandardPixmap:
-    if not icon_key:
-        return QStyle.StandardPixmap.SP_FileIcon
-    if hasattr(QStyle.StandardPixmap, icon_key):
-        return getattr(QStyle.StandardPixmap, icon_key)
-    enum_name = ICON_PIXMAP_NAMES.get(icon_key, "SP_FileIcon")
-    return getattr(QStyle.StandardPixmap, enum_name, QStyle.StandardPixmap.SP_FileIcon)
-
-
-def standard_icon(icon_key: str | None) -> QIcon:
-    app = QApplication.instance()
-    style = app.style() if isinstance(app, QApplication) else QApplication.style()
-    if style is None:
-        return QIcon()
-    return style.standardIcon(_resolve_standard_pixmap(icon_key))
-
-
-def apply_button_icon(button: QPushButton, icon_key: str) -> None:
-    icon = standard_icon(icon_key)
-    if not icon.isNull():
-        button.setIcon(icon)
-
-
-def create_section_title_with_icon(title: str, icon_key: str, *, required: bool = False) -> QWidget:
-    title_host = QWidget()
-    row = QHBoxLayout(title_host)
-    row.setContentsMargins(0, 0, 0, 0)
-    row.setSpacing(INLINE_SPACING)
-
-    icon_label = QLabel()
-    icon_label.setObjectName("sectionIconLabel")
-    icon_label.setFixedWidth(20)
-    icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    icon = standard_icon(icon_key)
-    if not icon.isNull():
-        icon_label.setPixmap(icon.pixmap(18, 18))
-
+def create_section_title(title: str, *, required: bool = False) -> QLabel:
+    """Plain bold section title -- no icon, matching the supplier-event side's
+    convention (e.g. new_anomaly_dialog.py's 基本資訊/問題描述 titles)."""
     title_label = QLabel(title)
-    title_label.setProperty("uiRole", "sectionTitle")
+    title_label.setProperty("role", "sectionTitle")
     if required:
         title_label.setProperty("required", True)
         title_label.setTextFormat(Qt.TextFormat.RichText)
         title_label.setText(f'{title}&nbsp;<span style="color:{COLOR_DANGER_TEXT}">*</span>')
-    row.addWidget(icon_label, 0)
-    row.addWidget(title_label, 1)
-    return title_host
+    return title_label
 
 
 class LeftAlignDelegate(QStyledItemDelegate):
@@ -379,15 +326,15 @@ def create_page_shell(
 
     if show_header:
         header_card = QFrame()
-        header_card.setProperty("uiRole", "pageCard")
+        header_card.setProperty("role", "panel")
         header_layout = QVBoxLayout(header_card)
         header_layout.setContentsMargins(*HERO_BANNER_MARGINS)
         header_layout.setSpacing(6)
 
         title_label = QLabel(title)
-        title_label.setProperty("uiRole", "pageTitle")
+        title_label.setProperty("role", "pageTitle")
         subtitle_label = QLabel(subtitle)
-        subtitle_label.setProperty("uiRole", "pageSubtitle")
+        subtitle_label.setProperty("role", "helperText")
         subtitle_label.setWordWrap(True)
 
         header_layout.addWidget(title_label)
@@ -409,19 +356,19 @@ def create_section_card(
     title: str | None = None, subtitle: str | None = None
 ) -> tuple[QFrame, QVBoxLayout]:
     card = QFrame()
-    card.setProperty("uiRole", "sectionCard")
+    card.setProperty("role", "panel")
     layout = QVBoxLayout(card)
     layout.setContentsMargins(22, 20, 22, 20)
     layout.setSpacing(16)
 
     if title:
         title_label = QLabel(title)
-        title_label.setProperty("uiRole", "sectionTitle")
+        title_label.setProperty("role", "sectionTitle")
         layout.addWidget(title_label)
 
     if subtitle:
         subtitle_label = QLabel(subtitle)
-        subtitle_label.setProperty("uiRole", "sectionSubtitle")
+        subtitle_label.setProperty("role", "helperText")
         subtitle_label.setWordWrap(True)
         layout.addWidget(subtitle_label)
 
@@ -457,8 +404,7 @@ def add_labeled_field(
     required: bool = False,
 ) -> QLabel:
     label = QLabel(label_text)
-    label.setProperty("uiRole", "fieldLabel")
-    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     if label_width_override is not None:
         target_width = label_width_override
     else:
@@ -466,8 +412,8 @@ def add_labeled_field(
         target_width = max(label_min_width, dynamic_width)
     if required:
         # Unify the required marker with the main app's red asterisk (ui-ux-universal §2).
-        # NCR labels carry uiRole="fieldLabel"; render the asterisk inline via RichText using
-        # the shared danger token so we drop the tooltip-only "必填欄位" convention.
+        # Render the asterisk inline via RichText using the shared danger token so we
+        # drop the tooltip-only "必填欄位" convention.
         # setProperty("required", True) keeps it assertable by tests.
         label.setProperty("required", True)
         label.setTextFormat(Qt.TextFormat.RichText)
@@ -480,17 +426,17 @@ def add_labeled_field(
     return label
 
 
-def make_notice_label(text: str, role: str = "notice") -> QLabel:
+def make_notice_label(text: str, role: str = "messageText") -> QLabel:
     label = QLabel(text)
-    label.setProperty("uiRole", role)
+    label.setProperty("role", role)
     label.setWordWrap(True)
     label.hide()
     return label
 
 
-def make_hint_label(text: str, role: str = "hint") -> QLabel:
+def make_hint_label(text: str, role: str = "helperText") -> QLabel:
     label = QLabel(text)
-    label.setProperty("uiRole", role)
+    label.setProperty("role", role)
     label.setWordWrap(True)
     return label
 
@@ -507,7 +453,8 @@ def style_table(table: QTableWidget) -> None:
     table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
     table.horizontalHeader().setMinimumHeight(TABLE_ROW_HEIGHT)
     table.horizontalHeader().setHighlightSections(False)
-    table.setSortingEnabled(False)
+    table.setSortingEnabled(True)
+    table.horizontalHeader().setSortIndicatorShown(True)
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 
@@ -552,8 +499,11 @@ def set_table_item_foreground(item: QTableWidgetItem, text: str) -> None:
         item.setForeground(QColor(COLOR_TEXT_DISABLED))
 
 
-def create_table_item(text: str, is_numeric: bool = False) -> QTableWidgetItem:
-    item = QTableWidgetItem(text)
+from ui.widgets.common_widgets import SortableTableWidgetItem
+
+
+def create_table_item(text: str, is_numeric: bool = False, sort_key: Any = None) -> SortableTableWidgetItem:
+    item = SortableTableWidgetItem(text, sort_key=sort_key)
     alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
     item.setTextAlignment(alignment)
     set_table_item_foreground(item, text)

@@ -8,6 +8,7 @@ from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
+    QFrame,
     QHeaderView,
     QHBoxLayout,
     QLineEdit,
@@ -59,14 +60,13 @@ from ncr.models.labels import (
 )
 from ncr.services import export_service, stats_service
 from ncr.ui.defect_form import DefectEditDialog
-from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
+from ui.widgets.common_widgets import EMPTY_PLACEHOLDER, EmptyStateWidget
 from ncr.ui.ui_style import (
     ACTION_BUTTON_MIN_WIDTH,
     FILTER_BUTTON_MAX_WIDTH,
     FILTER_BUTTON_MIN_WIDTH,
     add_labeled_field,
     align_table_header_left,
-    apply_button_icon,
     apply_form_inputs,
     create_form_grid,
     create_page_shell,
@@ -82,6 +82,7 @@ from ncr.ui.ui_style import (
     setup_column_persistence,
 )
 from ui.widgets.pagination_bar import PaginationBar
+from ui.widgets.common_widgets import preserve_table_sorting
 from ui.layout_constants import GRID_GUTTER, INLINE_SPACING, ROW_GAP
 
 
@@ -152,8 +153,11 @@ class DefectListWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(page)
 
-        # Unified Search & Results Card
-        main_card, main_layout = create_section_card("")
+        # Control panel: filters + action buttons (mirrors defect_list_widget.py's
+        # control_panel/role=subpanel convention on the supplier-event side).
+        control_panel = QFrame()
+        control_panel.setProperty("role", "subpanel")
+        main_layout = QVBoxLayout(control_panel)
         main_layout.setContentsMargins(16, 12, 16, 12)
         main_layout.setSpacing(ROW_GAP)
 
@@ -238,14 +242,13 @@ class DefectListWidget(QWidget):
         # 4. Action Buttons (Search & Reset on row 1)
         self.reset_button = QPushButton("重置")
         self.search_button = QPushButton("查詢")
-        for btn, role, icon in [
-            (self.reset_button, "reset", "reset"),
-            (self.search_button, "primary", "search"),
+        for btn, role in [
+            (self.reset_button, "reset"),
+            (self.search_button, "primary"),
         ]:
             btn.setMinimumWidth(FILTER_BUTTON_MIN_WIDTH)
             btn.setMaximumWidth(FILTER_BUTTON_MAX_WIDTH)
             set_button_role(btn, role)
-            apply_button_icon(btn, icon)
 
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
@@ -258,7 +261,7 @@ class DefectListWidget(QWidget):
 
         main_layout.addLayout(filter_grid)
 
-        self.processing_line_scope_notice = make_notice_label("", role="compactNotice")
+        self.processing_line_scope_notice = make_notice_label("", role="helperText")
         self.processing_line_scope_notice.setWordWrap(False)
         if self.processing_line:
             self.processing_line_scope_notice.setText(
@@ -279,7 +282,7 @@ class DefectListWidget(QWidget):
         ):
             self.unclassified_link_button = QPushButton("")
             self.unclassified_link_button.setObjectName("UnclassifiedCleanupLink")
-            set_button_role(self.unclassified_link_button, "utility")
+            set_button_role(self.unclassified_link_button, "secondary")
             self.unclassified_link_button.setCursor(Qt.CursorShape.PointingHandCursor)
             self.unclassified_link_button.setToolTip("開啟未分流待整理清單")
             self.unclassified_link_button.setAccessibleName("未分流待整理連結")
@@ -309,8 +312,8 @@ class DefectListWidget(QWidget):
             action_row.addWidget(lbl)
 
         # 2. Context Notices
-        self.month_scope_notice = make_notice_label("", role="compactNotice")
-        self.filter_notice = make_notice_label("", role="compactNotice")
+        self.month_scope_notice = make_notice_label("", role="helperText")
+        self.filter_notice = make_notice_label("", role="helperText")
         self.month_scope_notice.setWordWrap(False)
         self.filter_notice.setWordWrap(False)
         for _n in (self.month_scope_notice, self.filter_notice):
@@ -338,17 +341,16 @@ class DefectListWidget(QWidget):
 
         buttons_to_add = []
         if self.workflow != "trace":
-            buttons_to_add.append((self.export_button, "secondary", "export"))
+            buttons_to_add.append((self.export_button, "secondary"))
         else:
             self.export_button.hide()
 
-        buttons_to_add.append((self.delete_button, "danger", "delete"))
+        buttons_to_add.append((self.delete_button, "danger"))
 
-        for btn, role, icon in buttons_to_add:
+        for btn, role in buttons_to_add:
             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
             btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             set_button_role(btn, role)
-            apply_button_icon(btn, icon)
             action_row.addWidget(btn)
 
         self.search_button.clicked.connect(self.refresh_data)
@@ -361,9 +363,22 @@ class DefectListWidget(QWidget):
         self.outsource_supplier_combo.currentIndexChanged.connect(self._handle_outsource_selection)
 
         main_layout.addLayout(action_row)
+        content_layout.addWidget(control_panel)
 
-        self.result_notice = make_notice_label("", role="warningHint")
-        main_layout.addWidget(self.result_notice)
+        # Results panel: table(s) + pagination (mirrors defect_list_widget.py's
+        # result_panel/role=panel convention on the supplier-event side).
+        result_panel = QFrame()
+        result_panel.setProperty("role", "panel")
+        result_layout = QVBoxLayout(result_panel)
+        result_layout.setContentsMargins(16, 12, 16, 12)
+        result_layout.setSpacing(ROW_GAP)
+
+        self.empty_state = EmptyStateWidget("", parent=self)
+        self.empty_state.setVisible(False)
+        # Stretch=1 so this (or the table below) always claims the panel's
+        # leftover vertical space, keeping the pagination bar pinned to its
+        # natural height instead of stretching when the table is hidden.
+        result_layout.addWidget(self.empty_state, 1)
 
         self.open_table = QTableWidget(0, len(LIST_HEADERS))
         self.open_table.setHorizontalHeaderLabels(LIST_HEADERS)
@@ -388,24 +403,24 @@ class DefectListWidget(QWidget):
             self.tabs.setDocumentMode(True)
             self.tabs.addTab(self.open_table, "未結案")
             self.tabs.addTab(self.closed_table, "已結案")
-            main_layout.addWidget(self.tabs)
+            result_layout.addWidget(self.tabs, 1)
         elif self.workflow == "tracking":
-            main_layout.addWidget(self.open_table)
+            result_layout.addWidget(self.open_table, 1)
         else:
-            main_layout.addWidget(self.closed_table)
-        
+            result_layout.addWidget(self.closed_table, 1)
+
         self.pagination = PaginationBar(
             on_page_changed=self._on_page_changed,
             on_page_size_changed=self._on_page_size_changed,
             default_page_size=NCR_ITEMS_PER_PAGE,
         )
-        main_layout.addWidget(self.pagination)
+        result_layout.addWidget(self.pagination)
+
+        content_layout.addWidget(result_panel, 1)
 
         # Connect after initial construction to avoid currentChanged firing before pagination exists.
         if self.tabs is not None:
             self.tabs.currentChanged.connect(self._on_tab_changed)
-
-        content_layout.addWidget(main_card, 1)
 
     def _uses_month_filter(self) -> bool:
         if self.workflow == "tracking":
@@ -620,10 +635,12 @@ class DefectListWidget(QWidget):
         
         self.month_scope_notice.show()
         if result_count == 0:
-            self.result_notice.setText(HINT_EMPTY_RESULT)
-            self.result_notice.show()
+            self.empty_state.set_message(HINT_EMPTY_RESULT)
+            self.empty_state.setVisible(True)
+            self._get_active_table().setVisible(False)
         else:
-            self.result_notice.hide()
+            self.empty_state.setVisible(False)
+            self._get_active_table().setVisible(True)
 
     def populate_table(self, table: QTableWidget, rows: list[sqlite3.Row], is_active: bool = True) -> None:
         if is_active:
@@ -631,33 +648,39 @@ class DefectListWidget(QWidget):
             end_idx = start_idx + NCR_ITEMS_PER_PAGE
             page_rows = rows[start_idx:end_idx]
         else:
-            # If not active, we can either show first page or just leave it.
-            # Showing first page is better for consistency if user just clicks tab.
             page_rows = rows[:NCR_ITEMS_PER_PAGE]
 
-        table.setRowCount(len(page_rows))
-        for row_index, row in enumerate(page_rows):
-            row_data = dict(row)
-            for column_index, field_name in enumerate(LIST_FIELD_ORDER):
-                value = row_data.get(field_name, "")
-                display_value = display_text(value)
+        with preserve_table_sorting(table):
+            table.setRowCount(len(page_rows))
+            for row_index, row in enumerate(page_rows):
+                row_data = dict(row)
+                for column_index, field_name in enumerate(LIST_FIELD_ORDER):
+                    value = row_data.get(field_name, "")
+                    display_value = display_text(value)
 
-                if field_name == "status":
-                    placeholder = QTableWidgetItem(str(value or ""))
-                    placeholder.setTextAlignment(
-                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                    )
-                    table.setItem(row_index, column_index, placeholder)
-                    table.setCellWidget(
-                        row_index, column_index, create_status_badge(display_value)
-                    )
-                    continue
+                    if field_name == "status":
+                        placeholder = create_table_item(str(value or ""), sort_key=str(value or ""))
+                        placeholder.setTextAlignment(
+                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                        )
+                        table.setItem(row_index, column_index, placeholder)
+                        table.setCellWidget(
+                            row_index, column_index, create_status_badge(display_value)
+                        )
+                        continue
 
-                item = create_table_item(display_value, is_numeric=(field_name in {"id", "qty"}))
-                item.setToolTip("" if value is None else str(value))
-                if field_name == "defect_desc" and display_value != EMPTY_PLACEHOLDER:
-                    item.setData(Qt.ItemDataRole.DisplayRole, display_value)
-                table.setItem(row_index, column_index, item)
+                    raw_sort_key = value
+                    if field_name in {"id", "qty"}:
+                        try:
+                            raw_sort_key = int(value)
+                        except (ValueError, TypeError):
+                            raw_sort_key = value
+
+                    item = create_table_item(display_value, is_numeric=(field_name in {"id", "qty"}), sort_key=raw_sort_key)
+                    item.setToolTip("" if value is None else str(value))
+                    if field_name == "defect_desc" and display_value != EMPTY_PLACEHOLDER:
+                        item.setData(Qt.ItemDataRole.DisplayRole, display_value)
+                    table.setItem(row_index, column_index, item)
 
     def refresh_filter_options(self) -> None:
         """從資料庫獲取現有的供應商清單並更新篩選選單。"""
@@ -752,12 +775,15 @@ class DefectListWidget(QWidget):
         results = self._get_active_results()
         actual_index = (self.current_page - 1) * NCR_ITEMS_PER_PAGE + row_index
         defect = results[actual_index]
-        result = QMessageBox.question(
-            self,
-            "確認刪除",
-            MSG_DELETE_CONFIRM.format(defect['defect_no']),
-        )
-        if result != QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("確認刪除")
+        box.setText(MSG_DELETE_CONFIRM.format(defect['defect_no']))
+        box.setIcon(QMessageBox.Icon.Warning)
+        btn_delete = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_delete)
+        box.exec()
+        if box.clickedButton() is not btn_delete:
             return
 
         try:

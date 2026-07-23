@@ -26,7 +26,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | --- | --- | --- |
 | Repository path | `local-observed` | `C:\Users\user\Documents\SQE DailyWork` |
 | Git root | `local-observed` | `C:/Users/user/Documents/SQE DailyWork` |
-| Live release membership count | `local-observed` | `366` |
+| Live release membership count | `local-observed` | `367` |
 | Membership definition | `audit-inference` | Existing files returned by `git ls-files --cached --others --exclude-standard`; this stays stable before and after intentional staging of new source files |
 | Ignored runtime/generated entries | `local-observed` | `data/`, `ncr/data/`, `data_backups/`, local runtimes, caches, outputs, `.omo/`, `.playwright-mcp/`, root generated quality workbooks, visual probe artifacts |
 | `source_baseline_status` | `audit-inference` | `verified: live membership and do-not-track boundaries are executable harness gates` |

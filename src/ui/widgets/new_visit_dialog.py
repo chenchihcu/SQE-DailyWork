@@ -43,6 +43,7 @@ from ui.layout_constants import (
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -53,9 +54,11 @@ from ui.widgets.defect_form_widgets import (
     TECH_TRANSFER_STATE_NA,
     TECH_TRANSFER_STATE_NO,
     TECH_TRANSFER_STATE_YES,
+    VISIT_TIME_SLOT_OPTIONS,
     TechTransferCard,
     VISIT_TECH_TRANSFER_ITEMS,
     apply_dialog_layout,
+    set_combo_current_text,
     set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
@@ -114,15 +117,17 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.product_stage_combo.setEnabled(False)
         self.product_code_input = QLineEdit()
         self.product_code_input.setReadOnly(True)
-        self.visitor_input = QLineEdit()
-        self.visitor_input.setPlaceholderText("訪廠人員（選填）")
+        self.visitor_input = QLineEdit()  # Retained headless for legacy accessor safety
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("活動摘要（選填）")
         set_text_edit_visible_rows(self.summary_input, VISIT_SUMMARY_VISIBLE_ROWS)
 
         self.work_order_input = QLineEdit()
-        self.time_slot_input = QLineEdit()
-        self.time_slot_input.setPlaceholderText("上午 / 下午 / 產線時段")
+        self.time_slot_input = QComboBox()
+        self.time_slot_input.addItems(VISIT_TIME_SLOT_OPTIONS)
+        self.time_slot_input.setText = lambda text: set_combo_current_text(self.time_slot_input, text)  # type: ignore[attr-defined]
+        self.time_slot_input.text = lambda: self.time_slot_input.currentText().strip()  # type: ignore[attr-defined]
+        self.time_slot_input.setReadOnly = lambda ro: self.time_slot_input.setEnabled(not ro)  # type: ignore[attr-defined]
         self.qty_input = QLineEdit()
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.tech_transfer_check = QCheckBox("已技轉")
@@ -149,15 +154,15 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         pr_layout.addWidget(self.product_combo, 3)
         pr_layout.addWidget(self.product_stage_combo, 1)
 
-        form.addRow(
-            make_paired_form_row(
-                "VisitBasicDateVisitorRow",
-                RequiredFieldLabel("日期"),
-                self.date_edit,
-                "訪廠人員",
-                self.visitor_input,
-            )
+        self.visitor_input.setVisible(False)
+        basic_row = make_paired_form_row(
+            "VisitBasicDateVisitorRow",
+            RequiredFieldLabel("日期"),
+            self.date_edit,
+            "",
+            self.visitor_input,
         )
+        form.addRow(basic_row)
         form.addRow(RequiredFieldLabel("供應商"), self.supplier_combo)
         form.addRow("主要產品", product_row)
         form.addRow("料號", self.product_code_input)
@@ -249,7 +254,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.visitor_input.setReadOnly(True)
         self.summary_input.setReadOnly(True)
         self.work_order_input.setReadOnly(True)
-        self.time_slot_input.setReadOnly(True)
+        self.time_slot_input.setEnabled(False)
         self.qty_input.setReadOnly(True)
         self.tech_transfer_check.setEnabled(False)
         # Tech transfer cards
@@ -276,7 +281,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             self.visitor_input.textChanged,
             self.summary_input.textChanged,
             self.work_order_input.textChanged,
-            self.time_slot_input.textChanged,
+            self.time_slot_input.currentTextChanged,
             self.qty_input.textChanged,
             self.tech_transfer_check.toggled,
         ])
@@ -297,6 +302,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             message = "請先選擇供應商。"
         elif not has_products and not product_id:
             message = "此供應商尚未建立產品；請先到基礎資料建立產品。"
+            tone = "info"
             tone = "info"
         elif not product_id:
             message = "請選擇主要產品。"
@@ -339,7 +345,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.visitor_input.setText(str(self._initial_data.get("visitor_name") or ""))
         self.summary_input.setPlainText(str(self._initial_data.get("summary") or ""))
         self.work_order_input.setText(str(self._initial_data.get("work_order_no") or ""))
-        self.time_slot_input.setText(str(self._initial_data.get("time_slot") or ""))
+        set_combo_current_text(
+            self.time_slot_input, str(self._initial_data.get("time_slot") or "")
+        )
         self.qty_input.setText(str(self._initial_data.get("production_qty") or ""))
         sections = list(self._initial_data.get("product_sections") or [])
         self._preserved_visit_defect_notes = [
@@ -352,7 +360,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             first_section = sections[0]
             section_time = str(first_section.get("time_slot") or "").strip()
             if section_time:
-                self.time_slot_input.setText(section_time)
+                set_combo_current_text(self.time_slot_input, section_time)
             section_summary = str(first_section.get("summary") or "").strip()
             if section_time or section_summary:
                 prefix = f"[{section_time}] " if section_time else ""
@@ -396,7 +404,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             product_sections: list[dict] = []
             if (
                 product_id
-                or self.time_slot_input.text().strip()
+                or self.time_slot_input.currentText().strip()
                 or self.work_order_input.text().strip()
                 or self.qty_input.text().strip()
                 or primary_notes
@@ -410,7 +418,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
                         "product_name": self.product_combo.currentText().strip(),
                         "product_stage": self.product_stage_combo.currentText(),
                         "product_code": self.product_code_input.text().strip(),
-                        "time_slot": self.time_slot_input.text().strip(),
+                        "time_slot": self.time_slot_input.currentText().strip(),
                         "work_order_no": self.work_order_input.text().strip(),
                         "production_qty": int(self.qty_input.text().strip() or 0),
                         "summary": "",
@@ -444,7 +452,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             "product_id": product_id,
             "visitor_name": self.visitor_input.text().strip(),
             "summary": self.summary_input.toPlainText().strip(),
-            "time_slot": self.time_slot_input.text().strip(),
+            "time_slot": self.time_slot_input.currentText().strip(),
             "work_order_no": self.work_order_input.text().strip(),
             "production_qty": int(self.qty_input.text().strip() or 0),
             "product_sections": product_sections,

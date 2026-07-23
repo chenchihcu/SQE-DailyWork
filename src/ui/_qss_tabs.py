@@ -91,7 +91,8 @@ def get_tabs_qss() -> str:
             background: {TOKENS["page_bg"]};
         }}
 
-        QWidget#StatsView {{
+        QWidget#StatsView,
+        QWidget#NcrStatsView {{
             background: {TOKENS["page_bg"]};
         }}
 

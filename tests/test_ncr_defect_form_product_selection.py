@@ -103,7 +103,7 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
         section_cards = [
             frame
             for frame in dialog.findChildren(QFrame)
-            if frame.property("uiRole") == "sectionCard"
+            if frame.property("role") == "panel"
         ]
         self.assertEqual([], section_cards)
         self.assertTrue(dialog.save_button.isVisible())

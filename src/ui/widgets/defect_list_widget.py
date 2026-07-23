@@ -40,9 +40,11 @@ from ui.layout_constants import (
 from ui.widgets.common_widgets import (
     EMPTY_DISPLAY,
     EmptyStateWidget,
+    SortableTableWidgetItem,
     apply_clickable_affordance,
     apply_table_action_affordance,
     create_status_item,
+    preserve_table_sorting,
     style_table,
     text_table_item,
 )
@@ -387,38 +389,37 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         end = start + self._page_size
         page_rows = self._all_rows[start:end]
 
-        self.table.setRowCount(0)
-        for idx, row in enumerate(page_rows):
-            self.table.insertRow(idx)
-            no_val = row.get("ref_no") or row.get("event_date")
-            no_item = QTableWidgetItem(self._text_or_dash(no_val))
-            no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-            no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(idx, 0, no_item)
+        with preserve_table_sorting(self.table):
+            self.table.setRowCount(0)
+            for idx, row in enumerate(page_rows):
+                self.table.insertRow(idx)
+                no_val = row.get("ref_no") or row.get("event_date")
+                no_item = SortableTableWidgetItem(self._text_or_dash(no_val), sort_key=str(no_val or ""))
+                no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+                no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                self.table.setItem(idx, 0, no_item)
 
-            self.table.setItem(idx, 1, self._text_cell(row.get("category")))
-            self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
-            self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
+                self.table.setItem(idx, 1, self._text_cell(row.get("category")))
+                self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
+                self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
 
-            pcode_item = QTableWidgetItem(self._text_or_dash(row.get("product_code")))
-            pcode_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(idx, 4, pcode_item)
+                pcode_item = self._text_cell(row.get("product_code"))
+                self.table.setItem(idx, 4, pcode_item)
 
-            pstage_item = QTableWidgetItem(self._text_or_dash(row.get("product_stage")))
-            pstage_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(idx, 5, pstage_item)
+                pstage_item = self._text_cell(row.get("product_stage"))
+                self.table.setItem(idx, 5, pstage_item)
 
-            self.table.setItem(idx, 6, self._text_cell(row.get("content")))
+                self.table.setItem(idx, 6, self._text_cell(row.get("content")))
 
-            defect_summary = row.get("defect_note_summary") or row.get("pending_items")
-            self.table.setItem(idx, 7, self._text_cell(defect_summary))
+                defect_summary = row.get("defect_note_summary") or row.get("pending_items")
+                self.table.setItem(idx, 7, self._text_cell(defect_summary))
 
-            self.table.setItem(idx, 8, self._text_cell(self._quality_report_required_text(row)))
+                self.table.setItem(idx, 8, self._text_cell(self._quality_report_required_text(row)))
 
-            status_text = str(row.get("status") or "").strip() or "-"
-            self.table.setItem(idx, 9, create_status_item(status_text))
+                status_text = str(row.get("status") or "").strip() or "-"
+                self.table.setItem(idx, 9, create_status_item(status_text, sort_key=status_text))
 
-            self.table.setItem(idx, 10, self._text_cell(row.get("closed_at")))
+                self.table.setItem(idx, 10, self._text_cell(row.get("closed_at")))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()

@@ -49,6 +49,7 @@ from ui.layout_constants import (
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.close_anomaly_dialog import AttachmentEditor
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
@@ -175,12 +176,9 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(12)
 
-        self.problem_input = QTextEdit()
-        self.problem_input.setPlaceholderText("輸入不良現象、異常描述與補充說明（必填）")
+        self.problem_input = BulletListWidget(placeholder="輸入不良現象...")
         set_text_edit_visible_rows(self.problem_input, 5)
-
-        self.pending_items_input = QTextEdit()
-        self.pending_items_input.setPlaceholderText("確認事項（選填，每行一項）")
+        self.pending_items_input = BulletListWidget(placeholder="輸入確認事項 / 待追蹤...")
         set_text_edit_visible_rows(self.pending_items_input, 3)
 
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
@@ -475,8 +473,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self.is_tech_transfer_check.toggled,
             self.quality_report_required_group.buttonToggled,
             self.category_input.currentTextChanged,
-            self.problem_input.textChanged,
-            self.pending_items_input.textChanged,
+            self.problem_input.valueChanged,
+            self.pending_items_input.valueChanged,
             self.rc_supplier_inv_combo.currentTextChanged,
             self.rc_supplier_wip_combo.currentTextChanged,
             self.rc_in_transit_combo.currentTextChanged,
@@ -620,7 +618,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             str(self._initial_data.get("outsource_work_order") or "")
         )
         self.batch_qty_input.setText(str(self._initial_data.get("batch_qty") or ""))
-        self.problem_input.setPlainText(str(self._initial_data.get("problem_desc") or ""))
+        self.problem_input.set_formatted_text(str(self._initial_data.get("problem_desc") or ""))
         # 載入原始 category
         category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
         set_combo_current_text(self.category_input, str(category_value or ""))
@@ -633,7 +631,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             if parsed_due.isValid():
                 self.due_date_check.setChecked(True)
                 self.due_date_edit.setDate(parsed_due)
-        self.pending_items_input.setPlainText(
+        self.pending_items_input.set_formatted_text(
             str(self._initial_data.get("pending_items") or "")
         )
         self.is_tech_transfer_check.setChecked(
@@ -720,18 +718,21 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         due_date_value = ""
         if self.due_date_check.isChecked():
             due_date_value = self.due_date_edit.date().toString("yyyy-MM-dd")
+        if not self.problem_input.get_formatted_text().strip():
+            QMessageBox.warning(self, "驗證失敗", "不良現象描述為必填（請至少新增並填寫一條項目）")
+            return
         payload = {
             "anomaly_no": anomaly_no_val,
             "anomaly_date": self.date_edit.date().toString("yyyy-MM-dd"),
             "supplier_id": (self.supplier_combo.currentData() or "").strip(),
             "product_id": product_id,
-            "problem_desc": self.problem_input.toPlainText().strip(),
+            "problem_desc": self.problem_input.get_formatted_text(),
             "category": self.category_input.currentText().strip(),
             "outsource_work_order": self.outsource_work_order_input.text().strip(),
             "batch_qty": int(self.batch_qty_input.text().strip() or 0),
             "responsible_person": self.responsible_person_input.text().strip(),
             "due_date": due_date_value,
-            "pending_items": self.pending_items_input.toPlainText().strip(),
+            "pending_items": self.pending_items_input.get_formatted_text(),
             "sync_visit": self.sync_visit_check.isChecked(),
             "visit_summary": "由新增異常流程同步建立。",
             "rc_supplier_inventory": self.rc_supplier_inv_combo.currentText(),

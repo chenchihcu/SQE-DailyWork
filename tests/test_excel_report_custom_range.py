@@ -215,16 +215,17 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertEqual(
                 [
                     "日期",
+                    "責任人",
                     "供應商",
                     "問題/摘要",
                     "狀態",
                 ],
-                [visit_sheet.cell(row=1, column=col).value for col in range(1, 5)],
+                [visit_sheet.cell(row=1, column=col).value for col in range(1, 6)],
             )
             self.assertEqual(2, visit_sheet.max_row)
             self.assertEqual(
-                ["2026-06-15", "供應商B", "例行訪廠交流", "已完成"],
-                [visit_sheet.cell(row=2, column=col).value for col in range(1, 5)],
+                ["2026-06-15", "未指定", "供應商B", "例行訪廠交流", "已完成"],
+                [visit_sheet.cell(row=2, column=col).value for col in range(1, 6)],
             )
 
             anomaly_sheet = workbook["異常"]
@@ -232,6 +233,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 [
                     "異常單號",
                     "日期",
+                    "責任人",
                     "供應商",
                     "品名",
                     "料號",
@@ -239,7 +241,6 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "異常類別",
                     "問題/摘要",
                     "確認事項 / 待追蹤",
-                    "責任人",
                     "狀態",
                     "品質異常單要求",
                     "改善說明",
@@ -252,6 +253,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 [
                     "AN-2026-001",
                     "2026-06-10",
+                    "王小明",
                     "供應商A",
                     "控制板",
                     "PCBA-001",
@@ -259,7 +261,6 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "物料/來料品質異常",
                     "進料不合格",
                     "追蹤 8D",
-                    "王小明",
                     "已結案",
                     "是",
                     "已要求廠商重工",
@@ -331,14 +332,14 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 row2 = [sheet.cell(row=2, column=c).value for c in range(1, 15)]
                 self.assertEqual(row2[0], anomaly_no)
                 self.assertEqual(row2[1], "2026-06-20")
-                self.assertEqual(row2[2], "測試光學廠")
-                self.assertEqual(row2[3], "高階光學鏡頭")
-                self.assertEqual(row2[4], "OPT-9988")
-                self.assertEqual(row2[5], "試產")
-                self.assertEqual(row2[6], "製程控制")
-                self.assertEqual(row2[7], "鍍膜剝落與刮傷")
-                self.assertEqual(row2[8], "追蹤 8D 矯正措施")
-                self.assertEqual(row2[9], "陳工程師")
+                self.assertEqual(row2[2], "陳工程師")
+                self.assertEqual(row2[3], "測試光學廠")
+                self.assertEqual(row2[4], "高階光學鏡頭")
+                self.assertEqual(row2[5], "OPT-9988")
+                self.assertEqual(row2[6], "試產")
+                self.assertEqual(row2[7], "製程控制")
+                self.assertEqual(row2[8], "鍍膜剝落與刮傷")
+                self.assertEqual(row2[9], "追蹤 8D 矯正措施")
 
         conn.close()
         if db_path.exists():

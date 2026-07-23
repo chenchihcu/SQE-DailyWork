@@ -148,11 +148,27 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
             ],
             columns=["排名", "供應商", "異常數", "訪廠數", "結案數", "未結案數", "結案率(%)"],
         )
+        resp_stats = _query_service.get_responsible_person_stats(month)
+        resp_ranking_df = pd.DataFrame(
+            [
+                {
+                    "排名": idx,
+                    "責任人": row["responsible_person"],
+                    "異常數": row["anomaly_count"],
+                    "結案數": row["closed_count"],
+                    "未結案數": row["open_count"],
+                    "結案率(%)": row["close_rate_pct"],
+                }
+                for idx, row in enumerate(resp_stats, start=1)
+            ],
+            columns=["排名", "責任人", "異常數", "結案數", "未結案數", "結案率(%)"],
+        )
         detail_df = pd.DataFrame(
             [
                 {
                     "日期": row["event_date"],
                     "類型": "異常" if row["event_type"] == "ANOMALY" else "訪廠",
+                    "責任人": str(row.get("responsible_person") or "").strip() or "未指定",
                     "供應商": row["supplier_name"],
                     "問題/摘要": row["content"],
                     "狀態": row["status"],
@@ -164,6 +180,7 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
         output.parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             summary_df.to_excel(writer, sheet_name="月統計", index=False)
+            resp_ranking_df.to_excel(writer, sheet_name="責任人排行", index=False)
             ranking_df.to_excel(writer, sheet_name="供應商排行", index=False)
             detail_df.to_excel(writer, sheet_name="明細", index=False)
         return True, f"已匯出至：{output}"
@@ -366,15 +383,16 @@ def export_events_report(
 
         _build_event_detail_sheet(
             "訪廠",
-            ["日期", "供應商", "問題/摘要", "狀態"],
+            ["日期", "責任人", "供應商", "問題/摘要", "狀態"],
             visit_rows,
             lambda row: [
                 row.get("event_date", ""),
+                str(row.get("responsible_person") or "").strip() or "未指定",
                 row.get("supplier_name", ""),
                 row.get("content", ""),
                 row.get("status", ""),
             ],
-            {1},
+            {1, 2},
         )
 
         def _anomaly_detail_row(row):
@@ -385,6 +403,7 @@ def export_events_report(
             return [
                 str(row.get("ref_no") or ""),
                 row.get("event_date") or "",
+                str(row.get("responsible_person") or "").strip() or "未指定",
                 row.get("supplier_name") or "",
                 row.get("product_name") or "",
                 row.get("product_code") or "",
@@ -392,7 +411,6 @@ def export_events_report(
                 row.get("category") or "",
                 row.get("content") or "",
                 row.get("pending_items") or "",
-                row.get("responsible_person") or "",
                 row.get("status") or "",
                 quality_report_required,
                 row.get("improvement_desc") or "",
@@ -404,6 +422,7 @@ def export_events_report(
             [
                 "異常單號",
                 "日期",
+                "責任人",
                 "供應商",
                 "品名",
                 "料號",
@@ -411,7 +430,6 @@ def export_events_report(
                 "異常類別",
                 "問題/摘要",
                 "確認事項 / 待追蹤",
-                "責任人",
                 "狀態",
                 "品質異常單要求",
                 "改善說明",
@@ -419,10 +437,80 @@ def export_events_report(
             ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2, 6, 11, 12, 14},
+            {1, 2, 7, 11, 12, 14},
         )
 
-        # 4. 供應商排行榜頁
+        # 4. 責任人排行榜頁
+        resp_stats_rows = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
+        resp_sheet = workbook.create_sheet("責任人排行榜")
+        resp_sheet.views.sheetView[0].showGridLines = True
+
+        resp_headers = ["排名", "責任人", "期間新增異常", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
+        resp_sheet.append(resp_headers)
+        for col_idx in range(1, len(resp_headers) + 1):
+            cell = resp_sheet.cell(row=1, column=col_idx)
+            cell.font = STYLE_HEADER_FONT
+            cell.fill = STYLE_FILL_HEADER
+            cell.alignment = ALIGN_CENTER
+            cell.border = STYLE_BORDER_THIN
+        resp_sheet.row_dimensions[1].height = 24
+
+        for r_idx, row in enumerate(resp_stats_rows, start=2):
+            data = [
+                r_idx - 1,
+                row.get("responsible_person", "未指定"),
+                row.get("anomaly_count", 0),
+                row.get("closed_count", 0),
+                row.get("open_count", 0),
+                f"{row.get('close_rate_pct', 0.0):.1f}%"
+            ]
+            resp_sheet.append(data)
+
+            is_even = (r_idx % 2 == 0)
+            for c_idx in range(1, len(resp_headers) + 1):
+                cell = resp_sheet.cell(row=r_idx, column=c_idx)
+                cell.font = STYLE_FONT
+                cell.border = STYLE_BORDER_THIN
+                if is_even:
+                    cell.fill = STYLE_FILL_ZEBRA
+
+                if c_idx == 1:
+                    cell.alignment = ALIGN_CENTER
+                elif c_idx == 2:
+                    cell.alignment = ALIGN_LEFT
+                else:
+                    cell.alignment = ALIGN_RIGHT
+            resp_sheet.row_dimensions[r_idx].height = 20
+
+        total_resp_row_idx = len(resp_stats_rows) + 2
+        if len(resp_stats_rows) > 0:
+            resp_sheet.cell(row=total_resp_row_idx, column=1, value="合計").font = STYLE_FONT_BOLD
+            resp_sheet.cell(row=total_resp_row_idx, column=1).alignment = ALIGN_CENTER
+
+            for c_idx in (3, 4, 5):
+                col_letter = get_column_letter(c_idx)
+                sum_formula = f"=SUM({col_letter}2:{col_letter}{total_resp_row_idx - 1})"
+                cell = resp_sheet.cell(row=total_resp_row_idx, column=c_idx, value=sum_formula)
+                cell.font = STYLE_FONT_BOLD
+                cell.alignment = ALIGN_RIGHT
+                cell.number_format = "#,##0"
+
+            total_closed_cell = f"D{total_resp_row_idx}"
+            total_anomaly_cell = f"C{total_resp_row_idx}"
+            rate_formula = f"=IF({total_anomaly_cell}>0, {total_closed_cell}/{total_anomaly_cell}, 0)"
+            rate_cell = resp_sheet.cell(row=total_resp_row_idx, column=6, value=rate_formula)
+            rate_cell.font = STYLE_FONT_BOLD
+            rate_cell.alignment = ALIGN_RIGHT
+            rate_cell.number_format = "0.0%"
+
+            for c_idx in range(1, len(resp_headers) + 1):
+                cell = resp_sheet.cell(row=total_resp_row_idx, column=c_idx)
+                cell.border = STYLE_BORDER_TOTAL
+                cell.fill = STYLE_FILL_TOTAL
+
+        _auto_fit(resp_sheet)
+
+        # 5. 供應商排行榜頁
         rank_sheet = workbook.create_sheet("供應商排行榜")
         rank_sheet.views.sheetView[0].showGridLines = True
 

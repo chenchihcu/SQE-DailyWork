@@ -145,11 +145,12 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         ]
 
     def test_table_headers_match_template_eleven_columns(self) -> None:
-        self.assertEqual(11, self.widget.table.columnCount())
+        self.assertEqual(12, self.widget.table.columnCount())
         self.assertEqual(
             [
                 "異常單號",
                 "異常類別",
+                "責任人",
                 "供應商",
                 "品名",
                 "料號",
@@ -200,7 +201,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _label, scope, _t in EVENT_QUERY_SCOPE_TABS:
             self.widget.set_event_scope(scope)
             self._drain_events()
-            self.assertEqual(11, self.widget.table.columnCount())
+            self.assertEqual(12, self.widget.table.columnCount())
             self.assertIsNotNone(self.widget.export_pdf_button)
             assert self.widget.export_pdf_button is not None
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
@@ -220,18 +221,18 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             self.widget.set_event_scope(scope)
             self._drain_events()
             with self.subTest(scope=scope):
-                self.assertEqual(11, self.widget.table.columnCount())
+                self.assertEqual(12, self.widget.table.columnCount())
                 self.assertEqual(
                     should_hide, self.widget.table.isColumnHidden(1)
                 )
                 self.assertEqual(
-                    should_hide, self.widget.table.isColumnHidden(10)
+                    should_hide, self.widget.table.isColumnHidden(11)
                 )
-                self.assertFalse(self.widget.table.isColumnHidden(8))
+                self.assertFalse(self.widget.table.isColumnHidden(9))
                 # 表頭文字保留（未刪欄），僅視覺隱藏
                 self.assertEqual("異常類別", self.widget.table.horizontalHeaderItem(1).text())
-                self.assertEqual("品質異常單要求", self.widget.table.horizontalHeaderItem(8).text())
-                self.assertEqual("結案日期", self.widget.table.horizontalHeaderItem(10).text())
+                self.assertEqual("品質異常單要求", self.widget.table.horizontalHeaderItem(9).text())
+                self.assertEqual("結案日期", self.widget.table.horizontalHeaderItem(11).text())
 
     def test_export_pdf_button_enables_only_after_row_selection(self) -> None:
         assert self.widget.export_pdf_button is not None
@@ -276,7 +277,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _ in range(5):
             self.widget.refresh_data()
             self._drain_events()
-            self.assertEqual(11, self.widget.table.columnCount())
+            self.assertEqual(12, self.widget.table.columnCount())
             self.assertEqual(expected_rows, self.widget.table.rowCount())
 
         has_cell_widget = any(
@@ -291,40 +292,44 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
         self.assertEqual("2026-04-18", table.item(0, 0).text())
         self.assertEqual("尺寸不符", table.item(0, 1).text())
-        self.assertEqual("供應商-A", table.item(0, 2).text())
-        self.assertEqual("產品-A", table.item(0, 3).text())
-        self.assertEqual("PN-A001", table.item(0, 4).text())
-        self.assertEqual("試產", table.item(0, 5).text())
-        self.assertEqual("問題-0", table.item(0, 6).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(0, 7).text())
-        self.assertEqual("是", table.item(0, 8).text())
-        self.assertEqual("待處理", table.item(0, 9).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(0, 10).text())
+        self.assertEqual("未指定", table.item(0, 2).text())
+        self.assertEqual("供應商-A", table.item(0, 3).text())
+        self.assertEqual("產品-A", table.item(0, 4).text())
+        self.assertEqual("PN-A001", table.item(0, 5).text())
+        self.assertEqual("試產", table.item(0, 6).text())
+        self.assertEqual("問題-0", table.item(0, 7).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(0, 8).text())
+        self.assertEqual("是", table.item(0, 9).text())
+        self.assertEqual("待處理", table.item(0, 10).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(0, 11).text())
 
-        self.assertEqual("不適用", table.item(1, 8).text())
+        self.assertEqual("不適用", table.item(1, 9).text())
 
         self.assertEqual(EMPTY_DISPLAY, table.item(2, 0).text())
         self.assertEqual("文件/SOP不足", table.item(2, 1).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(2, 6).text())
-        self.assertEqual("否", table.item(2, 8).text())
-        self.assertEqual("2026-04-20", table.item(2, 10).text())
+        self.assertEqual("未指定", table.item(2, 2).text())
+        self.assertEqual("供應商-C", table.item(2, 3).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(2, 7).text())
+        self.assertEqual("否", table.item(2, 9).text())
+        self.assertEqual("2026-04-20", table.item(2, 11).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 1).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 2).text())
+        self.assertEqual("未指定", table.item(3, 2).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 3).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 4).text())
         self.assertEqual(EMPTY_DISPLAY, table.item(3, 5).text())
-        self.assertEqual("問題-3", table.item(3, 6).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 7).text())
-        self.assertEqual("未設定", table.item(3, 8).text())
-        self.assertEqual("-", table.item(3, 9).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 10).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 6).text())
+        self.assertEqual("問題-3", table.item(3, 7).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 8).text())
+        self.assertEqual("未設定", table.item(3, 9).text())
+        self.assertEqual("-", table.item(3, 10).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(3, 11).text())
 
     def test_status_cells_keep_color_mapping(self) -> None:
         table = self.widget.table
-        row0_color = table.item(0, 9).foreground().color().name().lower()
-        row1_color = table.item(1, 9).foreground().color().name().lower()
-        row3_color = table.item(3, 9).foreground().color().name().lower()
-        row0_bg = table.item(0, 9).background().color().name().lower()
+        row0_color = table.item(0, 10).foreground().color().name().lower()
+        row1_color = table.item(1, 10).foreground().color().name().lower()
+        row3_color = table.item(3, 10).foreground().color().name().lower()
+        row0_bg = table.item(0, 10).background().color().name().lower()
 
         self.assertEqual(
             QColor(get_status_color_hex("待處理")).name().lower(),

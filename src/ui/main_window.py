@@ -30,7 +30,6 @@ from ncr.models.defect import (
 from ncr.embed import NCR_PAGE_OFFSET, NCR_PAGE_SPECS, NcrController
 import ncr.services.stats_service as ncr_stats_service
 from ncr.ui.defect_list import DefectListWidget as NcrDefectListWidget
-from ncr.ui.ui_style import app_stylesheet as ncr_app_stylesheet
 from ui.layout_constants import (
     MAIN_WINDOW_DEFAULT_HEIGHT,
     MAIN_WINDOW_DEFAULT_WIDTH,
@@ -363,7 +362,6 @@ class MainWindow(QMainWindow):
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("未分流待整理")
-        dialog.setStyleSheet(ncr_app_stylesheet())
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(8, 12, 8, 8)
         widget = NcrDefectListWidget(
