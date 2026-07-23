@@ -279,8 +279,6 @@ def close_anomaly(
     anomaly_id: str,
     improvement_desc: str,
     *,
-    closed_by: str = "",
-    root_cause_category: str = "",
     closed_at: str | None = None,
 ) -> dict:
     if not (anomaly_id or "").strip():
@@ -293,8 +291,6 @@ def close_anomaly(
             conn,
             anomaly_id=anomaly_id,
             improvement_desc=improvement_desc,
-            closed_by=closed_by,
-            root_cause_category=root_cause_category,
             closed_at=closed_at,
         )
         detail = repository.get_anomaly_detail(conn, anomaly_id)

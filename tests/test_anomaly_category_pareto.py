@@ -29,9 +29,8 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
             self.db_path.unlink()
 
     def _create_anomaly(
-        self, anomaly_date: str, category: str, root_cause_category: str = ""
+        self, anomaly_date: str, category: str
     ) -> str:
-        # create_anomaly 回傳 anomaly_no(非 id),後續更新以 anomaly_no 定位
         anomaly_no = repository.create_anomaly(
             self.conn,
             anomaly_date=anomaly_date,
@@ -39,12 +38,6 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
             problem_desc=f"Problem {category or 'blank'}",
             category=category,
         )
-        if root_cause_category:
-            self.conn.execute(
-                "UPDATE anomalies SET root_cause_category = ? WHERE anomaly_no = ?",
-                (root_cause_category, anomaly_no),
-            )
-            self.conn.commit()
         return anomaly_no
 
     def test_category_pareto_normalizes_sorts_and_calculates_percentages(self) -> None:
@@ -69,11 +62,9 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
             rows,
         )
 
-    def test_category_pareto_prefers_root_cause_and_falls_back_on_blank(self) -> None:
-        # root_cause_category 優先;純空白 root_cause 必須 fallback 到 category,
-        # 與頁面圖表、匯出表格共用同一 SQL 口徑。
-        self._create_anomaly("2026-01-05", "來料品質不良", root_cause_category="製程參數失控")
-        self._create_anomaly("2026-01-06", "來料品質不良", root_cause_category="  ")
+    def test_category_pareto_falls_back_on_blank(self) -> None:
+        self._create_anomaly("2026-01-05", "來料品質不良")
+        self._create_anomaly("2026-01-06", "製程參數失控")
         self._create_anomaly("2026-01-07", "")
 
         with patch("database.connection.get_connection", return_value=self.conn):
@@ -108,9 +99,7 @@ class AnomalyCategoryParetoTests(unittest.TestCase):
         self.assertEqual(3, sum(by_category.values()))
 
     def test_list_events_by_range_resolves_category_like_page_lists(self) -> None:
-        # Excel 匯出明細表與頁面事件列表(list_events)同口徑:
-        # root_cause_category 非空時優先顯示(AGENTS.md 類別對齊規則)。
-        self._create_anomaly("2026-01-05", "來料品質不良", root_cause_category="製程參數失控")
+        self._create_anomaly("2026-01-05", "製程參數失控")
         self._create_anomaly("2026-01-06", "規範文件缺漏")
 
         with patch("database.connection.get_connection", return_value=self.conn):

@@ -394,8 +394,6 @@ def _seed_and_audit(args: argparse.Namespace, output_dir: Path, matrix: Evidence
     event_service.close_anomaly(
         standalone_id,
         "稽核驗證改善完成",
-        closed_by="SQE",
-        root_cause_category="物料/來料品質異常",
         closed_at="2026-06-18",
     )
 
@@ -551,7 +549,7 @@ def _seed_and_audit(args: argparse.Namespace, output_dir: Path, matrix: Evidence
     range_wb = load_workbook(events_xlsx, data_only=False)
     anomaly_sheet = range_wb["異常"]
     anomaly_values = [
-        [anomaly_sheet.cell(row=r, column=c).value for c in range(1, 10)]
+        [anomaly_sheet.cell(row=r, column=c).value for c in range(1, 16)]
         for r in range(1, anomaly_sheet.max_row + 1)
     ]
     matrix.add(
@@ -560,9 +558,9 @@ def _seed_and_audit(args: argparse.Namespace, output_dir: Path, matrix: Evidence
         source_field="quality_report_required",
         service_function="event_service.export_events_report",
         output_artifact=events_xlsx.name,
-        output_location="異常!I:I",
+        output_location="異常!M:M",
         expected=True,
-        actual=ok and any(row[0] == str(standalone_no) and row[8] == "是" for row in anomaly_values),
+        actual=ok and any(row[0] == str(standalone_no) and row[12] == "是" for row in anomaly_values),
         evidence_path=events_xlsx,
     )
     matrix.add_contains(

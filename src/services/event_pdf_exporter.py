@@ -179,8 +179,6 @@ def build_event_pdf_html(
             status_value,
             [
                 ("結案日", detail.get("closed_at")),
-                ("結案人員", detail.get("closed_by")),
-                ("原因分類", detail.get("root_cause_category")),
                 ("改善說明", detail.get("improvement_desc")),
             ],
         )

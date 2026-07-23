@@ -41,13 +41,17 @@ shared master-data area.
   backfilling or guessing historical values.
 - `NewAnomalyDialog` requires an explicit 是／否 selection before a new or
   edited anomaly can be saved. Read-only preview preserves the stored state.
+- `EventListWidget` displays 「品質異常單要求」 for every supplier-event scope:
+  anomaly rows show 是／否／未設定 from `quality_report_required`, while pure
+  visit rows show 不適用 because they do not own a formal anomaly row.
 - Supplier-event Excel detail output is split by the authoritative
   `event_type`: `VISIT` rows go to `訪廠` and `ANOMALY` rows go to `異常`.
   The removed combined sheet `異常事件明細` must not be recreated by filtering
   or relabeling a mixed dataset. The `異常` sheet exports 是／否／未設定 for
-  「品質異常單要求」; the visit sheet omits anomaly-only fields. This split
-  supports downstream filtering without changing existing charts, summary
-  totals, supplier ranking, or warehouse NCR reports.
+  「品質異常單要求」 and keeps raw 「異常類別」 separate from 「原因分類」;
+  the visit sheet omits anomaly-only fields. This split supports downstream
+  filtering without changing existing charts, summary totals, supplier
+  ranking, or warehouse NCR reports.
 
 ## Supplier Anomaly Working Folders
 

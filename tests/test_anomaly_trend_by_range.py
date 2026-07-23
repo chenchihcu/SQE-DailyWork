@@ -131,7 +131,6 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
             self.conn,
             anomaly_id=anomaly_id,
             improvement_desc="fixed",
-            closed_by="Tester",
             closed_at="2026-03-05",
         )
 

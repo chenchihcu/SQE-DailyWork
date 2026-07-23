@@ -62,6 +62,10 @@ def _font_candidate_paths() -> tuple[Path, ...]:
 
 @functools.cache
 def _preferred_pdf_font_family() -> str:
+    import xhtml2pdf.default as pisa_default
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
     for path in _font_candidate_paths():
         if not path.exists():
             continue
@@ -69,10 +73,33 @@ def _preferred_pdf_font_family() -> str:
         if font_id < 0:
             continue
         families = QFontDatabase.applicationFontFamilies(font_id)
-        if families:
-            return families[0]
+        if not families:
+            continue
+        family_name = families[0]
+
+        try:
+            kwargs = {}
+            if str(path).lower().endswith(".ttc"):
+                kwargs["subfontIndex"] = 0
+            ttfont = TTFont(family_name, str(path), **kwargs)
+            pdfmetrics.registerFont(ttfont)
+
+            key = family_name.lower()
+            pisa_default.DEFAULT_FONT[key] = family_name
+            pisa_default.DEFAULT_FONT[family_name] = family_name
+            pisa_default.DEFAULT_FONT["microsoft jhenghei ui"] = family_name
+            pisa_default.DEFAULT_FONT["microsoft jhenghei"] = family_name
+            pisa_default.DEFAULT_FONT["noto sans tc"] = family_name
+            pisa_default.DEFAULT_FONT["pmingliu"] = family_name
+            pisa_default.DEFAULT_FONT["kaiu"] = family_name
+            pisa_default.DEFAULT_FONT["sans-serif"] = family_name
+            return family_name
+        except Exception as e:
+            logger.warning("Failed to register font %s for ReportLab: %s", path, e)
+            return family_name
 
     for family in (
+        "Microsoft JhengHei UI",
         "Microsoft JhengHei",
         "Noto Sans TC",
         "PMingLiU",

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QTabWidget,
     QTextEdit,
@@ -28,8 +27,37 @@ from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
-    make_paired_form_row,
 )
+from ui.widgets.defect_form_widgets import (
+    ROOT_CAUSE_PARETO_OPTIONS,
+    apply_dialog_layout,
+    set_combo_current_text,
+    set_text_edit_visible_rows,
+    set_tone,
+    style_dialog_buttons,
+)
+
+logger = logging.getLogger(__name__)
+
+# ── Constants ──────────────────────────────────────────────────────────────
+ROOT_CAUSE_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
+
+IMPROVEMENT_DESC_MAX_LEN = 1000
+
+
+# ── CloseAnomalyDialog ─────────────────────────────────────────────────────
+class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
+    def __init__(
+        self,
+        anomaly_id: str,
+        problem_desc: str,
+        parent=None,
+        *,
+        date_adjustment_only: bool = False,
+    ):
+        super().__init__(parent)
+        self.anomaly_id = anomaly_id
+        self.problem_desc = problem_desc
 from ui.widgets.defect_form_widgets import (
     ROOT_CAUSE_PARETO_OPTIONS,
     apply_dialog_layout,
@@ -71,8 +99,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.initial_anomaly_date = ""
         self.initial_closed_at = ""
         self.initial_improvement_desc = ""
-        self.initial_closed_by = ""
-        self.initial_root_cause_category = ""
         try:
             detail = event_service.get_anomaly_detail(self.anomaly_id)
             self.detail = detail
@@ -80,10 +106,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self.initial_anomaly_date = str(detail.get("anomaly_date") or "")
             self.initial_closed_at = str(detail.get("closed_at") or "")
             self.initial_improvement_desc = str(detail.get("improvement_desc") or "")
-            self.initial_closed_by = str(detail.get("closed_by") or "")
-            self.initial_root_cause_category = str(
-                detail.get("root_cause_category") or ""
-            )
         except Exception:
             logger.exception("Failed to get initial category for anomaly %s", self.anomaly_id)
 
@@ -111,19 +133,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
 
-        self.closer_input = QLineEdit()
-        self.closer_input.setPlaceholderText("請輸入結案人員姓名（必填）")
-        if self.initial_closed_by:
-            self.closer_input.setText(self.initial_closed_by)
-
-        self.root_cause_combo = QComboBox()
-        self.root_cause_combo.setEditable(True)
-        for option in ROOT_CAUSE_CATEGORY_OPTIONS:
-            self.root_cause_combo.addItem(option)
-        initial_root_cause = self.initial_root_cause_category or self.initial_category
-        if initial_root_cause:
-            set_combo_current_text(self.root_cause_combo, initial_root_cause)
-
         self.closed_at_input = QDateEdit()
         self.closed_at_input.setDisplayFormat("yyyy-MM-dd")
         self.closed_at_input.setCalendarPopup(True)
@@ -141,8 +150,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self.improvement_input.setPlainText(self.initial_improvement_desc)
         if self.date_adjustment_only:
             self.improvement_input.setReadOnly(True)
-            self.closer_input.setReadOnly(True)
-            self.root_cause_combo.setEnabled(False)
 
         self.attachment_editor = AttachmentEditor(self)
         if self.date_adjustment_only:
@@ -158,15 +165,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
         form.addRow("", self.improvement_counter)
         form.addRow(RequiredFieldLabel("結案日期"), self.closed_at_input)
-        form.addRow(
-            make_paired_form_row(
-                "CloseAnomalyCloserCauseRow",
-                RequiredFieldLabel("結案人員"),
-                self.closer_input,
-                "原因分類",
-                self.root_cause_combo,
-            )
-        )
         action_layout.addLayout(form)
         action_layout.addStretch(1)
         self.tabs.addTab(tab_action, "改善處理")
@@ -190,14 +188,11 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         apply_dialog_layout(self, self.tabs, buttons)
 
         self.improvement_input.textChanged.connect(self._update_validation)
-        self.closer_input.textChanged.connect(self._update_validation)
         self.closed_at_input.dateChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.improvement_input.textChanged,
-            self.closer_input.textChanged,
-            self.root_cause_combo.currentTextChanged,
             self.closed_at_input.dateChanged,
             self.attachment_editor.add_button.clicked,
             self.attachment_editor.remove_button.clicked,
@@ -218,7 +213,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             valid = (
                 bool(text.strip())
                 and not over_limit
-                and bool(self.closer_input.text().strip())
                 and date_valid
             )
         if self._save_button is not None:
@@ -226,8 +220,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
 
     def _on_submit(self):
         text = self.improvement_input.toPlainText().strip()
-        closer = self.closer_input.text().strip()
-        root_cause = self.root_cause_combo.currentText().strip()
         closed_at = self.closed_at_input.date().toString("yyyy-MM-dd")
         try:
             if self.date_adjustment_only:
@@ -240,8 +232,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
                 result = event_service.close_anomaly(
                     self.anomaly_id,
                     text,
-                    closed_by=closer,
-                    root_cause_category=root_cause,
                     closed_at=closed_at,
                 )
                 self.attachment_editor.save_to_anomaly(self.anomaly_id)

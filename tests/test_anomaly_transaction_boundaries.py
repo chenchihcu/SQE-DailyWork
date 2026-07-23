@@ -97,7 +97,6 @@ class AnomalyTransactionBoundaryTests(unittest.TestCase):
                     self.conn,
                     anomaly_id,
                     "improved",
-                    closed_by="SQE",
                     closed_at="2026-06-02",
                 )
         detail = repository.get_anomaly_detail(self.conn, anomaly_id)

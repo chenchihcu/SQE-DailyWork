@@ -59,39 +59,33 @@ class ResolvedCategoryDisplayTests(unittest.TestCase):
         self.assertEqual(1, len(events))
         self.assertEqual("製程參數失控", events[0]["category"])
 
-        # 3. 結案該異常案件，設定原因分類為 "其他"
+        # 3. 結案該異常案件
         repository.close_anomaly(
             self.conn,
             anomaly_id=anomaly_id,
             improvement_desc="已完成改善",
-            closed_by="SQE Auditor",
-            root_cause_category="其他",
             closed_at="2026-07-03",
         )
         self.conn.commit()
 
-        # 4. 驗證已結案狀態下，清單與詳情傳回的 category 均為原因分類 "其他"
+        # 4. 驗證已結案狀態下，清單與詳情傳回的 category 均為 "製程參數失控"
         detail_closed = repository.get_anomaly_detail(self.conn, anomaly_id)
         self.assertIsNotNone(detail_closed)
-        self.assertEqual("其他", detail_closed["category"])
-        self.assertEqual("其他", detail_closed["root_cause_category"])
-        # category_raw 保留原始異常類別:編輯對話框必須用它載入,
-        # 否則存檔會把解析後的根因值無聲覆寫進 category 欄位。
+        self.assertEqual("製程參數失控", detail_closed["category"])
         self.assertEqual("製程參數失控", detail_closed["category_raw"])
 
         events_closed = repository.list_events(self.conn, event_type="ANOMALY", event_scope="CLOSED_ONLY")
         self.assertEqual(1, len(events_closed))
-        self.assertEqual("其他", events_closed[0]["category"])
+        self.assertEqual("製程參數失控", events_closed[0]["category"])
 
         # 5. 重新開啟該異常案件
         repository.reopen_anomaly(self.conn, anomaly_id)
         self.conn.commit()
 
-        # 6. 驗證重新開啟後，傳回的 category 還原為原始類別 "製程參數失控"
+        # 6. 驗證重新開啟後，傳回的 category 保持為 "製程參數失控"
         detail_reopened = repository.get_anomaly_detail(self.conn, anomaly_id)
         self.assertIsNotNone(detail_reopened)
         self.assertEqual("製程參數失控", detail_reopened["category"])
-        self.assertEqual("", detail_reopened["root_cause_category"])
 
         events_reopened = repository.list_events(self.conn, event_type="ANOMALY")
         self.assertEqual(1, len(events_reopened))

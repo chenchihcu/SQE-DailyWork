@@ -43,8 +43,8 @@
 - Current good-only paired groups:
   - `NewVisitDialog`: `日期 + 訪廠人員`, `時段 + 工單`, and `數量 + 已技轉`.
   - `ProductSectionEditor`: `時段 + 工單`.
-  - `CloseAnomalyDialog`: `結案人員 + 原因分類`, plus a single-row `結案日期`
-    date picker using the user-selected `closed_at` statistics source.
+  - `CloseAnomalyDialog`: single-row `結案日期` date picker plus `原因分類`;
+    the retired `結案人員` field must not be displayed.
   - `SupplierFormDialog`: `主聯絡人 + 部門` and `電話/行動 + 電子郵件`.
   - `ProductFormDialog`: `料號 + 階段`.
 - Keep large text, attachment, table, and long-selection fields as single-row blocks unless a later visual probe proves the paired version stays readable.
@@ -96,8 +96,11 @@
   cross-workflow write paths.
 - Supplier event lists show a compact source tag such as `供應商事件 / 單獨異常`
   or `供應商事件 / 訪廠發現異常`. PDF export remains single-record output and
-  is disabled until a row is selected. Anomaly rows expose `結案日期` from
-  `anomalies.closed_at`; visit-only scope hides that anomaly-only column.
+  is disabled until a row is selected. The table includes 「品質異常單要求」
+  between 「缺失紀錄」 and 「狀態」; anomaly rows show 是／否／未設定 from
+  `anomalies.quality_report_required`, and pure visit rows show 不適用.
+  Anomaly rows expose `結案日期` from `anomalies.closed_at`; visit-only scope
+  hides that anomaly-only column.
 - Warehouse nonconforming-product tracking exposes four first-class sidebar
   rows: 建立不合格品, 待處理委外加工, 待處理原物料, and 歷史紀錄. Do not
   reintroduce the retired outer `DefectTrackerPage` tab host for these

@@ -366,7 +366,7 @@ def export_events_report(
 
         _build_event_detail_sheet(
             "訪廠",
-            ["日期", "供應商名稱", "訪廠摘要說明", "當前狀態"],
+            ["日期", "供應商", "問題/摘要", "狀態"],
             visit_rows,
             lambda row: [
                 row.get("event_date", ""),
@@ -384,29 +384,49 @@ def export_events_report(
                 quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
             return [
                 str(row.get("ref_no") or ""),
-                row.get("event_date", ""),
-                row.get("supplier_name", ""),
-                row.get("content", ""),
-                row.get("status", ""),
-                row.get("category", ""),
-                row.get("improvement_desc", ""),
-                row.get("closed_at", ""),
+                row.get("event_date") or "",
+                row.get("supplier_name") or "",
+                row.get("product_name") or "",
+                row.get("product_code") or "",
+                row.get("product_stage") or "",
+                row.get("category") or "",
+                row.get("content") or "",
+                row.get("pending_items") or "",
+                row.get("responsible_person") or "",
+                row.get("status") or "",
                 quality_report_required,
+                row.get("improvement_desc") or "",
+                row.get("closed_at") or "",
             ]
 
         _build_event_detail_sheet(
             "異常",
-            ["異常單號", "日期", "供應商名稱", "問題與摘要說明", "當前狀態", "類別", "改善說明", "結案日期", "品質異常單要求"],
+            [
+                "異常單號",
+                "日期",
+                "供應商",
+                "品名",
+                "料號",
+                "階段",
+                "異常類別",
+                "問題/摘要",
+                "確認事項 / 待追蹤",
+                "責任人",
+                "狀態",
+                "品質異常單要求",
+                "改善說明",
+                "結案日期",
+            ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2},
+            {1, 2, 6, 11, 12, 14},
         )
 
         # 4. 供應商排行榜頁
         rank_sheet = workbook.create_sheet("供應商排行榜")
         rank_sheet.views.sheetView[0].showGridLines = True
 
-        rank_headers = ["排名", "供應商名稱", "期間新增異常", "訪廠次數", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
+        rank_headers = ["排名", "供應商", "期間新增異常", "訪廠次數", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
         rank_sheet.append(rank_headers)
         for col_idx in range(1, len(rank_headers) + 1):
             cell = rank_sheet.cell(row=1, column=col_idx)

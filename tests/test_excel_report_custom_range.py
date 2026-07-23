@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import unittest
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from uuid import uuid4
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -11,6 +14,7 @@ from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QApplication
 from openpyxl import load_workbook
 
+from database import repository
 from ui.widgets.export_range_dialog import ExportRangeDialog
 from ncr.services import export_service as ncr_export_service
 from services import event_service
@@ -103,8 +107,14 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "supplier_name": "供應商A",
                 "content": "進料不合格",
                 "status": "已結案",
-                "category": "進料品質",
+                "category": "物料/來料品質異常",
+                "category_raw": "進料品質",
                 "root_cause_category": "物料/來料品質異常",
+                "product_name": "控制板",
+                "product_code": "PCBA-001",
+                "product_stage": "試產",
+                "pending_items": "追蹤 8D",
+                "responsible_person": "王小明",
                 "improvement_desc": "已要求廠商重工",
                 "closed_at": "2026-06-12",
                 "quality_report_required": True,
@@ -118,7 +128,13 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "content": "不要求品質異常單",
                 "status": "待處理",
                 "category": "其他",
+                "category_raw": "其他",
                 "root_cause_category": "",
+                "product_name": "控制板",
+                "product_code": "PCBA-001",
+                "product_stage": "量產",
+                "pending_items": "",
+                "responsible_person": "SQE",
                 "improvement_desc": "",
                 "closed_at": None,
                 "quality_report_required": False,
@@ -132,7 +148,13 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 "content": "歷史資料",
                 "status": "待處理",
                 "category": "其他",
+                "category_raw": "其他",
                 "root_cause_category": "",
+                "product_name": "",
+                "product_code": "",
+                "product_stage": "量產",
+                "pending_items": "",
+                "responsible_person": "",
                 "improvement_desc": "",
                 "closed_at": None,
                 "quality_report_required": None,
@@ -193,9 +215,9 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertEqual(
                 [
                     "日期",
-                    "供應商名稱",
-                    "訪廠摘要說明",
-                    "當前狀態",
+                    "供應商",
+                    "問題/摘要",
+                    "狀態",
                 ],
                 [visit_sheet.cell(row=1, column=col).value for col in range(1, 5)],
             )
@@ -210,21 +232,114 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 [
                     "異常單號",
                     "日期",
-                    "供應商名稱",
-                    "問題與摘要說明",
-                    "當前狀態",
-                    "類別",
+                    "供應商",
+                    "品名",
+                    "料號",
+                    "階段",
+                    "異常類別",
+                    "問題/摘要",
+                    "確認事項 / 待追蹤",
+                    "責任人",
+                    "狀態",
+                    "品質異常單要求",
                     "改善說明",
                     "結案日期",
-                    "品質異常單要求",
                 ],
-                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 10)],
+                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 15)],
             )
             self.assertEqual(4, anomaly_sheet.max_row)
-            self.assertEqual("是", anomaly_sheet.cell(row=2, column=9).value)
-            self.assertEqual("否", anomaly_sheet.cell(row=3, column=9).value)
-            self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=9).value)
             self.assertEqual(
-                len(mock_list_events.return_value),
-                (visit_sheet.max_row - 1) + (anomaly_sheet.max_row - 1),
+                [
+                    "AN-2026-001",
+                    "2026-06-10",
+                    "供應商A",
+                    "控制板",
+                    "PCBA-001",
+                    "試產",
+                    "物料/來料品質異常",
+                    "進料不合格",
+                    "追蹤 8D",
+                    "王小明",
+                    "已結案",
+                    "是",
+                    "已要求廠商重工",
+                    "2026-06-12",
+                ],
+                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 15)],
             )
+            self.assertEqual("否", anomaly_sheet.cell(row=3, column=12).value)
+            self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=12).value)
+            self.assertEqual(
+                    len(mock_list_events.return_value),
+                    (visit_sheet.max_row - 1) + (anomaly_sheet.max_row - 1),
+                )
+
+    def test_list_events_by_range_unmocked_db_export(self) -> None:
+        base_tmp_dir = Path("scratch")
+        base_tmp_dir.mkdir(parents=True, exist_ok=True)
+        db_path = base_tmp_dir / f"sqe_excel_export_test_{uuid4().hex}.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
+        repository.create_schema(conn)
+
+        supplier_id = repository.create_supplier_record(conn, supplier_name="測試光學廠")
+        product_id = repository.create_product_record(
+            conn,
+            product_code="OPT-9988",
+            product_name="高階光學鏡頭",
+            product_stage="試產",
+            supplier_id=supplier_id,
+        )
+        anomaly_no = repository.create_anomaly(
+            conn,
+            anomaly_date="2026-06-20",
+            supplier_id=supplier_id,
+            product_id=product_id,
+            problem_desc="鍍膜剝落與刮傷",
+            category="製程控制",
+            product_name="高階光學鏡頭",
+            product_stage="試產",
+            pending_items="追蹤 8D 矯正措施",
+            responsible_person="陳工程師",
+        )
+
+        with patch("database.connection.get_connection", return_value=conn):
+            events = event_service.list_events_by_range("2026-06-01", "2026-06-30")
+            anomaly_events = [e for e in events if e.get("event_type") == "ANOMALY"]
+            self.assertEqual(len(anomaly_events), 1)
+            e = anomaly_events[0]
+            self.assertEqual(e.get("product_name"), "高階光學鏡頭")
+            self.assertEqual(e.get("product_code"), "OPT-9988")
+            self.assertEqual(e.get("product_stage"), "試產")
+            self.assertEqual(e.get("pending_items"), "追蹤 8D 矯正措施")
+            self.assertEqual(e.get("responsible_person"), "陳工程師")
+
+            with TemporaryDirectory() as tmp_dir:
+                file_path = os.path.join(tmp_dir, "real_db_events_report.xlsx")
+                ok, msg = event_service.export_events_report(
+                    file_path=file_path,
+                    start_date="2026-06-01",
+                    end_date="2026-06-30",
+                )
+                self.assertTrue(ok)
+                self.assertTrue(os.path.exists(file_path))
+
+                wb = load_workbook(file_path)
+                self.assertIn("異常", wb.sheetnames)
+                sheet = wb["異常"]
+                row2 = [sheet.cell(row=2, column=c).value for c in range(1, 15)]
+                self.assertEqual(row2[0], anomaly_no)
+                self.assertEqual(row2[1], "2026-06-20")
+                self.assertEqual(row2[2], "測試光學廠")
+                self.assertEqual(row2[3], "高階光學鏡頭")
+                self.assertEqual(row2[4], "OPT-9988")
+                self.assertEqual(row2[5], "試產")
+                self.assertEqual(row2[6], "製程控制")
+                self.assertEqual(row2[7], "鍍膜剝落與刮傷")
+                self.assertEqual(row2[8], "追蹤 8D 矯正措施")
+                self.assertEqual(row2[9], "陳工程師")
+
+        conn.close()
+        if db_path.exists():
+            db_path.unlink()

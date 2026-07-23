@@ -234,6 +234,16 @@ def _save_widget_capture(widget, output_path: Path) -> None:
         raise RuntimeError(f"Failed to save visual evidence: {output_path}")
 
 
+def _settle_qt_paint(app: "QApplication", *, delay_ms: int = 120, cycles: int = 2) -> None:
+    """Let native Qt layout/paint queues settle before pixel-baseline captures."""
+    from PySide6.QtTest import QTest
+
+    for _ in range(max(cycles, 1)):
+        app.processEvents()
+        QTest.qWait(max(delay_ms, 0))
+    app.processEvents()
+
+
 def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication") -> str:
     """Capture the real native calendar popup, including Windows palette/QSS."""
     from PySide6.QtCore import QDate, QPoint, Qt
@@ -404,6 +414,24 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
             if scope_tab_bar is not None:
                 scope_tab_bar.setCurrentIndex(index)
                 app.processEvents()
+            if hasattr(widget, "table"):
+                widget.table.clearSelection()
+                widget.table.setCurrentCell(-1, -1)
+                if widget.table.selectionModel() is not None:
+                    widget.table.selectionModel().clear()
+                widget.table.horizontalScrollBar().setValue(0)
+                widget.table.verticalScrollBar().setValue(0)
+                widget.table.clearFocus()
+            if getattr(widget, "supplier_filter_input", None) is not None:
+                widget.supplier_filter_input.setFocus()
+            try:
+                from PySide6.QtCore import QPoint
+                from PySide6.QtGui import QCursor
+
+                QCursor.setPos(widget.mapToGlobal(QPoint(8, 8)))
+            except Exception:
+                pass
+            _settle_qt_paint(app, delay_ms=80, cycles=2)
             target = _target_output_path(output, f"event-list-scope{index}")
             _save_widget_capture(widget, target)
             screenshots.append(str(target))
@@ -431,6 +459,17 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
         output.parent.mkdir(parents=True, exist_ok=True)
         for index, suffix in enumerate(("master-supplier", "master-product")):
             widget.tabs.setCurrentIndex(index)
+            app.processEvents()
+            if hasattr(widget, "supplier_table"):
+                widget._selected_supplier_id = None
+                widget.supplier_table.clearSelection()
+                widget.supplier_table.setCurrentCell(-1, -1)
+            if hasattr(widget, "product_table"):
+                widget._selected_product_id = None
+                widget.product_table.clearSelection()
+                widget.product_table.setCurrentCell(-1, -1)
+            widget._sync_action_buttons()
+            widget.query_input.setFocus()
             app.processEvents()
             target = _target_output_path(output, suffix)
             _save_widget_capture(widget, target)
@@ -768,6 +807,14 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         }
         for month in range(1, 13)
     ]
+    visit_trend_data = [
+        {
+            "yyyymm": f"2026-{month:02d}",
+            "visit_count": (month % 4) + 1,
+            "visit_anomaly_count": month % 3,
+        }
+        for month in range(1, 13)
+    ]
     resp_stats = [
         {
             "responsible_person": f"責任人員-{index:02d}-VeryLongName",
@@ -796,11 +843,11 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
 
     screenshots: list[str] = []
     with (
-        patch("services.event_service.get_monthly_stats", return_value=summary),
-        patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data),
-        patch("services.event_service.get_visit_trend_by_range", return_value=[]),
-        patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_stats),
-        patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=category_pareto),
+        patch("ui.widgets.stats_view_widget._query_service.get_monthly_stats", return_value=summary),
+        patch("ui.widgets.stats_view_widget._query_service.get_anomaly_trend_by_range", return_value=trend_data),
+        patch("ui.widgets.stats_view_widget._query_service.get_visit_trend_by_range", return_value=visit_trend_data),
+        patch("ui.widgets.stats_view_widget._query_service.get_responsible_person_stats_by_range", return_value=resp_stats),
+        patch("ui.widgets.stats_view_widget._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto),
     ):
         widget = StatsViewWidget(main_window=_StatsProbeHost())
         # 操作真實可見的起迄下拉（AGENTS §3：探針不得驅動隱藏代理）；
@@ -808,7 +855,7 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         widget.set_range("202601", "202612")
         widget.resize(*(size or (1024, 680)))
         widget.show()
-        app.processEvents()
+        _settle_qt_paint(app, delay_ms=150, cycles=3)
         output.parent.mkdir(parents=True, exist_ok=True)
         try:
             scroll = widget.findChild(QScrollArea, "StatsTrendScrollArea")
@@ -827,7 +874,7 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
                     else:
                         target_value = int(position)
                     bar.setValue(target_value)
-                app.processEvents()
+                _settle_qt_paint(app, delay_ms=150, cycles=3)
                 target = _target_output_path(output, suffix)
                 _save_widget_capture(widget, target)
                 screenshots.append(str(target))

@@ -69,8 +69,9 @@ _SORTABLE_COLS: dict[int, str] = {
     2: "supplier_name",
     3: "product_name",
     5: "product_stage",
-    8: "status",
-    9: "closed_at",
+    8: "quality_report_required",
+    9: "status",
+    10: "closed_at",
 }
 
 
@@ -278,7 +279,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         result_layout.addWidget(self.empty_state)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(11)
         self.table.setHorizontalHeaderLabels(
             [
                 "異常單號",
@@ -289,6 +290,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
                 "階段",
                 "問題/摘要",
                 "缺失紀錄",
+                "品質異常單要求",
                 "狀態",
                 "結案日期",
             ]
@@ -310,8 +312,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 階段
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents) # 狀態
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents) # 品質異常單要求
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 狀態
+        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
@@ -320,7 +323,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         result_layout.addWidget(self.table, 1)
         if self.fixed_status:
-            self.table.setColumnHidden(8, True)
+            self.table.setColumnHidden(9, True)
 
         root.addWidget(result_panel, 1)
 
@@ -374,7 +377,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         """
         is_visit_only_scope = self._filter_event_type == "VISIT"
         self.table.setColumnHidden(1, is_visit_only_scope)
-        self.table.setColumnHidden(9, is_visit_only_scope)
+        self.table.setColumnHidden(10, is_visit_only_scope)
 
     def _render_current_page(self):
         self._selected_event_row = None
@@ -410,10 +413,12 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             defect_summary = row.get("defect_note_summary") or row.get("pending_items")
             self.table.setItem(idx, 7, self._text_cell(defect_summary))
 
-            status_text = str(row.get("status") or "").strip() or "-"
-            self.table.setItem(idx, 8, create_status_item(status_text))
+            self.table.setItem(idx, 8, self._text_cell(self._quality_report_required_text(row)))
 
-            self.table.setItem(idx, 9, self._text_cell(row.get("closed_at")))
+            status_text = str(row.get("status") or "").strip() or "-"
+            self.table.setItem(idx, 9, create_status_item(status_text))
+
+            self.table.setItem(idx, 10, self._text_cell(row.get("closed_at")))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()
@@ -431,6 +436,25 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def _text_cell(self, value) -> QTableWidgetItem:
         """Long-text cell whose tooltip shows the full CJK text when elided (§6)."""
         return text_table_item(value)
+
+    def _quality_report_required_text(self, row: dict) -> str:
+        """Return the supplier-anomaly quality-report requirement display text."""
+        event_type = str(row.get("event_type") or "").strip().upper()
+        if event_type != "ANOMALY":
+            return "不適用"
+
+        value = row.get("quality_report_required")
+        if value is None:
+            return "未設定"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "未設定"
+            if normalized in {"1", "true", "yes", "是"}:
+                return "是"
+            if normalized in {"0", "false", "no", "否"}:
+                return "否"
+        return "是" if bool(value) else "否"
 
     def _on_page_changed(self, page_no: int):
         self._current_page = page_no

@@ -274,7 +274,7 @@ def _migrate_anomalies(
                     anomaly_date,
                     supplier_id,
                     problem_desc,
-                    str(_pick(row, "category", "root_cause_category", default="")).strip(),
+                    str(_pick(row, "category", default="")).strip(),
                     product_lot_no,
                     product_name,
                     outsource_work_order,

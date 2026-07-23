@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from services import event_pdf_exporter, event_service
+from services import attachment_manager, event_pdf_exporter, event_service
 from services.event import _anomaly_service, _visit_service
 
 
@@ -90,8 +90,6 @@ class EventPdfExportTests(unittest.TestCase):
             "problem_desc": "載具刮傷，FPC 對位異常。",
             "visit_id": "visit-001" if linked else "",
             "improvement_desc": "",
-            "closed_by": "",
-            "root_cause_category": "",
             "closed_at": "",
         }
 
@@ -266,14 +264,12 @@ class EventPdfExportTests(unittest.TestCase):
         self.assertTrue(output.exists())
         self.assertGreater(output.stat().st_size, 1000)
 
-    def test_closed_anomaly_html_includes_closer_and_root_cause(self) -> None:
+    def test_closed_anomaly_html_includes_root_cause_without_closer(self) -> None:
         detail = self._anomaly_detail(linked=False)
         detail.update(
             {
                 "status": "已結案",
                 "improvement_desc": "更換刮傷載具並校驗對位。",
-                "closed_by": "Charlie",
-                "root_cause_category": "設備/治具異常",
                 "closed_at": "2026-05-09",
             }
         )
@@ -283,16 +279,12 @@ class EventPdfExportTests(unittest.TestCase):
         )
 
         self.assertIn("結案資訊", html)
-        self.assertIn("結案人員", html)
-        self.assertIn("Charlie", html)
-        self.assertIn("原因分類", html)
-        self.assertIn("設備/治具異常", html)
+        self.assertNotIn("結案人員", html)
+        self.assertNotIn("原因分類", html)
         self.assertIn("更換刮傷載具並校驗對位。", html)
 
-    def test_closed_anomaly_html_embeds_attachment_image(self) -> None:
-        from services import attachment_manager
-
-        anomaly_id = f"anomaly-attach-{uuid4().hex}"
+    def test_closed_anomaly_html_includes_attachments(self) -> None:
+        anomaly_id = "AN-2026-TEST-99"
         target_dir = attachment_manager.ANOMALY_ATTACHMENT_ROOT / anomaly_id
         target_dir.mkdir(parents=True, exist_ok=True)
         image_path = target_dir / "renamed_evidence.png"
@@ -315,7 +307,6 @@ class EventPdfExportTests(unittest.TestCase):
                 {
                     "status": "已結案",
                     "improvement_desc": "附證據照片。",
-                    "closed_by": "Dana",
                     "closed_at": "2026-05-09",
                 }
             )

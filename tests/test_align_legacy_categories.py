@@ -51,11 +51,6 @@ class AlignLegacyCategoriesTests(unittest.TestCase):
                 problem_desc=f"Problem {idx}",
                 category=orig_cat,
             )
-            # 因為 create_anomaly 不會直接塞 root_cause_category，我們手動 update 寫入 root_cause_category 欄位以做為舊資料測試
-            self.conn.execute(
-                "UPDATE anomalies SET root_cause_category = ? WHERE anomaly_no = ?",
-                (orig_cause, ano_no)
-            )
             self.conn.commit()
             anomaly_ids.append(ano_no)
 
@@ -63,19 +58,17 @@ class AlignLegacyCategoriesTests(unittest.TestCase):
         updated_count = repository.align_legacy_anomaly_categories(self.conn)
         self.conn.commit()
 
-        # 我們預期會被 update 的個數：
-        # 對應 6 個要被更換的項目 (前 6 個)，各包含 category 與 root_cause_category (也就是一共 12 次 update 動作被計算進 rowcount)
-        self.assertEqual(12, updated_count)
+        # 我們預期會被 update 的個數：6 個要被更換的項目 (category 6 次 update)
+        self.assertEqual(6, updated_count)
 
         # 3. 驗證資料是否已全部轉換為預期的新值
         for idx, (*_, expected_val) in enumerate(test_cases):
             ano_no = anomaly_ids[idx]
             row = self.conn.execute(
-                "SELECT category, root_cause_category FROM anomalies WHERE anomaly_no = ?",
+                "SELECT category FROM anomalies WHERE anomaly_no = ?",
                 (ano_no,)
             ).fetchone()
             self.assertEqual(expected_val, row["category"])
-            self.assertEqual(expected_val, row["root_cause_category"])
 
 
 if __name__ == "__main__":

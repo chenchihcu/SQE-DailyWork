@@ -67,7 +67,7 @@ def fetch_open_anomalies(conn):
     cur.execute("""
         SELECT a.anomaly_no, a.anomaly_date, a.category, a.product_name,
                a.product_stage, a.problem_desc, a.pending_items, a.improvement_desc,
-               a.responsible_person, a.due_date, a.root_cause_category, a.status,
+               a.responsible_person, a.due_date, a.status,
                a.visit_id,
                s.supplier_name
         FROM anomalies a

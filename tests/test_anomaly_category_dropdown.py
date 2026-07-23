@@ -265,8 +265,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.addCleanup(dialog.close)
 
         self.assertEqual("製程參數失控", dialog.category_input.currentText())
-        self.assertTrue(hasattr(dialog, "root_cause_display"))
-        self.assertEqual("其他", dialog.root_cause_display.text())
 
     def test_submit_payload_uses_dropdown_or_custom_category_text(self) -> None:
         products = [
@@ -819,7 +817,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
             mock_get.assert_called_once_with("anomaly-123")
-            self.assertEqual("規範文件缺漏", dialog.root_cause_combo.currentText())
             self.assertEqual("2026-04-16", dialog.closed_at_input.minimumDate().toString("yyyy-MM-dd"))
 
     def test_close_anomaly_dialog_submits_user_selected_closed_date(self) -> None:
@@ -841,15 +838,12 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
             dialog.improvement_input.setPlainText("改善完成")
-            dialog.closer_input.setText("王小明")
             dialog.closed_at_input.setDate(QDate(2026, 5, 10))
             dialog._on_submit()
 
         close_mock.assert_called_once_with(
             "anomaly-123",
             "改善完成",
-            closed_by="王小明",
-            root_cause_category="規範文件缺漏",
             closed_at="2026-05-10",
         )
 
@@ -900,8 +894,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             )
             self.addCleanup(dialog.close)
             self.assertTrue(dialog.improvement_input.isReadOnly())
-            self.assertTrue(dialog.closer_input.isReadOnly())
-            self.assertFalse(dialog.root_cause_combo.isEnabled())
             self.assertEqual("2026-05-10", dialog.closed_at_input.date().toString("yyyy-MM-dd"))
 
             dialog.closed_at_input.setDate(QDate(2026, 5, 12))
@@ -930,8 +922,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         )
         self.addCleanup(dialog_closed.close)
         self.assertEqual("尺寸異常", dialog_closed.category_input.currentText())
-        self.assertTrue(hasattr(dialog_closed, "root_cause_display"))
-        self.assertEqual("規範文件缺漏", dialog_closed.root_cause_display.text())
 
         captured: dict = {}
 

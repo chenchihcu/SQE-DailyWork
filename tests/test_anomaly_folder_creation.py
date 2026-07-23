@@ -117,7 +117,6 @@ def test_write_anomaly_markdown_overwrites_changed_values(tmp_path: Path) -> Non
             _detail(
                 status="已結案",
                 improvement_desc="完成改善",
-                root_cause_category="製程",
                 closed_at="2026-07-14",
             )
         )
@@ -125,7 +124,6 @@ def test_write_anomaly_markdown_overwrites_changed_values(tmp_path: Path) -> Non
     parsed = yaml.safe_load(result.read_text(encoding="utf-8"))["異常事件"]
     assert parsed["狀態"] == "已結案"
     assert parsed["改善說明"] == "完成改善"
-    assert parsed["原因分類"] == "製程"
     assert parsed["結案日期"] == "2026-07-14"
 
 

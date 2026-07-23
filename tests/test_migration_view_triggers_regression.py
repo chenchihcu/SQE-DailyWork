@@ -174,7 +174,6 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
                 status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','CLOSED')),
                 improvement_desc TEXT NOT NULL DEFAULT '',
                 closed_by TEXT NOT NULL DEFAULT '',
-                root_cause_category TEXT NOT NULL DEFAULT '',
                 closed_at TEXT,
                 pending_items TEXT NOT NULL DEFAULT '',
                 responsible_person TEXT NOT NULL DEFAULT '',
@@ -233,10 +232,10 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
             INSERT INTO anomalies(
                 id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
                 problem_desc, product_stage, status, improvement_desc, closed_by,
-                root_cause_category, closed_at, pending_items, responsible_person, due_date
+                closed_at, pending_items, responsible_person, due_date
             )
             VALUES (?, 'ANM-OPEN', '2026-04-16', ?, ?, ?, 'open problem', '試產', 'OPEN',
-                    '', '', '', NULL, '追蹤項目A', '負責人甲', '2026-05-01')
+                    '', '', NULL, '追蹤項目A', '負責人甲', '2026-05-01')
             """,
             (ids["anomaly_open"], ids["supplier"], ids["visit"], ids["product"]),
         )
@@ -245,10 +244,10 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
             INSERT INTO anomalies(
                 id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
                 problem_desc, product_stage, status, improvement_desc, closed_by,
-                root_cause_category, closed_at, pending_items, responsible_person, due_date
+                closed_at, pending_items, responsible_person, due_date
             )
             VALUES (?, 'ANM-CLOSED', '2026-04-16', ?, ?, ?, 'closed problem', '試產', 'CLOSED',
-                    '已修正', '結案人乙', '製程', '2026-04-18', '', '負責人乙', '2026-04-20')
+                    '已修正', '結案人乙', '2026-04-18', '', '負責人乙', '2026-04-20')
             """,
             (ids["anomaly_closed"], ids["supplier"], ids["visit"], ids["product"]),
         )
@@ -375,18 +374,22 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
         ids = self._create_legacy_db()
         repository.create_schema(self.conn)
 
-        # Status mapped; closure-tracking fields preserved verbatim.
+        anomaly_columns = {
+            str(r["name"])
+            for r in self.conn.execute("PRAGMA table_info(anomalies)").fetchall()
+        }
+        self.assertNotIn("closed_by", anomaly_columns)
+
+        # Status mapped; active closure-tracking fields preserved verbatim.
         closed = self.conn.execute(
             """
-            SELECT status, improvement_desc, closed_by, root_cause_category,
+            SELECT status, improvement_desc,
                    closed_at, responsible_person, due_date, product_stage
             FROM anomalies WHERE anomaly_no = 'ANM-CLOSED'
             """
         ).fetchone()
         self.assertEqual(str(closed["status"]), "已結案")
         self.assertEqual(str(closed["improvement_desc"]), "已修正")
-        self.assertEqual(str(closed["closed_by"]), "結案人乙")
-        self.assertEqual(str(closed["root_cause_category"]), "製程")
         self.assertEqual(str(closed["closed_at"]), "2026-04-18")
         self.assertEqual(str(closed["responsible_person"]), "負責人乙")
         self.assertEqual(str(closed["due_date"]), "2026-04-20")

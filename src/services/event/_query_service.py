@@ -59,15 +59,21 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             a.anomaly_date AS event_date,
             'ANOMALY' AS event_type,
             s.supplier_name AS supplier_name,
+            a.product_id AS product_id,
+            p.product_code AS product_code,
+            a.product_name AS product_name,
+            a.product_stage AS product_stage,
             a.problem_desc AS content,
             a.status AS status,
-            COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
-            a.root_cause_category AS root_cause_category,
+            a.category AS category,
+            a.pending_items AS pending_items,
+            a.responsible_person AS responsible_person,
             a.improvement_desc AS improvement_desc,
             a.closed_at AS closed_at,
             a.quality_report_required AS quality_report_required
         FROM anomalies a
         JOIN suppliers s ON s.id = a.supplier_id
+        LEFT JOIN products p ON p.id = a.product_id
         WHERE a.anomaly_date BETWEEN ? AND ?
     """
     visit_sql = """
@@ -80,7 +86,6 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             v.summary AS content,
             '已完成' AS status,
             '' AS category,
-            '' AS root_cause_category,
             '' AS improvement_desc,
             NULL AS closed_at,
             NULL AS quality_report_required
@@ -198,7 +203,6 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
     sql = """
         SELECT
             COALESCE(
-                NULLIF(TRIM(root_cause_category), ''),
                 NULLIF(TRIM(category), ''),
                 '未分類'
             ) AS category,
@@ -206,7 +210,6 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
         FROM anomalies
         WHERE anomaly_date BETWEEN ? AND ?
         GROUP BY COALESCE(
-            NULLIF(TRIM(root_cause_category), ''),
             NULLIF(TRIM(category), ''),
             '未分類'
         )

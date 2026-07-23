@@ -134,7 +134,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
             improvement_desc TEXT NOT NULL DEFAULT '',
             closed_by TEXT NOT NULL DEFAULT '',
-            root_cause_category TEXT NOT NULL DEFAULT '',
             closed_at TEXT,
             pending_items TEXT NOT NULL DEFAULT '',
             responsible_person TEXT NOT NULL DEFAULT '',
@@ -457,9 +456,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "anomalies", "batch_qty", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "anomalies", "visit_id", "TEXT REFERENCES visits(id)")
     _ensure_column(conn, "anomalies", "closed_by", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(
-        conn, "anomalies", "root_cause_category", "TEXT NOT NULL DEFAULT ''"
-    )
+    cur = conn.execute("PRAGMA table_info(anomalies)")
+    anomaly_cols = [row[1] for row in cur.fetchall()]
+    if "root_cause_category" in anomaly_cols:
+        conn.execute("ALTER TABLE anomalies DROP COLUMN root_cause_category")
     _ensure_column(conn, "anomalies", "pending_items", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(
         conn, "anomalies", "responsible_person", "TEXT NOT NULL DEFAULT ''"
@@ -855,13 +855,6 @@ def align_legacy_anomaly_categories(conn: sqlite3.Connection) -> int:
     changed_count = 0
     # Use TRIM to handle potential extra spaces in user input
     for old_val, new_val in mapping.items():
-        # Update root_cause_category
-        res1 = conn.execute(
-            "UPDATE anomalies SET root_cause_category = ? WHERE TRIM(root_cause_category) = ?",
-            (new_val, old_val),
-        )
-        changed_count += res1.rowcount
-        
         # Update category
         res2 = conn.execute(
             "UPDATE anomalies SET category = ? WHERE TRIM(category) = ?",
@@ -1527,7 +1520,7 @@ def add_supplier_contact(
                 (contact_name or "").strip(),
                 (department or "").strip(),
                 (phone or "").strip(),
-                (email or "").strip(),
+                (contact_email or "").strip(),
                 _now_iso(),
                 supplier_key,
             ),
@@ -2765,15 +2758,13 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.product_name AS product_name,
             a.product_stage AS product_stage,
             a.problem_desc AS problem_desc,
-            COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
-            a.category AS category_raw,
+            a.category AS category,
             a.product_lot_no AS product_lot_no,
             a.outsource_work_order AS outsource_work_order,
             a.batch_qty AS batch_qty,
             a.status AS status,
             a.improvement_desc AS improvement_desc,
             a.closed_by AS closed_by,
-            a.root_cause_category AS root_cause_category,
             a.closed_at AS closed_at,
             a.pending_items AS pending_items,
             a.responsible_person AS responsible_person,
@@ -3027,7 +3018,6 @@ def close_anomaly(
     improvement_desc: str,
     *,
     closed_by: str = "",
-    root_cause_category: str = "",
     closed_at: str | None = None,
 ) -> None:
     text = (improvement_desc or "").strip()
@@ -3038,9 +3028,6 @@ def close_anomaly(
             f"Improvement description exceeds {IMPROVEMENT_DESC_MAX_LEN} characters"
         )
     closer = (closed_by or "").strip()
-    if not closer:
-        raise ValueError("Closer is required")
-    cause = (root_cause_category or "").strip()
     anomaly_key = (anomaly_id or "").strip()
     existing = get_anomaly_detail(conn, anomaly_key)
     if existing is None or existing.get("status") != "待處理":
@@ -3063,12 +3050,11 @@ def close_anomaly(
         SET status = '已結案',
             improvement_desc = ?,
             closed_by = ?,
-            root_cause_category = ?,
             closed_at = ?,
             updated_at = ?
         WHERE id = ? AND status = '待處理'
         """,
-        (text, closer, cause, close_date, _now_iso(), anomaly_key),
+        (text, closer, close_date, _now_iso(), anomaly_key),
     )
     if cur.rowcount == 0:
         raise ValueError("Open anomaly not found")
@@ -3155,7 +3141,6 @@ def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
         SET status = '待處理',
             improvement_desc = '',
             closed_by = '',
-            root_cause_category = '',
             closed_at = NULL,
             updated_at = ?
         WHERE id = ?
@@ -4039,7 +4024,7 @@ def list_events(
                 s.supplier_name AS supplier_name,
                 a.problem_desc AS content,
                 a.status AS status,
-                COALESCE(NULLIF(TRIM(a.root_cause_category), ''), a.category) AS category,
+                a.category AS category,
                 a.visit_id AS linked_visit_id,
                 v.visit_date AS linked_visit_date,
                 a.product_id AS product_id,
@@ -4053,6 +4038,7 @@ def list_events(
                 a.batch_qty AS batch_qty,
                 a.improvement_desc AS improvement_desc,
                 {pending_items_expr},
+                a.responsible_person AS responsible_person,
                 a.closed_at AS closed_at,
                 a.quality_report_required AS quality_report_required
             FROM anomalies a
@@ -5643,7 +5629,6 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
             improvement_desc TEXT NOT NULL DEFAULT '',
             closed_by TEXT NOT NULL DEFAULT '',
-            root_cause_category TEXT NOT NULL DEFAULT '',
             closed_at TEXT,
             pending_items TEXT NOT NULL DEFAULT '',
             responsible_person TEXT NOT NULL DEFAULT '',
@@ -5663,7 +5648,7 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
             id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id,
             problem_desc, category, product_lot_no, product_name, product_stage,
             outsource_work_order, batch_qty, status, improvement_desc, closed_by,
-            root_cause_category, closed_at, pending_items, responsible_person,
+            closed_at, pending_items, responsible_person,
             due_date, quality_report_required, created_at, updated_at
         )
         SELECT
@@ -5675,7 +5660,7 @@ def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
                 WHEN status IN ('CLOSED', '已結案') THEN '已結案'
                 ELSE '待處理'
             END AS status,
-            improvement_desc, closed_by, root_cause_category,
+            improvement_desc, closed_by,
             CASE
                 WHEN status IN ('CLOSED', '已結案') THEN closed_at
                 ELSE NULL
