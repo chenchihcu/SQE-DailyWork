@@ -62,6 +62,13 @@ from database.repo_helpers import (
     _normalized_lookup_text,
     _build_product_lookup_by_supplier_and_name,
 )
+from database.repository_schema_helpers import (
+    ensure_column as _ensure_column,
+    ensure_index as _ensure_index,
+    ensure_product_indexes as _ensure_product_indexes,
+    has_column as _has_column,
+    table_sql as _table_sql,
+)
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -5378,68 +5385,6 @@ def _find_product_id_by_name_scope(
     if row is None:
         return None
     return str(row["id"])
-def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
-    row = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    if row is None:
-        return ""
-    if isinstance(row, sqlite3.Row):
-        return str(row["sql"] or "")
-    return str(row[0] or "")
-
-
-def _ensure_product_indexes(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_global_code
-            ON products(product_code)
-            WHERE supplier_id IS NULL
-        """
-    )
-    conn.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_products_supplier_code
-            ON products(supplier_id, product_code)
-            WHERE supplier_id IS NOT NULL
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id)"
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_products_secondary_supplier
-            ON products(secondary_supplier_id)
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)"
-    )
-
-
-def _ensure_column(
-    conn: sqlite3.Connection, table_name: str, column_name: str, column_ddl: str
-) -> None:
-    if _has_column(conn, table_name, column_name):
-        return
-    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_ddl}")
-
-
-def _has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return any(str(row["name"]) == column_name for row in rows)
-
-
-def _ensure_index(
-    conn: sqlite3.Connection, index_name: str, table_name: str, column_name: str
-) -> None:
-    conn.execute(
-        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})"
-    )
-
-
 def _normalize_defect_records_optional_work_order(conn: sqlite3.Connection) -> None:
     """Drop the legacy ``CHECK(TRIM(work_order_no) <> '')`` so 委外製令 is optional.
 

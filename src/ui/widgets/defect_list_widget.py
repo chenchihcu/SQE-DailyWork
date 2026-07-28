@@ -31,6 +31,7 @@ from services.event import _export_service, _query_service
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
     EVENT_LIST_NAME_COL_MIN_WIDTH,
+    EVENT_LIST_FULL_COLUMNS_MIN_WIDTH,
     INLINE_SPACING,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
@@ -76,6 +77,8 @@ _SORTABLE_COLS: dict[int, str] = {
     10: "closed_at",
 }
 
+_EVENT_LIST_COMPACT_OPTIONAL_COLUMNS = (1, 4, 5, 7, 10)
+
 
 class EventListWidget(QWidget, _EventListFilterMixin):
     def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None, lazy_load: bool = False):
@@ -119,6 +122,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.all_months_checkbox: QCheckBox | None = None
         self.export_pdf_button: QPushButton | None = None
         self.source_tag_label: QLabel | None = None
+        self.column_profile_notice: QLabel | None = None
+        self.column_profile_button: QPushButton | None = None
+        self._compact_column_profile_override: bool | None = None
         self._selected_event_row: dict | None = None
         self._event_actions = EventActionsController(self, main_window)
         self._setup_ui()
@@ -268,6 +274,18 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         pagination_row.addWidget(self.pagination, 1)
         control_outer.addLayout(pagination_row)
 
+        column_profile_row = QHBoxLayout()
+        column_profile_row.setSpacing(INLINE_SPACING)
+        self.column_profile_notice = QLabel("")
+        self.column_profile_notice.setProperty("role", "helperText")
+        self.column_profile_notice.setWordWrap(True)
+        column_profile_row.addWidget(self.column_profile_notice, 1)
+        self.column_profile_button = QPushButton()
+        self.column_profile_button.setProperty("variant", "secondary")
+        self.column_profile_button.clicked.connect(self._toggle_column_profile)
+        column_profile_row.addWidget(self.column_profile_button)
+        control_outer.addLayout(column_profile_row)
+
         root.addWidget(control_panel)
 
         result_panel = QFrame()
@@ -331,6 +349,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         if self.mode == "query":
             self._sync_filter_widgets_from_state()
+        self._sync_table_column_profile()
 
     def _build_new_event_buttons(self) -> tuple[QPushButton | None, QPushButton | None]:
         """Create the standard 「新增訪廠」/「新增異常」 button pair shared by query and entry modes."""
@@ -377,9 +396,54 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         因此每次 refresh_data() 都依當前 event_type 重新評估，而非只在建構時設定一次。
         僅隱藏顯示欄位，不影響 DB 資料或表單欄位。
         """
+        self._sync_table_column_profile()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        if hasattr(self, "table"):
+            self._sync_table_column_profile()
+
+    def _compact_column_profile_active(self) -> bool:
+        if self._compact_column_profile_override is not None:
+            return self._compact_column_profile_override
+        return self.width() < EVENT_LIST_FULL_COLUMNS_MIN_WIDTH
+
+    def _toggle_column_profile(self) -> None:
+        self._compact_column_profile_override = not self._compact_column_profile_active()
+        self._sync_table_column_profile()
+
+    def _sync_table_column_profile(self) -> None:
+        """Keep the minimum-width event list scanable without discarding fields."""
+        if not hasattr(self, "table"):
+            return
+
+        compact = self._compact_column_profile_active()
         is_visit_only_scope = self._filter_event_type == "VISIT"
-        self.table.setColumnHidden(1, is_visit_only_scope)
-        self.table.setColumnHidden(10, is_visit_only_scope)
+        for column in _EVENT_LIST_COMPACT_OPTIONAL_COLUMNS:
+            self.table.setColumnHidden(column, compact)
+        self.table.setColumnHidden(1, compact or is_visit_only_scope)
+        self.table.setColumnHidden(10, compact or is_visit_only_scope)
+        if self.fixed_status:
+            self.table.setColumnHidden(9, True)
+
+        if self.column_profile_notice is not None:
+            self.column_profile_notice.setVisible(compact)
+            if compact:
+                self.column_profile_notice.setText(
+                    "目前為重點欄位檢視；可顯示完整欄位以查看類別、料號、階段、缺失紀錄與結案日期。"
+                )
+            else:
+                self.column_profile_notice.setText("")
+        if self.column_profile_button is not None:
+            if compact:
+                self.column_profile_button.setText("顯示完整欄位")
+                tooltip = "顯示事件列表的全部欄位"
+            else:
+                self.column_profile_button.setText("使用重點欄位")
+                tooltip = "只顯示事件列表的重點欄位"
+            self.column_profile_button.setToolTip(tooltip)
+            self.column_profile_button.setStatusTip(tooltip)
+            apply_clickable_affordance(self.column_profile_button)
 
     def _render_current_page(self):
         self._selected_event_row = None

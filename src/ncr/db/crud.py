@@ -50,6 +50,70 @@ _EDITABLE_COLUMNS = (
 )
 _UPDATE_ASSIGNMENTS = ", ".join(f"{column} = ?" for column in _EDITABLE_COLUMNS)
 
+_DEFECT_SELECT_SQL = """
+    SELECT
+        id,
+        defect_no,
+        event_date,
+        processing_line,
+        return_slip_type,
+        work_order_no,
+        internal_work_order_no,
+        transfer_slip_no,
+        item_no,
+        product_name,
+        qty,
+        category,
+        supplier_name,
+        outsource_supplier_name,
+        defect_desc,
+        status,
+        disposition,
+        responsibility,
+        created_at
+    FROM defect_records
+"""
+
+
+def _build_defect_filters(
+    filters: dict[str, Any] | None,
+    exclude_status: str | None,
+) -> tuple[str, list[Any]]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    filters = filters or {}
+
+    if filters.get("month"):
+        conditions.append("strftime('%Y-%m', event_date) = ?")
+        params.append(filters["month"])
+    if filters.get("processing_line"):
+        conditions.append("processing_line = ?")
+        params.append(filters["processing_line"])
+    if filters.get("work_order_no"):
+        conditions.append(
+            "(work_order_no LIKE ? OR internal_work_order_no LIKE ? OR transfer_slip_no LIKE ?)"
+        )
+        search_val = f"%{filters['work_order_no'].strip()}%"
+        params.extend([search_val, search_val, search_val])
+    if filters.get("item_no"):
+        conditions.append("item_no LIKE ?")
+        params.append(f"%{filters['item_no'].strip()}%")
+    if filters.get("supplier_name"):
+        conditions.append("supplier_name LIKE ?")
+        params.append(f"%{filters['supplier_name'].strip()}%")
+    if filters.get("outsource_supplier_name"):
+        conditions.append("outsource_supplier_name LIKE ?")
+        params.append(f"%{filters['outsource_supplier_name'].strip()}%")
+    if filters.get("status"):
+        conditions.append("status = ?")
+        params.append(filters["status"])
+    if exclude_status:
+        conditions.append("status <> ?")
+        params.append(exclude_status)
+
+    where_sql = " WHERE " + " AND ".join(conditions) if conditions else ""
+    return where_sql, params
+
 
 def insert_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> int:
     values = [data.get(column) for column in TABLE_COLUMNS]
@@ -69,64 +133,44 @@ def get_defects(
     filters: dict[str, Any] | None = None,
     exclude_status: str | None = None,
 ) -> list[sqlite3.Row]:
-    query = """
-        SELECT
-            id,
-            defect_no,
-            event_date,
-            processing_line,
-            return_slip_type,
-            work_order_no,
-            internal_work_order_no,
-            transfer_slip_no,
-            item_no,
-            product_name,
-            qty,
-            category,
-            supplier_name,
-            outsource_supplier_name,
-            defect_desc,
-            status,
-            disposition,
-            responsibility,
-            created_at
-        FROM defect_records
-    """
-    conditions: list[str] = []
-    params: list[Any] = []
-    filters = filters or {}
-
-    if filters.get("month"):
-        conditions.append("strftime('%Y-%m', event_date) = ?")
-        params.append(filters["month"])
-    if filters.get("processing_line"):
-        conditions.append("processing_line = ?")
-        params.append(filters["processing_line"])
-    if filters.get("work_order_no"):
-        conditions.append("(work_order_no LIKE ? OR internal_work_order_no LIKE ? OR transfer_slip_no LIKE ?)")
-        search_val = f"%{filters['work_order_no'].strip()}%"
-        params.extend([search_val, search_val, search_val])
-    if filters.get("item_no"):
-        conditions.append("item_no LIKE ?")
-        params.append(f"%{filters['item_no'].strip()}%")
-    if filters.get("supplier_name"):
-        conditions.append("supplier_name LIKE ?")
-        params.append(f"%{filters['supplier_name'].strip()}%")
-    if filters.get("outsource_supplier_name"):
-        conditions.append("outsource_supplier_name LIKE ?")
-        params.append(f"%{filters['outsource_supplier_name'].strip()}%")
-    if filters.get("status"):
-        conditions.append("status = ?")
-        params.append(filters["status"])
-    if exclude_status:
-        conditions.append("status <> ?")
-        params.append(exclude_status)
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " ORDER BY event_date DESC, id DESC"
+    where_sql, params = _build_defect_filters(filters, exclude_status)
+    query = _DEFECT_SELECT_SQL + where_sql + " ORDER BY event_date DESC, id DESC"
     cursor = conn.execute(query, params)
+    return list(cursor.fetchall())
+
+
+def count_defects(
+    conn: sqlite3.Connection,
+    filters: dict[str, Any] | None = None,
+    exclude_status: str | None = None,
+) -> int:
+    """Return the total matching defects without materializing their rows."""
+    where_sql, params = _build_defect_filters(filters, exclude_status)
+    row = conn.execute(
+        "SELECT COUNT(*) AS count FROM defect_records" + where_sql,
+        params,
+    ).fetchone()
+    return int(row["count"] if row is not None else 0)
+
+
+def get_defects_page(
+    conn: sqlite3.Connection,
+    filters: dict[str, Any] | None = None,
+    exclude_status: str | None = None,
+    *,
+    page: int,
+    page_size: int,
+) -> list[sqlite3.Row]:
+    """Return one stable, newest-first page of matching defects."""
+    if page < 1:
+        raise ValueError("page must be at least 1")
+    if page_size < 1:
+        raise ValueError("page_size must be at least 1")
+
+    where_sql, params = _build_defect_filters(filters, exclude_status)
+    offset = (page - 1) * page_size
+    query = _DEFECT_SELECT_SQL + where_sql + " ORDER BY event_date DESC, id DESC LIMIT ? OFFSET ?"
+    cursor = conn.execute(query, [*params, page_size, offset])
     return list(cursor.fetchall())
 
 

@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
     QComboBox,
@@ -43,10 +42,6 @@ from ncr.models.defect import (
 )
 from ncr.models.labels import (
     HINT_EMPTY_RESULT,
-    HINT_OPEN_CASES_SCOPE,
-    HINT_PROCESSING_LINE_SCOPE,
-    HINT_CLOSED_CASES_SCOPE,
-    HINT_CLOSED_CASES_MONTH_SCOPE,
     HINT_RESET_FILTER,
     HEADER_EVENT_MONTH,
     LABEL_DATA_COUNT,
@@ -58,9 +53,10 @@ from ncr.models.labels import (
     LABEL_SUPPLIER_NAME,
     MSG_DELETE_CONFIRM,
 )
-from ncr.services import export_service, stats_service
+from ncr.services import export_service
 from ncr.ui.defect_form import DefectEditDialog
-from ui.widgets.common_widgets import EMPTY_PLACEHOLDER, EmptyStateWidget
+from ncr.ui.defect_list_paging import _DefectListPagingMixin
+from ui.widgets.common_widgets import EmptyStateWidget
 from ncr.ui.ui_style import (
     ACTION_BUTTON_MIN_WIDTH,
     FILTER_BUTTON_MAX_WIDTH,
@@ -71,18 +67,14 @@ from ncr.ui.ui_style import (
     create_form_grid,
     create_page_shell,
     create_section_card,
-    create_status_badge,
-    display_text,
     make_hint_label,
     make_notice_label,
     set_button_role,
     style_table,
-    create_table_item,
     NCR_ITEMS_PER_PAGE,
     setup_column_persistence,
 )
 from ui.widgets.pagination_bar import PaginationBar
-from ui.widgets.common_widgets import preserve_table_sorting
 from ui.layout_constants import GRID_GUTTER, INLINE_SPACING, ROW_GAP
 
 
@@ -110,7 +102,7 @@ OUTSOURCE_SUPPLIER_COLUMN = LIST_FIELD_ORDER.index("outsource_supplier_name")
 RESPONSIBILITY_COLUMN = LIST_FIELD_ORDER.index("responsibility")
 
 
-class DefectListWidget(QWidget):
+class DefectListWidget(_DefectListPagingMixin, QWidget):
     changed = Signal()
     data_changed = Signal()
     # Emitted when the user clicks the「另有 N 筆未分流待整理」link on a formal
@@ -141,7 +133,14 @@ class DefectListWidget(QWidget):
         self.processing_line = processing_line
         self.open_results: list[sqlite3.Row] = []
         self.closed_results: list[sqlite3.Row] = []
+        self._open_count = 0
+        self._closed_count = 0
+        self._open_filters: dict[str, str] = {}
+        self._closed_filters: dict[str, str] = {}
+        self._open_exclude_status: str | None = None
+        self._closed_exclude_status: str | None = None
         self.current_page = 1
+        self._page_size = NCR_ITEMS_PER_PAGE
         self.tabs: QTabWidget | None = None
         self._build_ui()
         self.refresh_data()
@@ -412,7 +411,7 @@ class DefectListWidget(QWidget):
         self.pagination = PaginationBar(
             on_page_changed=self._on_page_changed,
             on_page_size_changed=self._on_page_size_changed,
-            default_page_size=NCR_ITEMS_PER_PAGE,
+            default_page_size=self._page_size,
         )
         result_layout.addWidget(self.pagination)
 
@@ -480,207 +479,6 @@ class DefectListWidget(QWidget):
     def table(self) -> QTableWidget:
         """Compatibility property for tests."""
         return self._get_active_table()
-
-    def refresh_data(self) -> None:
-        self.current_page = 1
-        self.refresh_filter_options()
-        filters = self.build_filters()
-
-        if self.workflow == "tracking":
-            open_filters = filters.copy()
-            open_filters.pop("month", None)
-            self.open_results = crud.get_defects(
-                self.conn, open_filters, exclude_status="已結案"
-            )
-            self.closed_results = []
-        elif self.workflow == "trace":
-            self.open_results = []
-            closed_filters = filters.copy()
-            closed_filters["status"] = "已結案"
-            self.closed_results = crud.get_defects(self.conn, closed_filters)
-        else:
-            # Fetch Open Cases (Status != '已結案', ignore month)
-            open_filters = filters.copy()
-            open_filters.pop("month", None)
-            self.open_results = crud.get_defects(
-                self.conn, open_filters, exclude_status="已結案"
-            )
-
-            # Fetch Closed Cases (Status == '已結案', respect month)
-            closed_filters = filters.copy()
-            closed_filters["status"] = "已結案"
-            self.closed_results = crud.get_defects(self.conn, closed_filters)
-
-        self.update_display()
-
-        open_count = len(self.open_results)
-        closed_count = len(self.closed_results)
-        total_count = open_count + closed_count
-
-        self.total_count_label.setText(LABEL_DATA_COUNT.format(total_count))
-        self.open_count_label.setText(LABEL_OPEN_COUNT.format(open_count))
-        self.closed_count_label.setText(LABEL_CLOSED_COUNT.format(closed_count))
-
-        active_count = len(self._get_active_results())
-        self.export_button.setEnabled(active_count > 0)
-        self._update_scope_notices(filters, open_count + closed_count)
-        self._update_unclassified_hint()
-
-    def _update_unclassified_hint(self) -> None:
-        """Surface any lingering unclassified backlog on formal-line pending pages."""
-        button = self.unclassified_link_button
-        if button is None:
-            return
-        try:
-            counts = stats_service.get_pending_counts_by_processing_line(self.conn)
-            pending_unclassified = int(counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))
-        except sqlite3.Error:
-            pending_unclassified = 0
-        if pending_unclassified > 0:
-            button.setText(f"另有 {pending_unclassified} 筆未分流待整理　→")
-            button.setVisible(True)
-        else:
-            button.setVisible(False)
-
-    def update_display(self) -> None:
-        active_results = self._get_active_results()
-        self.pagination.set_state(
-            total_items=len(active_results),
-            current_page=self.current_page,
-            page_size=NCR_ITEMS_PER_PAGE,
-        )
-
-        if self.workflow == "tracking":
-            self.populate_table(self.open_table, self.open_results, is_active=True)
-        elif self.workflow == "trace":
-            self.populate_table(self.closed_table, self.closed_results, is_active=True)
-        else:
-            assert self.tabs is not None
-            self.populate_table(
-                self.open_table,
-                self.open_results,
-                is_active=(self.tabs.currentIndex() == 0),
-            )
-            self.populate_table(
-                self.closed_table,
-                self.closed_results,
-                is_active=(self.tabs.currentIndex() == 1),
-            )
-
-    def _on_page_changed(self, page: int) -> None:
-        self.current_page = page
-        self.update_display()
-
-    def _on_page_size_changed(self, page_size: int) -> None:
-        if page_size <= 0:
-            return
-        #NCR_ITEMS_PER_PAGE 是 ncr 模組的固定切片單位(用於 rows[start:end] 與 actual_index 計算),
-        #不隨 PaginationBar 的 page_size 變動,因此這裡只重置頁碼並重渲染,保持切片邏輯一致。
-        self.current_page = 1
-        self.update_display()
-
-    def _on_tab_changed(self, index: int) -> None:
-        self.current_page = 1
-        filters = self.build_filters()
-        active_results = self._get_active_results()
-        self._update_scope_notices(filters, len(active_results))
-        self.export_button.setEnabled(len(active_results) > 0)
-        self.update_display()
-
-    def _get_active_results(self) -> list[sqlite3.Row]:
-        if self.workflow == "tracking":
-            return self.open_results
-        if self.workflow == "trace":
-            return self.closed_results
-        assert self.tabs is not None
-        if self.tabs.currentIndex() == 0:
-            return self.open_results
-        return self.closed_results
-
-    def _get_active_table(self) -> QTableWidget:
-        if self.workflow == "tracking":
-            return self.open_table
-        if self.workflow == "trace":
-            return self.closed_table
-        assert self.tabs is not None
-        if self.tabs.currentIndex() == 0:
-            return self.open_table
-        return self.closed_table
-
-    def _update_scope_notices(self, filters: dict[str, str], result_count: int) -> None:
-        if self.workflow == "tracking":
-            if self.processing_line:
-                self.month_scope_notice.setText(
-                    f"{HINT_OPEN_CASES_SCOPE}；{HINT_PROCESSING_LINE_SCOPE.format(self.processing_line)}"
-                )
-            else:
-                self.month_scope_notice.setText(HINT_OPEN_CASES_SCOPE)
-        elif self.workflow == "trace":
-            month_value = filters.get("month", self.month_edit.date().toString("yyyy-MM"))
-            if self._uses_month_filter():
-                self.month_scope_notice.setText(
-                    HINT_CLOSED_CASES_MONTH_SCOPE.format(month_value)
-                )
-            else:
-                self.month_scope_notice.setText(HINT_CLOSED_CASES_SCOPE)
-        elif self.tabs is not None and self.tabs.currentIndex() == 0:
-            # Open Cases Tab
-            self.month_scope_notice.setText(HINT_OPEN_CASES_SCOPE)
-        else:
-            # Closed Cases Tab
-            month_value = filters.get("month", self.month_edit.date().toString("yyyy-MM"))
-            self.month_scope_notice.setText(
-                HINT_CLOSED_CASES_MONTH_SCOPE.format(month_value)
-            )
-        
-        self.month_scope_notice.show()
-        if result_count == 0:
-            self.empty_state.set_message(HINT_EMPTY_RESULT)
-            self.empty_state.setVisible(True)
-            self._get_active_table().setVisible(False)
-        else:
-            self.empty_state.setVisible(False)
-            self._get_active_table().setVisible(True)
-
-    def populate_table(self, table: QTableWidget, rows: list[sqlite3.Row], is_active: bool = True) -> None:
-        if is_active:
-            start_idx = (self.current_page - 1) * NCR_ITEMS_PER_PAGE
-            end_idx = start_idx + NCR_ITEMS_PER_PAGE
-            page_rows = rows[start_idx:end_idx]
-        else:
-            page_rows = rows[:NCR_ITEMS_PER_PAGE]
-
-        with preserve_table_sorting(table):
-            table.setRowCount(len(page_rows))
-            for row_index, row in enumerate(page_rows):
-                row_data = dict(row)
-                for column_index, field_name in enumerate(LIST_FIELD_ORDER):
-                    value = row_data.get(field_name, "")
-                    display_value = display_text(value)
-
-                    if field_name == "status":
-                        placeholder = create_table_item(str(value or ""), sort_key=str(value or ""))
-                        placeholder.setTextAlignment(
-                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                        )
-                        table.setItem(row_index, column_index, placeholder)
-                        table.setCellWidget(
-                            row_index, column_index, create_status_badge(display_value)
-                        )
-                        continue
-
-                    raw_sort_key = value
-                    if field_name in {"id", "qty"}:
-                        try:
-                            raw_sort_key = int(value)
-                        except (ValueError, TypeError):
-                            raw_sort_key = value
-
-                    item = create_table_item(display_value, is_numeric=(field_name in {"id", "qty"}), sort_key=raw_sort_key)
-                    item.setToolTip("" if value is None else str(value))
-                    if field_name == "defect_desc" and display_value != EMPTY_PLACEHOLDER:
-                        item.setData(Qt.ItemDataRole.DisplayRole, display_value)
-                    table.setItem(row_index, column_index, item)
 
     def refresh_filter_options(self) -> None:
         """從資料庫獲取現有的供應商清單並更新篩選選單。"""
@@ -753,8 +551,10 @@ class DefectListWidget(QWidget):
 
     def open_edit_dialog(self, row: int, _column: int) -> None:
         results = self._get_active_results()
-        actual_index = (self.current_page - 1) * NCR_ITEMS_PER_PAGE + row
-        defect_id = int(results[actual_index]["id"])
+        if row < 0 or row >= len(results):
+            self.refresh_data()
+            return
+        defect_id = int(results[row]["id"])
         try:
             dialog = DefectEditDialog(self.conn, defect_id, self)
         except ValueError:
@@ -773,8 +573,10 @@ class DefectListWidget(QWidget):
             return
 
         results = self._get_active_results()
-        actual_index = (self.current_page - 1) * NCR_ITEMS_PER_PAGE + row_index
-        defect = results[actual_index]
+        if row_index < 0 or row_index >= len(results):
+            self.refresh_data()
+            return
+        defect = results[row_index]
         box = QMessageBox(self)
         box.setWindowTitle("確認刪除")
         box.setText(MSG_DELETE_CONFIRM.format(defect['defect_no']))
@@ -797,8 +599,9 @@ class DefectListWidget(QWidget):
         self.data_changed.emit()
 
     def export_current_results(self) -> None:
-        results = self._get_active_results()
-        if not results:
+        filters, exclude_status = self._active_query()
+        result_count = self._active_count()
+        if result_count == 0:
             QMessageBox.warning(self, "無可匯出資料", HINT_EMPTY_RESULT)
             return
 
@@ -814,6 +617,11 @@ class DefectListWidget(QWidget):
             return
 
         try:
+            results = crud.get_defects(
+                self.conn,
+                filters,
+                exclude_status=exclude_status,
+            )
             output_path = export_service.export_to_excel(
                 results,
                 self._build_product_stats(results),

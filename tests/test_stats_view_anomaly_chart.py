@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from ui.layout_constants import SCROLLBAR_WIDTH
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS, apply_app_theme
+from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.stats_view_widget import StatsViewWidget
 
 
@@ -602,6 +603,27 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         from ui.widgets.stats_dashboard_helpers import default_range_keys
 
         self.assertEqual(default_range_keys(), widget._range_keys())
+
+    def test_partial_statistics_failure_is_not_rendered_as_empty_data(self) -> None:
+        with (
+            patch("services.event._query_service.get_monthly_stats", return_value={}),
+            patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]),
+            patch("services.event._query_service.get_visit_trend_by_range", return_value=[]),
+            patch(
+                "services.event._query_service.get_responsible_person_stats_by_range",
+                side_effect=RuntimeError("service unavailable"),
+            ),
+            patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]),
+        ):
+            widget = StatsViewWidget(main_window=_DummyMainWindow())
+            self._widgets.append(widget)
+
+        self.assertIn("責任人統計暫時無法載入", widget.insight_label.text())
+        empty_titles = {
+            child._title_label.text()
+            for child in widget.findChildren(EmptyStateWidget)
+        }
+        self.assertIn("責任人統計暫時無法載入", empty_titles)
 
     def test_stats_view_range_clamp_touched_control_wins(self) -> None:
         """起 > 迄 時「碰到的控件優先」：改起始把迄拖到起始，改迄把起始拖到迄。"""

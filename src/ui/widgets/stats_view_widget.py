@@ -231,6 +231,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             # 趨勢圖窗口 = 使用者選定的完整月份區間（服務端上限 12 個月）
             trend_data = _query_service.get_anomaly_trend_by_range(iso_start, iso_end)
             visit_trend_data = _query_service.get_visit_trend_by_range(iso_start, iso_end)
+            partial_failures: set[str] = set()
             try:
                 resp_stats = _query_service.get_responsible_person_stats_by_range(
                     iso_start, iso_end
@@ -241,6 +242,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     iso_start, iso_end,
                 )
                 resp_stats = []
+                partial_failures.add("responsible")
             try:
                 category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(
                     iso_start, iso_end
@@ -252,12 +254,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     iso_end,
                 )
                 category_pareto_data = []
+                partial_failures.add("category")
 
             self._render_charts(
                 trend_data=trend_data,
                 visit_trend_data=visit_trend_data,
                 resp_stats=resp_stats,
                 category_pareto_data=category_pareto_data,
+                partial_failures=partial_failures,
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
@@ -298,6 +302,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         category_pareto_data: list[dict],
         *,
         error_message: str | None = None,
+        partial_failures: set[str] | None = None,
     ):
         self._clear_chart_grid()
 
@@ -311,7 +316,21 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             self.update()
             return
 
+        partial_failures = partial_failures or set()
         insights: list[str] = []
+        partial_labels = {
+            "responsible": "責任人統計",
+            "category": "異常類別統計",
+        }
+        if partial_failures:
+            failed_names = "、".join(
+                partial_labels[key]
+                for key in ("responsible", "category")
+                if key in partial_failures
+            )
+            insights.append(
+                f"⚠️ {failed_names}暫時無法載入；請按「重新整理」重試。"
+            )
 
         # 1. Trend Chart
         if trend_data:
@@ -362,7 +381,16 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
 
         # 3. Category Pareto Chart
-        if category_pareto_data:
+        if "category" in partial_failures:
+            self.grid_layout.addWidget(
+                EmptyStateWidget(
+                    "異常類別統計暫時無法載入",
+                    "請按「重新整理」重試。",
+                ),
+                1,
+                0,
+            )
+        elif category_pareto_data:
             category_view = self._build_category_pareto_chart(category_pareto_data)
             if category_view:
                 self.grid_layout.addWidget(category_view, 1, 0)
@@ -381,7 +409,16 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
 
         # 4. Responsible Person Stacked Chart
-        if resp_stats:
+        if "responsible" in partial_failures:
+            self.grid_layout.addWidget(
+                EmptyStateWidget(
+                    "責任人統計暫時無法載入",
+                    "請按「重新整理」重試。",
+                ),
+                1,
+                1,
+            )
+        elif resp_stats:
             resp_view = self._build_responsible_stacked_chart(resp_stats)
             if resp_view:
                 self.grid_layout.addWidget(resp_view, 1, 1)

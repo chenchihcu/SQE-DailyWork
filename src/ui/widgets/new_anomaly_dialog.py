@@ -388,6 +388,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         )
         self.form_scroll.verticalScrollBar().setValue(0)
         self._update_anomaly_no_preview()
+        if not self._is_edit:
+            self._update_sync_visit_hint()
         self.product_stage_combo.currentTextChanged.connect(
             lambda _: self._update_outsource_row_visibility()
         )

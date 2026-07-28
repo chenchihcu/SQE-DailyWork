@@ -129,6 +129,32 @@ class MicroInteractionTests(unittest.TestCase):
         finally:
             defect_list_widget.event_service.list_events = original_list_events
 
+    def test_event_list_compact_column_profile_preserves_access_to_full_fields(self) -> None:
+        original_list_events = defect_list_widget.event_service.list_events
+        defect_list_widget.event_service.list_events = lambda _filters: self._sample_rows()
+        try:
+            widget = EventListWidget(_DummyMainWindow(), mode="query")
+            widget.resize(800, 680)
+            widget.show()
+            self._drain_events()
+
+            self.assertTrue(widget.column_profile_notice.isVisible())
+            for column in (1, 4, 5, 7, 10):
+                self.assertTrue(widget.table.isColumnHidden(column))
+            for column in (0, 2, 3, 6, 8, 9):
+                self.assertFalse(widget.table.isColumnHidden(column))
+            self.assertEqual("顯示完整欄位", widget.column_profile_button.text())
+
+            widget.column_profile_button.click()
+            self._drain_events()
+            self.assertFalse(widget.column_profile_notice.isVisible())
+            for column in (1, 4, 5, 7, 10):
+                self.assertFalse(widget.table.isColumnHidden(column))
+            self.assertEqual("使用重點欄位", widget.column_profile_button.text())
+            widget.close()
+        finally:
+            defect_list_widget.event_service.list_events = original_list_events
+
 
 if __name__ == "__main__":
     unittest.main()

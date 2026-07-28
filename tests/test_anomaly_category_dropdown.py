@@ -160,6 +160,17 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             section_titles,
         )
 
+    def test_sync_visit_hint_is_initialized_with_visible_explanation(self) -> None:
+        dialog = self.NewAnomalyDialog()
+        self.addCleanup(dialog.close)
+
+        visit_date = dialog.date_edit.date().toString("yyyy-MM-dd")
+        self.assertFalse(dialog._sync_visit_hint_label.isHidden())
+        self.assertEqual(
+            f"勾選後將同時建立／重用 {visit_date} 的訪廠紀錄",
+            dialog._sync_visit_hint_label.text(),
+        )
+
     def test_quality_report_requirement_must_be_selected_before_submit(self) -> None:
         dialog = self.NewAnomalyDialog()
         self.addCleanup(dialog.close)

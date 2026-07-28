@@ -24,6 +24,9 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(12, lc.GRID_GUTTER)
         self.assertEqual(8, lc.ROW_GAP)
 
+    def test_event_list_column_profile_breakpoint(self) -> None:
+        self.assertEqual(1024, lc.EVENT_LIST_FULL_COLUMNS_MIN_WIDTH)
+
 
 if __name__ == "__main__":
     unittest.main()

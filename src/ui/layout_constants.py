@@ -167,6 +167,8 @@ ATTACHMENT_LIST_HEIGHT = 172
 
 # 事件清單供應商/品名欄最小顯示寬度（防止 Interactive 模式下拖至不可讀）
 EVENT_LIST_NAME_COL_MIN_WIDTH = 80
+# 事件清單顯示所有欄位所需的內容寬度；低於此值改用可切換的重點欄位檢視。
+EVENT_LIST_FULL_COLUMNS_MIN_WIDTH = 1024
 
 # NCR 模組佈局常數（從 src/ncr/ui/ui_style.py 遷移至此，統一單一來源）
 NCR_PAGE_MARGIN = 8

@@ -80,6 +80,21 @@ function Resolve-PythonExe {
     $candidates = [System.Collections.Generic.List[string]]::new()
     Add-UniqueCandidate -List $candidates -Value (Join-Path $RepoRoot ".venv\Scripts\python.exe")
 
+    # A Windows venv launcher can become unusable when its original interpreter
+    # path is no longer directly executable by the current shell.  The venv
+    # metadata still records the intended base runtime, so use it as a narrow
+    # fallback before consulting a PATH-level Python.
+    $venvConfig = Join-Path $RepoRoot ".venv\pyvenv.cfg"
+    if (Test-Path -LiteralPath $venvConfig -PathType Leaf) {
+        $venvHomeLine = Get-Content -LiteralPath $venvConfig |
+            Where-Object { $_ -match '^\s*home\s*=\s*(.+?)\s*$' } |
+            Select-Object -First 1
+        if ($venvHomeLine -match '^\s*home\s*=\s*(.+?)\s*$') {
+            $venvHomePath = $Matches[1].Trim()
+            Add-UniqueCandidate -List $candidates -Value (Join-Path $venvHomePath "python.exe")
+        }
+    }
+
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
     if ($null -ne $pythonCmd) {
         Add-UniqueCandidate -List $candidates -Value $pythonCmd.Source
