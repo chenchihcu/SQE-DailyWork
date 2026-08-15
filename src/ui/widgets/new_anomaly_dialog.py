@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, Qt, QRegularExpression
+from PySide6.QtCore import QDate, Qt, QRegularExpression, Signal
 from PySide6.QtGui import QIntValidator, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -74,6 +74,8 @@ logger = logging.getLogger(__name__)
 
 
 class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin):
+    form_saved = Signal(str)
+
     def __init__(
         self,
         parent=None,
@@ -81,8 +83,16 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         anomaly_id: str | None = None,
         initial_data: dict | None = None,
         read_only: bool = False,
+        embedded: bool = False,
+        page_mode: bool = False,
     ):
         super().__init__(parent)
+        self._embedded = embedded
+        self._page_mode = bool(page_mode)
+        if self._page_mode and not self._embedded:
+            raise ValueError("page_mode requires embedded=True")
+        if self._embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
         self._anomaly_id = (anomaly_id or "").strip()
         self._is_edit = bool(self._anomaly_id)
         self._read_only = read_only
@@ -368,25 +378,34 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.attachment_editor.set_preview_height(ANOMALY_ATTACHMENT_COMPACT_HEIGHT)
         content_layout.addWidget(self.attachment_editor)
         content_layout.addStretch(1)
-        self.form_scroll.setWidget(form_content)
+        if self._page_mode:
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(form_content)
+            self.page_content = self
+            self.save_button = None
+            self._button_box = None
+            self.form_scroll = None
+        else:
+            self.page_content = None
+            self.form_scroll.setWidget(form_content)
+            # 3. 按鈕與對話框佈局
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
+            )
+            self.save_button = style_dialog_buttons(buttons)
+            self._button_box = buttons
+            buttons.accepted.connect(self._on_submit)
+            buttons.rejected.connect(self.reject)
 
-        # 3. 按鈕與對話框佈局
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
-        )
-        self.save_button = style_dialog_buttons(buttons)
-        self._button_box = buttons
-        buttons.accepted.connect(self._on_submit)
-        buttons.rejected.connect(self.reject)
-
-        apply_dialog_layout(self, self.form_scroll, buttons)
-        fit_dialog_to_available_screen(
-            self,
-            preferred_width=ANOMALY_DIALOG_PREFERRED_WIDTH,
-            preferred_height=ANOMALY_DIALOG_PREFERRED_HEIGHT,
-            maximum_width=FORM_MAX_WIDTH,
-        )
-        self.form_scroll.verticalScrollBar().setValue(0)
+            apply_dialog_layout(self, self.form_scroll, buttons)
+            fit_dialog_to_available_screen(
+                self,
+                preferred_width=ANOMALY_DIALOG_PREFERRED_WIDTH,
+                preferred_height=ANOMALY_DIALOG_PREFERRED_HEIGHT,
+                maximum_width=FORM_MAX_WIDTH,
+            )
+            self.form_scroll.verticalScrollBar().setValue(0)
         self._update_anomaly_no_preview()
         if not self._is_edit:
             self._update_sync_visit_hint()
@@ -566,6 +585,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
     def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
 
+    def can_submit(self) -> bool:
+        """Return the established page/dialog eligibility without duplicating it."""
+        supplier_id = (self.supplier_combo.currentData() or "").strip()
+        product_id = (self.product_combo.currentData() or "").strip()
+        return bool(supplier_id and product_id)
+
     def _refresh_submit_state(self) -> None:
         supplier_id = (self.supplier_combo.currentData() or "").strip()
         product_id = (self.product_combo.currentData() or "").strip()
@@ -582,7 +607,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._product_guard_label.setText(message)
         set_tone(self._product_guard_label, tone)
         self._product_guard_label.setVisible(bool(message))
-        self.save_button.setEnabled(bool(supplier_id and product_id))
+        if self.save_button is not None:
+            self.save_button.setEnabled(bool(supplier_id and product_id))
 
     def _apply_initial_data(self):
         anomaly_date = str(self._initial_data.get("anomaly_date") or "").strip()

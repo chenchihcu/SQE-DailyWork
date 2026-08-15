@@ -378,7 +378,7 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
             str(r["name"])
             for r in self.conn.execute("PRAGMA table_info(anomalies)").fetchall()
         }
-        self.assertNotIn("closed_by", anomaly_columns)
+        self.assertNotIn("verification_result", anomaly_columns)
 
         # Status mapped; active closure-tracking fields preserved verbatim.
         closed = self.conn.execute(

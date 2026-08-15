@@ -4,6 +4,7 @@ import argparse
 import atexit
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -226,12 +227,32 @@ def _save_widget_capture(widget, output_path: Path) -> None:
     captured = widget.grab()
     canvas = QPixmap(captured.size())
     canvas.setDevicePixelRatio(captured.devicePixelRatio())
-    canvas.fill(QColor(TOKENS["page_bg"]))
+    canvas.fill(_opaque_capture_background(TOKENS["page_bg"]))
     painter = QPainter(canvas)
     painter.drawPixmap(0, 0, captured)
     painter.end()
     if not canvas.save(str(output_path)):
         raise RuntimeError(f"Failed to save visual evidence: {output_path}")
+
+
+def _opaque_capture_background(page_background: object):
+    """Resolve a QSS page token to a valid opaque colour for PNG compositing.
+
+    ``page_bg`` is deliberately a QSS gradient. ``QColor`` cannot parse a QSS
+    gradient string and silently becomes black, which makes transparent
+    child-widget captures look like a dark-mode regression. Use the gradient's
+    first stop for the neutral canvas that sits behind a child capture.
+    """
+    from PySide6.QtGui import QColor
+
+    value = str(page_background).strip()
+    direct_colour = QColor(value)
+    if direct_colour.isValid():
+        return direct_colour
+    first_stop = re.search(r"stop:\s*0(?:\.0+)?\s+(#[0-9A-Fa-f]{6,8})", value)
+    if first_stop is not None:
+        return QColor(first_stop.group(1))
+    raise ValueError(f"Visual probe needs an opaque page background, got: {value!r}")
 
 
 def _settle_qt_paint(app: "QApplication", *, delay_ms: int = 120, cycles: int = 2) -> None:
@@ -394,9 +415,66 @@ def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int
     return [_capture_widget(window, output, app)]
 
 
+def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    """Capture both full-page supplier-event create flows in the shell."""
+    from database.connection import initialize_database
+    from ui.main_window import (
+        EVENT_CREATE_ANOMALY_PAGE_INDEX,
+        EVENT_CREATE_VISIT_PAGE_INDEX,
+        MainWindow,
+    )
+
+    initialize_database()
+    window = MainWindow()
+    window.resize(*(size or (1100, 740)))
+    screenshots: list[str] = []
+    for suffix, page_index, message in (
+        ("event-create-visit", EVENT_CREATE_VISIT_PAGE_INDEX, "訪廠紀錄已完成"),
+        ("event-create-anomaly", EVENT_CREATE_ANOMALY_PAGE_INDEX, "已建立異常單：20260813001"),
+    ):
+        window._switch_primary_page(page_index)
+        screenshots.append(_capture_widget(window, _target_output_path(output, suffix), app))
+        page = window.stack.currentWidget()
+        if hasattr(page, "_on_form_saved"):
+            page._on_form_saved(message)
+            screenshots.append(
+                _capture_widget(window, _target_output_path(output, f"{suffix}-success"), app)
+            )
+    return screenshots
+
+
+def _capture_appearance_settings(output: Path, app: "QApplication") -> list[str]:
+    """Capture default and full high-readability preview states without persistence."""
+    from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
+
+    default_dialog = AppearancePreferencesDialog()
+    screenshots = [
+        _capture_widget(
+            default_dialog,
+            _target_output_path(output, "appearance-settings-default"),
+            app,
+        )
+    ]
+    preview_dialog = AppearancePreferencesDialog()
+    preview_dialog._density_buttons["comfortable"].click()
+    preview_dialog._text_scale_buttons["large"].click()
+    preview_dialog._sidebar_density_buttons["compact"].click()
+    preview_dialog._table_density_buttons["comfortable"].click()
+    preview_dialog._contrast_mode_buttons["high"].click()
+    screenshots.append(
+        _capture_widget(
+            preview_dialog,
+            _target_output_path(output, "appearance-settings-comfortable-large"),
+            app,
+        )
+    )
+    return screenshots
+
+
 def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     from unittest.mock import patch
 
+    from database import repository
     from database.connection import initialize_database
     from ui.widgets.defect_list_widget import EventListWidget
 
@@ -408,12 +486,18 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
         widget.show()
         app.processEvents()
         output.parent.mkdir(parents=True, exist_ok=True)
-        scope_tab_bar = getattr(widget, "event_scope_tab_bar", None)
-        tab_count = scope_tab_bar.count() if scope_tab_bar is not None else 1
-        for index in range(max(tab_count, 1)):
-            if scope_tab_bar is not None:
-                scope_tab_bar.setCurrentIndex(index)
-                app.processEvents()
+        # Scope is now selected by the visible shell sidebar, not an internal
+        # QTabBar. Capture each routed scope explicitly so the probe continues
+        # to cover all four supplier-event views after that UI topology change.
+        scope_cases = (
+            repository.EVENT_SCOPE_ANOMALY_ONLY,
+            repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
+            repository.EVENT_SCOPE_VISIT_ONLY,
+            repository.EVENT_SCOPE_CLOSED_ONLY,
+        )
+        for index, scope in enumerate(scope_cases):
+            widget.set_event_scope(scope)
+            app.processEvents()
             if hasattr(widget, "table"):
                 widget.table.clearSelection()
                 widget.table.setCurrentCell(-1, -1)
@@ -572,14 +656,15 @@ def _capture_empty_states(output: Path, app: "QApplication", size: tuple[int, in
             _capture_widget(master_widget, _target_output_path(output, "empty-master"), app)
         )
 
-    # NCR-unavailable placeholder (DB load failure path) rendered standalone.
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QLabel
+    # NCR-unavailable placeholder (DB load failure path) must use the same
+    # component and QSS roles as MainWindow, not an unstyled QLabel.
+    from ui.widgets.common_widgets import EmptyStateWidget
 
-    placeholder = QLabel("倉庫不合格品模組暫時無法載入。\n\n（範例：資料庫初始化失敗）")
+    placeholder = EmptyStateWidget(
+        "倉庫不合格品模組暫時無法載入",
+        "原因：資料庫初始化失敗\n\n請確認資料庫檔案後重新啟動程式。",
+    )
     placeholder.setObjectName("NcrUnavailablePlaceholder")
-    placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    placeholder.setWordWrap(True)
     placeholder.resize(*(size or (1180, 720)))
     screenshots.append(
         _capture_widget(placeholder, _target_output_path(output, "empty-ncr-placeholder"), app)
@@ -594,35 +679,35 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from ncr.db.database import apply_schema
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget, QuickProductCreateDialog
-    from ui.widgets.defect_form_shim import NewAnomalyDialog, NewVisitDialog
+    from ui.widgets.event_create_page import EventCreatePage
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
     initialize_database()
     screenshots: list[str] = []
 
-    anomaly_dialog = NewAnomalyDialog()
+    anomaly_page = EventCreatePage(_ProbeHost(), "anomaly")
     screenshots.append(
         _capture_widget(
-            anomaly_dialog,
+            anomaly_page,
             _target_output_path(output, "anomaly-form"),
             app,
         )
     )
 
-    anomaly_calendar_dialog = NewAnomalyDialog()
+    anomaly_calendar_page = EventCreatePage(_ProbeHost(), "anomaly")
     screenshots.append(
         _capture_date_popup(
-            anomaly_calendar_dialog,
-            anomaly_calendar_dialog.date_edit,
+            anomaly_calendar_page,
+            anomaly_calendar_page.form.date_edit,
             _target_output_path(output, "anomaly-calendar"),
             app,
         )
     )
 
-    visit_dialog = NewVisitDialog()
+    visit_page = EventCreatePage(_ProbeHost(), "visit")
     screenshots.append(
-        _capture_widget(visit_dialog, _target_output_path(output, "visit-form"), app)
+        _capture_widget(visit_page, _target_output_path(output, "visit-form"), app)
     )
 
     supplier_dialog = SupplierFormDialog()
@@ -689,21 +774,22 @@ def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
     from database.connection import initialize_database
     from ncr.db.database import apply_schema
     from ncr.ui.defect_form import DefectFormWidget
-    from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
+    from ui.widgets.event_create_page import EventCreatePage
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.stats_view_widget import StatsViewWidget
 
     initialize_database()
     screenshots: list[str] = []
 
-    anomaly_dialog = NewAnomalyDialog()
+    anomaly_page = EventCreatePage(_ProbeHost(), "anomaly")
+    anomaly_dialog = anomaly_page.form
     probe_date = QDate(2026, 7, 14)
     anomaly_dialog.date_edit.setDate(probe_date)
     anomaly_dialog.due_date_edit.setDate(probe_date.addDays(7))
     anomaly_dialog._on_date_changed(probe_date)
     screenshots.append(
         _capture_combo_popup(
-            anomaly_dialog,
+            anomaly_page,
             anomaly_dialog.category_input,
             _target_output_path(output, "anomaly-editable-popup"),
             app,
@@ -1067,6 +1153,10 @@ def main() -> int:
     if not args.no_screenshot:
         if args.target == "stats-stress":
             screenshots = _capture_stats_stress(output, app, size)
+        elif args.target == "event-create":
+            screenshots = _capture_event_create(output, app, size)
+        elif args.target == "appearance-settings":
+            screenshots = _capture_appearance_settings(output, app)
         elif args.target == "form-density":
             screenshots = _capture_form_density(output, app)
         elif args.target == "combo-popups":

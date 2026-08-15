@@ -106,21 +106,22 @@ def get_sidebar_qss() -> str:
             color: #FFFFFF;
             font-size: 10px;
             font-weight: 700;
-            border-radius: 10px;
+            border-radius: {TOKENS["radius_sm"]}px;
             padding: 2px 7px;
             min-width: 18px;
             border: 1px solid rgba(255, 255, 255, 0.15);
         }}
 
-        /* 側欄領域分組標題（非按鈕，靜態語意標籤） */
+        /* 側欄領域分組標題（無底色極簡上標） */
         QLabel#SidebarGroupHeader {{
-            color: #0F172A;
-            background-color: {TOKENS["brand_cyan"]};
-            font-size: 11px;
+            color: {TOKENS["sidebar_muted"]};
+            background: transparent;
+            font-size: 10px;
             font-weight: 700;
-            padding: 4px 12px 4px 12px;
-            border-radius: 4px;
-            margin: 6px 12px 2px 12px;
+            padding: 6px 16px 2px 16px;
+            border-radius: 0;
+            margin: 6px 0 2px 0;
+            letter-spacing: 1px;
         }}
 
         /* ── 頁面頂部標題列 ─────────────────────────────── */

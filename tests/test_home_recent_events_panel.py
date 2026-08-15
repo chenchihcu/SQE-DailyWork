@@ -124,7 +124,7 @@ class HomeCockpitPanelTests(unittest.TestCase):
     def _label_texts(self) -> list[str]:
         return [label.text() for label in self.widget.findChildren(QLabel)]
 
-    def test_home_renders_backlog_panel_without_kpi_cards(self) -> None:
+    def test_home_renders_flat_backlog_without_kpi_cards(self) -> None:
         labels = self._label_texts()
         self.assertNotIn("快速入口", labels)
         self.assertNotIn("逾期未結", labels)
@@ -140,8 +140,9 @@ class HomeCockpitPanelTests(unittest.TestCase):
         ]
         self.assertEqual(0, len(kpi_cards))
         self.assertIsNone(self.widget.findChild(QFrame, "HomeKpiPanel"))
-        # Daily cockpit: exactly one read-only backlog panel.
-        self.assertIsNotNone(self.widget.findChild(QFrame, "HomeBacklogPanel"))
+        # Daily cockpit is intentionally flat: the single backlog tool no
+        # longer needs a decorative outer panel.
+        self.assertIsNone(self.widget.findChild(QFrame, "HomeBacklogPanel"))
         self.assertIsNotNone(self.widget.findChild(QTableWidget, "HomeBacklogTable"))
         # Retired surfaces stay retired.
         self.assertIsNone(self.widget.findChild(QFrame, "HomeQuickActionPanel"))
@@ -162,9 +163,9 @@ class HomeCockpitPanelTests(unittest.TestCase):
         self.assertNotIn("新增異常", button_texts)
         self.assertNotIn("新增訪廠", button_texts)
         self.assertNotIn("基礎資料", button_texts)
-        self.assertTrue(any(text.startswith("待處理委外加工") for text in button_texts))
-        self.assertTrue(any(text.startswith("待處理原物料") for text in button_texts))
-        self.assertTrue(any(text.startswith("未分流待整理") for text in button_texts))
+        self.assertTrue(any(text.startswith("委外待處理") for text in button_texts))
+        self.assertTrue(any(text.startswith("原物料待處理") for text in button_texts))
+        self.assertTrue(any(text.startswith("未分流") for text in button_texts))
 
     def test_warehouse_shortcuts_route_to_formal_lines_and_unclassified_cleanup(self) -> None:
         self.widget._warehouse_outsource_btn.click()

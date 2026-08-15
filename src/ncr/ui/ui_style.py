@@ -33,6 +33,7 @@ from PySide6.QtWidgets import QStyledItemDelegate
 from ui.theme import (
     CJK_FONT_FAMILY_CSS,
     PREFERRED_CJK_FONT_FAMILIES as PREFERRED_CJK_FONT_FAMILIES,
+    get_active_appearance_metrics,
 )
 from ui.status_colors import get_status_tone
 from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
@@ -450,8 +451,9 @@ def style_table(table: QTableWidget) -> None:
     table.setSelectionMode(table.SelectionMode.SingleSelection)
     table.setEditTriggers(table.EditTrigger.NoEditTriggers)
     table.verticalHeader().setVisible(False)
-    table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
-    table.horizontalHeader().setMinimumHeight(TABLE_ROW_HEIGHT)
+    appearance_metrics = get_active_appearance_metrics()
+    table.verticalHeader().setDefaultSectionSize(appearance_metrics["table_item_height"])
+    table.horizontalHeader().setMinimumHeight(appearance_metrics["header_height"])
     table.horizontalHeader().setHighlightSections(False)
     table.setSortingEnabled(True)
     table.horizontalHeader().setSortIndicatorShown(True)

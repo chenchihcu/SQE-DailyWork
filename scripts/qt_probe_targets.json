@@ -3,6 +3,8 @@
   "required_scales": ["1.0", "1.25", "1.5"],
   "targets": [
     {"name": "main", "baseline_required": true, "min_width": true},
+    {"name": "event-create", "baseline_required": false, "min_width": true},
+    {"name": "appearance-settings", "baseline_required": true, "min_width": false},
     {"name": "form-density", "baseline_required": true, "min_width": false},
     {"name": "combo-popups", "baseline_required": true, "min_width": false},
     {"name": "stats-stress", "baseline_required": true, "min_width": true},

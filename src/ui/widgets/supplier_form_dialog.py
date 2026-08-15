@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -44,6 +45,7 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         super().__init__(parent)
         self._initial_data = initial_data or {}
         self._is_edit = is_edit
+        self.setModal(True)
         self.setWindowTitle("編輯供應商" if self._is_edit else "新增供應商")
         self.setMinimumWidth(460)
         self.setMaximumWidth(FORM_MAX_WIDTH)
@@ -70,14 +72,19 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
 
         self.supplier_name_input = QLineEdit()
         self.supplier_name_input.setPlaceholderText("輸入供應商名稱")
+        self.supplier_name_input.setAccessibleName("供應商名稱")
         self.contact_name_input = QLineEdit()
         self.contact_name_input.setPlaceholderText("主聯絡人姓名")
+        self.contact_name_input.setAccessibleName("主聯絡人姓名")
         self.department_input = QLineEdit()
         self.department_input.setPlaceholderText("部門")
+        self.department_input.setAccessibleName("部門")
         self.phone_input = QLineEdit()
         self.phone_input.setPlaceholderText("電話/行動")
+        self.phone_input.setAccessibleName("電話/行動")
         self.contact_email_input = QLineEdit()
         self.contact_email_input.setPlaceholderText("電子郵件")
+        self.contact_email_input.setAccessibleName("電子郵件")
 
         form.addRow(RequiredFieldLabel("供應商名稱"), self.supplier_name_input)
         form.addRow(
@@ -101,6 +108,8 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
 
         if self._is_edit:
             self.btn_manage_contacts = QPushButton("管理多位聯絡人...")
+            self.btn_manage_contacts.setCursor(Qt.PointingHandCursor)
+            self.btn_manage_contacts.setAccessibleName("管理多位聯絡人")
             self.btn_manage_contacts.setProperty("variant", "secondary")
             apply_clickable_affordance(self.btn_manage_contacts)
             self.btn_manage_contacts.clicked.connect(self._manage_contacts)
@@ -120,8 +129,12 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         mark_button_variant(cancel_button, "secondary")
         if save_button:
             save_button.setText("儲存")
+            save_button.setCursor(Qt.PointingHandCursor)
+            save_button.setAccessibleName("儲存供應商")
         if cancel_button:
             cancel_button.setText("取消")
+            cancel_button.setCursor(Qt.PointingHandCursor)
+            cancel_button.setAccessibleName("取消儲存")
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

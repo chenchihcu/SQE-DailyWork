@@ -174,7 +174,7 @@ class _AnomalyVisitSyncMixin:
         def _unlink() -> None:
             _anomaly_service.update_anomaly_link(self._anomaly_id, None)
             self._initial_data["visit_id"] = None
-            self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
+            self._rc_group.setTitle("風險調查（單獨異常）")
             self._linked_visit_label.setVisible(False)
             self.unlink_visit_button.setVisible(False)
 
@@ -240,7 +240,7 @@ class _AnomalyVisitSyncMixin:
                 self._initial_data["visit_id"] = visit_id
                 if visit_id:
                     self.unlink_visit_button.setVisible(True)
-                    self._rc_group.setTitle("風險控管調查 (已關聯訪廠)")
+                    self._rc_group.setTitle("風險調查（已關聯訪廠）")
                     v_detail = _visit_service.get_visit_detail(visit_id)
                     v_date = v_detail.get("visit_date") or "?"
                     v_summary = (v_detail.get("summary") or "").strip() or "(無摘要)"
@@ -249,7 +249,7 @@ class _AnomalyVisitSyncMixin:
                     )
                     self._linked_visit_label.setVisible(True)
                 else:
-                    self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
+                    self._rc_group.setTitle("風險調查（單獨異常）")
                     self._linked_visit_label.setVisible(False)
 
             safe_ui_operation(

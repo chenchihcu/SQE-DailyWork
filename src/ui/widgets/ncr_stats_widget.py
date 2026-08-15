@@ -27,7 +27,7 @@ from ui.layout_constants import (
     INLINE_TIGHT_SPACING,
     RANK_PANEL_MARGINS,
 )
-from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
+from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.stats_dashboard_helpers import (
     StatsInfoBanner,
     build_temp_chart_paths,
@@ -68,14 +68,13 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(4)
 
-        # ── 頂部控制面板 ─────────────────────────────────────
-        top_panel = QFrame()
-        top_panel.setProperty("role", "panel")
-        top_layout = QVBoxLayout(top_panel)
-        top_layout.setContentsMargins(*PANEL_MARGINS)
-        top_layout.setSpacing(INLINE_SPACING)
+        # ── 頂部控制與日期選取區 ──────────────────────────────
+        self.workflow_shell = AnalyticsWorkflowShell(self)
+        self.workflow_shell.hide()
 
+        # ── 頂部控制面板 ─────────────────────────────────────
         control_row = QHBoxLayout()
+        control_row.setContentsMargins(*PANEL_MARGINS)
         control_row.setSpacing(INLINE_SPACING)
         
         period_label = create_period_label()
@@ -88,9 +87,9 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         for widget in self.range_selectors.widgets():
             control_row.addWidget(widget)
 
-        source_tag_label = QLabel("倉庫不合格品統計分析")
+        source_tag_label = QLabel("倉庫不合格品")
         source_tag_label.setProperty("role", "sourceTag")
-        source_tag_label.setToolTip("此統計畫面之數據來源僅限於不合格品登記紀錄")
+        source_tag_label.setToolTip("此統計畫面之數據來源僅限於不合格品登記紀錄 (Top 5 排序)")
         control_row.addWidget(source_tag_label)
         control_row.addStretch(1)
 
@@ -108,8 +107,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         self.btn_export.clicked.connect(self.export_ncr_excel)
         control_row.addWidget(self.btn_export)
 
-        top_layout.addLayout(control_row)
-        root.addWidget(top_panel)
+        root.addLayout(control_row)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
         scroll, self.scroll_layout = create_stats_scroll_area(

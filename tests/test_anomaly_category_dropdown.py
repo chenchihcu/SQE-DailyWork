@@ -600,7 +600,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             for label in dialog.form_content.findChildren(QLabel)
             if label.property("role") == "sectionTitle"
         }
-        self.assertEqual({"基本資訊", "進階與技轉"}, section_titles)
+        self.assertEqual({"基本資訊", "技轉"}, section_titles)
 
     def test_visit_dialog_submits_without_new_defect_notes(self) -> None:
         captured: dict = {}

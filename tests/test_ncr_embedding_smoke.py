@@ -6,7 +6,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QTabWidget
+from PySide6.QtWidgets import QApplication, QFrame, QScrollArea, QTabWidget
 
 from ncr.embed import NCR_NAV_LABELS, NCR_PAGE_OFFSET
 from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
@@ -29,6 +29,7 @@ from ui.sidebar_nav import (
     PAGE_NCR_PENDING_OUTSOURCE,
 )
 from ui.theme import apply_app_theme
+from ui.widgets.common_widgets import CreateWorkflowShell
 
 
 class NcrEmbeddingSmokeTests(unittest.TestCase):
@@ -54,10 +55,10 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 5 SQE DailyWork 頁（首頁, 事件管理, 異常事件統計, 不合格品統計, 基礎資料）+ 4 倉庫不合格品工作頁。
-        self.assertEqual(5 + NCR_PAGE_COUNT, self.window.stack.count())
-        # 側欄按鈕 = 8 固定列（首頁 + 4 事件 scope + 異常事件統計 + 不合格品統計 + 基礎資料）+ 4 NCR 導覽列。
-        self.assertEqual(8 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
+        # 7 SQE DailyWork 頁（首頁, 事件管理, 異常事件統計, 不合格品統計, 基礎資料, 新增訪廠, 新增異常）+ 4 倉庫不合格品工作頁。
+        self.assertEqual(7 + NCR_PAGE_COUNT, self.window.stack.count())
+        # 側欄按鈕 = 11 固定列（首頁 + 2 建立頁 + 4 事件 scope + 異常事件統計 + 不合格品統計 + 基礎資料 + 顯示設定）+ 4 NCR 導覽列。
+        self.assertEqual(11 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:
@@ -90,6 +91,20 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
             self.assertIsNone(page.findChild(QTabWidget, "defectTrackerTabs"))
         for widget in (outsource_widget, material_widget, history_widget):
             self.assertEqual([], widget.findChildren(QTabWidget))
+
+    def test_ncr_create_page_uses_the_shared_create_shell_without_outer_panel(self) -> None:
+        form = self.window.ncr.form_widget
+        shell = form.findChild(CreateWorkflowShell, "NcrCreateWorkflowShell")
+        self.assertIsNotNone(shell)
+        assert shell is not None
+        self.assertIs(shell.content_scroll.widget(), form.fields_widget)
+        self.assertEqual(1, len(form.findChildren(QScrollArea, "CreateWorkflowScroll")))
+        panels = [
+            frame
+            for frame in form.findChildren(QFrame)
+            if frame.property("role") == "panel"
+        ]
+        self.assertEqual([], panels)
 
     def test_ncr_list_rejects_unknown_workflow(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported DefectListWidget workflow"):

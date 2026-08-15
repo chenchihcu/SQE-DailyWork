@@ -12,15 +12,15 @@ theme and the former standalone warehouse-tracking dark theme.
 from __future__ import annotations
 
 PALETTE: dict[str, object] = {
-    # ── Surfaces (light) ────────────────────────────────────────────────────
-    "app_bg": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F1F5F9, stop:1 #E2E8F0)",
-    "surface": "rgba(255, 255, 255, 0.82)",
-    "surface_alt": "rgba(248, 250, 252, 0.70)",
-    "surface_sunken": "rgba(241, 245, 249, 0.60)",
-    "surface_hover": "rgba(255, 255, 255, 0.95)",
-    "surface_active": "rgba(255, 255, 255, 0.98)",
-    "surface_accent": "rgba(241, 245, 249, 0.90)",
-    "surface_disabled": "rgba(241, 245, 249, 0.40)",
+    # ── Surfaces (light, opaque flat) ────────────────────────────────────────
+    "app_bg": "#F1F5F9",
+    "surface": "#FFFFFF",
+    "surface_alt": "#F8FAFC",
+    "surface_sunken": "#F1F5F9",
+    "surface_hover": "#FAFBFC",
+    "surface_active": "#FFFFFF",
+    "surface_accent": "#F1F5F9",
+    "surface_disabled": "#F5F7FA",
 
     # ── Text ──────────────────────────────────────────────────────────────────
     "text_primary": "#0F172A",
@@ -39,14 +39,14 @@ PALETTE: dict[str, object] = {
     "primary": "#1E40AF",
     "primary_hover": "#1D4ED8",
     "primary_press": "#1E3A8A",
-    "primary_faint": "rgba(30, 64, 175, 0.06)",
+    "primary_faint": "#F0F4FF",
     "focus_ring": "#3B82F6",
-    "selection_bg": "rgba(30, 64, 175, 0.12)",
+    "selection_bg": "#E1EAFF",
     "accent_cyan": "#0EA5E9",
     "brand_green": "#059669",
     "accent_report": "#475569",
-    "accent_overlay": "rgba(30, 64, 175, 0.08)",
-    "accent_overlay_hover": "rgba(30, 64, 175, 0.12)",
+    "accent_overlay": "#EDF2FF",
+    "accent_overlay_hover": "#E1EAFF",
 
     # ── Sidebar (shared deep navy rail) ──────────────────────────────────────
     "sidebar_bg": "#0F172A",
@@ -103,8 +103,8 @@ PALETTE: dict[str, object] = {
     "hero_end": "#1F6FEB",
 
 
-    # ── Radii (px) ─────────────────────────────────────────────────────────────
-    "radius_sm": 4,
-    "radius_md": 6,
-    "radius_lg": 8,
+    # ── Radii (px) — tighter for minimalist flat ────────────────────────────────
+    "radius_sm": 3,
+    "radius_md": 4,
+    "radius_lg": 6,
 }

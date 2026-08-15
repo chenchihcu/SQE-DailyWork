@@ -10,6 +10,11 @@ from PySide6.QtWidgets import QApplication, QFrame, QLabel, QWidget
 
 from ui.main_window import MainWindow
 from ui.theme import apply_app_theme
+from ui.widgets.common_widgets import (
+    AnalyticsWorkflowShell,
+    CreateWorkflowShell,
+    QueryWorkflowShell,
+)
 
 
 class SurfaceUsageStructureTests(unittest.TestCase):
@@ -42,16 +47,17 @@ class SurfaceUsageStructureTests(unittest.TestCase):
             parent = parent.parentWidget()
         return False
 
-    def test_home_page_contains_workbench_panels(self) -> None:
+    def test_home_page_contains_flat_workbench_without_panels(self) -> None:
         home = self.window.home_widget
         frames = home.findChildren(QFrame)
         panels = [f for f in frames if f.property("role") == "panel"]
 
-        # Daily cockpit: one read-only backlog panel; KPI cards are retired.
+        # Daily cockpit: a direct read-only backlog; KPI cards and decorative
+        # backlog panels are retired.
         panel_names = {p.objectName() for p in panels}
-        self.assertEqual(1, len(panels))
+        self.assertEqual(0, len(panels))
         self.assertNotIn("HomeKpiPanel", panel_names)
-        self.assertIn("HomeBacklogPanel", panel_names)
+        self.assertNotIn("HomeBacklogPanel", panel_names)
 
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]
@@ -76,6 +82,28 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.assertIs(query, result_panel.parentWidget())
         self.assertFalse(self._is_descendant_of(filter_subpanel, result_panel))
         self.assertFalse(self._is_descendant_of(result_panel, filter_subpanel))
+        self.assertIsInstance(filter_subpanel, QueryWorkflowShell)
+
+        ncr_query = self.window.ncr.pending_outsource_widget
+        ncr_shell = ncr_query.findChild(QueryWorkflowShell)
+        self.assertIsNotNone(ncr_shell)
+
+    def test_create_and_analytics_pages_use_shared_shells(self) -> None:
+        self.assertIsInstance(self.window.new_visit_page.workflow_shell, CreateWorkflowShell)
+        self.assertIsInstance(self.window.new_anomaly_page.workflow_shell, CreateWorkflowShell)
+        self.assertIsInstance(
+            self.window.stats_widget.findChild(AnalyticsWorkflowShell),
+            AnalyticsWorkflowShell,
+        )
+        self.assertIsInstance(
+            self.window.ncr_stats_widget.findChild(AnalyticsWorkflowShell),
+            AnalyticsWorkflowShell,
+        )
+
+    def test_master_data_toolbar_and_tab_host_are_direct_page_siblings(self) -> None:
+        master = self.window.master_widget
+        self.assertIs(master, master.inline_toolbar.parentWidget())
+        self.assertIs(master, master.tabs.parentWidget())
 
     def test_surface_raised_is_not_used_in_runtime_or_ui_sources(self) -> None:
         raised_widgets = [

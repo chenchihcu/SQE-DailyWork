@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -60,12 +60,14 @@ class ExportRangeDialog(DirtyTrackingMixin, QDialog):
         self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.start_date_edit.setCalendarPopup(True)
         self.start_date_edit.setDate(QDate(QDate.currentDate().year(), 1, 1))
+        self.start_date_edit.setAccessibleName("開始日期")
         
         # 結束日期 (預設為今天)
         self.end_date_edit = QDateEdit()
         self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.end_date_edit.setCalendarPopup(True)
         self.end_date_edit.setDate(QDate.currentDate())
+        self.end_date_edit.setAccessibleName("結束日期")
 
         form_layout.addRow(RequiredFieldLabel("開始日期"), self.start_date_edit)
         form_layout.addRow(RequiredFieldLabel("結束日期"), self.end_date_edit)
@@ -78,10 +80,14 @@ class ExportRangeDialog(DirtyTrackingMixin, QDialog):
         )
         ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
         ok_btn.setText("確認匯出")
+        ok_btn.setCursor(Qt.PointingHandCursor)
+        ok_btn.setAccessibleName("確認匯出報告")
         mark_button_variant(ok_btn, "primary")
 
         cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         cancel_btn.setText("取消")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.setAccessibleName("取消匯出")
         mark_button_variant(cancel_btn, "secondary")
 
         buttons.accepted.connect(self._on_accept)

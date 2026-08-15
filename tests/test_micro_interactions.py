@@ -32,7 +32,6 @@ class MicroInteractionTests(unittest.TestCase):
         cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
@@ -114,7 +113,7 @@ class MicroInteractionTests(unittest.TestCase):
             buttons = {button.text(): button for button in widget.findChildren(QPushButton)}
             for text, tooltip in {
                 "查詢": "套用篩選條件",
-                "清除條件": "清除目前篩選條件",
+                "清除": "清除目前篩選條件",
                 "新增訪廠": "建立新的訪廠紀錄",
                 "新增異常": "建立新的異常單",
             }.items():
@@ -139,16 +138,16 @@ class MicroInteractionTests(unittest.TestCase):
             self._drain_events()
 
             self.assertTrue(widget.column_profile_notice.isVisible())
-            for column in (1, 4, 5, 7, 10):
+            for column in (1, 2, 5, 6, 8, 11):
                 self.assertTrue(widget.table.isColumnHidden(column))
-            for column in (0, 2, 3, 6, 8, 9):
+            for column in (0, 3, 4, 7, 9, 10):
                 self.assertFalse(widget.table.isColumnHidden(column))
             self.assertEqual("顯示完整欄位", widget.column_profile_button.text())
 
             widget.column_profile_button.click()
             self._drain_events()
             self.assertFalse(widget.column_profile_notice.isVisible())
-            for column in (1, 4, 5, 7, 10):
+            for column in (1, 2, 5, 6, 8, 11):
                 self.assertFalse(widget.table.isColumnHidden(column))
             self.assertEqual("使用重點欄位", widget.column_profile_button.text())
             widget.close()

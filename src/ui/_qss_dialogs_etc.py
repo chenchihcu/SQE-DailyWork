@@ -16,7 +16,7 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
     return dedent(f"""\
         QDialog,
         QMessageBox {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(243, 244, 246, 0.96), stop:1 rgba(229, 231, 235, 0.96));
+            background: #F8FAFC;
         }}
 
         QCalendarWidget {{
@@ -329,7 +329,7 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
             border: 1px solid {TOKENS["status_unknown_border"]};
             font-size: {TYPOGRAPHY["caption"]}px;
             font-weight: 700;
-            border-radius: 9px;
+            border-radius: {TOKENS["radius_sm"]}px;
             padding: 1px 6px;
         }}
 
@@ -386,8 +386,8 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
 
         QFrame[role="emptyState"] {{
             background: {TOKENS["empty_state_bg"]};
-            border: 1px dashed {TOKENS["empty_state_border"]};
-            border-radius: {TOKENS["radius_lg"]}px;
+            border: 1px solid {TOKENS["empty_state_border"]};
+            border-radius: {TOKENS["radius_md"]}px;
         }}
 
         QFrame[role="emptyState"] QLabel[role="title"] {{

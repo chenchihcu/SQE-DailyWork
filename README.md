@@ -33,9 +33,9 @@ no separate launcher window, and no standalone NCR main window.
   visible home layout. The backlog footer exposes warehouse pending shortcuts
   for `待處理委外加工`, `待處理原物料`, and `未分流待整理`; each shortcut only reads
   existing services and routes through existing navigation.
-- Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (單獨異常 /
-  訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料). The former
+- Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (新增訪廠 /
+  新增異常 / 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料 / 設定：介面重新設計). The former
   異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are first-class sidebar
   scope rows that drive the single 事件管理 page.
 - Supplier event pending work surfaces as the 單獨異常 sidebar badge. Warehouse
@@ -43,11 +43,17 @@ no separate launcher window, and no standalone NCR main window.
   `status <> '已結案' AND processing_line = '委外加工'`, and one for
   `status <> '已結案' AND processing_line = '原物料'`. `未分流` is shown as a
   cleanup warning/to-do, not merged into either formal badge.
-- `新增訪廠` / 編輯訪廠使用單一可捲動表單，直接呈現基本資訊與進階技轉欄位；
+- `新增訪廠` / `新增異常` 是側欄與事件工具列可進入的獨立工作頁；儲存後顯示
+  `查看清單`／`繼續新增`，未儲存的離頁操作會先確認。清單中的編輯與預覽仍維持對話框。
+- 相容的 `open_new_visit_defect_dialog()` 呼叫一律導向「新增訪廠」全頁，不再開啟
+  建立用 modal；建立頁以共用 `CreateWorkflowShell` 呈現同一份
+  `NewAnomalyDialog`／`NewVisitDialog` 欄位與驗證邏輯，清單中的編輯與預覽仍使用其
+  固定 footer 的 modal 呈現。
+- `新增訪廠` / 編輯訪廠使用同一套表單內容，直接呈現基本資訊與進階技轉欄位；
   表單不再提供訪廠缺失輸入。編輯舊訪廠時會保留既有缺失與產品區段資料，
   避免只更新一般欄位便清除歷史紀錄。
-- 正式供應商異常由 `新增異常` 流程建立；既有訪廠缺失資料仍保留於資料庫與既有
-  查詢／報表契約中。
+- 正式供應商異常由 `新增異常` 流程建立；既有 `visit_defect_notes` 仍保留於資料庫、
+  查詢／報表與明確轉換為正式異常的契約中，但目前沒有新的訪廠缺失輸入控制。
 - Supplier anomaly closure uses the user-selected `closed_at` date from the
   close dialog; closed anomalies can adjust that date without reopening, and
   supplier-event trend charts group closures by the same date.
@@ -61,6 +67,12 @@ no separate launcher window, and no standalone NCR main window.
   color-readable chart/status roles, and native dense-chart visual checks.
   `異常事件統計` is a dashboard view without visible page tabs or
   decision-summary cards.
+- `顯示設定` uses finite tabs for 全頁密度／側欄與資料表／文字與對比, with fixed
+  preview/save/cancel actions and no whole-dialog content scrollbar. Supplier-event
+  and warehouse lists use a responsive `重點欄位` view at constrained widths and
+  a reversible `完整欄位` view for all source fields. This changes only on-screen
+  columns: personal NCR column order, database records, and Excel/PDF exports
+  remain unchanged; complete mode keeps a visible horizontal scrollbar when needed.
 
 ## Runtime Architecture
 
@@ -119,6 +131,8 @@ Warehouse physical nonconforming-product data:
     New and edited records must use `原物料` or `委外加工`; existing rows default
     to `未分流` until deliberately classified.
 - `ui_settings`
+  - 本機全域顯示偏好使用 `appearance.preferences.v2` key，保存全頁面密度、文字大小、側欄密度、資料表閱讀密度與對比模式；舊 `appearance.preferences.v1` 只讀相容載入。此設定只影響顯示，不影響任何 SQE 工作流程或資料。
+  - 既有 NCR 欄位排序 key（例如 `defect_list_columns`）維持相容且不可被全域顯示偏好覆寫。
 - warehouse-module compatibility support tables such as `product_records`
 
 Import audit data:

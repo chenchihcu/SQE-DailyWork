@@ -19,14 +19,14 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QBrush, QColor
 
 from ui.layout_constants import CHART_MIN_HEIGHT
-from ui.theme import TOKENS
+from ui.theme import get_active_theme_tokens
 
 
 def apply_chart_surface(chart) -> None:
     # Figure surface = the card's panel_bg (transparent figure lets it show).
     chart.setBackgroundVisible(False)
     # Plot area gets its own semantic token so it reads as a separate layer.
-    chart.setPlotAreaBackgroundBrush(QBrush(QColor(TOKENS["chart_plot_bg"])))
+    chart.setPlotAreaBackgroundBrush(QBrush(QColor(get_active_theme_tokens()["chart_plot_bg"])))
     chart.setPlotAreaBackgroundVisible(True)
 
 

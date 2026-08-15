@@ -11,16 +11,17 @@ shared master-data area.
 | Area | Tables | Source | Writes Allowed From | Must Not Write |
 | --- | --- | --- | --- | --- |
 | Shared master data | `suppliers`, `products` | Company product and supplier master data | Manual master-data dialogs; ERP/Excel master import | Supplier events, visit/audit defect notes, warehouse defect records |
-| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies` | Supplier visits, audits, and confirmed supplier abnormal events | Visit/audit dialogs; explicit supplier-anomaly conversion | `defect_records` |
+| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes | `defect_records` |
 | Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` |
 | Import audit | `import_batches`, `import_batch_rows` | ERP/Excel import runs | Import services | Workflow data rows |
 
 ## Flow Boundaries
 
-1. Visit or audit defects are recorded first as lightweight
-   `visit_defect_notes`.
-2. A visit or audit defect becomes a formal supplier abnormal event only through
-   an explicit confirmation path that writes `anomalies.visit_id`.
+1. `visit_defect_notes` remains a compatible supplier-event store for existing
+   visit or audit notes. The current `NewVisitDialog` preserves those notes on
+   edit but does not expose a new-note editor or a separate `登錄訪廠缺失` entry.
+2. A persisted visit or audit defect becomes a formal supplier abnormal event
+   only through an explicit confirmation path that writes `anomalies.visit_id`.
 3. Visit or audit defects must never be inserted into `defect_records`.
 4. Warehouse nonconforming-product records describe physical inventory items and
    must never become supplier events without a separate, explicit event record.
@@ -164,3 +165,7 @@ After each change, verify:
 - Excel labels keep anomaly-date cohort state separate from `closed_at` period
   activity. Chart renderer failures preserve workbook data but surface
   `完成但有警告` with the exact missing-chart list.
+## Global Display Preferences
+
+- `ui_settings` is also the local, display-only application preference container. The shell writes only `appearance.preferences.v2`, a strict JSON payload with `density` (`compact` / `standard` / `comfortable`), `text_scale` (`standard` / `large`), `sidebar_density` (`compact` / `standard`), `table_density` (`compact` / `standard` / `comfortable`), and `contrast_mode` (`standard` / `high`). A valid legacy `appearance.preferences.v1` payload maps in memory to v2 defaults for the added fields; missing, malformed, unknown-key, or unknown-value payloads resolve to the all-`standard` profile without rewriting stored data.
+- This preference never changes event, warehouse, statistics, export, or navigation data. Existing NCR keys, including `defect_list_columns`, remain compatibility-owned by the NCR module.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -69,6 +70,10 @@ logger = logging.getLogger(__name__)
 
 
 class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _VisitTechTransferMixin):
+    """Shared visit form shell for modal edit/preview and embedded create pages."""
+
+    form_saved = Signal(str)
+
     def __init__(
         self,
         parent=None,
@@ -76,8 +81,16 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         visit_id: str | None = None,
         initial_data: dict | None = None,
         read_only: bool = False,
+        embedded: bool = False,
+        page_mode: bool = False,
     ):
         super().__init__(parent)
+        self._embedded = embedded
+        self._page_mode = bool(page_mode)
+        if self._page_mode and not self._embedded:
+            raise ValueError("page_mode requires embedded=True")
+        if self._embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
         self._visit_id = (visit_id or "").strip()
         self._is_edit = bool(self._visit_id)
         self._read_only = read_only
@@ -89,9 +102,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self._tech_transfer_groups: dict[str, QButtonGroup] = {}
         self._tech_transfer_cards: dict[str, TechTransferCard] = {}
         self._syncing_tech_transfer = False
-        self.setWindowTitle("預覽訪廠" if self._read_only else ("編輯訪廠" if self._is_edit else "新增訪廠"))
+        self.setModal(True)
         self.setMinimumWidth(760)
-        self.setMaximumWidth(FORM_MAX_WIDTH)
+        self.setWindowTitle("預覽訪廠紀錄" if self._read_only else ("編輯訪廠紀錄" if self._is_edit else "新增訪廠紀錄"))
         self._setup_ui()
         self._load_suppliers()
         if self._is_edit:
@@ -107,28 +120,42 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
+        self.date_edit.setAccessibleName("訪廠日期")
         self.supplier_combo = QComboBox()
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        self.supplier_combo.setAccessibleName("供應商")
         self.product_combo = QComboBox()
         self.product_combo.currentIndexChanged.connect(self._on_product_changed)
+        self.product_combo.setAccessibleName("主要產品")
         self.product_stage_combo = QComboBox()
         self.product_stage_combo.addItems(PRODUCT_STAGE_OPTIONS)
         self.product_stage_combo.setCurrentText(PRODUCT_STAGE_MASS_PRODUCTION)
         self.product_stage_combo.setEnabled(False)
+        self.product_stage_combo.setAccessibleName("產品階段")
         self.product_code_input = QLineEdit()
         self.product_code_input.setReadOnly(True)
+        self.product_code_input.setPlaceholderText("由產品自動帶出")
+        self.product_code_input.setAccessibleName("產品代碼/料號")
         self.visitor_input = QLineEdit()  # Retained headless for legacy accessor safety
+        self.visitor_input.setPlaceholderText("訪廠人員")
+        self.visitor_input.setAccessibleName("訪廠人員")
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("活動摘要（選填）")
+        self.summary_input.setAccessibleName("活動摘要")
         set_text_edit_visible_rows(self.summary_input, VISIT_SUMMARY_VISIBLE_ROWS)
 
         self.work_order_input = QLineEdit()
+        self.work_order_input.setPlaceholderText("輸入工單號碼")
+        self.work_order_input.setAccessibleName("工單號碼")
         self.time_slot_input = QComboBox()
         self.time_slot_input.addItems(VISIT_TIME_SLOT_OPTIONS)
+        self.time_slot_input.setAccessibleName("時段")
         self.time_slot_input.setText = lambda text: set_combo_current_text(self.time_slot_input, text)  # type: ignore[attr-defined]
         self.time_slot_input.text = lambda: self.time_slot_input.currentText().strip()  # type: ignore[attr-defined]
         self.time_slot_input.setReadOnly = lambda ro: self.time_slot_input.setEnabled(not ro)  # type: ignore[attr-defined]
         self.qty_input = QLineEdit()
+        self.qty_input.setPlaceholderText("輸入訪廠抽樣數量")
+        self.qty_input.setAccessibleName("抽樣數量")
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.tech_transfer_check = QCheckBox("已技轉")
         self.tech_transfer_check.toggled.connect(self._on_tech_transfer_toggled)
@@ -202,7 +229,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         secondary_layout.setSpacing(VISIT_FORM_CONTENT_SPACING)
         secondary_layout.addWidget(QLabel("活動摘要"))
         secondary_layout.addWidget(self.summary_input)
-        advanced_title = QLabel("進階與技轉")
+        advanced_title = QLabel("技轉")
         advanced_title.setProperty("role", "sectionTitle")
         secondary_layout.addWidget(advanced_title)
         secondary_layout.addLayout(adv_form)
@@ -227,16 +254,53 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         content_layout.addWidget(QLabel("技轉要目確認"))
         content_layout.addWidget(cards_container)
         content_layout.addStretch(1)
-        # 3. 按鈕與佈局
+        # 3. 對話框保留固定 footer；全頁建立模式把命令列交由
+        # EventCreatePage/CreateWorkflowShell 持有，避免重複的儲存動作。
+        self.page_content: QWidget | None = None
+        self.form_scroll: QScrollArea | None = None
+        if self._page_mode:
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(self.form_content)
+            # The page shell scrolls this widget; keep form_content parented to
+            # the form so its layout and field ownership remain intact.
+            self.page_content = self
+            self.save_button = None
+            self._button_box = None
+            return
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
         )
         self.save_button = style_dialog_buttons(buttons)
+        if self.save_button:
+            self.save_button.setCursor(Qt.PointingHandCursor)
+            self.save_button.setAccessibleName("儲存訪廠紀錄")
         self._button_box = buttons
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
 
-        apply_dialog_layout(self, self.form_content, buttons)
+        # The modal edit dialog intentionally keeps this compact, fixed form
+        # topology. The full-page create surface has less usable height once
+        # the shell header and outer margins are present—especially at higher
+        # DPI or with enlarged application text. Give only the embedded form a
+        # vertical viewport so every field remains reachable while the shared
+        # Save/Cancel row stays fixed below it.
+        layout_content: QWidget = self.form_content
+        if self._embedded:
+            self.form_scroll = QScrollArea()
+            self.form_scroll.setObjectName("EmbeddedVisitFormScroll")
+            self.form_scroll.setWidgetResizable(True)
+            self.form_scroll.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self.form_scroll.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            self.form_scroll.setWidget(self.form_content)
+            layout_content = self.form_scroll
+
+        apply_dialog_layout(self, layout_content, buttons)
         fit_dialog_to_available_screen(
             self,
             preferred_width=ANOMALY_DIALOG_PREFERRED_WIDTH,
@@ -264,11 +328,15 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             card.na_radio.setEnabled(False)
 
         # Change Save button to Close and hide Cancel (redundant in read-only mode)
-        if self.save_button:
+        if self.save_button and self._button_box is not None:
             self.save_button.setText("關閉")
             self._button_box.accepted.disconnect(self._on_submit)
             self._button_box.accepted.connect(self.accept)
-        cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel_btn = (
+            self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if self._button_box is not None
+            else None
+        )
         if cancel_btn:
             cancel_btn.setVisible(False)
 
@@ -292,6 +360,10 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
     def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
 
+    def can_submit(self) -> bool:
+        """Return the established page/dialog eligibility without duplicating it."""
+        return bool((self.supplier_combo.currentData() or "").strip())
+
     def _refresh_submit_state(self) -> None:
         supplier_id = (self.supplier_combo.currentData() or "").strip()
         product_id = (self.product_combo.currentData() or "").strip()
@@ -310,7 +382,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         set_tone(self._product_guard_label, tone)
         self._product_guard_label.setVisible(bool(message))
         if self.save_button is not None:
-            self.save_button.setEnabled(bool(supplier_id))
+            self.save_button.setEnabled(self.can_submit())
 
     def _apply_initial_data(self):
         visit_date = str(self._initial_data.get("visit_date") or "").strip()
@@ -468,12 +540,16 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         try:
             if self._is_edit:
                 _visit_service.update_visit(self._visit_id, payload)
-                QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已更新"))
+                completion_text = "訪廠紀錄已更新"
             else:
                 _visit_service.create_visit(payload)
-                QMessageBox.information(self, "成功", localize_popup_message("訪廠紀錄已完成"))
+                completion_text = "訪廠紀錄已完成"
             self._dirty = False
-            self.accept()
+            if self._embedded:
+                self.form_saved.emit(completion_text)
+            else:
+                QMessageBox.information(self, "成功", localize_popup_message(completion_text))
+                self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", localize_exception(exc))
         except Exception as exc:

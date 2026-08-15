@@ -27,7 +27,6 @@ Quality Engineering desktop tool.
   first run.
 
 ### Housekeeping
-- Removed dead Genspark integration references (`package.json`,
-  `GENSPARK_INTEGRATION.md`) and stopped tracking development/session artifacts
+- Removed dead Genspark integration files and stopped tracking development/session artifacts
   (`.omo/`, `artifacts/visual/*.png`, root probe screenshots, diff dumps) from
   version control.

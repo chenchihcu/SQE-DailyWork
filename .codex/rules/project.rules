@@ -1,144 +1,89 @@
-# Project-local rules for trusted SQE DailyWork work.
-# Data migrations, --apply operations, and cleanup deletes must prompt.
+# Project-local policy for commands that request execution outside the sandbox.
+
+POWERSHELL = [
+    "pwsh",
+    "pwsh.exe",
+    "powershell",
+    "powershell.exe",
+    "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+]
+
+PYTHON = [
+    "python",
+    "python.exe",
+    "py",
+    "py.exe",
+    ".\\.venv\\Scripts\\python.exe",
+    "C:\\Users\\user\\Documents\\SQE DailyWork\\.venv\\Scripts\\python.exe",
+    "C:\\Users\\user\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+]
+
+HARNESS_SCRIPTS = [
+    "scripts\\harness_check.ps1",
+    ".\\scripts\\harness_check.ps1",
+    "scripts/harness_check.ps1",
+    "./scripts/harness_check.ps1",
+]
+
+VERIFY_SCRIPTS = [
+    "scripts\\verify.ps1",
+    ".\\scripts\\verify.ps1",
+    "scripts/verify.ps1",
+    "./scripts/verify.ps1",
+]
 
 prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-Command", "$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m compileall main.py src scripts run_mig.py tests"],
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        HARNESS_SCRIPTS,
+    ],
     decision = "allow",
-    justification = "SQE DailyWork compile verification is non-mutating and project-scoped.",
-    match = [
-        "pwsh -Command \"$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m compileall main.py src scripts run_mig.py tests\"",
-    ],
-    not_match = [
-        "pwsh -Command \"$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\other-project\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m compileall main.py src scripts run_mig.py tests\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-Command", "$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m unittest discover -s tests"],
-    decision = "allow",
-    justification = "SQE DailyWork unit test discovery is non-destructive and project-scoped.",
-    match = [
-        "pwsh -Command \"$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m unittest discover -s tests\"",
-    ],
-    not_match = [
-        "pwsh -Command \"$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python scripts/recode_anomaly_no_all_dbs.py --apply\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-Command", "$env:PYTHONPATH='src;.'; $env:QT_QPA_PLATFORM='offscreen'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -c \"from database.connection import initialize_database; from ui.main_window import MainWindow; from PySide6.QtWidgets import QApplication; initialize_database(); app=QApplication.instance() or QApplication([]); w=MainWindow(); print('tabs', w.stack.count()); w.close(); app.processEvents(); print('ui_smoke_ok')\""],
-    decision = "allow",
-    justification = "SQE DailyWork offscreen UI smoke is a bounded project verification command.",
-    match = [
-        "pwsh -Command \"$env:PYTHONPATH='src;.'; $env:QT_QPA_PLATFORM='offscreen'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -c \\\"from database.connection import initialize_database; from ui.main_window import MainWindow; from PySide6.QtWidgets import QApplication; initialize_database(); app=QApplication.instance() or QApplication([]); w=MainWindow(); print('tabs', w.stack.count()); w.close(); app.processEvents(); print('ui_smoke_ok')\\\"\"",
-    ],
-    not_match = [
-        "pwsh -Command \"Remove-Item -LiteralPath backend -Recurse -Force\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-Command", "$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python run_mig.py"],
-    decision = "prompt",
-    justification = "SQE DailyWork migration commands can affect data and must be reviewed.",
-    match = [
-        "pwsh -Command \"$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python run_mig.py\"",
-    ],
-    not_match = [
-        "pwsh -Command \"$env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m compileall main.py src scripts run_mig.py tests\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-Command", "$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python scripts/recode_anomaly_no_all_dbs.py --apply"],
-    decision = "prompt",
-    justification = "SQE DailyWork recode --apply changes stored data and must be reviewed.",
-    match = [
-        "pwsh -Command \"$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python scripts/recode_anomaly_no_all_dbs.py --apply\"",
-    ],
-    not_match = [
-        "pwsh -Command \"$env:PYTHONPATH='src;.'; $env:UV_CACHE_DIR='C:\\Users\\user\\Documents\\SQE DailyWork\\.uv-cache'; uv run --no-project --with-requirements requirements.txt python -m unittest discover -s tests\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/harness_check.ps1"],
-    decision = "allow",
-    justification = "SQE DailyWork harness structure check is read-only and project-scoped.",
+    justification = "Run the parameterless, read-only SQE governance harness.",
     match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/harness_check.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        VERIFY_SCRIPTS,
+    ],
+    decision = "prompt",
+    justification = "Verification accepts interpreter overrides and must be reviewed.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Focused",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify.ps1 -PythonExe C:/Python/python.exe",
+    ],
+    not_match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",
     ],
-    not_match = [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
-    ],
 )
 
+# This prompt boundary also covers migrations, backups, scripts\\qt_visual_probe.py,
+# visual regression/belt tools, and other Python entry points with caller-selected paths.
 prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py"],
-    decision = "allow",
-    justification = "SQE DailyWork native Qt visual probe is non-destructive and writes only a temp screenshot for visual evidence.",
+    pattern = [PYTHON],
+    decision = "prompt",
+    justification = "Python entry points may mutate SQE data or write caller-selected paths.",
     match = [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py\"",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --target form-density\"",
-        "powershell -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py\"",
-        "powershell -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --target form-density\"",
-    ],
-    not_match = [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -Command \".\\.venv\\Scripts\\python.exe scripts\\qt_visual_probe.py --allow-offscreen\"",
-    ],
-)
-
-prefix_rule(
-    pattern = [["pwsh", "powershell", "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"], "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/verify.ps1"],
-    decision = "allow",
-    justification = "SQE DailyWork full verification is non-destructive and project-scoped.",
-    match = [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
-        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Focused",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Full",
+        "python -m unittest discover -s tests",
+        "py -3 -m compileall main.py src scripts tests",
     ],
     not_match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",
-    ],
-)
-
-prefix_rule(
-    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\qt_visual_belt.py"],
-    decision = "allow",
-    justification = "The manifest-driven native Qt belt uses only a verified disposable SQE database and generated Outputs evidence.",
-    match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
-        "python scripts\\qt_visual_belt.py",
-    ],
-    not_match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main --update",
-    ],
-)
-
-prefix_rule(
-    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\qt_visual_regress.py"],
-    decision = "prompt",
-    justification = "Visual regression may update tracked binary baselines when --update is supplied and therefore requires review.",
-    match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main",
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_regress.py --target main --update",
-    ],
-    not_match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
-    ],
-)
-
-prefix_rule(
-    pattern = [[".\\.venv\\Scripts\\python.exe", "python"], "scripts\\sqlite_backup.py"],
-    decision = "prompt",
-    justification = "Verified SQLite backup is data-safe but writes a caller-selected destination and must be reviewed.",
-    match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\sqlite_backup.py data\\sqe_v2.db scratch\\verify\\sqe_v2.db",
-        "python scripts\\sqlite_backup.py data\\sqe_v2.db data_backups\\sqe_v2.db",
-    ],
-    not_match = [
-        ".\\.venv\\Scripts\\python.exe scripts\\qt_visual_belt.py",
     ],
 )

@@ -27,9 +27,9 @@ class VisitDetailDialog(QDialog):
     def __init__(self, visit: dict, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("VisitDetailDialog")
+        self.setModal(True)
         self.setWindowTitle(localize_popup_message("Visit detail"))
         self.setMinimumWidth(500)
-        self.setModal(True)
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self._build_ui(visit)
         fit_dialog_to_available_screen(self, preferred_width=640)
@@ -208,6 +208,8 @@ class VisitDetailDialog(QDialog):
 
         close_btn = QPushButton("關閉")
         close_btn.setMinimumWidth(88)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setAccessibleName("關閉訪廠明細對話框")
         close_btn.setProperty("role", "visitDetailClose")
         apply_clickable_affordance(close_btn, tooltip="關閉訪廠明細")
         close_btn.clicked.connect(self.accept)

@@ -18,7 +18,7 @@ def get_tabs_qss() -> str:
     return dedent(f"""\
         QTabWidget#MainWorkflowTabs::pane {{
             border: 1px solid {TOKENS["border"]};
-            border-radius: {TOKENS["radius_lg"]}px;
+            border-radius: 0;
             background: {TOKENS["panel_bg"]};
             top: -1px;
         }}
@@ -55,7 +55,7 @@ def get_tabs_qss() -> str:
 
         QTabWidget::pane {{
             border: 1px solid {TOKENS["border"]};
-            border-radius: {TOKENS["radius_md"]}px;
+            border-radius: 0;
             top: -1px;
             background: {TOKENS["panel_bg"]};
         }}
@@ -64,8 +64,8 @@ def get_tabs_qss() -> str:
             min-width: 120px;
             min-height: {TAB_BAR_TAB_MIN_HEIGHT}px;
             border: 1px solid {TOKENS["border"]};
-            border-top-left-radius: {TOKENS["radius_sm"]}px;
-            border-top-right-radius: {TOKENS["radius_sm"]}px;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
             background: {TOKENS["page_bg"]};
             color: {TOKENS["text_secondary"]};
             padding: {TAB_BAR_TAB_PADDING_VERTICAL}px {TAB_BAR_TAB_PADDING_HORIZONTAL}px;

@@ -35,6 +35,10 @@ PANEL_MARGINS = (12, 10, 12, 10)
 # 頂層頁面外框（與主面板對齊；新頁面預設使用此常數）
 PAGE_OUTER_MARGINS = (24, 24, 24, 24)
 
+# 已由工作流程頁容器提供外框的共用殼層，不得再疊加第二層頁面留白。
+# 目前由 NCR 的內嵌建立表單使用；其外層 NcrWorkflowPage 已套用頁面邊距。
+WORKFLOW_SHELL_EMBEDDED_MARGINS = (0, 0, 0, 0)
+
 # 首頁 Hero Banner 外框（左/右與其他頁對齊，上下略緊湊以平衡視覺）
 HERO_BANNER_MARGINS = (24, 22, 24, 18)
 
@@ -47,7 +51,12 @@ SUBPANEL_TOOLBAR_MARGINS = (24, 20, 24, 20)
 # 左側導覽側欄
 SIDEBAR_WIDTH = 220
 SIDEBAR_LOGO_HEIGHT = 64
-SIDEBAR_NAV_ITEM_HEIGHT = 44
+# 側欄採 38px 緊湊導覽列；保留 18px 圖示與可讀的 CJK 點擊目標，
+# 讓供應商事件的建立與查詢入口可同時出現在一般筆電高度。
+SIDEBAR_NAV_ITEM_HEIGHT = 38
+SIDEBAR_NAV_GROUP_GAP = 10
+SIDEBAR_NAV_TOP_SPACING = 4
+SIDEBAR_LOGO_TO_NAV_SPACING = 6
 PAGE_HEADER_HEIGHT = 56
 BRAND_ACCENT_DOT_W = 14   # 寬扁矩形，呼應 Mitcorp 官網雙點裝飾
 BRAND_ACCENT_DOT_H = 4
@@ -55,6 +64,11 @@ BRAND_ACCENT_DOT_SIZE = BRAND_ACCENT_DOT_W  # backward compat alias
 
 # 根版面中上下兩大區塊的間距
 ROOT_SECTION_SPACING = 8
+
+# 扁平化資料頁的操作列：不再以卡片包住單一列控制項，仍保留可讀的
+# 上下留白與輸入／動作之間的掃讀節奏。
+COMPACT_PAGE_SPACING = 6
+COMPACT_COMMAND_ROW_MARGINS = (12, 6, 12, 6)
 
 # 雙欄表單格線：欄距與列距
 GRID_GUTTER = 12
@@ -169,6 +183,21 @@ ATTACHMENT_LIST_HEIGHT = 172
 EVENT_LIST_NAME_COL_MIN_WIDTH = 80
 # 事件清單顯示所有欄位所需的內容寬度；低於此值改用可切換的重點欄位檢視。
 EVENT_LIST_FULL_COLUMNS_MIN_WIDTH = 1024
+# 事件清單重點欄位的固定寬度；問題／摘要欄使用剩餘寬度，避免最小工作區產生水平卷軸。
+EVENT_LIST_CORE_ANOMALY_NO_WIDTH = 106
+EVENT_LIST_CORE_SUPPLIER_WIDTH = 110
+EVENT_LIST_CORE_PRODUCT_WIDTH = 140
+EVENT_LIST_CORE_QUALITY_REQUIREMENT_WIDTH = 130
+EVENT_LIST_CORE_STATUS_WIDTH = 78
+
+# NCR 清單顯示所有欄位所需的內容寬度；低於此值改用可切換的重點欄位檢視。
+NCR_LIST_FULL_COLUMNS_MIN_WIDTH = 1024
+NCR_LIST_CORE_DEFECT_NO_WIDTH = 118
+NCR_LIST_CORE_EVENT_DATE_WIDTH = 96
+NCR_LIST_CORE_PROCESSING_LINE_WIDTH = 88
+NCR_LIST_CORE_ITEM_NO_WIDTH = 108
+NCR_LIST_CORE_PRODUCT_WIDTH = 136
+NCR_LIST_CORE_STATUS_WIDTH = 78
 
 # NCR 模組佈局常數（從 src/ncr/ui/ui_style.py 遷移至此，統一單一來源）
 NCR_PAGE_MARGIN = 8

@@ -154,10 +154,18 @@ def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
                 {
                     "排名": idx,
                     "責任人": row["responsible_person"],
-                    "異常數": row["anomaly_count"],
-                    "結案數": row["closed_count"],
-                    "未結案數": row["open_count"],
-                    "結案率(%)": row["close_rate_pct"],
+                    "異常數": row.get("anomaly_count", row.get("total_count", 0)),
+                    "結案數": row.get("closed_count", 0),
+                    "未結案數": row.get("open_count", 0),
+                    "結案率(%)": row.get(
+                        "close_rate_pct",
+                        round(
+                            (row.get("closed_count", 0) * 100.0 / row.get("total_count", 1))
+                            if row.get("total_count")
+                            else 0.0,
+                            1,
+                        ),
+                    ),
                 }
                 for idx, row in enumerate(resp_stats, start=1)
             ],

@@ -159,6 +159,7 @@ class QuickProductCreateDialog(QDialog):
         super().__init__(parent)
         self.conn = conn
         self.created_product_name = ""
+        self.setModal(True)
         self.setWindowTitle("快速建立產品")
         fit_window_to_available_screen(self, 420, 220, enable_size_grip=True)
 
@@ -169,8 +170,11 @@ class QuickProductCreateDialog(QDialog):
         form_grid = create_form_grid(field_count=1)
         self.item_no_input = QLineEdit(item_no.strip())
         self.item_no_input.setReadOnly(True)
+        self.item_no_input.setPlaceholderText("料號")
+        self.item_no_input.setAccessibleName("料號")
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("輸入產品名稱")
+        self.product_name_input.setAccessibleName("產品名稱")
         apply_form_inputs([self.item_no_input, self.product_name_input])
         add_labeled_field(form_grid, 0, LABEL_ITEM_NO, self.item_no_input)
         add_labeled_field(form_grid, 1, LABEL_PRODUCT_NAME, self.product_name_input)
@@ -183,6 +187,10 @@ class QuickProductCreateDialog(QDialog):
         actions.addStretch(1)
         self.cancel_button = QPushButton("取消")
         self.save_button = QPushButton("建立產品")
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setAccessibleName("取消建立")
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setAccessibleName("建立產品")
         self.cancel_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         self.save_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         set_button_role(self.cancel_button, "secondary")
@@ -269,16 +277,25 @@ class DefectFieldsWidget(QWidget):
         self.return_slip_type_combo = QComboBox()
         self.return_slip_type_combo.addItem("")
         self.return_slip_type_combo.addItems(RETURN_SLIP_TYPE_OPTIONS)
+        self.return_slip_type_combo.setAccessibleName("銷退單種類")
 
         self.processing_line_combo = QComboBox()
         self.processing_line_combo.addItem("")
         self.processing_line_combo.addItems(PROCESSING_LINE_OPTIONS)
+        self.processing_line_combo.setAccessibleName("處理線別")
 
         self.work_order_input = QLineEdit()
+        self.work_order_input.setPlaceholderText("輸入工單號碼")
+        self.work_order_input.setAccessibleName("工單號碼")
         self.internal_work_order_input = QLineEdit()
+        self.internal_work_order_input.setPlaceholderText("輸入內部工單")
+        self.internal_work_order_input.setAccessibleName("內部工單")
         self.transfer_slip_input = QLineEdit()
+        self.transfer_slip_input.setPlaceholderText("輸入調撥單號")
+        self.transfer_slip_input.setAccessibleName("調撥單號")
         self.category_combo = QComboBox()
         self.category_combo.addItems(CATEGORY_OPTIONS)
+        self.category_combo.setAccessibleName("異常類別")
 
         self.item_no_input = QComboBox()
         self.item_no_input.setEditable(True)
@@ -292,10 +309,12 @@ class DefectFieldsWidget(QWidget):
         self.product_name_input = QLineEdit()
         self.product_name_input.setReadOnly(True)
         self.product_name_input.setPlaceholderText("由料號自動帶出")
+        self.product_name_input.setAccessibleName("產品名稱")
         self.quick_add_product_btn = QPushButton("+ 建立")
         self.quick_add_product_btn.setObjectName("quickAddProductButton")
         self.quick_add_product_btn.setToolTip("快速建立目前料號的產品名稱")
         self.quick_add_product_btn.setAccessibleName("快速建立產品名稱")
+        self.quick_add_product_btn.setCursor(Qt.PointingHandCursor)
         self.quick_add_product_btn.setVisible(False)
         self.quick_add_product_btn.setMinimumWidth(NCR_QUICK_ADD_BUTTON_MIN_WIDTH)
         set_button_role(self.quick_add_product_btn, "secondary")
@@ -308,10 +327,12 @@ class DefectFieldsWidget(QWidget):
 
         self.supplier_combo = QComboBox()
         self.supplier_combo.setEditable(True)
+        self.supplier_combo.setAccessibleName("供應商名稱")
 
         self.outsource_supplier_combo = QComboBox()
         self.outsource_supplier_combo.setEditable(False)
         self.outsource_supplier_combo.setPlaceholderText(PLACEHOLDER_OUTSOURCE_SUPPLIER)
+        self.outsource_supplier_combo.setAccessibleName("委外加工廠名稱")
         self.supplier_combo.currentTextChanged.connect(self._on_supplier_changed)
         self.supplier_combo.currentTextChanged.connect(
             self._on_supplier_changed_refresh_products
@@ -326,17 +347,21 @@ class DefectFieldsWidget(QWidget):
 
         self.defect_desc_input = QTextEdit()
         self.defect_desc_input.setPlaceholderText(PLACEHOLDER_DEFECT_DESC)
+        self.defect_desc_input.setAccessibleName("不良描述")
         self._set_defect_desc_height()
 
         self.status_combo = QComboBox()
         self.status_combo.addItems(STATUS_OPTIONS)
+        self.status_combo.setAccessibleName("處理狀態")
 
         self.disposition_combo = QComboBox()
         self.disposition_combo.addItem("")
         self.disposition_combo.addItems(DISPOSITION_OPTIONS)
+        self.disposition_combo.setAccessibleName("處置方式")
 
         self.responsibility_combo = QComboBox()
         self.responsibility_combo.addItems(RESPONSIBILITY_OPTIONS)
+        self.responsibility_combo.setAccessibleName("責任歸屬")
 
         apply_form_inputs(
             [
@@ -882,34 +907,32 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self._mark_clean()
 
     def _build_ui(self) -> None:
-        page, content_layout = create_page_shell(show_header=False)
+        from ui.widgets.common_widgets import CreateWorkflowShell
+
+        self.workflow_shell = CreateWorkflowShell(self)
+        self.workflow_shell.setObjectName("NcrCreateWorkflowShell")
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(page)
-
-        # Unified Card for Toolbar and Fields
-        main_card, main_card_layout = create_section_card("")
-        main_card_layout.setContentsMargins(22, 20, 22, 20)
-        main_card_layout.setSpacing(12)
-
-        # Toolbar Section
-        toolbar = QHBoxLayout()
-        toolbar.setContentsMargins(0, 0, 0, 0)
-        toolbar.setSpacing(12)
+        outer_layout.addWidget(self.workflow_shell)
 
         shortcut_label = make_hint_label(HINT_SAVE_SHORTCUT)
-        toolbar.addWidget(shortcut_label)
+        self.workflow_shell.add_context(shortcut_label)
 
         self.batch_mode_checkbox = QCheckBox(
             "連續登錄：儲存後保留日期/單別/類別/製令/供應商"
         )
         self.batch_mode_checkbox.setChecked(True)
-        toolbar.addWidget(self.batch_mode_checkbox)
-        toolbar.addStretch(1)
+        self.workflow_shell.add_context(self.batch_mode_checkbox)
 
         self.reset_button = QPushButton("重置")
         self.clear_button = QPushButton("清除")
         self.save_button = QPushButton("儲存")
+        self.reset_button.setCursor(Qt.PointingHandCursor)
+        self.clear_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.reset_button.setAccessibleName("重置表單")
+        self.clear_button.setAccessibleName("清空表單")
+        self.save_button.setAccessibleName("儲存表單")
         self.reset_button.setToolTip("重置所有欄位為預設值")
         self.clear_button.setToolTip("清空所有輸入欄位內容")
         self.save_button.setToolTip("儲存目前表單內容（Ctrl+S）")
@@ -920,32 +943,15 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self.clear_button.clicked.connect(self.clear_form)
         self.reset_button.clicked.connect(self.reset_form)
 
-        toolbar.addWidget(self.reset_button)
-        toolbar.addWidget(self.clear_button)
-        toolbar.addWidget(self.save_button)
-        main_card_layout.addLayout(toolbar)
+        self.workflow_shell.add_action(self.reset_button)
+        self.workflow_shell.add_action(self.clear_button)
+        self.workflow_shell.add_action(self.save_button)
 
         self.feedback_label = make_notice_label("", role="messageText")
-        main_card_layout.addWidget(self.feedback_label)
 
-        # Divider
-        line = QFrame()
-        line.setProperty("role", "separator")
-        line.setFixedHeight(1)
-        main_card_layout.addWidget(line)
-
-        # Scrollable Fields Section
         self.fields_widget = DefectFieldsWidget(self.conn)
         self.fields_widget.product_created.connect(self._on_quick_product_created)
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setWidget(self.fields_widget)
-        
-        main_card_layout.addWidget(scroll_area, 1)
-        content_layout.addWidget(main_card, 1)
+        self.workflow_shell.set_content(self.fields_widget)
 
         self.save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         self.save_shortcut.activated.connect(self.save_record)
@@ -1130,6 +1136,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
         self._is_dirty = False
         self._track_changes = True
         self._is_saving = False
+        self.setModal(True)
         self.setWindowTitle("編輯不良品資料")
         fit_window_to_available_screen(self, 1180, 760, enable_size_grip=True)
         self._build_ui()
@@ -1179,6 +1186,10 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
         
         self.save_button = QPushButton("儲存變更")
         self.cancel_button = QPushButton("取消")
+        self.save_button.setCursor(Qt.PointingHandCursor)
+        self.save_button.setAccessibleName("儲存變更")
+        self.cancel_button.setCursor(Qt.PointingHandCursor)
+        self.cancel_button.setAccessibleName("取消變更")
         self.save_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         self.cancel_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
         set_button_role(self.save_button, "primary")

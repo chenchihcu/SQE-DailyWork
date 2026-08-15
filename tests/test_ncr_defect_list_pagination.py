@@ -10,7 +10,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from ncr.db import crud, database
-from ncr.models.defect import PROCESSING_LINE_MATERIAL
+from ncr.models.defect import (
+    LIST_FIELD_ORDER,
+    PROCESSING_LINE_MATERIAL,
+)
 from ncr.services import defect_service
 from ncr.ui.defect_list import DefectListWidget
 from ncr.ui.ui_style import NCR_ITEMS_PER_PAGE
@@ -106,6 +109,73 @@ class NcrDefectListPaginationTests(unittest.TestCase):
         with patch("ncr.ui.defect_list.DefectEditDialog", _DialogProbe):
             self.widget.open_edit_dialog(0, 0)
         self.assertEqual([expected_id], _DialogProbe.opened_ids)
+
+    def test_compact_profile_fits_core_columns_and_full_mode_preserves_header_order(self) -> None:
+        self.widget.resize(760, 680)
+        self.widget.show()
+        self.app.processEvents()
+
+        core_fields = {
+            "defect_no",
+            "event_date",
+            "item_no",
+            "product_name",
+            "defect_desc",
+            "status",
+        }
+        for column_index, field_name in enumerate(LIST_FIELD_ORDER):
+            self.assertEqual(field_name not in core_fields, self.widget.open_table.isColumnHidden(column_index))
+        self.assertEqual("顯示完整欄位", self.widget.column_profile_button.text())
+        self.assertEqual(0, self.widget.open_table.horizontalScrollBar().maximum())
+
+        before_order = [
+            self.widget.open_table.horizontalHeader().logicalIndex(index)
+            for index in range(self.widget.open_table.columnCount())
+        ]
+        self.widget.column_profile_button.click()
+        self.app.processEvents()
+
+        self.assertEqual("使用重點欄位", self.widget.column_profile_button.text())
+        self.assertFalse(any(
+            self.widget.open_table.isColumnHidden(column_index)
+            for column_index in range(self.widget.open_table.columnCount())
+        ))
+        after_order = [
+            self.widget.open_table.horizontalHeader().logicalIndex(index)
+            for index in range(self.widget.open_table.columnCount())
+        ]
+        self.assertEqual(before_order, after_order)
+
+    def test_history_compact_profile_keeps_processing_line_visible(self) -> None:
+        history = DefectListWidget(self.conn, workflow="trace")
+        self.addCleanup(history.close)
+        history.resize(760, 680)
+        history.show()
+        self.app.processEvents()
+
+        processing_line_column = LIST_FIELD_ORDER.index("processing_line")
+        self.assertFalse(history.closed_table.isColumnHidden(processing_line_column))
+
+    def test_column_profile_does_not_change_export_records(self) -> None:
+        exported_rows: list[list[dict]] = []
+
+        def capture_export(rows, *_args, **_kwargs):
+            exported_rows.append([dict(row) for row in rows])
+            return "C:/temp/defect_report.xlsx"
+
+        with (
+            patch("ncr.ui.defect_list.QFileDialog.getSaveFileName", return_value=("C:/temp/defect_report.xlsx", "")),
+            patch("ncr.ui.defect_list.export_service.export_to_excel", side_effect=capture_export),
+            patch("ncr.ui.defect_list.QMessageBox.information"),
+        ):
+            self.widget.export_current_results()
+            self.widget.column_profile_button.click()
+            self.app.processEvents()
+            self.widget.export_current_results()
+
+        self.assertEqual(2, len(exported_rows))
+        self.assertEqual(exported_rows[0], exported_rows[1])
+        self.assertTrue(all("work_order_no" in row for row in exported_rows[0]))
 
 
 if __name__ == "__main__":

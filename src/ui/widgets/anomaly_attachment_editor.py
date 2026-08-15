@@ -59,6 +59,7 @@ class AttachmentEditor(QWidget):
         self.list_widget.setSpacing(8)
         self.list_widget.setIconSize(ATTACHMENT_PREVIEW_SIZE)
         self.list_widget.setToolTip("雙擊縮圖或檔名可編輯圖說")
+        self.list_widget.setAccessibleName("照片與附件縮圖清單")
         self.list_widget.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed
@@ -76,6 +77,10 @@ class AttachmentEditor(QWidget):
         button_row.setSpacing(8)
         self.add_button = QPushButton("選擇圖片…")
         self.remove_button = QPushButton("移除選取")
+        self.add_button.setCursor(Qt.PointingHandCursor)
+        self.remove_button.setCursor(Qt.PointingHandCursor)
+        self.add_button.setAccessibleName("選擇圖片")
+        self.remove_button.setAccessibleName("移除選取圖片")
         _mark_button_variant(self.add_button, "secondary")
         _mark_button_variant(self.remove_button, "secondary")
         self.add_button.clicked.connect(self._pick)

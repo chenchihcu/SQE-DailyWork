@@ -27,6 +27,7 @@ if load_dotenv is not None:
 
 from app_version import __version__
 from database.connection import initialize_database
+from services.appearance_preferences_service import load_application_preferences
 from ui.main_window import MainWindow
 from ui.theme import apply_app_theme
 
@@ -110,7 +111,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    apply_app_theme(app)
+    apply_app_theme(app, load_application_preferences())
 
     # 單一實例保護：禁止同時執行兩個實例
     _instance_lock = QSharedMemory("SQE_DailyWork_Instance")

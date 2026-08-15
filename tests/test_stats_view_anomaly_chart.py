@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QHBoxLayout,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -195,7 +196,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertTrue(widget._chart.legend().isVisible())
  
         self.assertEqual([], widget.findChildren(QTabWidget))
-        self.assertEqual("statsInfoBanner", widget.info_banner.property("role"))
+        self.assertEqual("供應商事件", widget.source_tag_label.text())
+        self.assertIn("倉庫不合格品統計", widget.source_tag_label.toolTip())
         self.assertIsNotNone(widget.findChild(QFrame, "StatsFourPhaseChartPanel"))
         self.assertIsNone(widget.findChild(QFrame, "StatsCategoryParetoPanel"))
         self.assertIsNone(widget.findChild(QFrame, "StatsResponsiblePanel"))
@@ -253,6 +255,15 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertIsNotNone(widget.insight_label)
         assert widget.insight_label is not None
         self.assertIn("主要異常類別", widget.insight_label.text())
+
+    def test_stats_command_row_is_flat_and_source_scope_is_in_tooltip(self) -> None:
+        widget, _host = self._build_widget({}, month=QDate(2026, 4, 1))
+        page_layout = widget.layout()
+        assert page_layout is not None
+        command_item = page_layout.itemAt(0)
+        self.assertIsInstance(command_item.layout(), QHBoxLayout)
+        self.assertEqual("供應商事件", widget.source_tag_label.text())
+        self.assertIn("已結案紀錄", widget.source_tag_label.toolTip())
 
     def test_stats_view_renders_category_pareto_chart(self) -> None:
         summary = {

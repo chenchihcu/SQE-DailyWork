@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 class ProductStageLogDialog(QDialog):
     def __init__(self, product_label: str, logs: list[dict], parent=None):
         super().__init__(parent)
+        self.setModal(True)
         self.setWindowTitle("產品階段異動紀錄")
         self.setMinimumWidth(920)
         self.setMaximumWidth(FORM_MAX_WIDTH)
@@ -38,6 +40,7 @@ class ProductStageLogDialog(QDialog):
         header.setProperty("role", "helperText")
         layout.addWidget(header)
         table = QTableWidget()
+        table.setAccessibleName("階段異動紀錄表格")
         table.setColumnCount(8)
         table.setHorizontalHeaderLabels(
             [
@@ -69,6 +72,8 @@ class ProductStageLogDialog(QDialog):
         layout.addWidget(table, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close_button = buttons.button(QDialogButtonBox.StandardButton.Close)
+        close_button.setCursor(Qt.PointingHandCursor)
+        close_button.setAccessibleName("關閉對話框")
         mark_button_variant(close_button, "secondary")
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)

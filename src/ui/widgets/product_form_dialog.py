@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -54,6 +55,7 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         self._initial_data = initial_data or {}
         self._is_edit = is_edit
         self._stage_change_reason = ""
+        self.setModal(True)
         self.setWindowTitle("編輯產品" if self._is_edit else "新增產品")
         self.setMinimumWidth(560)
         self.setMaximumWidth(FORM_MAX_WIDTH)
@@ -83,15 +85,20 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
 
         self.product_code_input = QLineEdit()
         self.product_code_input.setPlaceholderText("輸入料號")
+        self.product_code_input.setAccessibleName("料號")
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("輸入品名")
+        self.product_name_input.setAccessibleName("品名")
 
         self.product_stage_combo = QComboBox()
         self.product_stage_combo.addItems(list(PRODUCT_STAGE_OPTIONS))
         self.product_stage_combo.setCurrentText(PRODUCT_STAGE_MASS_PRODUCTION)
+        self.product_stage_combo.setAccessibleName("產品階段")
 
         self.primary_supplier_combo = QComboBox()
+        self.primary_supplier_combo.setAccessibleName("主供應商")
         self.secondary_supplier_combo = QComboBox()
+        self.secondary_supplier_combo.setAccessibleName("次供應商")
         self._load_supplier_options()
 
         form.addRow(
@@ -120,8 +127,12 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         mark_button_variant(cancel_button, "secondary")
         if save_button:
             save_button.setText("儲存")
+            save_button.setCursor(Qt.PointingHandCursor)
+            save_button.setAccessibleName("儲存產品")
         if cancel_button:
             cancel_button.setText("取消")
+            cancel_button.setCursor(Qt.PointingHandCursor)
+            cancel_button.setAccessibleName("取消儲存")
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -1,20 +1,28 @@
 # SQE DailyWork UI Layout and Theme Contract
 
+## Global Display Preferences
+
+- The `系統` sidebar group exposes the only global appearance entry: `顯示設定`. It opens a modal preference dialog without changing the active route or triggering unsaved-form leave guards. Event-management pages must not create a duplicate appearance button or hidden compatibility widget.
+- `AppearancePreferencesDialog` supports page density (`緊湊` / `標準` / `舒適`), text size (`標準` / `放大`), sidebar density (`緊湊` / `標準`), table-reading density (`緊湊` / `標準` / `舒適`), and contrast mode (`標準` / `高對比`). All defaults are `標準`; choices preview immediately, `取消` restores the opening profile, and only `儲存並套用` persists the preference.
+- Preferences are local display-only state under `ui_settings.appearance.preferences.v2`. Valid `appearance.preferences.v1` values are read-only compatible and map to v2 defaults for the added controls; v2 is the only write key. Invalid payloads are not rewritten. Preferences must not alter workflow routes, SQE data, counts, statistics, exports, or NCR column-order compatibility keys.
+- Appearance metrics are applied through shared QSS plus runtime sidebar/table helpers. Structural values in `layout_constants.py` remain authoritative and are not user-editable. High contrast is one fixed semantic palette for the whole desktop shell, popups, tables, and charts; it is not page-specific colour customization.
+
 ## Entrypoint Matrix
 
 | Entrypoint | Open path | File / class | Parent | Sizing policy | Overflow / scroll | Theme source | Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
 | Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
-| Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination + visit dialog body scroll; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
-| Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | Continuous-entry form layout | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
+| Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
+| New anomaly / visit | Sidebar and event toolbar `新增異常` / `新增訪廠` | `src/ui/widgets/event_create_page.py` / `EventCreatePage`, with `NewAnomalyDialog` / `NewVisitDialog` page presentation | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns one scroll body and the top `返回清單` / `儲存` command row; saved page shows `查看清單` / `繼續新增` | Shared theme tokens | Focused page smoke + native `event-create` probe |
+| Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns the continuous-entry command row, feedback and one scroll body | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending outsource | Sidebar `待處理委外加工` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="委外加工"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending material | Sidebar `待處理原物料` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="原物料"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
-| New / edit anomaly | Anomaly buttons | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | `MainWindow` | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險與參考 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
-| New / edit visit | Visit list actions and event toolbar `新增訪廠` | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | `MainWindow` | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
+| Edit / preview anomaly | Event action menu | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | Event list | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
+| Edit / preview visit | Event action menu | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | Event list | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Close anomaly | Event action menu | `src/ui/widgets/close_anomaly_dialog.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/visit_detail_dialog.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
@@ -30,6 +38,16 @@
 - Visible overflow affordances are required on dense desktop pages. Do not hide
   scrollbars to create a cleaner static screenshot when the page can contain
   dense tables, charts, or long Chinese labels.
+- `AppearancePreferencesDialog` is a finite settings surface: `全頁密度`,
+  `側欄與資料表`, and `文字與對比` are separate tabs with fixed action buttons;
+  it has no whole-dialog content scrollbar. Keep all preference controls,
+  preview behavior, accessible descriptions, and cancel restoration intact.
+- Supplier-event and NCR lists use responsive `重點欄位` mode at constrained
+  widths. The event core is 異常單號／供應商／品名／問題摘要／品質異常單要求／狀態;
+  the NCR core is 不良單號／發生日期／料號／產品名稱／不良描述／狀態, with 處理線 also
+  visible outside fixed processing-line pages. `完整欄位` restores every source
+  column and may need horizontal scrolling. The mode is display-only and must
+  not change exports, database records, or saved NCR column order.
 - Color hierarchy is part of visual acceptance. Sidebars/navigation rails must
   review base surface, panel/footer surface, group labels, hover state, selected
   state, selected indicator, badges/status counts, primary action, secondary
@@ -38,6 +56,20 @@
   borders, spacing, weight, and state indicators.
 
 ## Form Density Rules
+
+## Shared Workflow Shell Rules
+
+- `CreateWorkflowShell` is the only full-page create contract. It owns one
+  command row, one inline feedback region and one vertical scroll body. Full-page
+  actions appear in the command row; do not duplicate save/cancel controls in a
+  page footer.
+- `QueryWorkflowShell` standardizes the flat filter/action surface of supplier
+  event and NCR lists. It carries no filters, query state or data semantics.
+- `AnalyticsWorkflowShell` standardizes the visible control surface for both
+  statistics pages. `重新整理` remains immediately left of `匯出 Excel`; supplier
+  event and warehouse statistics remain separate data sources.
+- Modal edit and preview forms do not use `CreateWorkflowShell`: they retain a
+  fixed `QDialogButtonBox` footer with 儲存／確認 left and 取消 right.
 
 - Use side-by-side fields only for low-risk field groups where labels are short, fields have similar width needs, and the relationship is operationally obvious.
 - Current good-only paired groups:
@@ -49,19 +81,22 @@
   - `ProductFormDialog`: `料號 + 階段`.
 - Keep large text, attachment, table, and long-selection fields as single-row blocks unless a later visual probe proves the paired version stays readable.
 - Long text boxes use row-count-based initial heights instead of legacy large fixed heights; they remain single-column fields.
-- `NewAnomalyDialog` is a single-page form. Its content scrolls inside
-  `AnomalyFormScroll`, while 儲存／取消 remain outside the scroll area. The
+- `NewAnomalyDialog` has two presentation modes. Edit/preview uses the dialog
+  form with `AnomalyFormScroll` and a fixed footer; full-page create exposes the
+  same fields through `CreateWorkflowShell` without a nested scroll area. The
   「品質異常單要求」是／否 radios are paired in 基本資訊 and begin unselected
   for new or legacy-unclassified records. The dialog prefers a 900 x 780
   working size, remains capped to the active screen and `FORM_MAX_WIDTH`, opens
   at the top of the form, and uses a compact scrollable attachment preview so
   an empty photo area does not consume the visible workflow.
-- `NewVisitDialog` is also a single-page form. 基本資訊 and 進階與技轉 are
-  rendered directly without a whole-form `QScrollArea`, while 儲存／取消 remain
-  in a fixed footer. It uses the same 900 x 780 preferred working size and active-
-  screen clamp as `NewAnomalyDialog`. The retired defect-note tab and its nested group containers
-  must not be recreated; editing legacy visits preserves their stored defect-note
-  and additional product-section payloads without exposing hidden editor widgets.
+- `NewVisitDialog` also has dialog and full-page presentation modes. Edit/preview
+  renders 基本資訊 and 技轉 directly with a fixed footer; full-page create uses
+  `CreateWorkflowShell` as its one scroll owner and top command row. The dialog
+  uses the same 900 x 780 preferred working size and active-screen clamp as
+  `NewAnomalyDialog`. The retired defect-note tab, separate
+  `登錄訪廠缺失` entry, and nested group containers must not be recreated; editing
+  legacy visits preserves their stored defect-note and additional product-section
+  payloads without exposing hidden editor widgets.
 - Deferred conditional candidates: `主要產品 + 料號`, `主供應商 + 次要供應商`, and other long combo-box rows. These require long supplier/product-name checks before implementation.
 - Verify form density changes with focused structural tests plus `scripts/qt_visual_probe.py --target form-density` before treating CJK rendering and button visibility as confirmed.
 
@@ -83,13 +118,15 @@
   connected through the shell while keeping their data sources and statistics
   labeled separately.
 - Home is an operations workbench (daily cockpit): one read-only backlog (待辦)
-  list plus warehouse pending shortcuts. Still forbidden: KPI panels/cards,
+  list plus warehouse pending shortcuts, rendered directly on the page root
+  without a decorative backlog card. Still forbidden: KPI panels/cards,
   quick-entry write panels, hero/cover banners, feature-tour blocks, and
   project-structure explanations. The backlog list is not a generic recent-event
   feed — it is a filtered, actionable to-do list (open / overdue anomalies) that
   only reads existing services and only routes through existing navigation.
-- Home warehouse shortcuts are operational navigation only: `待處理委外加工`,
-  `待處理原物料`, and `未分流待整理`. The first two route to formal stack pages;
+- Home warehouse shortcuts are operational navigation only. Their compact visible
+  labels are `委外待處理 · N`, `原物料待處理 · N`, and `未分流 · N`; the full
+  target description remains in each button tooltip. The first two route to formal stack pages;
   `未分流待整理` opens a cleanup list for migrated rows. The backlog reads
   existing services only (`event_service.list_events` plus warehouse processing-line
   counts); it must not add statistics tables, caches, migrations, or
@@ -107,14 +144,17 @@
   entrypoints. Pending pages must be backed by visible `processing_line` scope,
   not by hidden filters or inferred category/return-slip values.
 - Sidebar information architecture is workflow-first with three domain group
-  headers (text labels): 供應商事件, 倉庫不合格品, 系統. The four supplier-event
+  headers (text labels): 供應商事件, 倉庫不合格品, 系統. 供應商事件先提供兩個建立頁
+  `新增訪廠` / `新增異常`；其後的四個 supplier-event
   scopes are first-class nav rows (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案,
   default 單獨異常; the 已結案 row locks the status filter to 已結案) plus 異常事件統計;
   倉庫不合格品 holds 建立不合格品 / 待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. There is no
   in-page scope tab bar — the event page is driven by the active sidebar scope row,
   shown via the source tag. Stack page indexes are
   (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 / 4 待處理委外加工 /
-  5 待處理原物料 / 6 歷史紀錄 / 7 不合格品統計分析 / 8 基礎資料`, NCR offset 3).
+  5 待處理原物料 / 6 歷史紀錄 / 7 不合格品統計分析 / 8 基礎資料 /
+  9 新增訪廠 / 10 新增異常`, NCR offset 3). 導覽項目高度為 38px，群組間距為 10px；
+  數值均由 `layout_constants.py` 管理。
 - The sidebar is decoupled from stack indexes: it emits `nav_activated(action)`
   where action is `("page", PAGE_KEY)` or `("scope", EVENT_SCOPE_*)`; `MainWindow`
   maps PAGE_KEY → stack index and routes scope rows through
@@ -127,12 +167,13 @@
   `待處理委外加工` / `待處理原物料` with count queries constrained to
   `status <> '已結案' AND processing_line = <formal line>`. `未分流` records are
   cleanup warnings/to-dos and must not be merged into either formal badge.
-- Quick-create has no sidebar footer. Creation uses each page's existing entry
-  points: the event toolbar `新增異常` / `新增訪廠`, and the 倉庫不合格品 sidebar
-  `建立不合格品` row. Do not reintroduce a global quick-create footer.
+- Quick-create has no sidebar footer. 供應商事件的新增入口是兩個一等側欄建立頁，
+  事件工具列保留相同按鈕但導向該頁；倉庫不合格品維持 `建立不合格品` 側欄列。
+  Do not reintroduce a global quick-create footer.
 - Statistics (異常事件統計) is supplier-event only: a dashboard-style page with
-  one control row, one explanation banner, one shared chart panel, a 2x2
-  four-phase chart grid, and one bottom insight strip. The four phases are
+  one flat control row, one shared chart panel, a 2x2 four-phase chart grid,
+  and one bottom insight strip. Its visible source tag is compact; complete
+  source, date-attribution, and scope guidance lives in the tag tooltip. The four phases are
   供應商事件趨勢, 訪廠與訪廠異常趨勢, 異常類別柏拉圖, and 責任人事件統計. The removed
   risk / overdue / latest decision-summary cards must not be recreated as
   visible or hidden page widgets. Warehouse nonconforming-product statistics
@@ -141,7 +182,9 @@
   cross-workflow write path is allowed.
 - Master-list update, disable, delete, and stage-log actions remain disabled
   until a row is selected, and the toolbar must name the current selected
-  supplier or product before destructive actions become available.
+  supplier or product before destructive actions become available. The master
+  toolbar and real supplier/product tab host are direct page siblings; do not
+  reintroduce an outer card solely to frame that single tool area.
 
 ## UI/UX Check - 2026-06-03
 

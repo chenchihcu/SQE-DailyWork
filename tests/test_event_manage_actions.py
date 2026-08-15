@@ -334,7 +334,7 @@ class EventManageActionsTests(unittest.TestCase):
         assert detail_after is not None
         self.assertEqual("已結案", detail_after["status"])
         self.assertEqual("2026-04-17", detail_after["closed_at"])
-        self.assertNotIn("closed_by", detail_after)
+        self.assertEqual("", detail_after["closed_by"])
 
         summary = repository.get_dashboard_summary(self.conn)
         self.assertEqual(0, summary["open_count"])
@@ -362,7 +362,7 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertIsNotNone(detail)
         assert detail is not None
         self.assertEqual("已結案", detail["status"])
-        self.assertNotIn("closed_by", detail)
+        self.assertEqual("", detail["closed_by"])
 
     def test_close_anomaly_rejects_overlong_improvement(self) -> None:
         anomaly_id = self._create_open_anomaly()
@@ -950,7 +950,7 @@ class EventManageActionsTests(unittest.TestCase):
         assert detail_reopened is not None
         self.assertEqual("待處理", detail_reopened["status"])
         self.assertEqual("", detail_reopened["improvement_desc"])
-        self.assertNotIn("closed_by", detail_reopened)
+        self.assertEqual("", detail_reopened["closed_by"])
         self.assertIsNone(detail_reopened["closed_at"])
 
         summary = repository.get_dashboard_summary(self.conn)

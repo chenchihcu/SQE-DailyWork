@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QGridLayout, QScrollArea, QSizePolicy
+from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy
 from PySide6.QtCharts import QChartView, QPieSlice
 
 from ui.widgets.ncr_stats_widget import NcrStatsWidget
@@ -81,7 +81,13 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         # 內建的 grid_layout 屬性必須是 QGridLayout
         grid_layout = widget.grid_layout
         self.assertIsInstance(grid_layout, QGridLayout)
-        self.assertEqual("statsInfoBanner", widget.info_banner.property("role"))
+        source_tag = next(
+            label
+            for label in widget.findChildren(QLabel)
+            if label.property("role") == "sourceTag"
+        )
+        self.assertEqual("倉庫不合格品", source_tag.text())
+        self.assertIn("Top 5", source_tag.toolTip())
         self.assertEqual("insight", widget.insight_label.property("role"))
         
         # 網格中必須有 4 個 QChartView 統計圖表
@@ -118,6 +124,12 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
             self.assertEqual(QSizePolicy.Policy.Expanding, view.sizePolicy().horizontalPolicy())
             self.assertEqual(QSizePolicy.Policy.Expanding, view.sizePolicy().verticalPolicy())
             self.assertIsInstance(view, StableChartView)
+
+    def test_ncr_stats_command_row_is_flat(self) -> None:
+        widget = self._build_widget()
+        page_layout = widget.layout()
+        assert page_layout is not None
+        self.assertIsInstance(page_layout.itemAt(0).layout(), QHBoxLayout)
 
     def test_donut_chart_uses_qpieslice_label_outside(self) -> None:
         scrap_rework = [

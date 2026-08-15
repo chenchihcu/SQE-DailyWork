@@ -33,11 +33,14 @@ class BulletListItemRow(QWidget):
 
         self.line_edit = QLineEdit(text)
         self.line_edit.setPlaceholderText(f"條目 {index}")
+        self.line_edit.setAccessibleName(f"條目 {index}")
         self.line_edit.textChanged.connect(self._on_text_changed)
 
         self.btn_delete = QPushButton("刪除")
         self.btn_delete.setFixedWidth(48)
         self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_delete.setAccessibleName(f"刪除條目 {index}")
+        self.btn_delete.setToolTip("刪除此列條目")
         self.btn_delete.setProperty("variant", "dangerOutline")
         self.btn_delete.clicked.connect(lambda: self.removeRequested.emit(self))
 
@@ -51,6 +54,8 @@ class BulletListItemRow(QWidget):
     def set_index(self, index: int):
         self.num_label.setText(f"{index}.")
         self.line_edit.setPlaceholderText(f"條目 {index}")
+        self.line_edit.setAccessibleName(f"條目 {index}")
+        self.btn_delete.setAccessibleName(f"刪除條目 {index}")
 
     def text(self) -> str:
         return self.line_edit.text().strip()
@@ -81,6 +86,8 @@ class BulletListWidget(QWidget):
 
         self.btn_add = QPushButton("+ 新增條目")
         self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_add.setAccessibleName("新增條目")
+        self.btn_add.setToolTip("新增一列條目")
         self.btn_add.setProperty("variant", "dashedPrimary")
         self.btn_add.clicked.connect(lambda: self.add_item(""))
         self.main_layout.addWidget(self.btn_add)
@@ -96,6 +103,8 @@ class BulletListWidget(QWidget):
         self._rows.append(row)
         self.items_layout.addWidget(row)
         self._update_indices()
+        self.items_layout.activate()
+        self.items_layout.update()
         self.valueChanged.emit()
         return row
 
@@ -158,7 +167,11 @@ class BulletListWidget(QWidget):
 
         self.set_items(extracted_items)
 
+    def isReadOnly(self) -> bool:
+        return getattr(self, "_read_only", False)
+
     def setReadOnly(self, read_only: bool):
+        self._read_only = bool(read_only)
         self.btn_add.setVisible(not read_only)
         for row in self._rows:
             row.line_edit.setReadOnly(read_only)

@@ -8,6 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from ui.main_window import (
+    EVENT_CREATE_ANOMALY_PAGE_INDEX,
+    EVENT_CREATE_VISIT_PAGE_INDEX,
     EVENT_PAGE_INDEX,
     STATS_PAGE_INDEX,
     MASTER_PAGE_INDEX,
@@ -15,13 +17,17 @@ from ui.main_window import (
 )
 from ui.sidebar_nav import PAGE_NCR_PENDING, SidebarNav
 from ui.sidebar_nav import PAGE_NCR_PENDING_MATERIAL, PAGE_NCR_PENDING_OUTSOURCE
+from ui.sidebar_nav import PAGE_EVENT_CREATE_ANOMALY, PAGE_EVENT_CREATE_VISIT
+from ui import layout_constants as lc
 from ui.theme import apply_app_theme
 
 
-# Twelve sidebar nav labels（事件 4 scope + 倉庫 4 workflow pages 升級為一等導覽列）：
-# 首頁 + 單獨異常/訪廠發現異常/訪廠紀錄/已結案 + 異常事件統計 + 建立/雙待處理/歷史 + 不合格品統計分析 + 基礎資料。
+# Fourteen sidebar nav labels: the supplier-event group starts with the two
+# full-page create flows, then keeps its four query scopes.
 _EXPECTED_NAV_LABELS = [
     "首頁",
+    "新增訪廠",
+    "新增異常",
     "單獨異常",
     "訪廠發現異常",
     "訪廠紀錄",
@@ -33,6 +39,7 @@ _EXPECTED_NAV_LABELS = [
     "歷史紀錄",
     "不合格品統計分析",
     "基礎資料",
+    "顯示設定",
 ]
 
 
@@ -75,6 +82,8 @@ class MainWorkflowTabTests(unittest.TestCase):
             EVENT_PAGE_INDEX: "事件管理",
             STATS_PAGE_INDEX: "異常事件統計",
             MASTER_PAGE_INDEX: "基礎資料",
+            EVENT_CREATE_VISIT_PAGE_INDEX: "新增訪廠",
+            EVENT_CREATE_ANOMALY_PAGE_INDEX: "新增異常",
         }
         for page_index, expected_title in expected_titles.items():
             self.window._switch_primary_page(page_index)
@@ -85,9 +94,19 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_twelve_nav_items(self) -> None:
-        # 12 nav 按鈕：首頁 + 4 事件 scope + 異常事件統計 + 4 倉庫工作頁 + 不合格品統計分析 + 基礎資料。
-        self.assertEqual(12, len(self.window.sidebar._buttons))
+    def test_sidebar_has_fourteen_nav_items_and_create_routes(self) -> None:
+        self.assertEqual(15, len(self.window.sidebar._buttons))
+        self.assertIsNotNone(
+            self.window.sidebar.button_for_action(("page", PAGE_EVENT_CREATE_VISIT))
+        )
+        self.assertIsNotNone(
+            self.window.sidebar.button_for_action(("page", PAGE_EVENT_CREATE_ANOMALY))
+        )
+
+    def test_sidebar_compact_density_uses_shared_layout_constants(self) -> None:
+        self.assertEqual(38, lc.SIDEBAR_NAV_ITEM_HEIGHT)
+        self.assertEqual(10, lc.SIDEBAR_NAV_GROUP_GAP)
+        self.assertEqual(4, lc.SIDEBAR_NAV_TOP_SPACING)
 
     def test_sidebar_uses_domain_group_headers(self) -> None:
         # 側欄以三組領域標題（非按鈕 QLabel）分隔：供應商事件 / 倉庫不合格品 / 系統。
@@ -152,6 +171,16 @@ class MainWorkflowTabTests(unittest.TestCase):
         scope = self.window.events_widget._filter_event_scope
         active_btn = self.window.sidebar.button_for_action(("scope", scope))
         self.assertIsNotNone(active_btn)
+        self.assertEqual("true", active_btn.property("nav_active"))
+
+    def test_create_page_updates_sidebar_active_state(self) -> None:
+        self.window._switch_primary_page(EVENT_CREATE_ANOMALY_PAGE_INDEX)
+        self.app.processEvents()
+        active_btn = self.window.sidebar.button_for_action(
+            ("page", PAGE_EVENT_CREATE_ANOMALY)
+        )
+        self.assertIsNotNone(active_btn)
+        assert active_btn is not None
         self.assertEqual("true", active_btn.property("nav_active"))
 
 

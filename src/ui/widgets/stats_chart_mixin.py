@@ -49,8 +49,6 @@ CHART_OVERDUE_PALETTE = get_status_palette("逾期未結")
 CHART_OPEN_COLOR = QColor(CHART_OPEN_PALETTE.chart)
 CHART_CLOSED_COLOR = QColor(CHART_CLOSED_PALETTE.chart)
 CHART_OVERDUE_COLOR = QColor(CHART_OVERDUE_PALETTE.chart)
-PARETO_BAR_COLOR = QColor(TOKENS.get("primary_btn", "#1F6FEB"))
-PARETO_LINE_COLOR = QColor(TOKENS.get("brand_green", "#1FA85B"))
 
 
 class _StatsChartMixin:
@@ -245,14 +243,17 @@ class _StatsChartMixin:
             for row in display_data
         ])
 
+        pareto_bar_color = QColor(TOKENS.get("primary_btn", "#1F6FEB"))
+        pareto_line_color = QColor(TOKENS.get("brand_green", "#1FA85B"))
+
         count_set = QBarSet("件數")
-        count_set.setColor(PARETO_BAR_COLOR)
-        count_set.setBorderColor(PARETO_BAR_COLOR.darker(110))
+        count_set.setColor(pareto_bar_color)
+        count_set.setBorderColor(pareto_bar_color.darker(110))
 
         cumulative_series = QLineSeries()
         cumulative_series.setName("累積佔比")
-        cumulative_series.setColor(PARETO_LINE_COLOR)
-        cumulative_pen = QPen(PARETO_LINE_COLOR, 3)
+        cumulative_series.setColor(pareto_line_color)
+        cumulative_pen = QPen(pareto_line_color, 3)
         cumulative_series.setPen(cumulative_pen)
         cumulative_series.setPointsVisible(True)
 
@@ -288,7 +289,7 @@ class _StatsChartMixin:
         point_label_font.setBold(True)
         cumulative_series.setPointLabelsVisible(True)
         cumulative_series.setPointLabelsFormat("@xPoint%")
-        cumulative_series.setPointLabelsColor(PARETO_LINE_COLOR.darker(110))
+        cumulative_series.setPointLabelsColor(pareto_line_color.darker(110))
         cumulative_series.setPointLabelsFont(point_label_font)
         cumulative_series.setPointLabelsClipping(False)
 
@@ -318,8 +319,8 @@ class _StatsChartMixin:
         axis_x_percent.setLabelFormat("%.0f%%")
         axis_x_percent.setRange(0, 100)
         axis_x_percent.setTickCount(6)
-        axis_x_percent.setLabelsColor(PARETO_LINE_COLOR)
-        axis_x_percent.setTitleBrush(PARETO_LINE_COLOR)
+        axis_x_percent.setLabelsColor(pareto_line_color)
+        axis_x_percent.setTitleBrush(pareto_line_color)
         axis_x_percent.setLabelsFont(axis_label_font)
         axis_x_percent.setTitleFont(axis_title_font)
         axis_x_percent.setGridLineVisible(False)

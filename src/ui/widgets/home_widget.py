@@ -66,8 +66,6 @@ class HomeWidget(QWidget):
 
     def _build_backlog_panel(self) -> QFrame:
         panel = QFrame()
-        panel.setObjectName("HomeBacklogPanel")
-        panel.setProperty("role", "panel")
         outer = QVBoxLayout(panel)
         outer.setContentsMargins(*PANEL_MARGINS)
         outer.setSpacing(8)
@@ -79,9 +77,18 @@ class HomeWidget(QWidget):
 
         self._backlog_table = QTableWidget()
         self._backlog_table.setObjectName("HomeBacklogTable")
-        self._backlog_table.setColumnCount(4)
+        self._backlog_table.setColumnCount(8)
         self._backlog_table.setHorizontalHeaderLabels(
-            ["異常單號", "供應商", "問題/摘要", "狀態"]
+            [
+                "異常單號",
+                "供應商名稱",
+                "產品料號",
+                "產品品名",
+                "品質異常單要求",
+                "責任人",
+                "問題/摘要",
+                "狀態",
+            ]
         )
         style_table(self._backlog_table)
         apply_table_action_affordance(
@@ -89,10 +96,9 @@ class HomeWidget(QWidget):
             "點擊待辦列開啟事件管理頁，並帶入該供應商的待處理異常篩選",
         )
         header = self._backlog_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        for i in range(8):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._backlog_table.cellClicked.connect(self._on_backlog_row_clicked)
         outer.addWidget(self._backlog_table, 1)
 
@@ -110,13 +116,13 @@ class HomeWidget(QWidget):
         shortcut_row.setSpacing(8)
         self._warehouse_outsource_btn = self._make_warehouse_shortcut(
             "HomeBacklogWarehouseOutsourceLink",
-            "待處理委外加工：— 件　→",
+            "委外待處理：— 件　→",
             "開啟同一視窗內的待處理委外加工清單",
             "open_warehouse_pending_outsource",
         )
         self._warehouse_material_btn = self._make_warehouse_shortcut(
             "HomeBacklogWarehouseMaterialLink",
-            "待處理原物料：— 件　→",
+            "原物料待處理：— 件　→",
             "開啟同一視窗內的待處理原物料清單",
             "open_warehouse_pending_material",
         )
@@ -208,10 +214,10 @@ class HomeWidget(QWidget):
         self._render_backlog_rows(merged[: self._BACKLOG_LIMIT])
 
         self._warehouse_outsource_btn.setText(
-            f"待處理委外加工：{int(pending_counts.get(PROCESSING_LINE_OUTSOURCE, 0))} 件　→"
+            f"委外待處理：{int(pending_counts.get(PROCESSING_LINE_OUTSOURCE, 0))} 件　→"
         )
         self._warehouse_material_btn.setText(
-            f"待處理原物料：{int(pending_counts.get(PROCESSING_LINE_MATERIAL, 0))} 件　→"
+            f"原物料待處理：{int(pending_counts.get(PROCESSING_LINE_MATERIAL, 0))} 件　→"
         )
         self._warehouse_unclassified_btn.setText(
             f"未分流待整理：{int(pending_counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))} 件　→"
@@ -227,19 +233,40 @@ class HomeWidget(QWidget):
             self._backlog_table.setRowCount(0)
             for idx, row in enumerate(rows):
                 self._backlog_table.insertRow(idx)
-                no_val = row.get("ref_no") or row.get("event_date") or "—"
+                no_val = row.get("ref_no") or row.get("anomaly_no") or row.get("event_date") or "—"
                 no_item = SortableTableWidgetItem(str(no_val), sort_key=str(no_val))
                 no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
                 self._backlog_table.setItem(idx, 0, no_item)
-                full_name = str(row.get("supplier_name") or "—")
-                name_item = text_table_item(full_name)
-                name_item.setToolTip(full_name)
-                self._backlog_table.setItem(idx, 1, name_item)
-                content_str = str(row.get("content") or "—")
-                self._backlog_table.setItem(idx, 2, text_table_item(content_str))
+
+                supplier_name = str(row.get("supplier_name") or "—")
+                supplier_item = text_table_item(supplier_name)
+                supplier_item.setToolTip(supplier_name)
+                self._backlog_table.setItem(idx, 1, supplier_item)
+
+                item_no = str(row.get("item_no") or row.get("product_code") or "—")
+                self._backlog_table.setItem(idx, 2, text_table_item(item_no))
+
+                product_name = str(row.get("product_name") or "—")
+                self._backlog_table.setItem(idx, 3, text_table_item(product_name))
+
+                req_val = row.get("quality_report_required")
+                if req_val in (1, True, "1", "True", "yes", "是"):
+                    req_str = "是"
+                elif req_val in (0, False, "0", "False", "no", "否"):
+                    req_str = "否"
+                else:
+                    req_str = "未設定"
+                self._backlog_table.setItem(idx, 4, text_table_item(req_str))
+
+                resp_person = str(row.get("responsible_person") or "未指定").strip() or "未指定"
+                self._backlog_table.setItem(idx, 5, text_table_item(resp_person))
+
+                content_val = str(row.get("content") or "—")
+                self._backlog_table.setItem(idx, 6, text_table_item(content_val))
+
                 status_str = str(row.get("status") or "待處理")
                 self._backlog_table.setItem(
-                    idx, 3, create_status_item(status_str, sort_key=status_str)
+                    idx, 7, create_status_item(status_str, sort_key=status_str)
                 )
 
         # Cap supplier column so very long names don't crowd the problem/summary column.

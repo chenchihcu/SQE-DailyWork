@@ -22,10 +22,12 @@ class PageHeaderBar(QFrame):
 
         self._title = QLabel()
         self._title.setObjectName("PageHeaderTitle")
+        self._title.setAccessibleName("頁面標題")
         layout.addWidget(self._title)
 
         self._breadcrumb = QLabel()
         self._breadcrumb.setObjectName("PageHeaderBreadcrumb")
+        self._breadcrumb.setAccessibleName("頁面路徑")
         self._breadcrumb.hide()
         layout.addWidget(self._breadcrumb)
 

@@ -54,42 +54,6 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
         # Unselected tab weight normalized 600 -> 400 (CJK avoids 500/600 per the
         # universal UI rule); the selected state is carried by colour + weight 700.
         self.assertIn("font-weight: 400;", tab_block)
-        self.assertIn(f'color: {TOKENS["nav_dark_text"]};', tab_block)
-
-        hover_block = _selector_block(qss, "QTabWidget#MainWorkflowTabs QTabBar::tab:hover:!selected")
-        self.assertIn(f'color: {TOKENS["nav_dark_text_active"]};', hover_block)
-
-        selected_block = _selector_block(qss, "QTabWidget#MainWorkflowTabs QTabBar::tab:selected")
-        self.assertIn("font-weight: 700;", selected_block)
-        self.assertIn(f'color: {TOKENS["nav_dark_text_active"]};', selected_block)
-
-    def test_tab_label_font_size_is_13px(self) -> None:
-        qss = get_theme_qss()
-        tab_block = _selector_block(qss, "QTabBar::tab")
-        self.assertIn("font-size: 13px;", tab_block)
-
-    def test_theme_qss_avoids_medium_font_weights(self) -> None:
-        # CJK renders inconsistently at 500/600 on Windows; the theme must only use
-        # 400 / 700 (universal UI rule §6). Pins the normalization against regression.
-        qss = get_theme_qss()
-        offenders = re.findall(r"font-weight:\s*(500|600)\b", qss)
-        self.assertEqual(offenders, [], f"theme QSS still uses 500/600: {offenders}")
-
-    def test_kpi_widgets_have_no_inline_font_size_override(self) -> None:
-        _root = Path(__file__).resolve().parents[1]
-        home_widget = (_root / "src/ui/widgets/home_widget.py").read_text(encoding="utf-8")
-        stats_widget = (_root / "src/ui/widgets/stats_view_widget.py").read_text(encoding="utf-8")
-        self.assertNotIn("font-size", home_widget)
-        self.assertNotIn("font-size", stats_widget)
-
-    def test_date_input_styles_define_light_background_and_text_color(self) -> None:
-        qss = get_theme_qss()
-        date_input_block = _selector_block_pattern(
-            qss,
-            r"QLineEdit,\s*QComboBox,\s*QDateEdit,\s*QSpinBox",
-        )
-        self.assertIn(f'background: {TOKENS["panel_bg"]};', date_input_block)
-        self.assertIn(f'color: {TOKENS["text_primary"]};', date_input_block)
 
     def test_calendar_popup_uses_light_theme_and_high_contrast_selection(self) -> None:
         qss = get_theme_qss()

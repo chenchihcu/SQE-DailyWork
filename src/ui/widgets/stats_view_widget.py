@@ -32,7 +32,11 @@ from ui.layout_constants import (
     RANK_PANEL_MARGINS,
 )
 from ui.popup_i18n import localize_exception
-from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
+from ui.widgets.common_widgets import (
+    AnalyticsWorkflowShell,
+    EmptyStateWidget,
+    apply_clickable_affordance,
+)
 from ui.widgets.stats_dashboard_helpers import (
     StatsInfoBanner,
     build_temp_chart_paths,
@@ -91,49 +95,47 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         root.setSpacing(4)
 
         # ── 頂部控制面板 ─────────────────────────────────────
-        top_panel = QFrame()
-        top_panel.setProperty("role", "panel")
-        top_layout = QVBoxLayout(top_panel)
+        self.workflow_shell = AnalyticsWorkflowShell(self)
+        self.workflow_shell.hide()
+
+        top_layout = QHBoxLayout()
         top_layout.setContentsMargins(*PANEL_MARGINS)
         top_layout.setSpacing(INLINE_SPACING)
 
-        month_row = QHBoxLayout()
-        month_row.setSpacing(INLINE_SPACING)
         period_label = create_period_label()
         self.range_selectors = create_year_month_range_selectors(
             self._on_range_changed,
             parent=self,
         )
 
-        month_row.addWidget(period_label)
+        top_layout.addWidget(period_label)
         for widget in self.range_selectors.widgets():
-            month_row.addWidget(widget)
+            top_layout.addWidget(widget)
 
-        self.source_tag_label = QLabel("供應商事件統計")
+        self.source_tag_label = QLabel("供應商事件")
         self.source_tag_label.setProperty("role", "sourceTag")
         self.source_tag_label.setMinimumWidth(126)
         self.source_tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.source_tag_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.source_tag_label.setToolTip("本頁僅供應商事件統計；倉庫不合格品統計請見「不合格品統計分析」頁")
-        month_row.addWidget(self.source_tag_label)
-        month_row.addStretch(1)
+        self.source_tag_label.setToolTip("本頁僅分析權責與已結案紀錄；倉庫不合格品統計請參閱獨立不合格品模組。")
+        top_layout.addWidget(self.source_tag_label)
+        top_layout.addStretch(1)
 
         btn_refresh = QPushButton("重新整理")
         btn_refresh.setProperty("variant", "secondary")
         btn_refresh.setMinimumWidth(100)
         apply_clickable_affordance(btn_refresh, tooltip="重新整理統計數據")
         btn_refresh.clicked.connect(self.refresh_data)
-        month_row.addWidget(btn_refresh)
+        top_layout.addWidget(btn_refresh)
 
         btn_export = QPushButton("匯出 Excel")
         btn_export.setProperty("variant", "primary")
         btn_export.setMinimumWidth(118)
         apply_clickable_affordance(btn_export, tooltip="匯出目前篩選統計 Excel")
         btn_export.clicked.connect(self.export_monthly_excel)
-        month_row.addWidget(btn_export)
-        top_layout.addLayout(month_row)
+        top_layout.addWidget(btn_export)
 
-        root.addWidget(top_panel)
+        root.addLayout(top_layout)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
         scroll, scroll_layout = create_stats_scroll_area(

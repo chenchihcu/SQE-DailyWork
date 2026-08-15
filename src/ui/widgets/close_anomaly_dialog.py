@@ -89,6 +89,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.anomaly_id = anomaly_id
         self.problem_desc = problem_desc
         self.date_adjustment_only = date_adjustment_only
+        self.setModal(True)
         self.setWindowTitle("調整結案日期" if date_adjustment_only else "異常結案")
         self.setMinimumWidth(720)
         self.setMaximumWidth(FORM_MAX_WIDTH)
@@ -119,12 +120,13 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.problem_view = QTextEdit()
         self.problem_view.setReadOnly(True)
         self.problem_view.setPlainText(self.problem_desc)
+        self.problem_view.setPlaceholderText("原始問題描述唯讀區")
+        self.problem_view.setAccessibleName("原始問題描述")
         self.problem_view.setMinimumHeight(240)
 
         self.improvement_input = QTextEdit()
         self.improvement_input.setPlaceholderText("請輸入改善內容（必填）")
-        # Row-based height keeps the field compact and consistent with the other
-        # long-text inputs (min==max via the shared helper) instead of a fixed 240px.
+        self.improvement_input.setAccessibleName("改善內容")
         set_text_edit_visible_rows(self.improvement_input, 10)
 
         self.improvement_counter = QLabel(f"0 / {IMPROVEMENT_DESC_MAX_LEN}")
@@ -136,6 +138,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.closed_at_input = QDateEdit()
         self.closed_at_input.setDisplayFormat("yyyy-MM-dd")
         self.closed_at_input.setCalendarPopup(True)
+        self.closed_at_input.setAccessibleName("結案日期")
         self.closed_at_input.setMaximumDate(QDate.currentDate())
         initial_anomaly_qdate = QDate.fromString(self.initial_anomaly_date, "yyyy-MM-dd")
         if initial_anomaly_qdate.isValid():
@@ -182,6 +185,9 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
         )
         self._save_button = style_dialog_buttons(buttons)
+        if self._save_button:
+            self._save_button.setCursor(Qt.PointingHandCursor)
+            self._save_button.setAccessibleName("確認結案")
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
 

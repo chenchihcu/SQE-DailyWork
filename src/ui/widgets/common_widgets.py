@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -24,7 +25,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QBrush, QColor
 
 from ui.layout_constants import (
+    COMPACT_COMMAND_ROW_MARGINS,
+    COMPACT_PAGE_SPACING,
     FORM_HORIZONTAL_SPACING,
+    PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
     TABLE_ITEM_MIN_HEIGHT,
 )
@@ -96,6 +100,104 @@ def create_section_card(parent: QWidget | None = None) -> QFrame:
     layout.setContentsMargins(*PANEL_MARGINS)
     layout.setSpacing(12)
     return card
+
+
+class QueryWorkflowShell(QFrame):
+    """Shared flat command surface for query/list pages.
+
+    The shell intentionally owns no business controls.  Each workflow keeps its
+    own filters and actions, while the shared role and spacing prevent the
+    supplier-event and NCR pages from drifting into separate visual systems.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("role", "subpanel")
+        self.setObjectName("QueryWorkflowShell")
+
+
+class AnalyticsWorkflowShell(QFrame):
+    """Shared flat control surface for analysis dashboards."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("role", "subpanel")
+        self.setObjectName("AnalyticsWorkflowShell")
+
+
+class CreateWorkflowShell(QWidget):
+    """A full-page create surface with one command row and one scroll owner.
+
+    Modal dialogs retain their fixed ``QDialogButtonBox`` footer.  A route that
+    opens as a sidebar page instead supplies its form content here, which keeps
+    save/leave actions visible at the top and prevents nested form scroll areas.
+    """
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        outer_margins: tuple[int, int, int, int] = PAGE_OUTER_MARGINS,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("CreateWorkflowShell")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(*outer_margins)
+        root.setSpacing(COMPACT_PAGE_SPACING)
+
+        self.command_panel = QFrame()
+        self.command_panel.setObjectName("CreateWorkflowCommandBar")
+        self.command_panel.setProperty("role", "subpanel")
+        command_layout = QVBoxLayout(self.command_panel)
+        command_layout.setContentsMargins(*COMPACT_COMMAND_ROW_MARGINS)
+        command_layout.setSpacing(COMPACT_PAGE_SPACING)
+
+        self.command_row = QHBoxLayout()
+        self.command_row.setContentsMargins(0, 0, 0, 0)
+        self.command_row.setSpacing(COMPACT_PAGE_SPACING)
+        self.command_row.addStretch(1)
+        self._context_count = 0
+        command_layout.addLayout(self.command_row)
+
+        self.feedback_label = QLabel()
+        self.feedback_label.setObjectName("CreateWorkflowFeedback")
+        self.feedback_label.setProperty("role", "messageText")
+        self.feedback_label.setWordWrap(True)
+        self.feedback_label.hide()
+        command_layout.addWidget(self.feedback_label)
+        root.addWidget(self.command_panel)
+
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setObjectName("CreateWorkflowScroll")
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        root.addWidget(self.content_scroll, 1)
+
+    def add_action(self, button: QPushButton) -> None:
+        """Append a command action after the leading stretch."""
+        self.command_row.addWidget(button)
+
+    def add_context(self, widget: QWidget) -> None:
+        """Insert workflow context before the flexible command-row spacer."""
+        # Context is added before the initial flexible spacer.  Tracking its
+        # position preserves call order while leaving later actions right-aligned.
+        self.command_row.insertWidget(self._context_count, widget)
+        self._context_count += 1
+
+    def set_content(self, content: QWidget) -> None:
+        old_content = self.content_scroll.takeWidget()
+        if old_content is not None and old_content is not content:
+            old_content.setParent(None)
+            old_content.deleteLater()
+        self.content_scroll.setWidget(content)
+
+    def show_feedback(self, message: str, *, tone: str | None = None) -> None:
+        self.feedback_label.setText(message)
+        self.feedback_label.setProperty("tone", tone)
+        repolish(self.feedback_label)
+        self.feedback_label.setVisible(bool(message))
 
 
 class _ClickableCursorFilter(QObject):
@@ -220,10 +322,14 @@ def apply_table_action_affordance(table: QTableWidget, tooltip: str) -> None:
 
 
 def style_table(table: QTableWidget, *, single_selection: bool = True, enable_sorting: bool = True) -> None:
+    from ui.theme import get_active_appearance_metrics
+
+    appearance_metrics = get_active_appearance_metrics()
     table.setAlternatingRowColors(True)
     table.setShowGrid(True)
     table.verticalHeader().setVisible(False)
-    table.verticalHeader().setDefaultSectionSize(TABLE_ITEM_MIN_HEIGHT)
+    table.verticalHeader().setDefaultSectionSize(appearance_metrics["table_item_height"])
+    table.horizontalHeader().setMinimumHeight(appearance_metrics["header_height"])
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     if single_selection:

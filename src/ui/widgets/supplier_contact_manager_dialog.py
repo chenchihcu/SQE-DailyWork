@@ -38,6 +38,7 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
     def __init__(self, supplier_id: str, supplier_name: str, parent=None):
         super().__init__(parent)
         self.supplier_id = supplier_id
+        self.setModal(True)
         self.setWindowTitle(f"管理聯絡人 - {supplier_name}")
         self.setMinimumWidth(800)
         self._setup_ui()
@@ -72,15 +73,20 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
 
         self.new_name = QLineEdit()
         self.new_name.setPlaceholderText("姓名 *")
+        self.new_name.setAccessibleName("姓名")
         self.new_dept = QLineEdit()
         self.new_dept.setPlaceholderText("部門")
+        self.new_dept.setAccessibleName("部門")
         self.new_phone = QLineEdit()
         self.new_phone.setPlaceholderText("電話")
+        self.new_phone.setAccessibleName("電話")
         self.new_email = QLineEdit()
         self.new_email.setPlaceholderText("Email")
+        self.new_email.setAccessibleName("Email")
 
         self.btn_add = QPushButton("新增")
         self.btn_add.setProperty("variant", "primary")
+        self.btn_add.setAccessibleName("新增聯絡人")
         apply_clickable_affordance(self.btn_add)
         self.btn_add.clicked.connect(self._on_add)
 
@@ -96,6 +102,7 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
 
         # List of contacts
         self.table = QTableWidget()
+        self.table.setAccessibleName("聯絡人清單")
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(["姓名", "部門", "電話", "Email", "主聯絡人", "操作"])
         style_table(self.table)
@@ -125,11 +132,15 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
 
             if not is_p:
                 btn_p = QPushButton("設為主聯絡人")
+                btn_p.setCursor(Qt.PointingHandCursor)
+                btn_p.setAccessibleName("設為主聯絡人")
                 btn_p.setProperty("variant", "link")
                 btn_p.clicked.connect(lambda _, cid=c["id"]: self._on_set_primary(cid))
                 act_layout.addWidget(btn_p)
 
                 btn_del = QPushButton("刪除")
+                btn_del.setCursor(Qt.PointingHandCursor)
+                btn_del.setAccessibleName("刪除聯絡人")
                 btn_del.setProperty("variant", "danger")
                 btn_del.clicked.connect(lambda _, cid=c["id"]: self._on_delete(cid))
                 act_layout.addWidget(btn_del)

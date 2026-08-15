@@ -74,7 +74,7 @@ class ThemeSurfaceHierarchyTests(unittest.TestCase):
         self._assert_rule_contains_background(
             qss,
             r"QHeaderView::section",
-            TOKENS["surface_active"],
+            TOKENS["panel_alt_bg"],
         )
 
     def test_kpi_tone_cards_use_status_palette_layers(self) -> None:

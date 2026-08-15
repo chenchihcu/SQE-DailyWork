@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -108,27 +109,42 @@ class ProductSectionEditor(QGroupBox):
         self._product_stage_by_id: dict[str, str] = {}
         self._product_code_by_id: dict[str, str] = {}
         self.product_combo = QComboBox()
+        self.product_combo.setAccessibleName("品名")
         self.product_combo.currentIndexChanged.connect(self._on_product_changed)
         self.product_stage_combo = QComboBox()
         self.product_stage_combo.addItems(PRODUCT_STAGE_OPTIONS)
         self.product_stage_combo.setCurrentText(PRODUCT_STAGE_MASS_PRODUCTION)
+        self.product_stage_combo.setAccessibleName("產品階段")
         self.product_stage_combo.setEnabled(False)
         self.product_code_input = QLineEdit()
         self.product_code_input.setReadOnly(True)
+        self.product_code_input.setPlaceholderText("選取品名後帶入")
+        self.product_code_input.setAccessibleName("料號")
         self.time_slot_input = QLineEdit()
         self.time_slot_input.setPlaceholderText("上午 / 下午 / 產線時段")
+        self.time_slot_input.setAccessibleName("時段")
         self.work_order_input = QLineEdit()
+        self.work_order_input.setPlaceholderText("輸入工單號碼")
+        self.work_order_input.setAccessibleName("工單號碼")
         self.qty_input = QLineEdit()
+        self.qty_input.setPlaceholderText("輸入數量")
+        self.qty_input.setAccessibleName("數量")
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("產品區段摘要（選填）")
+        self.summary_input.setAccessibleName("摘要")
         set_text_edit_visible_rows(self.summary_input, 3)
         self.defect_table = DefectNoteTable()
+        self.defect_table.setAccessibleName("缺失紀錄表格")
         add_note_button = QPushButton("新增缺失")
         add_note_button.setProperty("variant", "secondary")
+        add_note_button.setCursor(Qt.PointingHandCursor)
+        add_note_button.setAccessibleName("新增缺失紀錄")
         add_note_button.clicked.connect(self.defect_table.add_empty_note)
         remove_note_button = QPushButton("刪除缺失")
         remove_note_button.setProperty("tone", "warning")
+        remove_note_button.setCursor(Qt.PointingHandCursor)
+        remove_note_button.setAccessibleName("刪除缺失紀錄")
         remove_note_button.clicked.connect(self.defect_table.remove_selected_note)
 
         form = QFormLayout()

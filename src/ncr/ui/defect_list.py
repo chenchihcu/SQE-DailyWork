@@ -141,8 +141,10 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self._closed_exclude_status: str | None = None
         self.current_page = 1
         self._page_size = NCR_ITEMS_PER_PAGE
+        self._is_compact_profile = True
         self.tabs: QTabWidget | None = None
         self._build_ui()
+        self._update_column_profile()
         self.refresh_data()
 
     def _build_ui(self) -> None:
@@ -152,10 +154,11 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(page)
 
+        from ui.widgets.common_widgets import QueryWorkflowShell
+
         # Control panel: filters + action buttons (mirrors defect_list_widget.py's
         # control_panel/role=subpanel convention on the supplier-event side).
-        control_panel = QFrame()
-        control_panel.setProperty("role", "subpanel")
+        control_panel = QueryWorkflowShell()
         main_layout = QVBoxLayout(control_panel)
         main_layout.setContentsMargins(16, 12, 16, 12)
         main_layout.setSpacing(ROW_GAP)
@@ -173,15 +176,20 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self.month_filter_checkbox.setChecked(self.workflow == "combined")
 
         self.item_no_input = QLineEdit()
+        self.item_no_input.setPlaceholderText("輸入料號")
+        self.item_no_input.setAccessibleName("搜尋料號")
         self.supplier_combo = QComboBox()
         self.supplier_combo.setEditable(False)
+        self.supplier_combo.setAccessibleName("供應商篩選")
         self.outsource_supplier_combo = QComboBox()
         self.outsource_supplier_combo.setEditable(False)
+        self.outsource_supplier_combo.setAccessibleName("委外加工廠篩選")
 
         self.status_combo = QComboBox()
         self.status_combo.addItem("全部")
         self.status_combo.addItems(STATUS_OPTIONS)
         self.status_combo.setVisible(self.workflow == "combined")
+        self.status_combo.setAccessibleName("狀態篩選")
 
         apply_form_inputs(
             [
@@ -241,6 +249,12 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         # 4. Action Buttons (Search & Reset on row 1)
         self.reset_button = QPushButton("重置")
         self.search_button = QPushButton("查詢")
+        self.reset_button.setCursor(Qt.PointingHandCursor)
+        self.search_button.setCursor(Qt.PointingHandCursor)
+        self.reset_button.setAccessibleName("重置篩選")
+        self.reset_button.setToolTip("重置所有篩選條件")
+        self.search_button.setAccessibleName("執行查詢")
+        self.search_button.setToolTip("執行篩選查詢")
         for btn, role in [
             (self.reset_button, "reset"),
             (self.search_button, "primary"),
@@ -337,6 +351,16 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         # 4. Action Buttons (Export & Delete on row 2)
         self.export_button = QPushButton("匯出 Excel")
         self.delete_button = QPushButton("刪除選取")
+        self.add_button = QPushButton("登錄不合格品")
+        self.export_button.setCursor(Qt.PointingHandCursor)
+        self.delete_button.setCursor(Qt.PointingHandCursor)
+        self.add_button.setCursor(Qt.PointingHandCursor)
+        self.export_button.setAccessibleName("匯出 Excel")
+        self.export_button.setToolTip("匯出目前篩選清單至 Excel")
+        self.delete_button.setAccessibleName("刪除選取")
+        self.delete_button.setToolTip("刪除勾選紀錄")
+        self.add_button.setAccessibleName("登錄不合格品紀錄")
+        self.add_button.setToolTip("建立新的不合格品紀錄")
 
         buttons_to_add = []
         if self.workflow != "trace":
@@ -345,6 +369,17 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             self.export_button.hide()
 
         buttons_to_add.append((self.delete_button, "danger"))
+        buttons_to_add.append((self.add_button, "primary"))
+
+        if hasattr(self, "main_window") and hasattr(self.main_window, "open_defect_form"):
+            self.add_button.clicked.connect(self.main_window.open_defect_form)
+
+        self.column_profile_button = QPushButton("顯示完整欄位")
+        self.column_profile_button.setCursor(Qt.PointingHandCursor)
+        self.column_profile_button.setAccessibleName("欄位顯示模式")
+        self.column_profile_button.setToolTip("切換精簡/完整欄位顯示")
+        self.column_profile_button.clicked.connect(self._toggle_column_profile)
+        buttons_to_add.append((self.column_profile_button, "secondary"))
 
         for btn, role in buttons_to_add:
             btn.setMinimumWidth(ACTION_BUTTON_MIN_WIDTH)
@@ -380,6 +415,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         result_layout.addWidget(self.empty_state, 1)
 
         self.open_table = QTableWidget(0, len(LIST_HEADERS))
+        self.open_table.setAccessibleName("待處理不合格品表格")
         self.open_table.setHorizontalHeaderLabels(LIST_HEADERS)
         align_table_header_left(self.open_table)
         style_table(self.open_table)
@@ -389,6 +425,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self.open_table.setMinimumHeight(370)
 
         self.closed_table = QTableWidget(0, len(LIST_HEADERS))
+        self.closed_table.setAccessibleName("已結案不合格品表格")
         self.closed_table.setHorizontalHeaderLabels(LIST_HEADERS)
         align_table_header_left(self.closed_table)
         style_table(self.closed_table)
@@ -427,6 +464,41 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         if self.workflow == "trace":
             return self.month_filter_checkbox.isChecked()
         return True
+
+    def _toggle_column_profile(self) -> None:
+        self._is_compact_profile = not getattr(self, "_is_compact_profile", True)
+        self._update_column_profile()
+
+    def _update_column_profile(self) -> None:
+        is_compact = getattr(self, "_is_compact_profile", True)
+        core_fields = {
+            "defect_no",
+            "event_date",
+            "item_no",
+            "product_name",
+            "defect_desc",
+            "status",
+        }
+        if getattr(self, "workflow", None) == "trace":
+            core_fields.add("processing_line")
+        if hasattr(self, "column_profile_button"):
+            self.column_profile_button.setText("使用重點欄位" if not is_compact else "顯示完整欄位")
+        for table in (getattr(self, "open_table", None), getattr(self, "closed_table", None)):
+            if table is None:
+                continue
+            for column_index, field_name in enumerate(LIST_FIELD_ORDER):
+                table.setColumnHidden(column_index, is_compact and (field_name not in core_fields))
+            if is_compact:
+                compact_widths = {
+                    DEFECT_NO_COLUMN: 120,
+                    EVENT_DATE_COLUMN: 90,
+                    ITEM_NO_COLUMN: 90,
+                    PRODUCT_NAME_COLUMN: 130,
+                    DESCRIPTION_COLUMN: 150,
+                    STATUS_COLUMN: 80,
+                }
+                for col, width in compact_widths.items():
+                    table.setColumnWidth(col, width)
 
     def _setup_table_headers(self, table: QTableWidget) -> None:
         setup_column_persistence(table, "defect_list_columns", self.conn, LIST_FIELD_ORDER)

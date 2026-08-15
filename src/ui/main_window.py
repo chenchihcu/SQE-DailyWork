@@ -40,6 +40,8 @@ from ui.layout_constants import (
 )
 from ui.page_header_bar import PageHeaderBar
 from ui.sidebar_nav import (
+    ACTION_OPEN_APPEARANCE_REDESIGN,
+    PAGE_ANOMALY_CREATE,
     PAGE_HOME,
     PAGE_MASTER,
     PAGE_NCR,
@@ -50,6 +52,7 @@ from ui.sidebar_nav import (
     PAGE_NCR_PENDING_OUTSOURCE,
     PAGE_NCR_STATS,
     PAGE_STATS,
+    PAGE_VISIT_CREATE,
     SidebarNav,
 )
 from ui.theme import asset_path
@@ -77,6 +80,10 @@ NCR_TRACKING_PAGE_INDEX = NCR_PENDING_OUTSOURCE_PAGE_INDEX
 NCR_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
 MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
+VISIT_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 1
+ANOMALY_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 2
+EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
+EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
 _PAGE_TITLES = {
     HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
@@ -84,6 +91,8 @@ _PAGE_TITLES = {
     STATS_PAGE_INDEX: ("異常事件統計", "供應商事件趨勢、責任人績效與供應商風險"),
     NCR_STATS_PAGE_INDEX: ("不合格品統計分析", "倉庫實物不合格品統計圖表與比例分析"),
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
+    VISIT_CREATE_PAGE_INDEX: ("新增訪廠", "建立供應商訪廠紀錄"),
+    ANOMALY_CREATE_PAGE_INDEX: ("新增異常", "建立供應商異常事件單"),
 }
 
 # Compatibility alias kept for external callers
@@ -104,6 +113,8 @@ _PAGE_KEY_TO_INDEX = {
     PAGE_NCR_HISTORY: NCR_TRACE_PAGE_INDEX,
     PAGE_NCR_STATS: NCR_STATS_PAGE_INDEX,
     PAGE_MASTER: MASTER_PAGE_INDEX,
+    PAGE_VISIT_CREATE: VISIT_CREATE_PAGE_INDEX,
+    PAGE_ANOMALY_CREATE: ANOMALY_CREATE_PAGE_INDEX,
 }
 _PAGE_INDEX_TO_KEY = {index: key for key, index in _PAGE_KEY_TO_INDEX.items()}
 
@@ -154,10 +165,14 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setObjectName("PageStack")
 
+        from ui.widgets.event_create_page import EventCreatePage
+
         self.home_widget = HomeWidget(self)
         # Consolidated event-management page: one EventListWidget whose scope is
         # selected by the sidebar rows 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案.
         self.events_widget = EventListWidget(self, mode="query", fixed_scope=None, lazy_load=True)
+        self.new_visit_page = EventCreatePage(self, "visit")
+        self.new_anomaly_page = EventCreatePage(self, "anomaly")
         self.stats_widget = StatsViewWidget(self, lazy_load=True)
         self.ncr_stats_widget = NcrStatsWidget(self, lazy_load=True)
         self.master_widget = MasterDataWidget(self, lazy_load=True)
@@ -183,6 +198,10 @@ class MainWindow(QMainWindow):
         # ── 基礎資料（索引 8）──
         self.stack.insertWidget(MASTER_PAGE_INDEX, self.master_widget)
 
+        # ── 供應商事件全頁建立表單（索引 9/10）──
+        self.stack.insertWidget(VISIT_CREATE_PAGE_INDEX, self.new_visit_page)
+        self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self.new_anomaly_page)
+
         # Compatibility aliases used by tests / older callers. Every former event
         # entry now resolves to the single consolidated event-management page.
         self.entry_widget = self.events_widget
@@ -194,7 +213,15 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
 
-        self._switch_primary_page(HOME_PAGE_INDEX)
+        prefs = load_application_preferences()
+        startup_map = {
+            "home": HOME_PAGE_INDEX,
+            "events": EVENT_PAGE_INDEX,
+            "defects": NCR_PAGE_OFFSET,
+            "stats": STATS_PAGE_INDEX,
+        }
+        initial_index = startup_map.get(prefs.default_startup_page, HOME_PAGE_INDEX)
+        self._switch_primary_page(initial_index)
 
     def _insert_ncr_placeholders(self, reason: str) -> None:
         """NCR 載入失敗時插入佔位頁，維持側欄索引與嵌入頁對齊。"""
@@ -217,6 +244,10 @@ class MainWindow(QMainWindow):
         count = self.stack.count()
         if page_index < 0 or page_index >= count:
             return
+
+        if page_index in (VISIT_CREATE_PAGE_INDEX, ANOMALY_CREATE_PAGE_INDEX):
+            if not self._ensure_has_active_suppliers():
+                return
         
         # 觸發延遲載入 (Lazy loading) 與統計頁面強制整理
         widget = self.stack.widget(page_index)
@@ -253,15 +284,25 @@ class MainWindow(QMainWindow):
 
     def _on_nav_activated(self, action) -> None:
         kind, value = action
-        # 離開含未存資料的 NCR 頁面前先確認（NCR 內建髒資料守衛）。
-        current = self.stack.currentIndex()
+        # 離開含未存資料的 NCR 頁面或供應商事件建立頁面前先確認（髒資料守衛）。
+        stack = getattr(self, "stack", None)
+        current = stack.currentIndex() if stack is not None else -1
+        ncr = getattr(self, "ncr", None)
         if (
-            self.ncr is not None
+            ncr is not None
+            and current >= 0
             and self._is_ncr_index(current)
             and self._action_target_index(action) != current
-            and not self.ncr.confirm_can_leave(current - NCR_PAGE_OFFSET)
+            and not ncr.confirm_can_leave(current - NCR_PAGE_OFFSET)
         ):
             return  # 取消導覽；側欄高亮未變更，無需還原。
+        if (
+            current in (VISIT_CREATE_PAGE_INDEX, ANOMALY_CREATE_PAGE_INDEX)
+            and self._action_target_index(action) != current
+        ):
+            current_widget = stack.widget(current)
+            if hasattr(current_widget, "can_leave") and not current_widget.can_leave():
+                return
         if kind == "page":
             page_index = _PAGE_KEY_TO_INDEX.get(value)
             if page_index is None:
@@ -274,10 +315,18 @@ class MainWindow(QMainWindow):
             self._switch_primary_page(EVENT_PAGE_INDEX)
             self.events_widget.set_event_scope(value)
             self._sync_sidebar_active(EVENT_PAGE_INDEX)
+        elif kind == "command":
+            if value == ACTION_OPEN_APPEARANCE_REDESIGN:
+                self.open_appearance_preferences()
 
     def show_ncr_status(self, message: str, timeout_ms: int = 5000) -> None:
         """顯示 NCR 模組的狀態訊息（例如已建立不良單）於主視窗狀態列。"""
         self.statusBar().showMessage(message, timeout_ms)
+
+    def open_appearance_preferences(self) -> None:
+        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
+        dlg = AppearancePreferencesDialog(self)
+        dlg.exec()
 
     def _open_master_data(self) -> None:
         self._switch_primary_page(MASTER_PAGE_INDEX)
@@ -322,26 +371,28 @@ class MainWindow(QMainWindow):
         self._open_master_data()
         return False
 
-    def open_new_anomaly_dialog(self):
+    def open_new_anomaly_create_page(self):
         if not self._ensure_has_active_suppliers():
             return
-        dialog = NewAnomalyDialog(self)
-        if dialog.exec():
-            self.refresh_all_views()
+        if hasattr(self, "new_anomaly_page") and hasattr(self.new_anomaly_page, "reset_form"):
+            self.new_anomaly_page.reset_form()
+        self._switch_primary_page(ANOMALY_CREATE_PAGE_INDEX)
+
+    def open_new_visit_create_page(self):
+        if not self._ensure_has_active_suppliers():
+            return
+        if hasattr(self, "new_visit_page") and hasattr(self.new_visit_page, "reset_form"):
+            self.new_visit_page.reset_form()
+        self._switch_primary_page(VISIT_CREATE_PAGE_INDEX)
+
+    def open_new_anomaly_dialog(self):
+        self.open_new_anomaly_create_page()
 
     def open_new_visit_defect_dialog(self):
-        if not self._ensure_has_active_suppliers():
-            return
-        dialog = NewVisitDialog(self)
-        if dialog.exec():
-            self.refresh_all_views()
+        self.open_new_visit_create_page()
 
     def open_new_visit_dialog(self):
-        if not self._ensure_has_active_suppliers():
-            return
-        dialog = NewVisitDialog(self)
-        if dialog.exec():
-            self.refresh_all_views()
+        self.open_new_visit_create_page()
 
     def open_warehouse_nonconforming_tracker(self) -> None:
         """Compatibility route for older callers; opens the outsource pending line."""

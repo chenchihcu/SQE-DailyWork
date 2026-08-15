@@ -40,7 +40,6 @@ def get_base_qss() -> str:
         }}
 
         QFrame[role="card"]:hover {{
-            border-color: {TOKENS["focus_ring"]};
             background: {TOKENS["surface_hover"]};
         }}
 
@@ -69,7 +68,7 @@ def get_base_qss() -> str:
             background: transparent;
             color: {TOKENS["text_secondary"]};
             font-size: {TYPOGRAPHY["helper_text"]}px;
-            font-weight: 700;
+            font-weight: 400;
         }}
 
         QLabel[role="sourceTag"],
@@ -81,19 +80,6 @@ def get_base_qss() -> str:
             font-size: {TYPOGRAPHY["caption"]}px;
             font-weight: 700;
             padding: 3px 8px;
-        }}
-
-        QFrame[role="statsInfoBanner"] {{
-            background: {TOKENS["panel_alt_bg"]};
-            border: 1px solid {TOKENS["border"]};
-            border-radius: {TOKENS["radius_md"]}px;
-        }}
-
-        QLabel[role="statsInfoText"] {{
-            background: transparent;
-            border: none;
-            color: {TOKENS["text_muted"]};
-            font-size: {TYPOGRAPHY["caption"]}px;
         }}
 
         QLabel[role="insight"] {{

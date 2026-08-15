@@ -59,11 +59,10 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         qss = get_theme_qss()
         self.assertNotIn("StatsTabs", qss)
 
-    def test_stats_dashboard_shared_roles_are_styled(self) -> None:
+    def test_stats_dashboard_keeps_only_the_insight_surface(self) -> None:
         qss = get_theme_qss()
-        banner = _selector_block(qss, 'QFrame[role="statsInfoBanner"]')
-        self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', banner)
-        self.assertIn(f'border: 1px solid {TOKENS["border"]};', banner)
+        self.assertNotIn('statsInfoBanner', qss)
+        self.assertNotIn('statsInfoText', qss)
 
         insight = _selector_block(qss, 'QLabel[role="insight"]')
         self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', insight)
@@ -98,8 +97,8 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         self.assertIn(f'background: {TOKENS["status_danger_chart"]};', badge)
 
         group_header = _selector_block(qss, "QLabel#SidebarGroupHeader")
-        self.assertIn('color: #0F172A;', group_header)
-        self.assertIn(f'background-color: {TOKENS["brand_cyan"]};', group_header)
+        self.assertIn(f'color: {TOKENS["sidebar_muted"]};', group_header)
+        self.assertIn('background: transparent;', group_header)
 
 
 if __name__ == "__main__":

@@ -41,6 +41,7 @@ from ui.layout_constants import (
 from ui.widgets.common_widgets import (
     EMPTY_DISPLAY,
     EmptyStateWidget,
+    QueryWorkflowShell,
     SortableTableWidgetItem,
     apply_clickable_affordance,
     apply_table_action_affordance,
@@ -69,15 +70,16 @@ EVENT_QUERY_SCOPE_TABS = (
 _SORTABLE_COLS: dict[int, str] = {
     0: "ref_no",
     1: "category",
-    2: "supplier_name",
-    3: "product_name",
-    5: "product_stage",
-    8: "quality_report_required",
-    9: "status",
-    10: "closed_at",
+    2: "responsible_person",
+    3: "supplier_name",
+    4: "product_name",
+    6: "product_stage",
+    9: "quality_report_required",
+    10: "status",
+    11: "closed_at",
 }
 
-_EVENT_LIST_COMPACT_OPTIONAL_COLUMNS = (1, 4, 5, 7, 10)
+_EVENT_LIST_COMPACT_OPTIONAL_COLUMNS = (1, 2, 5, 6, 8, 11)
 
 
 class EventListWidget(QWidget, _EventListFilterMixin):
@@ -137,8 +139,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(ROOT_SECTION_SPACING)
 
-        control_panel = QFrame()
-        control_panel.setProperty("role", "subpanel")
+        control_panel = QueryWorkflowShell()
+        root.addWidget(control_panel)
         control_outer = QVBoxLayout(control_panel)
         control_outer.setContentsMargins(*SUBPANEL_TOOLBAR_MARGINS)
         control_outer.setSpacing(8)
@@ -172,7 +174,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             btn_search.setProperty("variant", "primary")
             apply_clickable_affordance(btn_search, tooltip="套用篩選條件")
             btn_search.clicked.connect(self._apply_filters_from_ui)
-            btn_reset = QPushButton("清除條件")
+            btn_reset = QPushButton("清除")
             btn_reset.setProperty("variant", "secondary")
             apply_clickable_affordance(btn_reset, tooltip="清除目前篩選條件")
             btn_reset.clicked.connect(self._reset_filters_ui)
@@ -299,11 +301,12 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         result_layout.addWidget(self.empty_state)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(12)
         self.table.setHorizontalHeaderLabels(
             [
                 "異常單號",
                 "異常類別",
+                "責任人",
                 "供應商",
                 "品名",
                 "料號",
@@ -326,15 +329,16 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 異常單號
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 異常類別
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 供應商
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 品名
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 料號
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 階段
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents) # 品質異常單要求
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 狀態
-        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 責任人
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 供應商
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 品名
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 料號
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 階段
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 品質異常單要求
+        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 狀態
+        header.setSectionResizeMode(11, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
@@ -343,7 +347,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         result_layout.addWidget(self.table, 1)
         if self.fixed_status:
-            self.table.setColumnHidden(9, True)
+            self.table.setColumnHidden(10, True)
 
         root.addWidget(result_panel, 1)
 
@@ -356,17 +360,29 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         btn_new_visit = None
         btn_new_anomaly = None
 
+        def _open_visit():
+            if hasattr(self.main_window, "open_new_visit_create_page"):
+                self.main_window.open_new_visit_create_page()
+            elif hasattr(self.main_window, "open_new_visit_dialog"):
+                self.main_window.open_new_visit_dialog()
+
+        def _open_anomaly():
+            if hasattr(self.main_window, "open_new_anomaly_create_page"):
+                self.main_window.open_new_anomaly_create_page()
+            elif hasattr(self.main_window, "open_new_anomaly_dialog"):
+                self.main_window.open_new_anomaly_dialog()
+
         if not self.fixed_scope or self.fixed_scope == repository.EVENT_SCOPE_VISIT_ONLY:
             btn_new_visit = QPushButton("新增訪廠")
             btn_new_visit.setProperty("variant", "secondary")
             apply_clickable_affordance(btn_new_visit, tooltip="建立新的訪廠紀錄")
-            btn_new_visit.clicked.connect(self.main_window.open_new_visit_dialog)
+            btn_new_visit.clicked.connect(_open_visit)
 
         if not self.fixed_scope or self.fixed_scope in (repository.EVENT_SCOPE_ANOMALY_ONLY, repository.EVENT_SCOPE_VISIT_WITH_ANOMALY):
             btn_new_anomaly = QPushButton("新增異常")
             btn_new_anomaly.setProperty("variant", "primary")
             apply_clickable_affordance(btn_new_anomaly, tooltip="建立新的異常單")
-            btn_new_anomaly.clicked.connect(self.main_window.open_new_anomaly_dialog)
+            btn_new_anomaly.clicked.connect(_open_anomaly)
 
         return btn_new_visit, btn_new_anomaly
 
@@ -418,13 +434,22 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             return
 
         compact = self._compact_column_profile_active()
-        is_visit_only_scope = self._filter_event_type == "VISIT"
         for column in _EVENT_LIST_COMPACT_OPTIONAL_COLUMNS:
             self.table.setColumnHidden(column, compact)
-        self.table.setColumnHidden(1, compact or is_visit_only_scope)
-        self.table.setColumnHidden(10, compact or is_visit_only_scope)
+        is_visit_only_scope = getattr(self, "_filter_event_type", None) == "VISIT"
+        if is_visit_only_scope:
+            self.table.setColumnHidden(1, True)
+            self.table.setColumnHidden(11, True)
+        header = self.table.horizontalHeader()
+        if compact:
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+            self.table.setColumnWidth(3, 180)
+            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        else:
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         if self.fixed_status:
-            self.table.setColumnHidden(9, True)
+            self.table.setColumnHidden(10, True)
 
         if self.column_profile_notice is not None:
             self.column_profile_notice.setVisible(compact)
@@ -462,28 +487,19 @@ class EventListWidget(QWidget, _EventListFilterMixin):
                 no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
                 no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(idx, 0, no_item)
-
                 self.table.setItem(idx, 1, self._text_cell(row.get("category")))
-                self.table.setItem(idx, 2, self._text_cell(row.get("supplier_name")))
-                self.table.setItem(idx, 3, self._text_cell(row.get("product_name")))
-
-                pcode_item = self._text_cell(row.get("product_code"))
-                self.table.setItem(idx, 4, pcode_item)
-
-                pstage_item = self._text_cell(row.get("product_stage"))
-                self.table.setItem(idx, 5, pstage_item)
-
-                self.table.setItem(idx, 6, self._text_cell(row.get("content")))
-
+                self.table.setItem(idx, 2, self._text_cell(row.get("responsible_person") or "未指定"))
+                self.table.setItem(idx, 3, self._text_cell(row.get("supplier_name")))
+                self.table.setItem(idx, 4, self._text_cell(row.get("product_name")))
+                self.table.setItem(idx, 5, self._text_cell(row.get("product_code")))
+                self.table.setItem(idx, 6, self._text_cell(row.get("product_stage")))
+                self.table.setItem(idx, 7, self._text_cell(row.get("content")))
                 defect_summary = row.get("defect_note_summary") or row.get("pending_items")
-                self.table.setItem(idx, 7, self._text_cell(defect_summary))
-
-                self.table.setItem(idx, 8, self._text_cell(self._quality_report_required_text(row)))
-
+                self.table.setItem(idx, 8, self._text_cell(defect_summary))
+                self.table.setItem(idx, 9, self._text_cell(self._quality_report_required_text(row)))
                 status_text = str(row.get("status") or "").strip() or "-"
-                self.table.setItem(idx, 9, create_status_item(status_text, sort_key=status_text))
-
-                self.table.setItem(idx, 10, self._text_cell(row.get("closed_at")))
+                self.table.setItem(idx, 10, create_status_item(status_text, sort_key=status_text))
+                self.table.setItem(idx, 11, self._text_cell(row.get("closed_at")))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()

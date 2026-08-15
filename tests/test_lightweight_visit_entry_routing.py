@@ -6,20 +6,14 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QPushButton, QScrollArea
 
-from ui.main_window import MainWindow
+from ui.main_window import (
+    EVENT_CREATE_ANOMALY_PAGE_INDEX,
+    EVENT_CREATE_VISIT_PAGE_INDEX,
+    MainWindow,
+)
 from ui.widgets.home_widget import HomeWidget
-
-
-class _DialogProbe:
-    calls: list[dict] = []
-
-    def __init__(self, *_args, **kwargs) -> None:
-        self.calls.append(dict(kwargs))
-
-    def exec(self) -> int:
-        return 0
 
 
 class _HomeHost:
@@ -70,29 +64,78 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
         self.assertEqual(0, host.defect_calls)
         self.assertEqual(0, host.anomaly_calls)
 
-    def test_main_window_keeps_formal_anomaly_entry_separate(self) -> None:
-        _DialogProbe.calls = []
-        with patch("ui.main_window.event_service.has_active_suppliers", return_value=True), patch(
-            "ui.main_window.NewAnomalyDialog",
-            _DialogProbe,
-        ):
+    def test_main_window_routes_formal_anomaly_entry_to_full_page(self) -> None:
+        with patch("ui.main_window._product_service.has_active_suppliers", return_value=True):
             window = MainWindow()
             self.addCleanup(window.close)
             window.open_new_anomaly_dialog()
 
-        self.assertEqual([{}], _DialogProbe.calls)
+        self.assertEqual(EVENT_CREATE_ANOMALY_PAGE_INDEX, window.stack.currentIndex())
+        self.assertIs(window.new_anomaly_page, window.stack.currentWidget())
+        self.assertTrue(window.new_anomaly_page.success_panel.isHidden())
 
-    def test_main_window_legacy_defect_entry_opens_merged_visit_form(self) -> None:
-        _DialogProbe.calls = []
-        with patch("ui.main_window.event_service.has_active_suppliers", return_value=True), patch(
-            "ui.main_window.NewVisitDialog",
-            _DialogProbe,
-        ):
+    def test_main_window_routes_visit_entry_to_full_page(self) -> None:
+        with patch("ui.main_window._product_service.has_active_suppliers", return_value=True):
+            window = MainWindow()
+            self.addCleanup(window.close)
+            window.open_new_visit_dialog()
+
+        self.assertEqual(EVENT_CREATE_VISIT_PAGE_INDEX, window.stack.currentIndex())
+        self.assertIs(window.new_visit_page, window.stack.currentWidget())
+
+    def test_full_page_visit_entry_scrolls_content_but_keeps_actions_fixed(self) -> None:
+        """A full-page create route has one scroll owner and one command row."""
+        window = MainWindow()
+        self.addCleanup(window.close)
+        page = window.new_visit_page
+        form = page.form
+
+        self.assertIsInstance(page.workflow_shell.content_scroll, QScrollArea)
+        self.assertEqual("CreateWorkflowScroll", page.workflow_shell.content_scroll.objectName())
+        self.assertIs(page.workflow_shell.content_scroll.widget(), form)
+        self.assertIsNone(form.form_scroll)
+        self.assertIsNone(form._button_box)
+        self.assertEqual([], form.findChildren(QDialogButtonBox))
+        self.assertEqual("返回清單", page.return_button.text())
+        self.assertEqual("儲存", page.save_button.text())
+        self.assertTrue(page.success_panel.isHidden())
+        self.assertFalse(page.save_button.isEnabled())
+
+    def test_full_page_anomaly_entry_uses_the_same_single_scroll_contract(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        page = window.new_anomaly_page
+        form = page.form
+
+        self.assertIs(page.workflow_shell.content_scroll.widget(), form)
+        self.assertIsNone(form.form_scroll)
+        self.assertIsNone(form._button_box)
+        self.assertEqual([], form.findChildren(QDialogButtonBox))
+        self.assertFalse(page.save_button.isEnabled())
+
+    def test_create_page_success_offers_list_or_continue_actions(self) -> None:
+        window = MainWindow()
+        self.addCleanup(window.close)
+        page = window.new_anomaly_page
+        page._on_form_saved("已建立異常單：20260813001")
+
+        self.assertFalse(page.success_panel.isHidden())
+        self.assertIn("已建立異常單", page.success_message.text())
+        self.assertEqual("查看清單", page.view_list_button.text())
+        self.assertEqual("繼續新增", page.continue_button.text())
+        old_form = page.form
+        page.reset_form()
+        self.assertIsNot(old_form, page.form)
+        self.assertFalse(page.success_panel.isVisible())
+
+    def test_main_window_legacy_defect_entry_routes_to_full_visit_page(self) -> None:
+        with patch("ui.main_window._product_service.has_active_suppliers", return_value=True):
             window = MainWindow()
             self.addCleanup(window.close)
             window.open_new_visit_defect_dialog()
 
-        self.assertEqual([{}], _DialogProbe.calls)
+        self.assertEqual(EVENT_CREATE_VISIT_PAGE_INDEX, window.stack.currentIndex())
+        self.assertIs(window.new_visit_page, window.stack.currentWidget())
 
 
 if __name__ == "__main__":

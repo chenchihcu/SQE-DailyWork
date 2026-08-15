@@ -7,8 +7,11 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+from ui._qss_appearance import get_appearance_qss
+from ui.appearance_preferences import AppearancePreferences
 from ui._qss_base import get_base_qss
 from ui._qss_controls import get_controls_qss
 from ui._qss_data_widgets import get_data_widgets_qss
@@ -25,13 +28,27 @@ def _asset_qss_url(asset_name: str) -> str:
     return asset_path(asset_name).as_posix()
 
 
-def get_theme_qss() -> str:
+def _scale_font_sizes(qss: str, factor: float) -> str:
+    if factor == 1.0:
+        return qss
+
+    def replace(match: re.Match[str]) -> str:
+        pixels = int(match.group(1))
+        return f"font-size: {max(1, round(pixels * factor))}px;"
+
+    return re.sub(r"font-size:\s*(\d+)px;", replace, qss)
+
+
+def get_theme_qss(preferences: AppearancePreferences | None = None) -> str:
+    preferences = preferences or AppearancePreferences.default()
     checkbox_tick_url = _asset_qss_url("checkbox_tick.svg")
-    return "\n".join([
+    qss = "\n".join([
         get_base_qss(),
         get_tabs_qss(),
         get_controls_qss(),
         get_data_widgets_qss(),
         get_dialogs_etc_qss(checkbox_tick_url),
         get_sidebar_qss(),
+        get_appearance_qss(preferences),
     ])
+    return _scale_font_sizes(qss, 1.15 if preferences.text_scale == "large" else 1.0)

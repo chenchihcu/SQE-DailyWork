@@ -31,6 +31,10 @@ _NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
 
 # 頁面語意鍵：main_window 負責把 PAGE_KEY 對應到 QStackedWidget 索引，側欄不耦合堆疊索引。
 PAGE_HOME = "HOME"
+PAGE_VISIT_CREATE = "VISIT_CREATE"
+PAGE_ANOMALY_CREATE = "ANOMALY_CREATE"
+PAGE_EVENT_CREATE_VISIT = PAGE_VISIT_CREATE
+PAGE_EVENT_CREATE_ANOMALY = PAGE_ANOMALY_CREATE
 PAGE_STATS = "STATS"
 PAGE_NCR_CREATE = "NCR_CREATE"
 PAGE_NCR_PENDING_OUTSOURCE = "NCR_PENDING_OUTSOURCE"
@@ -43,7 +47,9 @@ PAGE_NCR = PAGE_NCR_PENDING
 PAGE_NCR_STATS = "NCR_STATS"
 PAGE_MASTER = "MASTER"
 
-# 導覽 action 形式：("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*)。
+ACTION_OPEN_APPEARANCE_REDESIGN = "OPEN_APPEARANCE_REDESIGN"
+
+# 導覽 action 形式：("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*) 或 ("command", COMMAND_KEY)。
 # 事件的 4 個 scope 升級為一等導覽列，事件頁不再有頁內 scope 分頁。
 # 結構：(群組標題 | None, [(label, action, badge_enabled, icon), ...])
 _NAV_GROUPS = [
@@ -51,6 +57,8 @@ _NAV_GROUPS = [
         ("首頁", ("page", PAGE_HOME), False, "icons/home.svg"),
     ]),
     ("供應商事件", [
+        ("新增訪廠", ("page", PAGE_VISIT_CREATE), False, "icons/visit.svg"),
+        ("新增異常", ("page", PAGE_ANOMALY_CREATE), False, "icons/anomaly.svg"),
         ("單獨異常", ("scope", repository.EVENT_SCOPE_ANOMALY_ONLY), True, "icons/anomaly.svg"),
         ("訪廠發現異常", ("scope", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY), False, "icons/visit.svg"),
         ("訪廠紀錄", ("scope", repository.EVENT_SCOPE_VISIT_ONLY), False, "icons/visit.svg"),
@@ -66,6 +74,7 @@ _NAV_GROUPS = [
     ]),
     ("系統", [
         ("基礎資料", ("page", PAGE_MASTER), False, "icons/master.svg"),
+        ("顯示設定", ("command", ACTION_OPEN_APPEARANCE_REDESIGN), False, "icons/master.svg"),
     ]),
 ]
 
@@ -112,6 +121,7 @@ class _NavButton(QPushButton):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("NavButton")
+        self.setAccessibleName(label)
         self.setFixedHeight(SIDEBAR_NAV_ITEM_HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)

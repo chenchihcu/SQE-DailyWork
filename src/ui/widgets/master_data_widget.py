@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 from services import event_service as event_service
 from services.event import _product_service, _supplier_service
 from ui.layout_constants import (
-    PANEL_MARGINS,
     ROOT_SECTION_SPACING,
     TOOLBAR_CONTROL_MIN_HEIGHT,
     TOOLBAR_ITEM_SPACING,
@@ -67,12 +66,6 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(ROOT_SECTION_SPACING)
 
-        tabs_panel = QFrame()
-        tabs_panel.setProperty("role", "panel")
-        tabs_layout = QVBoxLayout(tabs_panel)
-        tabs_layout.setContentsMargins(*PANEL_MARGINS)
-        tabs_layout.setSpacing(8)
-
         self.inline_toolbar = QFrame()
         self.inline_toolbar.setObjectName("MasterInlineToolbar")
         self.inline_toolbar.setProperty("role", "masterToolbar")
@@ -90,6 +83,7 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
         self.query_input.setMinimumWidth(220)
         self.query_input.setMaximumWidth(340)
         self.query_input.setPlaceholderText("輸入供應商名稱")
+        self.query_input.setAccessibleName("搜尋主資料")
         self.query_input.setProperty("role", "masterQuery")
         self.query_input.returnPressed.connect(self._on_query_submitted)
 
@@ -124,9 +118,10 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self._last_tab_index = 0
 
-        tabs_layout.addWidget(self.inline_toolbar)
-        tabs_layout.addWidget(self.tabs)
-        root.addWidget(tabs_panel, 1)
+        # The former outer panel only wrapped this one master-data tool.  Keep
+        # the toolbar and real tab host, but make them direct page siblings.
+        root.addWidget(self.inline_toolbar)
+        root.addWidget(self.tabs, 1)
         self._on_tab_changed(self.tabs.currentIndex())
 
     # ── 共用工具方法 ──────────────────────────────────────
@@ -141,6 +136,8 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
     ) -> QPushButton:
         button = QPushButton(text)
         button.setProperty("variant", variant)
+        button.setCursor(Qt.PointingHandCursor)
+        button.setAccessibleName(text)
         button.setToolTip(tooltip)
         apply_clickable_affordance(button, status_tip=tooltip)
         button.setMinimumHeight(TOOLBAR_CONTROL_MIN_HEIGHT)

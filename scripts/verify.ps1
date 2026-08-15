@@ -176,7 +176,11 @@ try {
             "test_qt_message_handler.py",
             "test_excel_report_custom_range.py",
             "test_form_field_pairing_layout.py",
-            "test_form_inline_validation_and_dirty.py"
+            "test_form_inline_validation_and_dirty.py",
+            "test_layout_constants.py",
+            "test_lightweight_visit_entry_routing.py",
+            "test_ncr_embedding_smoke.py",
+            "test_surface_usage_structure.py"
         )
         foreach ($pattern in $focusedPatterns) {
             & $resolvedPython -m unittest discover -s tests -p $pattern
@@ -214,6 +218,9 @@ try {
             & $resolvedPython scripts\qt_visual_belt.py
         } else {
             & $resolvedPython scripts\qt_visual_probe.py --target form-density
+            if ($LASTEXITCODE -eq 0) {
+                & $resolvedPython scripts\qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width
+            }
         }
         if ($LASTEXITCODE -ne 0) {
             throw "native Qt visual belt failed with exit code $LASTEXITCODE"

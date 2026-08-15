@@ -20,7 +20,7 @@ def get_data_widgets_qss() -> str:
     return dedent(f"""\
         QTableWidget {{
             border: 1px solid {TOKENS["border"]};
-            border-radius: {TOKENS["radius_sm"]}px;
+            border-radius: 0;
             gridline-color: {TOKENS["grid"]};
             background: {TOKENS["panel_bg"]};
             selection-background-color: {TOKENS["selection_bg"]};
@@ -60,9 +60,9 @@ def get_data_widgets_qss() -> str:
         }}
 
         QHeaderView::section {{
-            background: {TOKENS["surface_active"]};
+            background: {TOKENS["panel_alt_bg"]};
             color: {TOKENS["text_primary"]};
-            font-weight: 700;
+            font-weight: 600;
             border: none;
             border-right: 1px solid {TOKENS["grid"]};
             border-bottom: 1px solid {TOKENS["border"]};

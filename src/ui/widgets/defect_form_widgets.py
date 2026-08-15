@@ -304,6 +304,7 @@ class TechTransferCard(QFrame):
 class VisitSelectionDialog(QDialog):
     def __init__(self, supplier_id: str, supplier_name: str, parent=None):
         super().__init__(parent)
+        self.setModal(True)
         self.setWindowTitle(f"選擇訪廠紀錄 - {supplier_name}")
         self.setMinimumSize(640, 400)
         self.selected_visit_id: str | None = None
@@ -313,6 +314,7 @@ class VisitSelectionDialog(QDialog):
         layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
 
         self.table = QTableWidget()
+        self.table.setAccessibleName("選擇訪廠紀錄表格")
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["日期", "品名", "工單", "摘要"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
