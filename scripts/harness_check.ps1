@@ -322,6 +322,7 @@ $requiredFiles = @(
     ".claude\skills\sqe-dailywork-visual-qa\SKILL.md",
     ".claude\skills\sqe-dailywork-data-contract\SKILL.md",
     ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md",
+    ".claude\skills\sqe-dailywork-ui-ux-flow-optimizer\SKILL.md",
     ".claude\agents\sqe-dailywork-contract-reviewer.md",
     ".claude\agents\sqe-dailywork-qt-visual-reviewer.md",
     ".claude\agents\sqe-dailywork-test-triage.md",
@@ -353,6 +354,7 @@ $requiredDirectories = @(
     ".claude\skills\sqe-dailywork-visual-qa",
     ".claude\skills\sqe-dailywork-data-contract",
     ".claude\skills\sqe-dailywork-doc-gardening",
+    ".claude\skills\sqe-dailywork-ui-ux-flow-optimizer",
     "docs\exec-plans",
     "docs\exec-plans\active",
     "docs\exec-plans\completed"
@@ -422,6 +424,7 @@ Require-Text ".claude\skills\sqe-dailywork-data-contract\SKILL.md" "name: sqe-da
 Require-Text ".claude\skills\sqe-dailywork-data-contract\SKILL.md" "database/repository.py" "data contract repository pointer"
 Require-Text ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md" "name: sqe-dailywork-doc-gardening" "doc gardening skill name"
 Require-Text ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md" "Report-Only Default" "doc gardening report-only rule"
+Require-Text ".claude\skills\sqe-dailywork-ui-ux-flow-optimizer\SKILL.md" "name: sqe-dailywork-ui-ux-flow-optimizer" "ui ux flow optimizer skill name"
 
 Require-Text ".claude\agents\sqe-dailywork-contract-reviewer.md" "tools: Read, Grep, Glob" "contract reviewer read-only tools"
 Require-Text ".claude\agents\sqe-dailywork-qt-visual-reviewer.md" "scripts/qt_visual_probe.py" "visual reviewer probe pointer"

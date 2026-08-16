@@ -28,10 +28,13 @@ from PySide6.QtWidgets import (
 
 from services.event import _visit_service as event_service
 from ui.layout_constants import (
-    DIALOG_OUTER_MARGINS,
+    COMPACT_PAGE_SPACING,
     DIALOG_MIN_HEIGHT,
+    DIALOG_OUTER_MARGINS,
     INLINE_SPACING,
     TECH_CARD_INNER_MARGINS,
+    TEXT_EDIT_FALLBACK_LINE_HEIGHT,
+    TEXT_EDIT_FALLBACK_PADDING,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
@@ -168,7 +171,9 @@ def set_text_edit_visible_rows(editor: QWidget, rows: int) -> None:
         )
     else:
         # Custom widgets such as BulletListWidget
-        editor.setFixedHeight(22 * max(rows, 1) + 20)
+        editor.setFixedHeight(
+            TEXT_EDIT_FALLBACK_LINE_HEIGHT * max(rows, 1) + TEXT_EDIT_FALLBACK_PADDING
+        )
 
 
 
@@ -230,7 +235,7 @@ class TechTransferCard(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*TECH_CARD_INNER_MARGINS)
-        layout.setSpacing(6)
+        layout.setSpacing(COMPACT_PAGE_SPACING)
 
         title_label = QLabel(field_label)
         title_label.setObjectName("techCardTitle")

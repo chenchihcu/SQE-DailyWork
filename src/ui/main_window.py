@@ -20,6 +20,7 @@ from app_version import APP_TITLE
 from database.connection import get_connection
 from database import repository
 from services import event_service as event_service
+from services.appearance_preferences_service import load_application_preferences
 from services.event import _product_service, _query_service
 from ncr.db.database import DatabaseMigrationError
 from ncr.models.defect import (
@@ -29,7 +30,6 @@ from ncr.models.defect import (
 )
 from ncr.embed import NCR_PAGE_OFFSET, NCR_PAGE_SPECS, NcrController
 import ncr.services.stats_service as ncr_stats_service
-from ncr.ui.defect_list import DefectListWidget as NcrDefectListWidget
 from ui.layout_constants import (
     MAIN_WINDOW_DEFAULT_HEIGHT,
     MAIN_WINDOW_DEFAULT_WIDTH,
@@ -58,13 +58,8 @@ from ui.sidebar_nav import (
 from ui.theme import asset_path
 from ui.window_sizing import fit_widget_to_available_screen
 from ui.widgets.common_widgets import EmptyStateWidget
-from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
-from ui.widgets.defect_list_widget import EventListWidget
 from ui.widgets.home_widget import HomeWidget
-from ui.widgets.master_data_widget import MasterDataWidget
-from ui.widgets.stats_view_widget import StatsViewWidget
-from ui.widgets.ncr_stats_widget import NcrStatsWidget
+from ui.widgets.lazy_page_widget import LazyPageWidget
 
 HOME_PAGE_INDEX = 0
 EVENT_PAGE_INDEX = 1
@@ -133,9 +128,211 @@ class MainWindow(QMainWindow):
             maximum_width=MAIN_WINDOW_MAX_WIDTH,
             maximum_height=MAIN_WINDOW_MAX_HEIGHT,
         )
-        self.ncr: NcrController | None = None
+        self._ncr: NcrController | None = None
+        self._events_page: QWidget | None = None
+        self._stats_page: QWidget | None = None
+        self._ncr_stats_page: QWidget | None = None
+        self._master_page: QWidget | None = None
+        self._new_visit_page: QWidget | None = None
+        self._new_anomaly_page: QWidget | None = None
+        self._ncr_pages: list[QWidget] = []
         self._setup_ui()
-        self._refresh_sidebar_badge()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._refresh_sidebar_badge)
+
+    def _ensure_ncr_controller(self) -> NcrController | None:
+        """按需初始化倉庫 NCR 控制器。"""
+        if self._ncr is None:
+            try:
+                self._ncr = NcrController(self, lazy_load=True)
+            except (DatabaseMigrationError, sqlite3.Error) as exc:
+                self._ncr = None
+                logger.exception("倉庫 NCR 控制器初始化失敗: %s", exc)
+        return self._ncr
+
+    @property
+    def ncr(self) -> NcrController | None:
+        return self._ensure_ncr_controller()
+
+    @ncr.setter
+    def ncr(self, value: NcrController | None) -> None:
+        self._ncr = value
+
+    def _get_or_create_events_widget(self) -> Any:
+        if isinstance(self._events_page, LazyPageWidget):
+            real = self._events_page.ensure_widget()
+            idx = self.stack.indexOf(self._events_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._events_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._events_page = real
+        return self._events_page
+
+    @property
+    def events_widget(self) -> Any:
+        return self._get_or_create_events_widget()
+
+    @events_widget.setter
+    def events_widget(self, value: Any) -> None:
+        if self._events_page is not None and self._events_page is not value:
+            idx = self.stack.indexOf(self._events_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._events_page)
+                self.stack.insertWidget(idx, value)
+        self._events_page = value
+
+    def _get_or_create_stats_widget(self) -> Any:
+        if isinstance(self._stats_page, LazyPageWidget):
+            real = self._stats_page.ensure_widget()
+            idx = self.stack.indexOf(self._stats_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._stats_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._stats_page = real
+        return self._stats_page
+
+    @property
+    def stats_widget(self) -> Any:
+        return self._get_or_create_stats_widget()
+
+    @stats_widget.setter
+    def stats_widget(self, value: Any) -> None:
+        if self._stats_page is not None and self._stats_page is not value:
+            idx = self.stack.indexOf(self._stats_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._stats_page)
+                self.stack.insertWidget(idx, value)
+        self._stats_page = value
+
+    def _get_or_create_ncr_stats_widget(self) -> Any:
+        if isinstance(self._ncr_stats_page, LazyPageWidget):
+            real = self._ncr_stats_page.ensure_widget()
+            idx = self.stack.indexOf(self._ncr_stats_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._ncr_stats_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._ncr_stats_page = real
+        return self._ncr_stats_page
+
+    @property
+    def ncr_stats_widget(self) -> Any:
+        return self._get_or_create_ncr_stats_widget()
+
+    @ncr_stats_widget.setter
+    def ncr_stats_widget(self, value: Any) -> None:
+        if self._ncr_stats_page is not None and self._ncr_stats_page is not value:
+            idx = self.stack.indexOf(self._ncr_stats_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._ncr_stats_page)
+                self.stack.insertWidget(idx, value)
+        self._ncr_stats_page = value
+
+    def _get_or_create_master_widget(self) -> Any:
+        if isinstance(self._master_page, LazyPageWidget):
+            real = self._master_page.ensure_widget()
+            idx = self.stack.indexOf(self._master_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._master_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._master_page = real
+        return self._master_page
+
+    @property
+    def master_widget(self) -> Any:
+        return self._get_or_create_master_widget()
+
+    @master_widget.setter
+    def master_widget(self, value: Any) -> None:
+        if self._master_page is not None and self._master_page is not value:
+            idx = self.stack.indexOf(self._master_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._master_page)
+                self.stack.insertWidget(idx, value)
+        self._master_page = value
+
+    def _get_or_create_new_visit_page(self) -> Any:
+        if isinstance(self._new_visit_page, LazyPageWidget):
+            real = self._new_visit_page.ensure_widget()
+            idx = self.stack.indexOf(self._new_visit_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._new_visit_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._new_visit_page = real
+        return self._new_visit_page
+
+    @property
+    def new_visit_page(self) -> Any:
+        return self._get_or_create_new_visit_page()
+
+    @new_visit_page.setter
+    def new_visit_page(self, value: Any) -> None:
+        if self._new_visit_page is not None and self._new_visit_page is not value:
+            idx = self.stack.indexOf(self._new_visit_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._new_visit_page)
+                self.stack.insertWidget(idx, value)
+        self._new_visit_page = value
+
+    def _get_or_create_new_anomaly_page(self) -> Any:
+        if isinstance(self._new_anomaly_page, LazyPageWidget):
+            real = self._new_anomaly_page.ensure_widget()
+            idx = self.stack.indexOf(self._new_anomaly_page)
+            if idx >= 0:
+                cur = self.stack.currentIndex()
+                self.stack.removeWidget(self._new_anomaly_page)
+                self.stack.insertWidget(idx, real)
+                if cur == idx:
+                    self.stack.setCurrentIndex(idx)
+            self._new_anomaly_page = real
+        return self._new_anomaly_page
+
+    @property
+    def new_anomaly_page(self) -> Any:
+        return self._get_or_create_new_anomaly_page()
+
+    @new_anomaly_page.setter
+    def new_anomaly_page(self, value: Any) -> None:
+        if self._new_anomaly_page is not None and self._new_anomaly_page is not value:
+            idx = self.stack.indexOf(self._new_anomaly_page)
+            if idx >= 0:
+                self.stack.removeWidget(self._new_anomaly_page)
+                self.stack.insertWidget(idx, value)
+        self._new_anomaly_page = value
+
+    @property
+    def entry_widget(self) -> Any:
+        return self.events_widget
+
+    @property
+    def standalone_anomaly_widget(self) -> Any:
+        return self.events_widget
+
+    @property
+    def visit_widget(self) -> Any:
+        return self.events_widget
+
+    @property
+    def closed_event_widget(self) -> Any:
+        return self.events_widget
+
+    @property
+    def visit_anomaly_widget(self) -> Any:
+        return self.events_widget
 
     def _setup_ui(self):
         central = QWidget()
@@ -165,50 +362,64 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setObjectName("PageStack")
 
-        from ui.widgets.event_create_page import EventCreatePage
+        from ui.widgets.lazy_page_widget import LazyPageWidget
 
         self.home_widget = HomeWidget(self)
-        # Consolidated event-management page: one EventListWidget whose scope is
-        # selected by the sidebar rows 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案.
-        self.events_widget = EventListWidget(self, mode="query", fixed_scope=None, lazy_load=True)
-        self.new_visit_page = EventCreatePage(self, "visit")
-        self.new_anomaly_page = EventCreatePage(self, "anomaly")
-        self.stats_widget = StatsViewWidget(self, lazy_load=True)
-        self.ncr_stats_widget = NcrStatsWidget(self, lazy_load=True)
-        self.master_widget = MasterDataWidget(self, lazy_load=True)
+
+        def _create_events_widget():
+            from ui.widgets.defect_list_widget import EventListWidget
+            return EventListWidget(self, mode="query", fixed_scope=None, lazy_load=False)
+
+        def _create_visit_create_page():
+            from ui.widgets.event_create_page import EventCreatePage
+            return EventCreatePage(self, "visit")
+
+        def _create_anomaly_create_page():
+            from ui.widgets.event_create_page import EventCreatePage
+            return EventCreatePage(self, "anomaly")
+
+        def _create_stats_widget():
+            from ui.widgets.stats_view_widget import StatsViewWidget
+            return StatsViewWidget(self, lazy_load=True)
+
+        def _create_ncr_stats_widget():
+            from ui.widgets.ncr_stats_widget import NcrStatsWidget
+            return NcrStatsWidget(self, lazy_load=True)
+
+        def _create_master_widget():
+            from ui.widgets.master_data_widget import MasterDataWidget
+            return MasterDataWidget(self, lazy_load=True)
+
+        self._events_page = LazyPageWidget(_create_events_widget, object_name="LazyEventsPage")
+        self._new_visit_page = LazyPageWidget(_create_visit_create_page, object_name="LazyVisitCreatePage")
+        self._new_anomaly_page = LazyPageWidget(_create_anomaly_create_page, object_name="LazyAnomalyCreatePage")
+        self._stats_page = LazyPageWidget(_create_stats_widget, object_name="LazyStatsPage")
+        self._ncr_stats_page = LazyPageWidget(_create_ncr_stats_widget, object_name="LazyNcrStatsPage")
+        self._master_page = LazyPageWidget(_create_master_widget, object_name="LazyMasterPage")
 
         self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
-        self.stack.insertWidget(EVENT_PAGE_INDEX, self.events_widget)
-        self.stack.insertWidget(STATS_PAGE_INDEX, self.stats_widget)
+        self.stack.insertWidget(EVENT_PAGE_INDEX, self._events_page)
+        self.stack.insertWidget(STATS_PAGE_INDEX, self._stats_page)
 
         # ── 嵌入倉庫不合格品實物管理模組頁面（索引 3/4/5/6）──
         # NCR 資料庫問題不可拖垮主程式；失敗時以 placeholder 佔位並保持索引對齊。
         try:
-            self.ncr = NcrController(self, lazy_load=True)
-            for offset_idx, ncr_page in enumerate(self.ncr.pages()):
+            self._ncr = NcrController(self, lazy_load=True)
+            for offset_idx, ncr_page in enumerate(self._ncr.pages()):
                 self.stack.insertWidget(NCR_PAGE_OFFSET + offset_idx, ncr_page)
         except (DatabaseMigrationError, sqlite3.Error) as exc:
-            self.ncr = None
+            self._ncr = None
             self._insert_ncr_placeholders(str(exc))
-        self.home_widget.refresh_data()
 
         # ── 不合格品統計分析（索引 7）──
-        self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self.ncr_stats_widget)
+        self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self._ncr_stats_page)
 
         # ── 基礎資料（索引 8）──
-        self.stack.insertWidget(MASTER_PAGE_INDEX, self.master_widget)
+        self.stack.insertWidget(MASTER_PAGE_INDEX, self._master_page)
 
         # ── 供應商事件全頁建立表單（索引 9/10）──
-        self.stack.insertWidget(VISIT_CREATE_PAGE_INDEX, self.new_visit_page)
-        self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self.new_anomaly_page)
-
-        # Compatibility aliases used by tests / older callers. Every former event
-        # entry now resolves to the single consolidated event-management page.
-        self.entry_widget = self.events_widget
-        self.standalone_anomaly_widget = self.events_widget
-        self.visit_widget = self.events_widget
-        self.closed_event_widget = self.events_widget
-        self.visit_anomaly_widget = self.events_widget
+        self.stack.insertWidget(VISIT_CREATE_PAGE_INDEX, self._new_visit_page)
+        self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self._new_anomaly_page)
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -252,19 +463,24 @@ class MainWindow(QMainWindow):
         # 觸發延遲載入 (Lazy loading) 與統計頁面強制整理
         widget = self.stack.widget(page_index)
         if widget is not None:
+            if hasattr(widget, "ensure_widget"):
+                real_widget = widget.ensure_widget()
+            else:
+                real_widget = widget
+
             if page_index in (STATS_PAGE_INDEX, NCR_STATS_PAGE_INDEX):
-                if hasattr(widget, "refresh_data"):
-                    widget.refresh_data()
-            elif hasattr(widget, "_has_loaded") and not getattr(widget, "_has_loaded", False):
-                if hasattr(widget, "refresh_data"):
-                    widget.refresh_data()
+                if hasattr(real_widget, "refresh_data"):
+                    real_widget.refresh_data()
+            elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
+                if hasattr(real_widget, "refresh_data"):
+                    real_widget.refresh_data()
 
         self.stack.setCurrentIndex(page_index)
         self._sync_sidebar_active(page_index)
         title, subtitle = _PAGE_TITLES.get(page_index, ("", ""))
         self._header_bar.set_page(title, subtitle)
-        if self.ncr is not None and self._is_ncr_index(page_index):
-            self.ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
+        if self._ncr is not None and self._is_ncr_index(page_index):
+            self._ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
 
     def _action_target_index(self, action) -> int:
         kind, value = action
@@ -327,6 +543,22 @@ class MainWindow(QMainWindow):
         from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
         dlg = AppearancePreferencesDialog(self)
         dlg.exec()
+
+    def findChild(self, arg__1: type, name: str = "", options: Any = None) -> Any:  # noqa: N802
+        res = super().findChild(arg__1, name) if options is None else super().findChild(arg__1, name, options)
+        if res is not None:
+            return res
+        for page_attr in ("_master_page", "_events_page", "_stats_page", "_ncr_stats_page", "_new_visit_page", "_new_anomaly_page"):
+            page = getattr(self, page_attr, None)
+            if isinstance(page, LazyPageWidget):
+                child = page.findChild(arg__1, name, options)
+                if child is not None:
+                    return child
+        return None
+
+    def findChildren(self, arg__1: type, *args: Any, **kwargs: Any) -> list:  # noqa: N802
+        results = super().findChildren(arg__1, *args, **kwargs)
+        return results
 
     def _open_master_data(self) -> None:
         self._switch_primary_page(MASTER_PAGE_INDEX)
@@ -408,15 +640,18 @@ class MainWindow(QMainWindow):
 
     def open_warehouse_unclassified_pending(self) -> None:
         """Open migrated warehouse records that still need a formal processing line."""
-        if self.ncr is None:
+        ctrl = self._ensure_ncr_controller()
+        if ctrl is None:
             QMessageBox.warning(self, "倉庫模組未載入", "目前無法開啟未分流待整理清單。")
             return
+        from ncr.ui.defect_list import DefectListWidget as NcrDefectListWidget
+
         dialog = QDialog(self)
         dialog.setWindowTitle("未分流待整理")
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(8, 12, 8, 8)
         widget = NcrDefectListWidget(
-            self.ncr.conn,
+            ctrl.conn,
             dialog,
             workflow="tracking",
             processing_line=PROCESSING_LINE_UNCLASSIFIED,
@@ -426,10 +661,7 @@ class MainWindow(QMainWindow):
         dialog.resize(1100, 680)
         dialog.exec()
         # 整理後同步刷新倉庫清單頁(含待處理頁的未分流提示計數)與其餘 views。
-        if self.ncr is not None:
-            self.ncr.refresh_all()
-        else:
-            self.refresh_all_views()
+        ctrl.refresh_all()
 
     def open_warehouse_nonconforming_create(self) -> None:
         """切換至嵌入式倉庫不合格品建立表單。"""
@@ -471,12 +703,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):  # noqa: N802
         # NCR 嵌入頁有未存資料則攔截關閉；否則關閉共用 DB 連線。
-        if self.ncr is not None:
+        if self._ncr is not None:
             for local_index in range(NCR_PAGE_COUNT):
-                if not self.ncr.confirm_can_leave(local_index):
+                if not self._ncr.confirm_can_leave(local_index):
                     event.ignore()
                     return
-            self.ncr.close()
+            self._ncr.close()
         event.accept()
 
 

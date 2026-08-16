@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
 from services import event_service as event_service
 from services.event import _product_service, _supplier_service
 from ui.layout_constants import (
+    MASTER_SEARCH_MAX_WIDTH,
+    MASTER_SEARCH_MIN_WIDTH,
     ROOT_SECTION_SPACING,
     TOOLBAR_CONTROL_MIN_HEIGHT,
     TOOLBAR_ITEM_SPACING,
@@ -80,8 +82,8 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
         primary_layout.setSpacing(TOOLBAR_ITEM_SPACING)
 
         self.query_input = QLineEdit()
-        self.query_input.setMinimumWidth(220)
-        self.query_input.setMaximumWidth(340)
+        self.query_input.setMinimumWidth(MASTER_SEARCH_MIN_WIDTH)
+        self.query_input.setMaximumWidth(MASTER_SEARCH_MAX_WIDTH)
         self.query_input.setPlaceholderText("輸入供應商名稱")
         self.query_input.setAccessibleName("搜尋主資料")
         self.query_input.setProperty("role", "masterQuery")

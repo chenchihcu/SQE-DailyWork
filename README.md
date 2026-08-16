@@ -35,7 +35,7 @@ no separate launcher window, and no standalone NCR main window.
   existing services and routes through existing navigation.
 - Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (新增訪廠 /
   新增異常 / 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料 / 設定：介面重新設計). The former
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料 / 顯示設定). The former
   異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are first-class sidebar
   scope rows that drive the single 事件管理 page.
 - Supplier event pending work surfaces as the 單獨異常 sidebar badge. Warehouse
@@ -67,20 +67,25 @@ no separate launcher window, and no standalone NCR main window.
   color-readable chart/status roles, and native dense-chart visual checks.
   `異常事件統計` is a dashboard view without visible page tabs or
   decision-summary cards.
-- `顯示設定` uses finite tabs for 全頁密度／側欄與資料表／文字與對比, with fixed
+- `顯示設定` uses finite tabs for 5 domain categories (外觀主題／視覺表格與互動／表單業務預設／匯出與報告／系統與備份), with fixed
   preview/save/cancel actions and no whole-dialog content scrollbar. Supplier-event
   and warehouse lists use a responsive `重點欄位` view at constrained widths and
-  a reversible `完整欄位` view for all source fields. This changes only on-screen
-  columns: personal NCR column order, database records, and Excel/PDF exports
+  a reversible `完整欄位` view for all source fields, along with multi-type table column
+  auto-sorting and sort state persistence. This changes only on-screen
+  presentation: personal NCR column order, database records, and Excel/PDF exports
   remain unchanged; complete mode keeps a visible horizontal scrollbar when needed.
 
-## Runtime Architecture
+## Runtime Architecture & Performance
 
 - UI: PySide6 desktop app in `main.py`.
 - UI shell: `src/ui/main_window.py`, `src/ui/sidebar_nav.py`, and page widgets under
   `src/ui/widgets/`.
 - Shared UI tokens and QSS: `src/ui/theme.py`, `src/ui/layout_constants.py`,
-  `src/ui/status_colors.py`, and `src/ui/widgets/common_widgets.py`.
+  `src/ui/status_colors.py`, `src/ui/export_helpers.py`, and `src/ui/widgets/common_widgets.py`.
+- Startup performance & lazy loading: Heavy 3rd-party libraries (`openpyxl`, `reportlab`,
+  `matplotlib`) are imported lazily inside operational methods rather than at module root;
+  container form pages leverage `src/ui/widgets/lazy_page_widget.py` (e.g. `EventCreatePage`)
+  to defer child widget creation to first `showEvent`, preventing cold-start latency.
 - Active DB: local SQLite `data/sqe_v2.db`.
 - Archived legacy NCR source DB: `ncr/data/defect.db.migrated`.
 - Supplier event service: `src/services/event_service.py`.
@@ -93,7 +98,7 @@ Source and runtime folders have separate responsibilities:
 
 | Folder | Responsibility |
 | --- | --- |
-| `src/ui/` | Main Qt shell, sidebar, theme, layout constants, and page widgets. |
+| `src/ui/` | Main Qt shell, sidebar, theme, layout constants, export helpers, and page widgets. |
 | `src/services/` | Supplier event, import, export, and reporting application services. |
 | `src/database/` | SQLite connection, repository, migration, and DB boundary code. |
 | `src/ncr/` | Embedded warehouse physical nonconforming-product workflow source. |
@@ -131,7 +136,7 @@ Warehouse physical nonconforming-product data:
     New and edited records must use `原物料` or `委外加工`; existing rows default
     to `未分流` until deliberately classified.
 - `ui_settings`
-  - 本機全域顯示偏好使用 `appearance.preferences.v2` key，保存全頁面密度、文字大小、側欄密度、資料表閱讀密度與對比模式；舊 `appearance.preferences.v1` 只讀相容載入。此設定只影響顯示，不影響任何 SQE 工作流程或資料。
+  - 本機全域顯示與系統偏好使用 `appearance.preferences.v5` key，保存包含外觀主題（密度、側欄密度、強調色、字體縮放、高對比）、視覺表格與互動（表格密度、交替行底色、格線、分頁上限、動畫、雙擊行為、搜尋模式、統計月份跨度、柏拉圖門檻線）、表單業務預設（責任人、類別、同步訪廠、到期天數、訪廠時段）、匯出與報告（目錄、完成動作、抬頭、包含圖表）、系統與備份（啟動頁面、關閉備份提示、備份保留數、刪除確認）共 27 項欄位；舊版 v1~v4 在記憶體中平滑相容載入。此設定只影響本機顯示與預設行為，不破壞任何 SQE 歷史資料。
   - 既有 NCR 欄位排序 key（例如 `defect_list_columns`）維持相容且不可被全域顯示偏好覆寫。
 - warehouse-module compatibility support tables such as `product_records`
 
@@ -180,8 +185,8 @@ dry run, reconciliation, and focused verification.
   close/reopen actions, and attachment changes. SQLite is authoritative: a
   snapshot/folder failure returns success with a visible warning and may be
   repaired idempotently; users must not repeat the primary mutation.
-- Event PDF export: `src/services/event_pdf_exporter.py`.
-- Monthly Excel export: `src/services/event_service.py`.
+- Event PDF export: `src/services/event_pdf_exporter.py` (with automatic ReportLab CJK font registration).
+- Monthly Excel export: `src/services/event_service.py` (with lazy style caching via `src/ui/export_helpers.py`).
 - Weekly PowerPoint report: `scripts/generate_weekly_report.py`.
 - Warehouse nonconforming-product exports remain in `src/ncr/services/`.
 

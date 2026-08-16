@@ -32,6 +32,7 @@ from database.product_stage import (
     PRODUCT_STAGE_OPTIONS,
     normalize_product_stage_ui,
 )
+from services.appearance_preferences_service import load_application_preferences
 from services.event import _anomaly_service, _visit_service
 from ui.layout_constants import (
     ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
@@ -39,6 +40,7 @@ from ui.layout_constants import (
     ANOMALY_DIALOG_PREFERRED_WIDTH,
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
+    FORM_VERTICAL_SPACING,
     GRID_GUTTER,
     GROUPBOX_CONTENT_MARGINS,
     INLINE_SPACING,
@@ -121,6 +123,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
     def _setup_ui(self):
         # 1. 初始化所有控制項 (保持不變)
+        prefs = load_application_preferences()
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
@@ -150,11 +153,14 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.batch_qty_input = QLineEdit()
         self.batch_qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.responsible_person_input = QLineEdit()
+        if not self._is_edit and not self._initial_data and prefs.default_responsible_person:
+            self.responsible_person_input.setText(prefs.default_responsible_person)
 
         self.due_date_check = QCheckBox("啟用")
         self.due_date_edit = QDateEdit()
         self.due_date_edit.setCalendarPopup(True)
-        self.due_date_edit.setDate(QDate.currentDate().addDays(7))
+        default_days = prefs.default_due_days if not self._is_edit and not self._initial_data else 7
+        self.due_date_edit.setDate(QDate.currentDate().addDays(default_days))
         self.due_date_edit.setEnabled(False)
         self.due_date_check.toggled.connect(self.due_date_edit.setEnabled)
 
@@ -178,6 +184,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.category_input = QComboBox()
         self.category_input.setEditable(True)
         self.category_input.addItems(ANOMALY_CATEGORY_OPTIONS)
+        if not self._is_edit and not self._initial_data and prefs.default_anomaly_category:
+            set_combo_current_text(self.category_input, prefs.default_anomaly_category)
 
         # Long supplier/product labels must not dictate the dialog's minimum width.
         for combo in (self.supplier_combo, self.product_combo, self.category_input):
@@ -192,7 +200,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         set_text_edit_visible_rows(self.pending_items_input, 3)
 
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
-        self.sync_visit_check.setChecked(True)
+        initial_sync_visit = prefs.default_sync_visit if not self._is_edit and not self._initial_data else True
+        self.sync_visit_check.setChecked(initial_sync_visit)
         self.sync_visit_check.setVisible(not self._is_edit)
         self._sync_visit_hint_label = QLabel("")
         self._sync_visit_hint_label.setProperty("role", "messageText")
@@ -210,7 +219,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         form_content.setObjectName("AnomalyFormContent")
         content_layout = QVBoxLayout(form_content)
         content_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(FORM_VERTICAL_SPACING)
 
         basic_title = QLabel("基本資訊")
         basic_title.setProperty("role", "sectionTitle")

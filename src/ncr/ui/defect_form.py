@@ -253,6 +253,7 @@ class DefectFieldsWidget(QWidget):
         parent: QWidget | None = None,
         *,
         allow_quick_product_create: bool = True,
+        lazy_load: bool = False,
     ):
         super().__init__(parent)
         self.conn = conn
@@ -261,8 +262,9 @@ class DefectFieldsWidget(QWidget):
         self._build_ui()
         self.reset_fields()
         # 初始化順序：先載入供應商清單，再載入料號（料號依供應商篩選）
-        self.refresh_supplier_options()
-        self.refresh_product_options()
+        if not lazy_load:
+            self.refresh_supplier_options()
+            self.refresh_product_options()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -504,14 +506,14 @@ class DefectFieldsWidget(QWidget):
             self.category_combo,
             self.processing_line_combo,
             self.qty_spin,
+            self.supplier_combo,
+            self.outsource_supplier_combo,
             self.return_slip_type_combo,
             self.item_no_input,
             self.product_name_input,
             self.quick_add_product_btn,
             self.internal_work_order_input,
             self.work_order_input,
-            self.supplier_combo,
-            self.outsource_supplier_combo,
             self.defect_desc_input,
             self.disposition_combo,
             self.transfer_slip_input,
@@ -895,18 +897,24 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
     data_changed = Signal()
     status_message = Signal(str, int)
 
-    def __init__(self, conn: sqlite3.Connection, parent: QWidget | None = None):
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        parent: QWidget | None = None,
+        *,
+        lazy_load: bool = False,
+    ):
         super().__init__(parent)
         self.conn = conn
         self.show_popups = True
         self._is_dirty = False
         self._track_changes = True
         self._is_saving = False
-        self._build_ui()
+        self._build_ui(lazy_load=lazy_load)
         self._connect_dirty_tracking()
         self._mark_clean()
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, *, lazy_load: bool = False) -> None:
         from ui.widgets.common_widgets import CreateWorkflowShell
 
         self.workflow_shell = CreateWorkflowShell(self)
@@ -949,7 +957,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
 
         self.feedback_label = make_notice_label("", role="messageText")
 
-        self.fields_widget = DefectFieldsWidget(self.conn)
+        self.fields_widget = DefectFieldsWidget(self.conn, lazy_load=lazy_load)
         self.fields_widget.product_created.connect(self._on_quick_product_created)
         self.workflow_shell.set_content(self.fields_widget)
 

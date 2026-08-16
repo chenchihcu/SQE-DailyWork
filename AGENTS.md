@@ -75,6 +75,13 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Desktop QSS**: Prefer QSS roles (`role`, `variant`) and theme tokens over ad-hoc per-widget `setStyleSheet`, except where already established (e.g. tech-transfer cards).
 - **Rename before Delete**: When removing fields, rename them first (e.g., `status` -> `status_DELETING`) to let the compiler highlight all references.
 - **Grep Search**: After changes, verify application directories (`src/database/`, `src/services/`, `src/ui/`) are clean of old terms.
+- **Startup Performance & Heavy Dependency Lazy Loading**:
+  - **Heavy 3rd-party dependencies**: Heavy libraries (e.g. `openpyxl`, `reportlab`, `matplotlib`) must never be imported statically at module level in services or UI classes loaded during startup. Always import them inside the specific function or method where they are invoked.
+  - **No module-level style instantiation**: Never instantiate style objects (e.g. `Font()`, `PatternFill()`, `Border()`) at the module root; encapsulate them in cached helper functions (e.g. `_get_export_styles()`).
+  - **Module-level service imports for test mock compatibility**: In UI files, keep service module imports (e.g. `from ncr.services import export_service`) at module level while ensuring the service file itself lazy-loads heavy external packages. This preserves `unittest.mock.patch` target stability in tests while eliminating startup latency.
+  - **Lazy full-page form shells**: Container pages that wrap full dialogs (such as `EventCreatePage`) must support `lazy_load=True` and defer child form creation to `_ensure_form_installed()` and `@property form` accessor on `showEvent`.
+  - **Startup query deduplication**: Avoid redundant `refresh_data()` calls in `MainWindow._setup_ui` if the child widget's `__init__` already queries initial data.
+
 
 ## 5. AI Verification Guardrails (Evidence-First Protocol)
 To ensure system stability and avoid "suspicion-based" errors, the following rules are mandatory:

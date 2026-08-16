@@ -7,9 +7,11 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from services.event import _supplier_service as event_service
@@ -86,12 +88,31 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         self.contact_email_input.setPlaceholderText("電子郵件")
         self.contact_email_input.setAccessibleName("電子郵件")
 
+        contact_widget = QWidget()
+        contact_layout = QHBoxLayout(contact_widget)
+        contact_layout.setContentsMargins(0, 0, 0, 0)
+        contact_layout.setSpacing(6)
+        contact_layout.addWidget(self.contact_name_input, 1)
+
+        self.btn_manage_contacts: QPushButton | None = None
+        if self._is_edit:
+            self.btn_manage_contacts = QPushButton("多位聯絡人…")
+            self.btn_manage_contacts.setCursor(Qt.PointingHandCursor)
+            self.btn_manage_contacts.setAccessibleName("管理多位聯絡人")
+            self.btn_manage_contacts.setProperty("variant", "secondary")
+            apply_clickable_affordance(
+                self.btn_manage_contacts,
+                tooltip="管理該供應商的多位聯絡人",
+            )
+            self.btn_manage_contacts.clicked.connect(self._manage_contacts)
+            contact_layout.addWidget(self.btn_manage_contacts)
+
         form.addRow(RequiredFieldLabel("供應商名稱"), self.supplier_name_input)
         form.addRow(
             make_paired_form_row(
                 "SupplierContactDeptRow",
                 "主聯絡人",
-                self.contact_name_input,
+                contact_widget,
                 "部門",
                 self.department_input,
             )
@@ -105,15 +126,6 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
                 self.contact_email_input,
             )
         )
-
-        if self._is_edit:
-            self.btn_manage_contacts = QPushButton("管理多位聯絡人...")
-            self.btn_manage_contacts.setCursor(Qt.PointingHandCursor)
-            self.btn_manage_contacts.setAccessibleName("管理多位聯絡人")
-            self.btn_manage_contacts.setProperty("variant", "secondary")
-            apply_clickable_affordance(self.btn_manage_contacts)
-            self.btn_manage_contacts.clicked.connect(self._manage_contacts)
-            form.addRow("", self.btn_manage_contacts)
 
         layout.addLayout(form)
 

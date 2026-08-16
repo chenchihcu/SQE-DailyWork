@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from services import attachment_manager
+from ui.layout_constants import ATTACHMENT_LIST_HEIGHT, CONTROL_ROW_SPACING
 from ui.widgets.common_widgets import mark_button_variant as _mark_button_variant
 
 
@@ -51,12 +52,12 @@ class AttachmentEditor(QWidget):
 
         self.list_widget = QListWidget()
         self.list_widget.setObjectName("AttachmentPreviewList")
-        self.list_widget.setMinimumHeight(172)
+        self.list_widget.setMinimumHeight(ATTACHMENT_LIST_HEIGHT)
         self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
         self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.list_widget.setMovement(QListWidget.Movement.Static)
         self.list_widget.setWrapping(True)
-        self.list_widget.setSpacing(8)
+        self.list_widget.setSpacing(CONTROL_ROW_SPACING)
         self.list_widget.setIconSize(ATTACHMENT_PREVIEW_SIZE)
         self.list_widget.setToolTip("雙擊縮圖或檔名可編輯圖說")
         self.list_widget.setAccessibleName("照片與附件縮圖清單")
@@ -74,7 +75,7 @@ class AttachmentEditor(QWidget):
 
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
-        button_row.setSpacing(8)
+        button_row.setSpacing(CONTROL_ROW_SPACING)
         self.add_button = QPushButton("選擇圖片…")
         self.remove_button = QPushButton("移除選取")
         self.add_button.setCursor(Qt.PointingHandCursor)

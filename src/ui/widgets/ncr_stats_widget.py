@@ -15,11 +15,11 @@ from PySide6.QtWidgets import (
 )
 
 from ui.widgets.export_range_dialog import ExportRangeDialog
-import ncr.services.export_service as ncr_export_service
 
 
 from database.connection import get_connection
 import ncr.services.stats_service as ncr_stats_service
+from services.appearance_preferences_service import load_application_preferences
 from ui.design_tokens import PALETTE
 from ui.layout_constants import (
     PANEL_MARGINS,
@@ -78,9 +78,11 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         control_row.setSpacing(INLINE_SPACING)
         
         period_label = create_period_label()
+        prefs = load_application_preferences()
         self.range_selectors = create_year_month_range_selectors(
             self._on_range_changed,
             parent=self,
+            default_span_months=prefs.stats_default_span_months,
         )
 
         control_row.addWidget(period_label)
@@ -363,12 +365,14 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         # 2. 彈出儲存路徑
         import os
         from datetime import datetime
+        from ui.export_helpers import get_default_export_filepath, handle_export_completion
         default_name = f"SQE_NCR_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        target_default = get_default_export_filepath(default_name)
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "匯出 Excel 報告",
-            default_name,
+            target_default,
             "Excel Files (*.xlsx)",
         )
         if not file_path:
@@ -439,6 +443,8 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                         active_temp_paths["return_slip"] = temp_paths["return_slip"]
 
             # 呼叫匯出服務
+            import ncr.services.export_service as ncr_export_service
+
             ok, msg = ncr_export_service.export_ncr_excel_report(
                 file_path,
                 start_date,
@@ -467,7 +473,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                         + f"\n\n{msg}",
                     )
                 else:
-                    QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+                    handle_export_completion(file_path, f"Excel 報告匯出成功！\n{msg}", self)
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
 

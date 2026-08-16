@@ -7,10 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zipfile import BadZipFile
-
-from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
-
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     normalize_product_stage_ui,
@@ -139,11 +135,14 @@ def _read_workbook_rows(file_path: str | Path) -> tuple[list[Any], list[tuple[in
     if path.suffix.lower() != ".xlsx":
         raise MasterImportError("僅支援 .xlsx 檔案。")
     try:
+        from openpyxl import load_workbook
+        from openpyxl.utils.exceptions import InvalidFileException
+
         workbook = load_workbook(path, read_only=True, data_only=True)
-    except (OSError, BadZipFile, InvalidFileException) as exc:
+    except (OSError, BadZipFile, Exception) as exc:
+        if isinstance(exc, (ValueError, OSError, BadZipFile)) or exc.__class__.__name__ == "InvalidFileException":
+            raise MasterImportError(f"無法開啟 Excel 檔案：{exc}") from exc
         raise MasterImportError(f"無法開啟 Excel 檔案：{exc}") from exc
-    except ValueError as exc:
-        raise MasterImportError(f"Excel 檔案格式無法讀取：{exc}") from exc
 
     try:
         worksheet = workbook.worksheets[0]

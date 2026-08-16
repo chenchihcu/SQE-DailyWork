@@ -1,16 +1,16 @@
 # SQE DailyWork UI Layout and Theme Contract
 
-## Global Display Preferences
+### Global Display And System Preferences
 
-- The `系統` sidebar group exposes the only global appearance entry: `顯示設定`. It opens a modal preference dialog without changing the active route or triggering unsaved-form leave guards. Event-management pages must not create a duplicate appearance button or hidden compatibility widget.
-- `AppearancePreferencesDialog` supports page density (`緊湊` / `標準` / `舒適`), text size (`標準` / `放大`), sidebar density (`緊湊` / `標準`), table-reading density (`緊湊` / `標準` / `舒適`), and contrast mode (`標準` / `高對比`). All defaults are `標準`; choices preview immediately, `取消` restores the opening profile, and only `儲存並套用` persists the preference.
-- Preferences are local display-only state under `ui_settings.appearance.preferences.v2`. Valid `appearance.preferences.v1` values are read-only compatible and map to v2 defaults for the added controls; v2 is the only write key. Invalid payloads are not rewritten. Preferences must not alter workflow routes, SQE data, counts, statistics, exports, or NCR column-order compatibility keys.
+- The `系統` sidebar group exposes the only global appearance and preferences entry: `顯示設定`. It opens a modal preference dialog without changing the active route or triggering unsaved-form leave guards. Event-management pages must not create a duplicate appearance button or hidden compatibility widget.
+- `AppearancePreferencesDialog` provides a structured, finite 5-tab settings surface without a whole-dialog content scrollbar:
+  1. **外觀主題 (Appearance & Theme)**: page density (`緊湊` / `標準` / `舒適`), sidebar density (`緊湊` / `標準`), accent color (`科技藍 (Electric Blue)` / `深板岩海藍 (Slate Navy)` / `翡翠綠 (Emerald)` / `暖琥珀 (Amber)`), text size (`標準` / `放大`), and contrast mode (`標準` / `高對比`).
+  2. **視覺表格與互動 (Visual, Tables & Interaction)**: table-reading density (`緊湊` / `標準` / `舒適`), alternating row colors, table grid lines, table page limit (`25` / `50` / `100` / `不分頁`), UI animations toggle, table row double-click action (`彈出操作選單` / `直接開啟檢視` / `直接開啟編輯`), search mode (`即時即打即找` / `按 Enter 或點搜尋`), default stats period span (`3 個月` / `6 個月` / `12 個月`), and Pareto 80/20 cutoff line toggle.
+  3. **表單業務預設 (Form & Business Defaults)**: default responsible person, default anomaly category, default sync visit toggle, default due days (`7 天` / `14 天` / `30 天`), and default visit time slot (`上午` / `下午` / `全天`).
+  4. **匯出與報告 (Export & Reports)**: default export directory, export completion action (`自動開啟匯出檔案` / `開啟所在資料夾` / `僅顯示通知`), report organization header, and export include charts toggle.
+  5. **系統與備份 (System & Backup)**: default startup page (`首頁` / `事件管理` / `不合格品管理` / `統計分析`), auto-backup prompt on exit, backup retention count (`5 份` / `10 份` / `20 份` / `30 份`), and delete confirmation prompt toggle.
+- Preferences are local display and workflow default state stored under `ui_settings.appearance.preferences.v5`. Valid `v1`, `v2`, `v3`, and `v4` payloads map in memory to v5 defaults for added fields; `v5` is the active persistence key. Preferences must not alter workflow routes, SQE historical data, counts, statistics, exports, or NCR column-order compatibility keys.
 - Appearance metrics are applied through shared QSS plus runtime sidebar/table helpers. Structural values in `layout_constants.py` remain authoritative and are not user-editable. High contrast is one fixed semantic palette for the whole desktop shell, popups, tables, and charts; it is not page-specific colour customization.
-
-## Entrypoint Matrix
-
-| Entrypoint | Open path | File / class | Parent | Sizing policy | Overflow / scroll | Theme source | Verification |
-| --- | --- | --- | --- | --- | --- | --- | --- |
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
 | Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
 | Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
@@ -38,9 +38,9 @@
 - Visible overflow affordances are required on dense desktop pages. Do not hide
   scrollbars to create a cleaner static screenshot when the page can contain
   dense tables, charts, or long Chinese labels.
-- `AppearancePreferencesDialog` is a finite settings surface: `全頁密度`,
-  `側欄與資料表`, and `文字與對比` are separate tabs with fixed action buttons;
-  it has no whole-dialog content scrollbar. Keep all preference controls,
+- `AppearancePreferencesDialog` is a finite settings surface across 5 domain tabs: `外觀主題`,
+  `視覺表格與互動`, `表單業務預設`, `匯出與報告`, and `系統與備份`, with fixed action buttons
+  (`確定` / `取消` / `重設為預設值`); it has no whole-dialog content scrollbar. Keep all preference controls,
   preview behavior, accessible descriptions, and cancel restoration intact.
 - Supplier-event and NCR lists use responsive `重點欄位` mode at constrained
   widths. The event core is 異常單號／供應商／品名／問題摘要／品質異常單要求／狀態;

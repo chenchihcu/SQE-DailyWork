@@ -165,7 +165,23 @@ After each change, verify:
 - Excel labels keep anomaly-date cohort state separate from `closed_at` period
   activity. Chart renderer failures preserve workbook data but surface
   `完成但有警告` with the exact missing-chart list.
-## Global Display Preferences
+## Global Display And System Preferences
 
-- `ui_settings` is also the local, display-only application preference container. The shell writes only `appearance.preferences.v2`, a strict JSON payload with `density` (`compact` / `standard` / `comfortable`), `text_scale` (`standard` / `large`), `sidebar_density` (`compact` / `standard`), `table_density` (`compact` / `standard` / `comfortable`), and `contrast_mode` (`standard` / `high`). A valid legacy `appearance.preferences.v1` payload maps in memory to v2 defaults for the added fields; missing, malformed, unknown-key, or unknown-value payloads resolve to the all-`standard` profile without rewriting stored data.
-- This preference never changes event, warehouse, statistics, export, or navigation data. Existing NCR keys, including `defect_list_columns`, remain compatibility-owned by the NCR module.
+- `ui_settings` is the local, application-wide display and system preference container.
+  The shell writes only `appearance.preferences.v5`, a strict JSON payload with 27 typed fields across 5 domain tabs:
+  1. **外觀主題 (Appearance & Theme)**: `density` (`compact` / `standard` / `comfortable`), `sidebar_density` (`compact` / `standard`), `accent_color` (`electric_blue` / `slate_navy` / `emerald` / `amber`), `text_scale` (`standard` / `large`), and `contrast_mode` (`standard` / `high`).
+  2. **視覺表格與互動 (Visual, Tables & Interaction)**: `table_density` (`compact` / `standard` / `comfortable`), `alternating_row_colors` (`bool`), `table_grid_lines` (`bool`), `table_page_limit` (`25` / `50` / `100` / `0`), `enable_animations` (`bool`), `table_double_click_action` (`menu` / `preview` / `edit`), `search_mode` (`live` / `manual`), `stats_default_span_months` (`3` / `6` / `12`), and `pareto_show_cutoff_line` (`bool`).
+  3. **表單業務預設 (Form & Business Defaults)**: `default_responsible_person` (`str`), `default_anomaly_category` (`str`), `default_sync_visit` (`bool`), `default_due_days` (`7` / `14` / `30`), and `default_visit_time_slot` (`上午` / `下午` / `全天`).
+  4. **匯出與報告 (Export & Reports)**: `default_export_dir` (`str`), `export_completion_action` (`open_file` / `open_folder` / `notify_only`), `report_organization_header` (`str`), and `export_include_charts` (`bool`).
+  5. **系統與備份 (System & Backup)**: `default_startup_page` (`home` / `events` / `defects` / `stats`), `auto_backup_prompt` (`bool`), `backup_retention_count` (`5` / `10` / `20` / `30`), and `confirm_on_delete` (`bool`).
+- Valid legacy `appearance.preferences.v1`, `v2`, `v3`, and `v4` payloads map in memory to v5 defaults for newly added fields; missing, malformed, unknown-key, or unknown-value payloads resolve to the default profile without rewriting stored data.
+- This preference never changes core event, warehouse, statistics, export, or navigation data. Existing NCR keys, including `defect_list_columns`, remain compatibility-owned by the NCR module.
+
+## Startup Performance And Lazy Loading Boundaries
+
+- Heavy third-party libraries (`openpyxl`, `reportlab`, `matplotlib`) must never be imported statically at module root in services or UI classes loaded during startup. Always import them inside the specific function or method where they are invoked.
+- Module-level style instantiation is prohibited; style objects (e.g. `Font()`, `PatternFill()`, `Border()`) must be encapsulated in cached helper functions (e.g. in `src/ui/export_helpers.py`).
+- Container pages wrapping full forms (such as `EventCreatePage` and `LazyPageWidget`) must support lazy initialization (`lazy_load=True`) and defer child form creation to `_ensure_form_installed()` on first `showEvent`.
+- Avoid redundant `refresh_data()` queries during `MainWindow._setup_ui` when child widgets already load initial data in `__init__`.
+- In UI files, maintain service module imports (e.g. `from ncr.services import export_service`) at module level while keeping the service file itself lazy-loading external heavy dependencies. This guarantees `unittest.mock.patch` stability in tests while eliminating startup latency.
+

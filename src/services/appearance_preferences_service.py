@@ -1,4 +1,4 @@
-"""Persistence boundary for application-wide display preferences."""
+"""Persistence boundary for application-wide display and system preferences."""
 
 from __future__ import annotations
 
@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 APPEARANCE_PREFERENCES_V1_KEY = "appearance.preferences.v1"
 APPEARANCE_PREFERENCES_V2_KEY = "appearance.preferences.v2"
-APPEARANCE_PREFERENCES_KEY = "appearance.preferences.v3"
+APPEARANCE_PREFERENCES_V3_KEY = "appearance.preferences.v3"
+APPEARANCE_PREFERENCES_V4_KEY = "appearance.preferences.v4"
+APPEARANCE_PREFERENCES_V5_KEY = "appearance.preferences.v5"
+APPEARANCE_PREFERENCES_KEY = APPEARANCE_PREFERENCES_V5_KEY
 
 
 def _load_raw_preferences(conn: sqlite3.Connection, key: str) -> tuple[bool, object | None]:
@@ -32,17 +35,41 @@ def _load_raw_preferences(conn: sqlite3.Connection, key: str) -> tuple[bool, obj
 
 
 def load_preferences(conn: sqlite3.Connection) -> AppearancePreferences:
-    """Load strict v3 preferences, with read-only v2 and v1 compatibility fallbacks."""
+    """Load strict v5 preferences, with read-only v4, v3, v2 and v1 compatibility fallbacks."""
     try:
-        v3_exists, v3_payload = _load_raw_preferences(conn, APPEARANCE_PREFERENCES_KEY)
+        v5_exists, v5_payload = _load_raw_preferences(conn, APPEARANCE_PREFERENCES_V5_KEY)
     except sqlite3.Error:
-        logger.exception("讀取介面設計 v3 偏好失敗")
+        logger.exception("讀取介面與系統 v5 偏好失敗")
+        return AppearancePreferences.default()
+
+    if v5_exists:
+        preferences = AppearancePreferences.from_mapping(v5_payload)
+        if preferences == AppearancePreferences.default() and v5_payload != preferences.to_mapping():
+            logger.warning("忽略格式無效的介面與系統 v5 偏好")
+        return preferences
+
+    try:
+        v4_exists, v4_payload = _load_raw_preferences(conn, APPEARANCE_PREFERENCES_V4_KEY)
+    except sqlite3.Error:
+        logger.exception("讀取介面與系統 v4 偏好失敗")
+        return AppearancePreferences.default()
+
+    if v4_exists:
+        preferences = AppearancePreferences.from_mapping(v4_payload)
+        if preferences == AppearancePreferences.default() and v4_payload != preferences.to_mapping():
+            logger.warning("忽略格式無效的介面與系統 v4 偏好")
+        return preferences
+
+    try:
+        v3_exists, v3_payload = _load_raw_preferences(conn, APPEARANCE_PREFERENCES_V3_KEY)
+    except sqlite3.Error:
+        logger.exception("讀取介面與系統 v3 偏好失敗")
         return AppearancePreferences.default()
 
     if v3_exists:
         preferences = AppearancePreferences.from_mapping(v3_payload)
         if preferences == AppearancePreferences.default() and v3_payload != preferences.to_mapping():
-            logger.warning("忽略格式無效的介面設計 v3 偏好")
+            logger.warning("忽略格式無效的介面與系統 v3 偏好")
         return preferences
 
     try:
@@ -71,7 +98,7 @@ def load_preferences(conn: sqlite3.Connection) -> AppearancePreferences:
 
 
 def save_preferences(conn: sqlite3.Connection, preferences: AppearancePreferences) -> None:
-    """Atomically save only the namespaced appearance key."""
+    """Atomically save only the namespaced v4 appearance key."""
     normalized = AppearancePreferences.from_mapping(preferences.to_mapping())
     if normalized != preferences:
         raise ValueError("介面偏好包含不支援的值")
@@ -100,4 +127,5 @@ def load_application_preferences() -> AppearancePreferences:
 def save_application_preferences(preferences: AppearancePreferences) -> None:
     with get_connection() as conn:
         save_preferences(conn, preferences)
+
 

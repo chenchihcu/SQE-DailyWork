@@ -308,14 +308,17 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             category_axis.categories(),
         )
         self.assertEqual(2, len(value_axes))
-        self.assertEqual(1, len(line_series))
-        self.assertEqual("累積佔比", line_series[0].name())
-        self.assertEqual(3, line_series[0].count())
-        self.assertEqual(100.0, line_series[0].at(0).x())
-        self.assertTrue(line_series[0].pointsVisible())
-        self.assertTrue(line_series[0].pointLabelsVisible())
-        self.assertEqual("@xPoint%", line_series[0].pointLabelsFormat())
-        self.assertFalse(line_series[0].pointLabelsClipping())
+        self.assertEqual(2, len(line_series))
+        cum_series = next(s for s in line_series if s.name() == "累積佔比")
+        cutoff_series = next(s for s in line_series if s.name() == "80% 警戒線")
+        self.assertEqual(3, cum_series.count())
+        self.assertEqual(100.0, cum_series.at(0).x())
+        self.assertTrue(cum_series.pointsVisible())
+        self.assertTrue(cum_series.pointLabelsVisible())
+        self.assertEqual("@xPoint%", cum_series.pointLabelsFormat())
+        self.assertFalse(cum_series.pointLabelsClipping())
+        self.assertEqual(2, cutoff_series.count())
+        self.assertEqual(80.0, cutoff_series.at(0).x())
 
     def test_stats_view_shortens_long_supplier_labels_and_disables_axis_truncation(self) -> None:
         summary = {

@@ -25,9 +25,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QBrush, QColor
 
 from ui.layout_constants import (
+    BRAND_DIVIDER_MARGINS,
+    BRAND_DIVIDER_SPACING,
     COMPACT_COMMAND_ROW_MARGINS,
     COMPACT_PAGE_SPACING,
+    CONTROL_ROW_SPACING,
+    EMPTY_STATE_MARGINS,
     FORM_HORIZONTAL_SPACING,
+    FORM_VERTICAL_SPACING,
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
     TABLE_ITEM_MIN_HEIGHT,
@@ -98,7 +103,7 @@ def create_section_card(parent: QWidget | None = None) -> QFrame:
     card.setProperty("role", "panel")
     layout = QVBoxLayout(card)
     layout.setContentsMargins(*PANEL_MARGINS)
-    layout.setSpacing(12)
+    layout.setSpacing(FORM_VERTICAL_SPACING)
     return card
 
 
@@ -475,8 +480,8 @@ class EmptyStateWidget(QFrame):
         super().__init__(parent)
         self.setProperty("role", "emptyState")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 32, 24, 32)
-        layout.setSpacing(8)
+        layout.setContentsMargins(*EMPTY_STATE_MARGINS)
+        layout.setSpacing(CONTROL_ROW_SPACING)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._title_label = QLabel(title)
@@ -507,8 +512,8 @@ class BrandDivider(QWidget):
         from ui.layout_constants import BRAND_ACCENT_DOT_H, BRAND_ACCENT_DOT_W
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 4)
-        layout.setSpacing(5)
+        layout.setContentsMargins(*BRAND_DIVIDER_MARGINS)
+        layout.setSpacing(BRAND_DIVIDER_SPACING)
         layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         for obj_name in ("BrandDot1", "BrandDot2"):

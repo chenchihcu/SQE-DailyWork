@@ -14,6 +14,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.layout_constants import (
+    COMPACT_PAGE_SPACING,
+    CONTROL_ROW_SPACING,
+    DIALOG_BODY_MARGINS,
+    DIALOG_CARD_MARGINS,
+    DIALOG_FOOTER_CLOSE_MIN_WIDTH,
+    DIALOG_HEADER_FOOTER_H_MARGIN,
+    DIALOG_HEADER_HEIGHT,
+)
 from ui.popup_i18n import localize_popup_message
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import apply_clickable_affordance
@@ -41,7 +50,7 @@ class VisitDetailDialog(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        root.addWidget(self._build_header())
+        root.addWidget(self._build_header(v))
         body_scroll = QScrollArea()
         body_scroll.setObjectName("VisitDetailBodyScroll")
         body_scroll.setWidgetResizable(True)
@@ -50,13 +59,18 @@ class VisitDetailDialog(QDialog):
         root.addWidget(body_scroll, 1)
         root.addWidget(self._build_footer())
 
-    def _build_header(self) -> QFrame:
+    def _build_header(self, v: dict) -> QFrame:
         header = QFrame()
         header.setObjectName("VisitDetailHeader")
-        header.setFixedHeight(52)
+        header.setFixedHeight(DIALOG_HEADER_HEIGHT)
         lay = QHBoxLayout(header)
-        lay.setContentsMargins(20, 0, 20, 0)
+        lay.setContentsMargins(DIALOG_HEADER_FOOTER_H_MARGIN, 0, DIALOG_HEADER_FOOTER_H_MARGIN, 0)
 
+        supplier = str(v.get("supplier_name") or "").strip()
+        title_text = f"訪廠明細 — {supplier}" if supplier else "訪廠紀錄明細"
+        title_lbl = QLabel(title_text)
+        title_lbl.setProperty("role", "title")
+        lay.addWidget(title_lbl)
         lay.addStretch()
         return header
 
@@ -64,8 +78,8 @@ class VisitDetailDialog(QDialog):
         body = QFrame()
         body.setObjectName("VisitDetailBody")
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(16, 14, 16, 10)
-        lay.setSpacing(10)
+        lay.setContentsMargins(*DIALOG_BODY_MARGINS)
+        lay.setSpacing(CONTROL_ROW_SPACING)
 
         lay.addWidget(self._build_basic_info(v))
         lay.addWidget(self._build_tech_section(v))
@@ -82,7 +96,7 @@ class VisitDetailDialog(QDialog):
         """2×2 grid: date / supplier / work-order / production qty."""
         frame = self._card_frame()
         grid = QGridLayout(frame)
-        grid.setContentsMargins(16, 12, 16, 12)
+        grid.setContentsMargins(*DIALOG_CARD_MARGINS)
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(2)
 
@@ -111,11 +125,11 @@ class VisitDetailDialog(QDialog):
     def _build_tech_section(self, v: dict) -> QFrame:
         frame = self._card_frame()
         lay = QVBoxLayout(frame)
-        lay.setContentsMargins(16, 12, 16, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(*DIALOG_CARD_MARGINS)
+        lay.setSpacing(CONTROL_ROW_SPACING)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(8)
+        top_row.setSpacing(CONTROL_ROW_SPACING)
         top_row.addWidget(self._meta_label("技轉狀態"))
         transferred = bool(v.get("tech_transfer", False))
         top_row.addWidget(self._status_badge("已技轉" if transferred else "未技轉", transferred))
@@ -149,7 +163,7 @@ class VisitDetailDialog(QDialog):
     def _build_summary_section(self, summary: str) -> QFrame:
         frame = self._card_frame()
         lay = QVBoxLayout(frame)
-        lay.setContentsMargins(16, 10, 16, 10)
+        lay.setContentsMargins(DIALOG_HEADER_FOOTER_H_MARGIN, 10, DIALOG_HEADER_FOOTER_H_MARGIN, 10)
         lay.setSpacing(4)
         lay.addWidget(self._meta_label("摘要"))
 
@@ -162,8 +176,8 @@ class VisitDetailDialog(QDialog):
     def _build_defect_note_section(self, visit: dict) -> QFrame:
         frame = self._card_frame()
         lay = QVBoxLayout(frame)
-        lay.setContentsMargins(16, 10, 16, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(DIALOG_HEADER_FOOTER_H_MARGIN, 10, DIALOG_HEADER_FOOTER_H_MARGIN, 10)
+        lay.setSpacing(CONTROL_ROW_SPACING)
         lay.addWidget(self._meta_label("缺失 / 改善紀錄"))
 
         visit_level = [
@@ -203,11 +217,11 @@ class VisitDetailDialog(QDialog):
         footer = QFrame()
         footer.setObjectName("VisitDetailFooter")
         lay = QHBoxLayout(footer)
-        lay.setContentsMargins(16, 10, 16, 14)
+        lay.setContentsMargins(DIALOG_HEADER_FOOTER_H_MARGIN, 10, DIALOG_HEADER_FOOTER_H_MARGIN, 14)
         lay.addStretch()
 
         close_btn = QPushButton("關閉")
-        close_btn.setMinimumWidth(88)
+        close_btn.setMinimumWidth(DIALOG_FOOTER_CLOSE_MIN_WIDTH)
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.setAccessibleName("關閉訪廠明細對話框")
         close_btn.setProperty("role", "visitDetailClose")
@@ -245,7 +259,7 @@ class VisitDetailDialog(QDialog):
         row.setObjectName("vdItemRow")
         lay = QHBoxLayout(row)
         lay.setContentsMargins(0, 3, 8, 3)
-        lay.setSpacing(6)
+        lay.setSpacing(COMPACT_PAGE_SPACING)
 
         dot = QLabel("✓" if has_it else "–")
         dot.setFixedWidth(16)

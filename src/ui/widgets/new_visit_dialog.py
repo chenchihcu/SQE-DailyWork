@@ -28,6 +28,7 @@ from database.product_stage import (
     PRODUCT_STAGE_OPTIONS,
     normalize_product_stage_ui,
 )
+from services.appearance_preferences_service import load_application_preferences
 from services.event import _visit_service
 from ui.layout_constants import (
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
@@ -43,7 +44,6 @@ from ui.layout_constants import (
     VISIT_SUMMARY_VISIBLE_ROWS,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
-from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
@@ -102,9 +102,11 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self._tech_transfer_groups: dict[str, QButtonGroup] = {}
         self._tech_transfer_cards: dict[str, TechTransferCard] = {}
         self._syncing_tech_transfer = False
+        self._fixed_visit_id = str(self._initial_data.get("visit_id") or "").strip()
         self.setModal(True)
         self.setMinimumWidth(760)
-        self.setWindowTitle("預覽訪廠紀錄" if self._read_only else ("編輯訪廠紀錄" if self._is_edit else "新增訪廠紀錄"))
+        self.setMaximumWidth(FORM_MAX_WIDTH)
+        self.setWindowTitle("預覽訪廠" if self._read_only else ("編輯訪廠" if self._is_edit else "新增訪廠"))
         self._setup_ui()
         self._load_suppliers()
         if self._is_edit:
@@ -116,6 +118,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             self._connect_dirty_signals()
 
     def _setup_ui(self):
+        prefs = load_application_preferences()
         # 1. 控制項初始化
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
@@ -153,6 +156,8 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.time_slot_input.setText = lambda text: set_combo_current_text(self.time_slot_input, text)  # type: ignore[attr-defined]
         self.time_slot_input.text = lambda: self.time_slot_input.currentText().strip()  # type: ignore[attr-defined]
         self.time_slot_input.setReadOnly = lambda ro: self.time_slot_input.setEnabled(not ro)  # type: ignore[attr-defined]
+        if not self._is_edit and not self._initial_data and prefs.default_visit_time_slot:
+            set_combo_current_text(self.time_slot_input, prefs.default_visit_time_slot)
         self.qty_input = QLineEdit()
         self.qty_input.setPlaceholderText("輸入訪廠抽樣數量")
         self.qty_input.setAccessibleName("抽樣數量")
@@ -182,43 +187,41 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         pr_layout.addWidget(self.product_stage_combo, 1)
 
         self.visitor_input.setVisible(False)
-        basic_row = make_paired_form_row(
-            "VisitBasicDateVisitorRow",
-            RequiredFieldLabel("日期"),
-            self.date_edit,
-            "",
-            self.visitor_input,
-        )
-        form.addRow(basic_row)
-        form.addRow(RequiredFieldLabel("供應商"), self.supplier_combo)
-        form.addRow("主要產品", product_row)
-        form.addRow("料號", self.product_code_input)
-
-        self._product_guard_label = QLabel("")
-        self._product_guard_label.setProperty("role", "messageText")
-        self._product_guard_label.setVisible(False)
-        form.addRow("", self._product_guard_label)
-        adv_form = QFormLayout()
-        adv_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-        adv_form.setVerticalSpacing(VISIT_FORM_VERTICAL_SPACING)
-        adv_form.addRow(
+        form.addRow(
             make_paired_form_row(
-                "VisitAdvancedTimeOrderRow",
+                "VisitBasicDateTimeSlotRow",
+                RequiredFieldLabel("日期"),
+                self.date_edit,
                 "時段",
                 self.time_slot_input,
+            )
+        )
+        form.addRow(RequiredFieldLabel("供應商"), self.supplier_combo)
+        form.addRow("主要產品", product_row)
+        form.addRow(
+            make_paired_form_row(
+                "VisitProductCodeWorkOrderRow",
+                "料號",
+                self.product_code_input,
                 "工單",
                 self.work_order_input,
             )
         )
-        adv_form.addRow(
+        form.addRow(
             make_paired_form_row(
-                "VisitAdvancedQtyTransferRow",
-                "數量",
+                "VisitQtyTechTransferRow",
+                "抽樣數量",
                 self.qty_input,
                 None,
                 self.tech_transfer_check,
             )
         )
+
+        self._product_guard_label = QLabel("")
+        self._product_guard_label.setProperty("role", "messageText")
+        self._product_guard_label.setVisible(False)
+        form.addRow("", self._product_guard_label)
+
         details_grid = QGridLayout()
         details_grid.setContentsMargins(0, 0, 0, 0)
         details_grid.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
@@ -226,14 +229,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
 
         secondary_layout = QVBoxLayout()
         secondary_layout.setContentsMargins(0, 0, 0, 0)
-        secondary_layout.setSpacing(VISIT_FORM_CONTENT_SPACING)
+        secondary_layout.setSpacing(8)
         secondary_layout.addWidget(QLabel("活動摘要"))
-        secondary_layout.addWidget(self.summary_input)
-        advanced_title = QLabel("技轉")
-        advanced_title.setProperty("role", "sectionTitle")
-        secondary_layout.addWidget(advanced_title)
-        secondary_layout.addLayout(adv_form)
-        secondary_layout.addStretch(1)
+        secondary_layout.addWidget(self.summary_input, 1)
         details_grid.addLayout(secondary_layout, 0, 1)
         details_grid.setColumnStretch(0, 1)
         details_grid.setColumnStretch(1, 1)
@@ -251,7 +249,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             self._tech_transfer_cards[field_key] = card
             self._tech_transfer_groups[field_key] = card.group
 
-        content_layout.addWidget(QLabel("技轉要目確認"))
+        tech_title = QLabel("技轉")
+        tech_title.setProperty("role", "sectionTitle")
+        content_layout.addWidget(tech_title)
         content_layout.addWidget(cards_container)
         content_layout.addStretch(1)
         # 3. 對話框保留固定 footer；全頁建立模式把命令列交由

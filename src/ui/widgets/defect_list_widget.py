@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTabBar,
     QTableWidget,
     QTableWidgetItem,
@@ -27,11 +28,16 @@ from PySide6.QtWidgets import (
 
 from database import repository
 from services import event_service as event_service
-from services.event import _export_service, _query_service
+from services.appearance_preferences_service import load_application_preferences
+from services.event import _query_service
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
-    EVENT_LIST_NAME_COL_MIN_WIDTH,
+    CONTROL_ROW_SPACING,
     EVENT_LIST_FULL_COLUMNS_MIN_WIDTH,
+    EVENT_LIST_NAME_COL_MIN_WIDTH,
+    FILTER_MONTH_INPUT_WIDTH,
+    FILTER_STATUS_COMBO_WIDTH,
+    FILTER_SUPPLIER_MIN_WIDTH,
     INLINE_SPACING,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
@@ -143,7 +149,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         root.addWidget(control_panel)
         control_outer = QVBoxLayout(control_panel)
         control_outer.setContentsMargins(*SUBPANEL_TOOLBAR_MARGINS)
-        control_outer.setSpacing(8)
+        control_outer.setSpacing(CONTROL_ROW_SPACING)
 
         # Row 1: filters / helper + new-event actions (consistent across modes)
         actions_row = QHBoxLayout()
@@ -158,14 +164,17 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             lbl_supplier.setProperty("role", "helperText")
             self.supplier_filter_input = QLineEdit()
             self.supplier_filter_input.setPlaceholderText("輸入供應商名稱")
-            self.supplier_filter_input.setMinimumWidth(170)
+            self.supplier_filter_input.setMinimumWidth(FILTER_SUPPLIER_MIN_WIDTH)
             self.supplier_filter_input.setClearButtonEnabled(True)
             self.supplier_filter_input.returnPressed.connect(self._apply_filters_from_ui)
+            prefs = load_application_preferences()
+            if prefs.search_mode == "live":
+                self.supplier_filter_input.textEdited.connect(lambda _: self._apply_filters_from_ui())
 
             lbl_status = QLabel("狀態")
             lbl_status.setProperty("role", "helperText")
             self.status_combo = QComboBox()
-            self.status_combo.setFixedWidth(112)
+            self.status_combo.setFixedWidth(FILTER_STATUS_COMBO_WIDTH)
             self.status_combo.addItem("全部", "ALL")
             self.status_combo.addItem("待處理", "待處理")
             self.status_combo.addItem("已結案", "已結案")
@@ -201,7 +210,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.month_input.setDate(QDate.currentDate())
             self.month_input.setCalendarPopup(True)
             self.month_input.setEnabled(False)
-            self.month_input.setFixedWidth(104)
+            self.month_input.setFixedWidth(FILTER_MONTH_INPUT_WIDTH)
             self.all_months_checkbox.toggled.connect(
                 lambda checked: self.month_input.setEnabled(not checked)
             )
@@ -237,7 +246,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         )
 
         toolbar_row = QHBoxLayout()
-        toolbar_row.setSpacing(8)
+        toolbar_row.setSpacing(CONTROL_ROW_SPACING)
 
         if self.mode == "query":
             self.source_tag_label = QLabel(self._source_tag_text())
@@ -245,7 +254,19 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.source_tag_label.setToolTip("目前列表的資料流程來源")
             toolbar_row.addWidget(self.source_tag_label)
 
-        toolbar_row.addStretch(1)
+        self.column_profile_notice = QLabel("")
+        self.column_profile_notice.setProperty("role", "helperText")
+        self.column_profile_notice.setWordWrap(True)
+        self.column_profile_notice.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+        toolbar_row.addWidget(self.column_profile_notice, 1)
+
+        self.column_profile_button = QPushButton()
+        self.column_profile_button.setProperty("variant", "secondary")
+        self.column_profile_button.clicked.connect(self._toggle_column_profile)
+        toolbar_row.addWidget(self.column_profile_button)
 
         # Shared new-event actions (deduplicated across modes).
         btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
@@ -268,25 +289,11 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         control_outer.addLayout(toolbar_row)
 
         # Row 3 (dedicated pagination row): the shared PaginationBar needs ~584px for
-        # its 共 N 筆 / 每頁 / 跳至 controls. Sharing a row with the action buttons
-        # over-crowded it at high DPI / narrow widths (labels clipped or overlapped);
-        # giving it a full-width row guarantees no clipping at any DPI down to 1024.
+        # its 共 N 筆 / 每頁 / 跳至 controls.
         pagination_row = QHBoxLayout()
-        pagination_row.setSpacing(8)
+        pagination_row.setSpacing(CONTROL_ROW_SPACING)
         pagination_row.addWidget(self.pagination, 1)
         control_outer.addLayout(pagination_row)
-
-        column_profile_row = QHBoxLayout()
-        column_profile_row.setSpacing(INLINE_SPACING)
-        self.column_profile_notice = QLabel("")
-        self.column_profile_notice.setProperty("role", "helperText")
-        self.column_profile_notice.setWordWrap(True)
-        column_profile_row.addWidget(self.column_profile_notice, 1)
-        self.column_profile_button = QPushButton()
-        self.column_profile_button.setProperty("variant", "secondary")
-        self.column_profile_button.clicked.connect(self._toggle_column_profile)
-        column_profile_row.addWidget(self.column_profile_button)
-        control_outer.addLayout(column_profile_row)
 
         root.addWidget(control_panel)
 
@@ -577,15 +584,19 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             QMessageBox.information(self, "提示", "請先選取一筆資料")
             return
 
+        from services.event import _export_service
+        from ui.export_helpers import get_default_export_filepath, handle_export_completion
+
         try:
             default_name = _export_service.default_event_pdf_filename(row)
         except Exception:
             logger.exception("取得預設 PDF 檔名失敗")
             default_name = "SQE_事件單.pdf"
+        target_default = get_default_export_filepath(default_name)
         target, _ = QFileDialog.getSaveFileName(
             self,
             "輸出PDF",
-            default_name,
+            target_default,
             "PDF Files (*.pdf)",
         )
         if not target:
@@ -595,7 +606,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         ok, msg = _export_service.export_event_pdf(target, row)
         if ok:
-            QMessageBox.information(self, "成功", localize_popup_message(msg))
+            handle_export_completion(target, msg, self)
         else:
             QMessageBox.critical(self, "失敗", localize_popup_message(msg))
 
@@ -613,6 +624,24 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._selected_event_row = dict(row)
         self.table.selectRow(row_idx)
         self._sync_export_pdf_state()
+
+        prefs = load_application_preferences()
+        action = prefs.table_double_click_action
+        if action == "preview":
+            if row.get("id"):
+                self.open_preview_anomaly_dialog(str(row["id"]))
+                return
+            if row.get("visit_id"):
+                self.open_preview_visit_dialog(str(row["visit_id"]))
+                return
+        elif action == "edit":
+            if row.get("id"):
+                self.open_edit_anomaly_dialog(str(row["id"]))
+                return
+            if row.get("visit_id"):
+                self.open_edit_visit_dialog(str(row["visit_id"]))
+                return
+
         menu, action_map = build_event_action_menu(self, row)
         if not action_map:
             return
@@ -671,6 +700,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
     def send_line_brief_report(self, row: dict):
         from services import line_service
+        from services.event import _export_service
 
         image = _export_service.render_brief_event_image(row)
         if image is None:

@@ -102,6 +102,12 @@ def get_tabs_qss() -> str:
             margin-right: 3px;
         }}
 
+        QTabWidget#AppearancePreferenceTabs QTabBar::tab {{
+            min-width: 90px;
+            padding: 6px 12px;
+            margin-right: 2px;
+        }}
+
         QFrame[role="topNavBar"] {{
             background: {TOKENS["page_bg"]};
             border-bottom: 1px solid {TOKENS["border_soft"]};

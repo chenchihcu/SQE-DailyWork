@@ -14,8 +14,6 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from ncr.db.database import initialize_database
 from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
-from ncr.ui.defect_form import DefectFormWidget
-from ncr.ui.defect_list import DefectListWidget
 from ui.layout_constants import PAGE_OUTER_MARGINS
 
 # Host page-stack offset: warehouse defect page sits after the three SQE DailyWork
@@ -33,14 +31,46 @@ NCR_NAV_LABELS: list[str] = [spec[0] for spec in NCR_PAGE_SPECS]
 class NcrWorkflowPage(QWidget):
     """Tabless stack page wrapper for one warehouse nonconforming-product view."""
 
-    def __init__(self, body: QWidget, object_name: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        body_or_factory: QWidget | Callable[[], QWidget],
+        object_name: str,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName(object_name)
+        self._factory = body_or_factory if callable(body_or_factory) else None
+        self._body = body_or_factory if isinstance(body_or_factory, QWidget) else None
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*PAGE_OUTER_MARGINS)
-        layout.setSpacing(0)
-        layout.addWidget(body)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(*PAGE_OUTER_MARGINS)
+        self._layout.setSpacing(0)
+        if self._body is not None:
+            self._layout.addWidget(self._body)
+
+    @property
+    def body(self) -> QWidget:
+        if self._body is None and self._factory is not None:
+            self._body = self._factory()
+            self._layout.addWidget(self._body)
+        return self._body
+
+    def ensure_widget(self) -> QWidget:
+        return self.body
+
+    def refresh_data(self) -> None:
+        if self._body is not None and hasattr(self._body, "refresh_data"):
+            self._body.refresh_data()
+
+    def findChild(self, arg__1: type, name: str = "", options: Any = None) -> Any:  # noqa: N802
+        self.ensure_widget()
+        if options is not None:
+            return super().findChild(arg__1, name, options)
+        return super().findChild(arg__1, name)
+
+    def findChildren(self, arg__1: type, *args: Any, **kwargs: Any) -> list:  # noqa: N802
+        self.ensure_widget()
+        return super().findChildren(arg__1, *args, **kwargs)
 
 
 class NcrController(QObject):
@@ -55,30 +85,55 @@ class NcrController(QObject):
         super().__init__(host_window)
         self.host = host_window
         self.conn = initialize_database()
+        self._lazy_load = lazy_load
 
-        self.form_widget = DefectFormWidget(self.conn)
-        self.pending_outsource_widget = DefectListWidget(
-            self.conn,
-            workflow="tracking",
-            processing_line=PROCESSING_LINE_OUTSOURCE,
-        )
-        self.pending_material_widget = DefectListWidget(
-            self.conn,
-            workflow="tracking",
-            processing_line=PROCESSING_LINE_MATERIAL,
-        )
-        self.trace_widget = DefectListWidget(self.conn, workflow="trace")
+        def _create_form():
+            from ncr.ui.defect_form import DefectFormWidget
+            w = DefectFormWidget(self.conn, lazy_load=lazy_load)
+            w.saved.connect(self.refresh_all)
+            w.data_changed.connect(self.refresh_all)
+            w.status_message.connect(self._on_status_message)
+            return w
 
-        self.create_page = NcrWorkflowPage(self.form_widget, "NcrCreatePage")
-        self.pending_outsource_page = NcrWorkflowPage(
-            self.pending_outsource_widget,
-            "NcrPendingOutsourcePage",
-        )
-        self.pending_material_page = NcrWorkflowPage(
-            self.pending_material_widget,
-            "NcrPendingMaterialPage",
-        )
-        self.history_page = NcrWorkflowPage(self.trace_widget, "NcrHistoryPage")
+        def _create_pending_outsource():
+            from ncr.ui.defect_list import DefectListWidget
+            w = DefectListWidget(
+                self.conn,
+                workflow="tracking",
+                processing_line=PROCESSING_LINE_OUTSOURCE,
+                lazy_load=lazy_load,
+            )
+            w.changed.connect(self.refresh_all)
+            w.unclassified_link_requested.connect(self._open_unclassified_cleanup)
+            return w
+
+        def _create_pending_material():
+            from ncr.ui.defect_list import DefectListWidget
+            w = DefectListWidget(
+                self.conn,
+                workflow="tracking",
+                processing_line=PROCESSING_LINE_MATERIAL,
+                lazy_load=lazy_load,
+            )
+            w.changed.connect(self.refresh_all)
+            w.unclassified_link_requested.connect(self._open_unclassified_cleanup)
+            return w
+
+        def _create_trace():
+            from ncr.ui.defect_list import DefectListWidget
+            w = DefectListWidget(
+                self.conn,
+                workflow="trace",
+                lazy_load=lazy_load,
+            )
+            w.changed.connect(self.refresh_all)
+            return w
+
+        self.create_page = NcrWorkflowPage(_create_form, "NcrCreatePage")
+        self.pending_outsource_page = NcrWorkflowPage(_create_pending_outsource, "NcrPendingOutsourcePage")
+        self.pending_material_page = NcrWorkflowPage(_create_pending_material, "NcrPendingMaterialPage")
+        self.history_page = NcrWorkflowPage(_create_trace, "NcrHistoryPage")
+
         self._widgets = [
             self.create_page,
             self.pending_outsource_page,
@@ -90,33 +145,47 @@ class NcrController(QObject):
         # the former consolidated page object.
         self.tracker_page = self.create_page
         self.tracker_page.FORM_TAB_INDEX = self.CREATE_PAGE_INDEX
-        self.tracker_page.form_widget = self.form_widget
-        # Compatibility-only alias: the retired generic pending page resolves
-        # to the first formal line. New navigation must use the two line pages.
-        self.list_widget = self.pending_outsource_widget
-        self.tracker_page.list_widget = self.list_widget
-        self.tracker_page.pending_outsource_widget = self.pending_outsource_widget
-        self.tracker_page.pending_material_widget = self.pending_material_widget
-        self.tracker_page.trace_widget = self.trace_widget
         self.tracker_page.open_create_entry = self.open_create_entry
-
-        # Cross-widget wiring.
-        self.form_widget.saved.connect(self.refresh_all)
-        self.form_widget.data_changed.connect(self.refresh_all)
-        self.form_widget.status_message.connect(self._on_status_message)
-        self.pending_outsource_widget.changed.connect(self.refresh_all)
-        self.pending_material_widget.changed.connect(self.refresh_all)
-        self.trace_widget.changed.connect(self.refresh_all)
-        self.pending_outsource_widget.unclassified_link_requested.connect(
-            self._open_unclassified_cleanup
-        )
-        self.pending_material_widget.unclassified_link_requested.connect(
-            self._open_unclassified_cleanup
-        )
 
         self._has_loaded = False
         if not lazy_load:
             self.refresh_all()
+
+    @property
+    def form_widget(self):
+        return self.create_page.body
+
+    @form_widget.setter
+    def form_widget(self, value):
+        self.create_page._body = value
+
+    @property
+    def pending_outsource_widget(self):
+        return self.pending_outsource_page.body
+
+    @pending_outsource_widget.setter
+    def pending_outsource_widget(self, value):
+        self.pending_outsource_page._body = value
+
+    @property
+    def pending_material_widget(self):
+        return self.pending_material_page.body
+
+    @pending_material_widget.setter
+    def pending_material_widget(self, value):
+        self.pending_material_page._body = value
+
+    @property
+    def trace_widget(self):
+        return self.history_page.body
+
+    @trace_widget.setter
+    def trace_widget(self, value):
+        self.history_page._body = value
+
+    @property
+    def list_widget(self):
+        return self.pending_outsource_widget
 
     def pages(self) -> list[QWidget]:
         return list(self._widgets)
@@ -134,8 +203,18 @@ class NcrController(QObject):
             refresh()
 
     def refresh_for_local_index(self, local_index: int) -> None:
-        # 三個一等側欄頁仍共用同一個倉庫工作流資料源；切換任一頁時同步刷新。
-        self.refresh_all()
+        # 按需刷新當前分頁，避免切換單一頁面時重複全量查詢其餘未載入頁面。
+        if local_index == self.CREATE_PAGE_INDEX:
+            self.form_widget.refresh_product_options()
+            self.form_widget.refresh_supplier_options()
+        elif local_index == self.PENDING_OUTSOURCE_PAGE_INDEX:
+            self.pending_outsource_widget.refresh_data()
+        elif local_index == self.PENDING_MATERIAL_PAGE_INDEX:
+            self.pending_material_widget.refresh_data()
+        elif local_index == self.HISTORY_PAGE_INDEX:
+            self.trace_widget.refresh_data()
+        else:
+            self.refresh_all()
 
     def open_create_entry(self) -> None:
         self.form_widget.focus_item_no()

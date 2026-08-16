@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QLabel,
     QMessageBox,
     QTabWidget,
@@ -20,44 +21,19 @@ from PySide6.QtWidgets import (
 
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
+    CLOSE_DIALOG_PROBLEM_MIN_HEIGHT,
+    CLOSE_DIALOG_REF_MARGINS,
+    CONTROL_ROW_SPACING,
     DIALOG_OUTER_MARGINS,
+    FORM_HORIZONTAL_SPACING,
     FORM_MAX_WIDTH,
+    FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
 )
-from ui.widgets.defect_form_widgets import (
-    ROOT_CAUSE_PARETO_OPTIONS,
-    apply_dialog_layout,
-    set_combo_current_text,
-    set_text_edit_visible_rows,
-    set_tone,
-    style_dialog_buttons,
-)
-
-logger = logging.getLogger(__name__)
-
-# ── Constants ──────────────────────────────────────────────────────────────
-ROOT_CAUSE_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
-
-IMPROVEMENT_DESC_MAX_LEN = 1000
-
-
-# ── CloseAnomalyDialog ─────────────────────────────────────────────────────
-class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
-    def __init__(
-        self,
-        anomaly_id: str,
-        problem_desc: str,
-        parent=None,
-        *,
-        date_adjustment_only: bool = False,
-    ):
-        super().__init__(parent)
-        self.anomaly_id = anomaly_id
-        self.problem_desc = problem_desc
 from ui.widgets.defect_form_widgets import (
     ROOT_CAUSE_PARETO_OPTIONS,
     apply_dialog_layout,
@@ -122,12 +98,12 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.problem_view.setPlainText(self.problem_desc)
         self.problem_view.setPlaceholderText("原始問題描述唯讀區")
         self.problem_view.setAccessibleName("原始問題描述")
-        self.problem_view.setMinimumHeight(240)
+        self.problem_view.setMinimumHeight(CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
 
         self.improvement_input = QTextEdit()
         self.improvement_input.setPlaceholderText("請輸入改善內容（必填）")
         self.improvement_input.setAccessibleName("改善內容")
-        set_text_edit_visible_rows(self.improvement_input, 10)
+        set_text_edit_visible_rows(self.improvement_input, 6)
 
         self.improvement_counter = QLabel(f"0 / {IMPROVEMENT_DESC_MAX_LEN}")
         self.improvement_counter.setProperty("role", "counterText")
@@ -158,28 +134,41 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         if self.date_adjustment_only:
             self.attachment_editor.setEnabled(False)
 
-        self.tabs = QTabWidget()
+        # 單一連續表單內容區（消除分頁切換摩擦）
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
+        content_layout.setSpacing(CONTROL_ROW_SPACING)
 
-        tab_action = QWidget()
-        action_layout = QVBoxLayout(tab_action)
-        action_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
+        # 原始問題對照摘要（讓使用者填寫改善措施時可直接對照）
+        problem_ref_box = QFrame()
+        problem_ref_box.setObjectName("CloseAnomalyProblemRef")
+        problem_ref_box.setProperty("role", "infoCard")
+        pref_layout = QVBoxLayout(problem_ref_box)
+        pref_layout.setContentsMargins(*CLOSE_DIALOG_REF_MARGINS)
+        pref_layout.setSpacing(4)
+        pref_lbl = QLabel("原始問題描述：")
+        pref_lbl.setProperty("role", "meta")
+        pref_text = QLabel(self.problem_desc.strip() if self.problem_desc else "（無問題描述）")
+        pref_text.setWordWrap(True)
+        pref_text.setProperty("role", "summary")
+        pref_layout.addWidget(pref_lbl)
+        pref_layout.addWidget(pref_text)
+        content_layout.addWidget(problem_ref_box)
 
         form = QFormLayout()
+        form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+        form.setVerticalSpacing(FORM_VERTICAL_SPACING)
         form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
         form.addRow("", self.improvement_counter)
         form.addRow(RequiredFieldLabel("結案日期"), self.closed_at_input)
-        action_layout.addLayout(form)
-        action_layout.addStretch(1)
-        self.tabs.addTab(tab_action, "改善處理")
+        content_layout.addLayout(form)
 
-        tab_media = QWidget()
-        media_layout = QVBoxLayout(tab_media)
-        media_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        media_layout.addWidget(QLabel("原始問題描述："))
-        media_layout.addWidget(self.problem_view)
-        media_layout.addWidget(QLabel("現場照片附件："))
-        media_layout.addWidget(self.attachment_editor)
-        self.tabs.addTab(tab_media, "Context & 照片")
+        # 現場照片附件區
+        attach_label = QLabel("現場照片與改善佐證附件：")
+        attach_label.setProperty("role", "meta")
+        content_layout.addWidget(attach_label)
+        content_layout.addWidget(self.attachment_editor)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
@@ -191,7 +180,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
 
-        apply_dialog_layout(self, self.tabs, buttons)
+        apply_dialog_layout(self, content, buttons)
 
         self.improvement_input.textChanged.connect(self._update_validation)
         self.closed_at_input.dateChanged.connect(self._update_validation)

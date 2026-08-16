@@ -12,3 +12,7 @@
 | Data/Product Ownership | 一筆正式異常的 supplier/product 歸屬無法從現有 master data 唯一判定 | 不自動修正；輸出 `Outputs/audit/*VERIFY.csv` 供人工分類 | 使用者確認歸屬後另開受控資料修正 | 正式庫唯讀 reconciliation query | 不適用；目前未寫入 | Active / VERIFY |
 | Data/Phase0 Raw Hash | Phase 0 與結案的正式庫 raw hash 不同，但所有業務列一致；差異僅兩筆衍生月快取 `updated_at`，且結案值較早，現有證據無法唯一歸因 | 不自動還原、不寫正式庫；以 read-only row parity、integrity、當前 hash 穩定性保留證據 | 若需追查，先確認是否有外部程式同時開啟 DB，再以 Phase 0 快照做受控 cache reconciliation | Phase 0 snapshot 對正式庫逐表唯讀比較 | 未經使用者核准不還原 | Accepted residual / no live write |
 | UI/Native Visual Gate | theme、probe target 或 baseline 漂移會讓單測／visual gate 假綠燈 | manifest-driven target mapping、缺 baseline 失敗、正式 theme 測試、Windows 100/125/150% belt | UI 變更後更新並人工檢視 baseline | `qt_visual_belt.py` + `qt_visual_regress.py` + harness mapping | 回復 UI helper／baseline 變更 | Mitigated |
+| Performance/Startup Latency | 模組頂層靜態匯入 heavy 套件 (openpyxl/reportlab/matplotlib) 或重複查詢導致冷啟動延遲 | 1. 禁止頂層靜態匯入，改於業務函式內 lazy import<br>2. `export_helpers.py` 樣式快取<br>3. `LazyPageWidget` 延遲掛載<br>4. MainWindow 啟動去重 | 持續監控冷啟動秒數與匯入鏈 | 啟動性能回歸與單元測試 | 恢復靜態匯入並尋求其他非侵入性優化 | Mitigated |
+| Export/PDF CJK Font | ReportLab 預設字型在中文 PDF 匯出時引發編碼錯誤或方框缺字 | 實作 `_register_cjk_fonts()` 自動掃描並註冊 Windows 微軟正黑體/細明體，樣式指定 CJK 字型 | 驗證各 Windows 環境與無字型環境之 fallback | `test_services_smoke.py` + PDF 匯出驗證 | 回退 PDF 匯出模組變更 | Mitigated |
+| UI/Preferences Schema v5 | 偏好設定擴充至 27 欄位 (v5) 可能使舊版 v1~v4 JSON 解析失敗 | `AppearancePreferences.from_mapping` 提供嚴格型別校驗與記憶體向下相容 fallback，不污染/損壞儲存資料 | 覆蓋 v1~v5 mapping 轉換單元測試 | `test_appearance_preferences.py` | 回復偏好契約版本 | Mitigated |
+

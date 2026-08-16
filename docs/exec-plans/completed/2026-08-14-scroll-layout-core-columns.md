@@ -1,6 +1,6 @@
 # 001#卷軸排版與核心欄位模式改版
 
-Plan status: active
+Plan status: completed
 
 ## Done state
 

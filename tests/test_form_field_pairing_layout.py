@@ -104,6 +104,12 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             for row in dialog.findChildren(QWidget)
             if row.objectName().endswith("Row")
         ]
+        self._assert_compacted_text_edit(dialog.pending_items_input, 100)
+        paired_rows = [
+            row
+            for row in dialog.findChildren(QWidget)
+            if row.objectName().endswith("Row")
+        ]
         for row in paired_rows:
             self.assertFalse(row.isAncestorOf(dialog.supplier_combo))
             self.assertFalse(row.isAncestorOf(dialog.product_combo))
@@ -111,20 +117,20 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
     def test_visit_dialog_pairs_only_good_candidate_fields(self) -> None:
         dialog = self._show_dialog(NewVisitDialog())
 
-        basic_row = self._row(dialog, "VisitBasicDateVisitorRow")
-        self._assert_row_contains(basic_row, dialog.date_edit, dialog.visitor_input)
+        basic_row = self._row(dialog, "VisitBasicDateTimeSlotRow")
+        self._assert_row_contains(basic_row, dialog.date_edit, dialog.time_slot_input)
         self.assertFalse(basic_row.isAncestorOf(dialog.supplier_combo))
         self.assertFalse(basic_row.isAncestorOf(dialog.product_combo))
         self.assertFalse(basic_row.isAncestorOf(dialog.product_code_input))
 
-        time_order_row = self._row(dialog, "VisitAdvancedTimeOrderRow")
+        code_order_row = self._row(dialog, "VisitProductCodeWorkOrderRow")
         self._assert_row_contains(
-            time_order_row,
-            dialog.time_slot_input,
+            code_order_row,
+            dialog.product_code_input,
             dialog.work_order_input,
         )
 
-        qty_transfer_row = self._row(dialog, "VisitAdvancedQtyTransferRow")
+        qty_transfer_row = self._row(dialog, "VisitQtyTechTransferRow")
         self._assert_row_contains(
             qty_transfer_row,
             dialog.qty_input,
@@ -175,7 +181,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self.assertFalse(contact_row.isAncestorOf(dialog.supplier_name_input))
         self.assertFalse(phone_row.isAncestorOf(dialog.supplier_name_input))
 
-    def test_product_dialog_pairs_code_and_stage_only(self) -> None:
+    def test_product_dialog_pairs_code_and_stage_and_suppliers(self) -> None:
         dialog = self._show_dialog(
             ProductFormDialog([{"id": "supplier-1", "supplier_name": "測試供應商"}])
         )
@@ -186,8 +192,14 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.product_stage_combo,
         )
         self.assertFalse(row.isAncestorOf(dialog.product_name_input))
-        self.assertFalse(row.isAncestorOf(dialog.primary_supplier_combo))
-        self.assertFalse(row.isAncestorOf(dialog.secondary_supplier_combo))
+
+        suppliers_row = self._row(dialog, "ProductSuppliersRow")
+        self._assert_row_contains(
+            suppliers_row,
+            dialog.primary_supplier_combo,
+            dialog.secondary_supplier_combo,
+        )
+        self.assertFalse(suppliers_row.isAncestorOf(dialog.product_name_input))
 
 
 if __name__ == "__main__":

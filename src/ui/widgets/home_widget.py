@@ -28,6 +28,7 @@ from ncr.services import stats_service as warehouse_stats_service
 from services.event import _query_service as event_service
 from ui.layout_constants import (
     BACKLOG_SUPPLIER_MAX_COL_WIDTH,
+    CONTROL_ROW_SPACING,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
 )
@@ -68,7 +69,7 @@ class HomeWidget(QWidget):
         panel = QFrame()
         outer = QVBoxLayout(panel)
         outer.setContentsMargins(*PANEL_MARGINS)
-        outer.setSpacing(8)
+        outer.setSpacing(CONTROL_ROW_SPACING)
 
         self._backlog_title = QLabel("待辦事項（待處理異常，逾期優先）")
         self._backlog_title.setProperty("role", "sectionTitle")
@@ -113,7 +114,7 @@ class HomeWidget(QWidget):
         # 倉庫待處理正式雙入口：兩條處理線各自導向對應頁；未分流作為整理入口。
         shortcut_row = QHBoxLayout()
         shortcut_row.setContentsMargins(0, 0, 0, 0)
-        shortcut_row.setSpacing(8)
+        shortcut_row.setSpacing(CONTROL_ROW_SPACING)
         self._warehouse_outsource_btn = self._make_warehouse_shortcut(
             "HomeBacklogWarehouseOutsourceLink",
             "委外待處理：— 件　→",

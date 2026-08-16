@@ -129,6 +129,9 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.assertIsNone(content_host.property("role"))
         self.assertEqual("ContentHost", content_host.objectName())
 
+        _ = self.window.events_widget
+        _ = self.window.master_widget
+
         nested_panels = [
             frame
             for frame in self.window.findChildren(QFrame)

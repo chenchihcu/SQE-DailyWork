@@ -28,6 +28,7 @@ from database.connection import get_connection
 from database.product_stage import normalize_product_stage_ui
 from services import master_import_service
 from services.event import _product_service as event_service
+from ui.layout_constants import CONTROL_ROW_SPACING
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     SortableTableWidgetItem,
@@ -71,7 +72,7 @@ class _MasterDataProductMixin:
         row = QWidget()
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(8)
+        row_layout.setSpacing(CONTROL_ROW_SPACING)
 
         self.btn_product_create = self._create_toolbar_button(
             "新增",

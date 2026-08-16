@@ -111,8 +111,15 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
             )
         )
         form.addRow(RequiredFieldLabel("品名"), self.product_name_input)
-        form.addRow(RequiredFieldLabel("主供應商"), self.primary_supplier_combo)
-        form.addRow("次要供應商 (2nd source)", self.secondary_supplier_combo)
+        form.addRow(
+            make_paired_form_row(
+                "ProductSuppliersRow",
+                RequiredFieldLabel("主供應商"),
+                self.primary_supplier_combo,
+                "次要供應商",
+                self.secondary_supplier_combo,
+            )
+        )
         layout.addLayout(form)
 
         self.inline_error = make_inline_error_label()

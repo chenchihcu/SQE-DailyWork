@@ -53,7 +53,7 @@ class ExportRangeDialog(DirtyTrackingMixin, QDialog):
 
         # 表單佈局
         form_layout = QFormLayout()
-        form_layout.setSpacing(12)
+        form_layout.setSpacing(FORM_VERTICAL_SPACING)
         
         # 開始日期 (預設為今年一月一日)
         self.start_date_edit = QDateEdit()

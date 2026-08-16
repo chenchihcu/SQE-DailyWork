@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (
     QDialog,
 )
 
-from services.event import _export_service, _query_service
+from services.appearance_preferences_service import load_application_preferences
+from services.event import _query_service
 from ui.layout_constants import (
     INLINE_SPACING,
     INLINE_TIGHT_SPACING,
@@ -103,9 +104,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         top_layout.setSpacing(INLINE_SPACING)
 
         period_label = create_period_label()
+        prefs = load_application_preferences()
         self.range_selectors = create_year_month_range_selectors(
             self._on_range_changed,
             parent=self,
+            default_span_months=prefs.stats_default_span_months,
         )
 
         top_layout.addWidget(period_label)
@@ -469,12 +472,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         
         # 2. 彈出儲存路徑
         import os
+        from ui.export_helpers import get_default_export_filepath, handle_export_completion
         default_name = f"SQE_Quality_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
+        target_default = get_default_export_filepath(default_name)
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "匯出 Excel 報告",
-            default_name,
+            target_default,
             "Excel Files (*.xlsx)",
         )
         if not file_path:
@@ -539,6 +544,8 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
 
             # 呼叫匯出服務
+            from services.event import _export_service
+
             ok, msg = _export_service.export_events_report(
                 file_path,
                 start_date,
@@ -566,7 +573,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         + f"\n\n{msg}",
                     )
                 else:
-                    QMessageBox.information(self, "成功", f"Excel 報告匯出成功！\n{msg}")
+                    handle_export_completion(file_path, f"Excel 報告匯出成功！\n{msg}", self)
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
 

@@ -52,6 +52,44 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(4, lc.SIDEBAR_NAV_TOP_SPACING)
         self.assertEqual(6, lc.SIDEBAR_LOGO_TO_NAV_SPACING)
 
+    # -- 新增常數回歸測試 -------------------------------------------------
+
+    def test_control_row_spacing(self) -> None:
+        self.assertEqual(8, lc.CONTROL_ROW_SPACING)
+
+    def test_dialog_header_footer_constants(self) -> None:
+        self.assertEqual(44, lc.DIALOG_HEADER_HEIGHT)
+        self.assertEqual(88, lc.DIALOG_FOOTER_CLOSE_MIN_WIDTH)
+        self.assertEqual(16, lc.DIALOG_HEADER_FOOTER_H_MARGIN)
+
+    def test_dialog_body_and_card_margins(self) -> None:
+        self.assertEqual((16, 14, 16, 10), lc.DIALOG_BODY_MARGINS)
+        self.assertEqual((16, 12, 16, 12), lc.DIALOG_CARD_MARGINS)
+
+    def test_close_dialog_constants(self) -> None:
+        self.assertEqual((12, 8, 12, 8), lc.CLOSE_DIALOG_REF_MARGINS)
+        self.assertEqual(120, lc.CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
+
+    def test_empty_state_margins(self) -> None:
+        self.assertEqual((24, 32, 24, 32), lc.EMPTY_STATE_MARGINS)
+
+    def test_brand_divider_constants(self) -> None:
+        self.assertEqual((0, 6, 0, 4), lc.BRAND_DIVIDER_MARGINS)
+        self.assertEqual(5, lc.BRAND_DIVIDER_SPACING)
+
+    def test_text_edit_fallback_constants(self) -> None:
+        self.assertEqual(22, lc.TEXT_EDIT_FALLBACK_LINE_HEIGHT)
+        self.assertEqual(20, lc.TEXT_EDIT_FALLBACK_PADDING)
+
+    def test_filter_width_constants(self) -> None:
+        self.assertEqual(112, lc.FILTER_STATUS_COMBO_WIDTH)
+        self.assertEqual(104, lc.FILTER_MONTH_INPUT_WIDTH)
+        self.assertEqual(170, lc.FILTER_SUPPLIER_MIN_WIDTH)
+
+    def test_master_search_width_constants(self) -> None:
+        self.assertEqual(220, lc.MASTER_SEARCH_MIN_WIDTH)
+        self.assertEqual(340, lc.MASTER_SEARCH_MAX_WIDTH)
+
 
 if __name__ == "__main__":
     unittest.main()

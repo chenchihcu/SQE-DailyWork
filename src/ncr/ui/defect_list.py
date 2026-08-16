@@ -116,6 +116,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         *,
         workflow: str = "combined",
         processing_line: str | None = None,
+        lazy_load: bool = False,
     ):
         super().__init__(parent)
         if workflow not in VALID_WORKFLOWS:
@@ -143,9 +144,11 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self._page_size = NCR_ITEMS_PER_PAGE
         self._is_compact_profile = True
         self.tabs: QTabWidget | None = None
+        self._has_loaded = False
         self._build_ui()
         self._update_column_profile()
-        self.refresh_data()
+        if not lazy_load:
+            self.refresh_data()
 
     def _build_ui(self) -> None:
         page, content_layout = create_page_shell(show_header=False)
@@ -677,8 +680,9 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             QMessageBox.warning(self, "無可匯出資料", HINT_EMPTY_RESULT)
             return
 
+        from ui.export_helpers import get_default_export_filepath, handle_export_completion
         default_name = f"defect_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        default_path = BASE_DIR / default_name
+        default_path = get_default_export_filepath(default_name)
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "匯出 Excel",
@@ -689,6 +693,8 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             return
 
         try:
+            from ncr.services import export_service
+
             results = crud.get_defects(
                 self.conn,
                 filters,
@@ -705,7 +711,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             QMessageBox.critical(self, "匯出失敗", str(exc))
             return
 
-        QMessageBox.information(self, "匯出完成", f"Excel 已輸出至：\n{output_path}")
+        handle_export_completion(output_path, f"Excel 已輸出至：\n{output_path}", self)
 
     @staticmethod
     def _summarize_rows(

@@ -29,6 +29,7 @@ from PySide6.QtCore import QMargins, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QToolTip, QSizePolicy
 
+from services.appearance_preferences_service import load_application_preferences
 from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
@@ -326,6 +327,18 @@ class _StatsChartMixin:
         axis_x_percent.setGridLineVisible(False)
         chart.addAxis(axis_x_percent, Qt.AlignmentFlag.AlignTop)
         cumulative_series.attachAxis(axis_x_percent)
+
+        prefs = load_application_preferences()
+        if prefs.pareto_show_cutoff_line and categories:
+            cutoff_series = QLineSeries()
+            cutoff_series.setName("80% 警戒線")
+            cutoff_pen = QPen(QColor(TOKENS.get("warning", "#D97706")), 1.5, Qt.PenStyle.DashDotLine)
+            cutoff_series.setPen(cutoff_pen)
+            cutoff_series.append(80.0, -0.5)
+            cutoff_series.append(80.0, len(categories) - 0.5)
+            chart.addSeries(cutoff_series)
+            cutoff_series.attachAxis(axis_x_percent)
+            cutoff_series.attachAxis(axis_y)
 
         chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         if TOKENS.get("chart_axis_text"):

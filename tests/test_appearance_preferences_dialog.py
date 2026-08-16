@@ -47,7 +47,22 @@ class AppearancePreferencesDialogTests(unittest.TestCase):
     @patch("ui.widgets.appearance_preferences_dialog.load_application_preferences")
     def test_reset_only_previews_and_save_persists_selected_values(self, load_preferences, save_preferences) -> None:
         load_preferences.return_value = AppearancePreferences(
-            density="comfortable", text_scale="large", sidebar_density="compact", table_density="comfortable", contrast_mode="high"
+            density="comfortable",
+            text_scale="large",
+            sidebar_density="compact",
+            table_density="comfortable",
+            contrast_mode="high",
+            default_responsible_person="測試者",
+            default_anomaly_category="零件缺件",
+            default_sync_visit=False,
+            default_due_days=14,
+            default_visit_time_slot="上午",
+            default_export_dir="D:/Reports",
+            export_completion_action="open_folder",
+            report_organization_header="品保部",
+            export_include_charts=False,
+            backup_retention_count=20,
+            confirm_on_delete=False,
         )
         dialog = AppearancePreferencesDialog()
 
@@ -57,7 +72,21 @@ class AppearancePreferencesDialogTests(unittest.TestCase):
         self.assertTrue(dialog._text_scale_buttons["standard"].isChecked())
         self.assertTrue(dialog._sidebar_density_buttons["standard"].isChecked())
         self.assertTrue(dialog._table_density_buttons["standard"].isChecked())
-        self.assertTrue(dialog._contrast_mode_buttons["standard"].isChecked())
+        self.assertTrue(dialog._double_click_buttons["menu"].isChecked())
+        self.assertTrue(dialog._search_mode_buttons["live"].isChecked())
+        self.assertTrue(dialog._stats_span_buttons[6].isChecked())
+        self.assertTrue(dialog._pareto_cutoff_checkbox.isChecked())
+        self.assertEqual("", dialog._responsible_person_input.text())
+        self.assertEqual("", dialog._anomaly_category_combo.currentText())
+        self.assertTrue(dialog._sync_visit_checkbox.isChecked())
+        self.assertTrue(dialog._due_days_buttons[7].isChecked())
+        self.assertTrue(dialog._visit_time_slot_buttons["下午"].isChecked())
+        self.assertEqual("", dialog._export_dir_input.text())
+        self.assertTrue(dialog._export_action_buttons["open_file"].isChecked())
+        self.assertEqual("SQE 供應商品質工程部", dialog._report_header_input.text())
+        self.assertTrue(dialog._export_charts_checkbox.isChecked())
+        self.assertTrue(dialog._retention_count_buttons[10].isChecked())
+        self.assertTrue(dialog._confirm_delete_checkbox.isChecked())
 
         dialog.save_button.click()
         save_preferences.assert_called_once_with(AppearancePreferences.default())
@@ -66,7 +95,7 @@ class AppearancePreferencesDialogTests(unittest.TestCase):
     def test_controls_have_explicit_accessibility_and_fixed_action_order(self, load_preferences) -> None:
         load_preferences.return_value = AppearancePreferences.default()
         dialog = AppearancePreferencesDialog()
-        self.assertEqual("顯示設定", dialog.windowTitle())
+        self.assertEqual("系統與顯示設定", dialog.windowTitle())
         self.assertTrue(dialog._density_buttons["standard"].accessibleName())
         self.assertTrue(dialog._density_buttons["standard"].accessibleDescription())
         self.assertTrue(dialog._text_scale_buttons["large"].accessibleName())
@@ -74,23 +103,35 @@ class AppearancePreferencesDialogTests(unittest.TestCase):
         self.assertTrue(dialog._sidebar_density_buttons["compact"].accessibleName())
         self.assertTrue(dialog._table_density_buttons["comfortable"].accessibleName())
         self.assertTrue(dialog._contrast_mode_buttons["high"].accessibleName())
+        self.assertTrue(dialog._double_click_buttons["menu"].accessibleName())
+        self.assertTrue(dialog._search_mode_buttons["live"].accessibleName())
+        self.assertTrue(dialog._stats_span_buttons[6].accessibleName())
+        self.assertTrue(dialog._pareto_cutoff_checkbox.accessibleName())
+        self.assertTrue(dialog._responsible_person_input.accessibleName())
+        self.assertTrue(dialog._anomaly_category_combo.accessibleName())
+        self.assertTrue(dialog._sync_visit_checkbox.accessibleName())
+        self.assertTrue(dialog._export_dir_input.accessibleName())
+        self.assertTrue(dialog._browse_dir_button.accessibleName())
+        self.assertTrue(dialog._report_header_input.accessibleName())
+        self.assertTrue(dialog._export_charts_checkbox.accessibleName())
+        self.assertTrue(dialog._confirm_delete_checkbox.accessibleName())
         self.assertTrue(dialog.save_button.accessibleName())
         self.assertTrue(dialog.cancel_button.accessibleName())
 
     @patch("ui.widgets.appearance_preferences_dialog.load_application_preferences")
-    def test_uses_finite_preference_tabs_without_a_whole_dialog_scroll_body(self, load_preferences) -> None:
+    def test_uses_five_preference_tabs_without_a_whole_dialog_scroll_body(self, load_preferences) -> None:
         load_preferences.return_value = AppearancePreferences.default()
         dialog = AppearancePreferencesDialog()
 
         self.assertEqual([], dialog.findChildren(QScrollArea))
         self.assertIsInstance(dialog.preference_tabs, QTabWidget)
         self.assertEqual(
-            ["外觀與密度", "視覺與色彩", "系統與預設"],
+            ["外觀主題", "視覺表格", "表單業務預設", "匯出與報告", "系統與備份"],
             [dialog.preference_tabs.tabText(index) for index in range(dialog.preference_tabs.count())],
         )
-        self.assertEqual(3, dialog.preference_tabs.count())
-
+        self.assertEqual(5, dialog.preference_tabs.count())
 
 
 if __name__ == "__main__":
     unittest.main()
+

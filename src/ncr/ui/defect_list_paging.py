@@ -40,6 +40,7 @@ class _DefectListPagingMixin:
     """
 
     def refresh_data(self) -> None:
+        self._has_loaded = True
         self.current_page = 1
         self.refresh_filter_options()
         filters = self.build_filters()

@@ -13,6 +13,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from database import repository
+from ui.layout_constants import (
+    CONTROL_ROW_SPACING,
+    PANEL_MARGINS,
+)
 from ui.widgets.common_widgets import CreateWorkflowShell
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
@@ -24,7 +28,14 @@ CreateKind = Literal["anomaly", "visit"]
 class EventCreatePage(QWidget):
     """Full-page create flow with an explicit success decision and dirty guard."""
 
-    def __init__(self, main_window, kind: CreateKind, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        main_window,
+        kind: CreateKind,
+        parent: QWidget | None = None,
+        *,
+        lazy_load: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.main_window = main_window
         self.kind = kind
@@ -45,8 +56,8 @@ class EventCreatePage(QWidget):
         self.success_panel = QFrame()
         self.success_panel.setObjectName("EventCreateSuccessPanel")
         success_layout = QHBoxLayout(self.success_panel)
-        success_layout.setContentsMargins(12, 10, 12, 10)
-        success_layout.setSpacing(8)
+        success_layout.setContentsMargins(*PANEL_MARGINS)
+        success_layout.setSpacing(CONTROL_ROW_SPACING)
         self.success_message = QLabel()
         self.success_message.setProperty("role", "messageText")
         self.success_message.setProperty("tone", "success")
@@ -78,12 +89,32 @@ class EventCreatePage(QWidget):
         self.workflow_shell.add_action(self.return_button)
         self.workflow_shell.add_action(self.save_button)
 
-        self.form = None
-        self._install_form()
+        self._form = None
         self.view_list_button.clicked.connect(self._open_target_list)
         self.continue_button.clicked.connect(self.reset_form)
         self.return_button.clicked.connect(self.request_cancel)
         self.save_button.clicked.connect(self._submit_form)
+
+        if not lazy_load:
+            self._ensure_form_installed()
+
+    @property
+    def form(self):
+        if self._form is None:
+            self._ensure_form_installed()
+        return self._form
+
+    @form.setter
+    def form(self, val):
+        self._form = val
+
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        self._ensure_form_installed()
+
+    def _ensure_form_installed(self) -> None:
+        if self._form is None:
+            self._install_form()
 
     def _install_form(self) -> None:
         if self.kind == "anomaly":
@@ -96,7 +127,7 @@ class EventCreatePage(QWidget):
         if page_content is None:
             raise RuntimeError("全頁建立表單必須提供 page_content")
         self.workflow_shell.set_content(page_content)
-        self.form = form
+        self._form = form
         self._bind_page_submit_state(form)
 
     def _bind_page_submit_state(self, form: QWidget) -> None:
@@ -108,12 +139,13 @@ class EventCreatePage(QWidget):
         self._refresh_page_submit_state()
 
     def _refresh_page_submit_state(self, *_args: object) -> None:
-        if self.form is not None and hasattr(self.form, "can_submit"):
-            self.save_button.setEnabled(self.form.can_submit())
+        if self._form is not None and hasattr(self._form, "can_submit"):
+            self.save_button.setEnabled(self._form.can_submit())
 
     def _submit_form(self) -> None:
-        if self.form is not None:
-            self.form._on_submit()
+        self._ensure_form_installed()
+        if self._form is not None:
+            self._form._on_submit()
 
     def _on_form_saved(self, message: str) -> None:
         self.success_message.setText(message)
@@ -122,11 +154,13 @@ class EventCreatePage(QWidget):
         self.main_window.refresh_all_views()
 
     def can_leave(self) -> bool:
-        if not getattr(self.form, "_dirty", False):
+        if self._form is None:
             return True
-        if not self.form._confirm_discard():
+        if not getattr(self._form, "_dirty", False):
+            return True
+        if not self._form._confirm_discard():
             return False
-        self.form._dirty = False
+        self._form._dirty = False
         return True
 
     def request_cancel(self) -> None:
@@ -141,9 +175,10 @@ class EventCreatePage(QWidget):
         if old_content is not None:
             old_content.setParent(None)
             old_content.deleteLater()
-        if self.form is not None and self.form is not old_content:
-            self.form.setParent(None)
-            self.form.deleteLater()
+        if self._form is not None and self._form is not old_content:
+            self._form.setParent(None)
+            self._form.deleteLater()
+            self._form = None
         self.success_panel.hide()
         self.workflow_shell.show_feedback("")
         self._install_form()

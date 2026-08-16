@@ -217,6 +217,7 @@ NCR_ACTION_BUTTON_MIN_WIDTH = 96
 NCR_FILTER_BUTTON_MIN_WIDTH = 90
 NCR_FILTER_BUTTON_MAX_WIDTH = 110
 NCR_FORM_COMPACT_FIELD_MIN_WIDTH = 120
+
 NCR_DATE_FIELD_MIN_WIDTH = 150
 NCR_QUICK_ADD_BUTTON_MIN_WIDTH = 76
 NCR_TABLE_ROW_HEIGHT = 32
@@ -224,3 +225,63 @@ NCR_DASHBOARD_CHART_CARD_MIN_HEIGHT = 400
 NCR_ITEMS_PER_PAGE = 12
 NCR_WINDOW_SCREEN_WIDTH_RATIO = 0.94
 NCR_WINDOW_SCREEN_HEIGHT_RATIO = 0.92
+
+# ---------------------------------------------------------------------------
+# 通用元件間距常數（消除各 widget 中相同語意的硬編碼 setSpacing 值）
+# ---------------------------------------------------------------------------
+# 工具列、篩選列、操作列等並排控制項之間的標準間距
+CONTROL_ROW_SPACING = 8
+
+# ---------------------------------------------------------------------------
+# 對話框 header / footer / body 通用常數
+# ---------------------------------------------------------------------------
+# 對話框固定 header 高度（用於 VisitDetailDialog 等帶固定標題列的對話框）
+DIALOG_HEADER_HEIGHT = 44
+
+# 對話框 footer 關閉按鈕最小寬度
+DIALOG_FOOTER_CLOSE_MIN_WIDTH = 88
+
+# 對話框 header / footer 橫向內距（左、右）
+DIALOG_HEADER_FOOTER_H_MARGIN = 16
+
+# 對話框正文區 margins（上/下略有差異的常用 body 內距）
+DIALOG_BODY_MARGINS = (16, 14, 16, 10)
+
+# 對話框內資訊卡片 margins（2×2 grid 等卡片）
+DIALOG_CARD_MARGINS = (16, 12, 16, 12)
+
+# ---------------------------------------------------------------------------
+# 結案對話框專用常數
+# ---------------------------------------------------------------------------
+# 問題引用框 margins
+CLOSE_DIALOG_REF_MARGINS = (12, 8, 12, 8)
+
+# 唯讀問題描述區最小高度（從 240px 降至 120px 以減少無效高度佔用）
+CLOSE_DIALOG_PROBLEM_MIN_HEIGHT = 120
+
+# ---------------------------------------------------------------------------
+# 共用 UI 元件常數
+# ---------------------------------------------------------------------------
+# EmptyStateWidget 空狀態佔位框 margins
+EMPTY_STATE_MARGINS = (24, 32, 24, 32)
+
+# BrandDivider 品牌分隔線 margins 與間距
+BRAND_DIVIDER_MARGINS = (0, 6, 0, 4)
+BRAND_DIVIDER_SPACING = 5
+
+# 文字編輯器備用行高計算（用於不支援 document() 的自訂 widget）
+TEXT_EDIT_FALLBACK_LINE_HEIGHT = 22
+TEXT_EDIT_FALLBACK_PADDING = 20
+
+# ---------------------------------------------------------------------------
+# 篩選控制項固定寬度（事件管理頁等查詢列）
+# ---------------------------------------------------------------------------
+FILTER_STATUS_COMBO_WIDTH = 112
+FILTER_MONTH_INPUT_WIDTH = 104
+FILTER_SUPPLIER_MIN_WIDTH = 170
+
+# ---------------------------------------------------------------------------
+# 主檔搜尋框寬度限制
+# ---------------------------------------------------------------------------
+MASTER_SEARCH_MIN_WIDTH = 220
+MASTER_SEARCH_MAX_WIDTH = 340

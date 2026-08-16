@@ -444,7 +444,7 @@ def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, in
 
 
 def _capture_appearance_settings(output: Path, app: "QApplication") -> list[str]:
-    """Capture default and full high-readability preview states without persistence."""
+    """Capture default, table-settings tab, and full high-readability preview states without persistence."""
     from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
 
     default_dialog = AppearancePreferencesDialog()
@@ -455,6 +455,15 @@ def _capture_appearance_settings(output: Path, app: "QApplication") -> list[str]
             app,
         )
     ]
+    table_tab_dialog = AppearancePreferencesDialog()
+    table_tab_dialog.preference_tabs.setCurrentIndex(1)
+    screenshots.append(
+        _capture_widget(
+            table_tab_dialog,
+            _target_output_path(output, "appearance-settings-tables-tab"),
+            app,
+        )
+    )
     preview_dialog = AppearancePreferencesDialog()
     preview_dialog._density_buttons["comfortable"].click()
     preview_dialog._text_scale_buttons["large"].click()

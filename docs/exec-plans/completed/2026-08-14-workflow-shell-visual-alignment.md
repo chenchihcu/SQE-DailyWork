@@ -1,6 +1,6 @@
 # 001#全專案建立頁與工作頁視覺一致性改版
 
-Plan status: active
+Plan status: completed
 
 ## Done state
 
