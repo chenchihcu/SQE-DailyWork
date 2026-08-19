@@ -22,6 +22,7 @@ from ui.layout_constants import (
     SIDEBAR_LOGO_SECTION_BOTTOM_SPACING,
     SIDEBAR_LOGO_SECTION_MARGINS,
     SIDEBAR_LOGO_SECTION_SPACING,
+    SIDEBAR_NAV_GROUP_GAP,
     SIDEBAR_NAV_ITEM_HEIGHT,
     SIDEBAR_NAV_TOP_SPACING,
     SIDEBAR_WIDTH,
@@ -29,7 +30,6 @@ from ui.layout_constants import (
 from ui.theme import asset_path
 
 _NAV_ICON_SIZE = 18
-_NAV_GROUP_GAP = 14  # 群組以「圖示 + 間距」區隔，取代原本的分組標題文字
 _NAV_ICON_COLOR = _PALETTE["sidebar_text"]
 _NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
 
@@ -243,7 +243,7 @@ class SidebarNav(QFrame):
         nav_layout.addSpacing(SIDEBAR_NAV_TOP_SPACING)
         for header, items in _NAV_GROUPS:
             if header is not None:
-                nav_layout.addSpacing(_NAV_GROUP_GAP)
+                nav_layout.addSpacing(SIDEBAR_NAV_GROUP_GAP)
                 nav_layout.addWidget(self._make_group_header(header))
             for label, action, badge_enabled, icon in items:
                 nav_layout.addWidget(
