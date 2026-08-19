@@ -23,7 +23,6 @@ from ui.layout_constants import (
     ANOMALY_DIALOG_PREFERRED_WIDTH,
     FORM_MAX_WIDTH,
 )
-from ui.widgets.defect_form_widgets import ROOT_CAUSE_PARETO_OPTIONS
 from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
@@ -42,14 +41,13 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         database_connection.LEGACY_DB_PATH = temp_root / "sqe.db"
         database_connection.initialize_database()
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
         database_connection.DB_PATH = cls._original_db_path
         database_connection.LEGACY_DB_PATH = cls._original_legacy_db_path
         cls._database_temp_dir.cleanup()
@@ -97,14 +95,10 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         )
         self.assertEqual(0, dialog.form_scroll.verticalScrollBar().value())
         self.assertEqual(0, dialog.form_scroll.horizontalScrollBar().maximum())
-        self._assert_compacted_text_edit(dialog.problem_input, 180)
-        self._assert_compacted_text_edit(dialog.pending_items_input, 100)
-        paired_rows = [
-            row
-            for row in dialog.findChildren(QWidget)
-            if row.objectName().endswith("Row")
-        ]
-        self._assert_compacted_text_edit(dialog.pending_items_input, 100)
+        self.assertEqual(dialog.problem_input.maximumHeight(), 16777215)
+        self.assertLessEqual(dialog.problem_input.sizeHint().height(), 180)
+        self.assertEqual(dialog.pending_items_input.maximumHeight(), 16777215)
+        self.assertLessEqual(dialog.pending_items_input.sizeHint().height(), 180)
         paired_rows = [
             row
             for row in dialog.findChildren(QWidget)

@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -67,7 +66,6 @@ from ui.widgets.defect_form_widgets import (
     TECH_TRANSFER_STATE_YES,
     apply_dialog_layout,
     set_combo_current_text,
-    set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
 )
@@ -150,6 +148,10 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.product_code_input.setPlaceholderText("選取產品後自動帶入")
 
         self.outsource_work_order_input = QLineEdit()
+        if prefs.auto_uppercase_part_no:
+            self.outsource_work_order_input.textChanged.connect(
+                lambda t: self.outsource_work_order_input.setText(t.upper()) if t != t.upper() else None
+            )
         self.batch_qty_input = QLineEdit()
         self.batch_qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.responsible_person_input = QLineEdit()
@@ -195,9 +197,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             combo.setMinimumContentsLength(12)
 
         self.problem_input = BulletListWidget(placeholder="輸入不良現象...")
-        set_text_edit_visible_rows(self.problem_input, 5)
         self.pending_items_input = BulletListWidget(placeholder="輸入確認事項 / 待追蹤...")
-        set_text_edit_visible_rows(self.pending_items_input, 3)
 
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
         initial_sync_visit = prefs.default_sync_visit if not self._is_edit and not self._initial_data else True
@@ -235,7 +235,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         grid.setColumnStretch(4, 2)
         grid.setColumnStretch(5, 0)
 
-        _LEFT_TOP = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         grid.addWidget(RequiredFieldLabel("供應商"), 0, 0)
         grid.addWidget(self.supplier_combo, 0, 1, 1, 2)
         grid.addWidget(RequiredFieldLabel("日期"), 0, 3)
@@ -461,21 +460,17 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.pending_items_input.setReadOnly(True)
         self.anomaly_no_preview_input.setReadOnly(True)
 
-        # Risk control combos
         self.rc_supplier_inv_combo.setEnabled(False)
         self.rc_supplier_wip_combo.setEnabled(False)
         self.rc_in_transit_combo.setEnabled(False)
         self.rc_internal_inv_combo.setEnabled(False)
 
-        # Hide sync visit options in preview
         self.sync_visit_check.setVisible(False)
         self._sync_visit_hint_label.setVisible(False)
 
-        # Link visit buttons
         self.link_visit_button.setEnabled(False)
         self.unlink_visit_button.setEnabled(False)
 
-        # Attachment editor
         self.attachment_editor.set_read_only(True)
 
         # Change Save button to Close and hide Cancel (redundant in read-only mode)
@@ -533,14 +528,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.anomaly_no_preview_input.setText(preview)
 
     def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
-        self._product_items = products
         self._refresh_submit_state()
         self._load_tech_transfer_ref(supplier_id)
         self._apply_same_day_visit_defaults()
 
     def _load_tech_transfer_ref(self, supplier_id: str) -> None:
         """查詢該供應商最新技轉訪廠資料並更新參考資料卡片。"""
-        # 重置所有 label
         for lbl in self._ref_data_labels.values():
             lbl.setText("—")
             lbl.setProperty("status", "muted")
@@ -643,7 +636,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self._product_code_by_id[product_id] = product_code
 
         if product_id:
-            # Sync product code display
             self.product_code_input.setText(self._product_code_by_id.get(product_id, product_code))
         else:
             self.product_code_input.clear()
@@ -742,7 +734,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                 localize_popup_message("異常單號必須為 11 位純數字"),
             )
             return
-        
+
         expected_prefix = self.date_edit.date().toString("yyyyMMdd")
         if not anomaly_no_val.startswith(expected_prefix):
             QMessageBox.warning(
@@ -751,7 +743,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                 localize_popup_message(f"異常單號前 8 碼必須與所選日期 ({expected_prefix}) 一致"),
             )
             return
-            
+
         due_date_value = ""
         if self.due_date_check.isChecked():
             due_date_value = self.due_date_edit.date().toString("yyyy-MM-dd")

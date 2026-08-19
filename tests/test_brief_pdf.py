@@ -23,7 +23,7 @@ class BriefPdfExportTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.scratch = Path("scratch")
@@ -155,7 +155,6 @@ class BriefPdfExportTests(unittest.TestCase):
     def test_line_service_copy_image_to_clipboard_does_not_crash(self) -> None:
         from PySide6.QtGui import QImage
 
-        # Create a small test image
         image = QImage(100, 100, QImage.Format.Format_ARGB32)
         image.fill(0xFFFF0000)
 

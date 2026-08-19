@@ -181,11 +181,14 @@ class HomeWidget(QWidget):
                 )
         except Exception:
             logger.exception("讀取不合格品統計失敗")
+            if hasattr(self.main_window, "statusBar"):
+                self.main_window.statusBar().showMessage("讀取倉庫待處理統計失敗，請檢查資料庫連線。", 8000)
 
         self._refresh_backlog(pending_counts)
 
     def _refresh_backlog(self, pending_counts: dict[str, int]) -> None:
         """Populate the read-only backlog list from existing services only."""
+        backlog_error: str | None = None
         try:
             overdue_rows = event_service.list_events(
                 {"event_type": "ANOMALY", "status": "待處理", "overdue_only": True}
@@ -193,6 +196,7 @@ class HomeWidget(QWidget):
         except Exception:
             logger.exception("讀取逾期待辦清單失敗")
             overdue_rows = []
+            backlog_error = "讀取逾期待辦清單失敗，請檢查資料庫連線。"
         try:
             pending_rows = event_service.list_events(
                 {"event_type": "ANOMALY", "status": "待處理"}
@@ -200,6 +204,7 @@ class HomeWidget(QWidget):
         except Exception:
             logger.exception("讀取待辦清單失敗")
             pending_rows = []
+            backlog_error = backlog_error or "讀取待辦清單失敗，請檢查資料庫連線。"
 
         # 逾期優先，再補其餘待處理；以 event_id 去重。
         merged: list[dict] = []
@@ -212,7 +217,7 @@ class HomeWidget(QWidget):
             seen.add(key)
             merged.append(row)
 
-        self._render_backlog_rows(merged[: self._BACKLOG_LIMIT])
+        self._render_backlog_rows(merged[: self._BACKLOG_LIMIT], error_message=backlog_error)
 
         self._warehouse_outsource_btn.setText(
             f"委外待處理：{int(pending_counts.get(PROCESSING_LINE_OUTSOURCE, 0))} 件　→"
@@ -224,11 +229,19 @@ class HomeWidget(QWidget):
             f"未分流待整理：{int(pending_counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))} 件　→"
         )
 
-    def _render_backlog_rows(self, rows: list[dict]) -> None:
+    def _render_backlog_rows(self, rows: list[dict], *, error_message: str | None = None) -> None:
         self._backlog_rows = list(rows)
         has_rows = bool(rows)
         self._backlog_table.setVisible(has_rows)
         self._backlog_empty.setVisible(not has_rows)
+        if not has_rows:
+            if error_message:
+                self._backlog_empty.set_message("待辦清單載入失敗", error_message)
+            else:
+                self._backlog_empty.set_message(
+                    "目前沒有待處理異常",
+                    "本月供應商異常均已結案，或尚無待處理項目。",
+                )
 
         with preserve_table_sorting(self._backlog_table):
             self._backlog_table.setRowCount(0)

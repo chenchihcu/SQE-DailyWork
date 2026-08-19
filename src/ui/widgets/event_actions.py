@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services import event_service as event_service
 from services.event import _anomaly_service, _visit_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.defect_form_shim import CloseAnomalyDialog
@@ -43,9 +42,7 @@ def build_event_action_menu(
     action_map: dict[QAction, str] = {}
 
     def _add_action(label: str, key: str) -> None:
-        action = menu.addAction(label)
-        if action is not None:
-            action_map[action] = key
+        action_map[menu.addAction(label)] = key
 
     event_type = str(row.get("event_type") or "").strip().upper()
     if event_type == "ANOMALY":
@@ -73,17 +70,31 @@ def build_event_action_menu(
     return menu, action_map
 
 
-def _confirm_and_delete(parent: QWidget, item_type: str, item_name: str, delete_func: Callable[[], None], refresh_func: Callable[[], None]) -> None:
-    box = QMessageBox(parent)
-    box.setWindowTitle("確認刪除")
-    box.setText(localize_popup_message(f"確定要刪除{item_type}「{item_name}」？\n此操作無法復原。"))
-    box.setIcon(QMessageBox.Icon.Warning)
-    btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
-    box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(btn_yes)
-    box.exec()
-    if box.clickedButton() is not btn_yes:
-        return
+def _confirm_and_delete(
+    parent: QWidget,
+    item_type: str,
+    item_name: str,
+    delete_func: Callable[[], None],
+    refresh_func: Callable[[], None],
+) -> None:
+    try:
+        from services.appearance_preferences_service import load_application_preferences
+        prefs = load_application_preferences()
+        require_confirm = prefs.confirm_on_delete
+    except Exception:
+        require_confirm = True
+
+    if require_confirm:
+        box = QMessageBox(parent)
+        box.setWindowTitle("確認刪除")
+        box.setText(localize_popup_message(f"確定要刪除{item_type}「{item_name}」？\n此操作無法復原。"))
+        box.setIcon(QMessageBox.Icon.Warning)
+        btn_yes = box.addButton("刪除", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_yes)
+        box.exec()
+        if box.clickedButton() is not btn_yes:
+            return
     try:
         delete_func()
         refresh_func()
@@ -97,7 +108,6 @@ def _confirm_and_delete(parent: QWidget, item_type: str, item_name: str, delete_
             "錯誤",
             localize_popup_message(f"刪除{item_type}失敗：{localize_exception(exc)}"),
         )
-
 
 
 def dispatch_event_action(

@@ -228,17 +228,34 @@ def export_events_report(
 
         workbook = Workbook()
 
+        try:
+            from services.appearance_preferences_service import load_application_preferences
+            prefs = load_application_preferences()
+        except Exception:
+            prefs = None
+
+        excel_theme = getattr(prefs, "excel_theme_style", "classic_navy")
+        if excel_theme == "slate_gray":
+            primary_color = "334155"
+            kpi_bg_color = "F1F5F9"
+        elif excel_theme == "forest_green":
+            primary_color = "14532D"
+            kpi_bg_color = "F0FDF4"
+        else:
+            primary_color = "1E3A8A"
+            kpi_bg_color = "EFF6FF"
+
         # 樣式定義
         FONT_NAME = "Microsoft JhengHei"
         STYLE_FONT = Font(name=FONT_NAME, size=11)
         STYLE_FONT_BOLD = Font(name=FONT_NAME, size=11, bold=True)
         STYLE_HEADER_FONT = Font(name=FONT_NAME, size=11, bold=True, color="FFFFFF")
-        STYLE_TITLE_FONT = Font(name=FONT_NAME, size=18, bold=True, color="1E3A8A")
+        STYLE_TITLE_FONT = Font(name=FONT_NAME, size=18, bold=True, color=primary_color)
         STYLE_SUBTITLE_FONT = Font(name=FONT_NAME, size=10, italic=True, color="6B7280")
 
-        STYLE_FILL_HEADER = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+        STYLE_FILL_HEADER = PatternFill(start_color=primary_color, end_color=primary_color, fill_type="solid")
         STYLE_FILL_ZEBRA = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
-        STYLE_FILL_KPI_BG = PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid")
+        STYLE_FILL_KPI_BG = PatternFill(start_color=kpi_bg_color, end_color=kpi_bg_color, fill_type="solid")
         STYLE_FILL_TOTAL = PatternFill(start_color="E5E7EB", end_color="E5E7EB", fill_type="solid")
 
         STYLE_BORDER_THIN = Border(
@@ -587,6 +604,14 @@ def export_events_report(
                 cell = rank_sheet.cell(row=total_row_idx, column=c_idx)
                 cell.border = STYLE_BORDER_TOTAL
                 cell.fill = STYLE_FILL_TOTAL
+
+            if getattr(prefs, "export_include_disclaimer", True):
+                disclaimer_text = "※ 免責聲明：本報表所載之品質資料屬 Mitcorp 內部機密，僅供 SQE 供應商管理與工程分析使用，未經授權禁止外傳。"
+                disclaimer_row = total_row_idx + 2
+                rank_sheet.merge_cells(start_row=disclaimer_row, start_column=1, end_row=disclaimer_row, end_column=len(rank_headers))
+                d_cell = rank_sheet.cell(row=disclaimer_row, column=1, value=disclaimer_text)
+                d_cell.font = STYLE_SUBTITLE_FONT
+                d_cell.alignment = ALIGN_LEFT
 
         _auto_fit(rank_sheet)
 

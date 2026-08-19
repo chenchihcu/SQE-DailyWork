@@ -19,15 +19,13 @@ class EventPreviewTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def test_anomaly_menu_contains_preview(self):
         row = {"event_type": "ANOMALY", "status": "待處理", "linked_visit_id": ""}
         menu, action_map = build_event_action_menu(None, row)
         actions = [a.text() for a in menu.actions()]
         self.assertIn("預覽內容", actions)
-        
-        # Verify action mapping
         preview_action = [a for a in menu.actions() if a.text() == "預覽內容"][0]
         self.assertEqual(action_map[preview_action], ACTION_PREVIEW_ANOMALY)
 
@@ -43,7 +41,6 @@ class EventPreviewTests(unittest.TestCase):
     @patch("services.event_service.list_active_suppliers", return_value=[])
     def test_anomaly_dialog_read_only_mode(self, mock_suppliers):
         dialog = NewAnomalyDialog(read_only=True)
-        # Check some key widgets
         self.assertFalse(dialog.date_edit.isEnabled())
         self.assertFalse(dialog.supplier_combo.isEnabled())
         self.assertTrue(dialog.problem_input.isReadOnly())

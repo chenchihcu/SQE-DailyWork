@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 
 from PySide6.QtCore import QEvent, QObject
@@ -97,6 +98,24 @@ _ACCENT_COLOR_TOKEN_OVERRIDES = {
         "toolbar_primary": "#B45309",
         "toolbar_primary_hover": "#92400E",
     },
+    "violet": {
+        "primary_btn": "#7C3AED",
+        "primary_btn_hover": "#6D28D9",
+        "brand_blue": "#7C3AED",
+        "focus_ring": "#8B5CF6",
+        "sidebar_active_bg": "#7C3AED",
+        "toolbar_primary": "#7C3AED",
+        "toolbar_primary_hover": "#6D28D9",
+    },
+    "rose": {
+        "primary_btn": "#E11D48",
+        "primary_btn_hover": "#BE123C",
+        "brand_blue": "#E11D48",
+        "focus_ring": "#F43F5E",
+        "sidebar_active_bg": "#E11D48",
+        "toolbar_primary": "#E11D48",
+        "toolbar_primary_hover": "#BE123C",
+    },
 }
 
 
@@ -124,7 +143,6 @@ def _set_token_profile(preferences: AppearancePreferences) -> None:
         TOKENS.update(_HIGH_CONTRAST_TOKEN_OVERRIDES)
 
 
-
 def get_theme_qss(preferences: AppearancePreferences | None = None) -> str:
     """Build QSS from the requested profile without leaking a previous contrast mode."""
     normalized = preferences or AppearancePreferences.default()
@@ -143,24 +161,24 @@ def _supports_cjk_writing_system(font_db: type[QFontDatabase], family: str) -> b
     )
 
 
+@lru_cache(maxsize=1)
+def _resolve_preferred_cjk_font_family() -> str:
+    available_families = set(QFontDatabase.families())
+    for family in PREFERRED_CJK_FONT_FAMILIES:
+        if family in available_families and _supports_cjk_writing_system(QFontDatabase, family):
+            return family
+    for family in available_families:
+        if _supports_cjk_writing_system(QFontDatabase, family):
+            return family
+    return "Segoe UI"
+
+
 def apply_preferred_cjk_font(app: QApplication | None = None, *, scale: float = 1.0) -> None:
     target_app = app or QApplication.instance()
     if not isinstance(target_app, QApplication):
         return
 
-    available_families = set(QFontDatabase.families())
-    selected_family: str | None = None
-    for family in PREFERRED_CJK_FONT_FAMILIES:
-        if family in available_families and _supports_cjk_writing_system(QFontDatabase, family):
-            selected_family = family
-            break
-    if selected_family is None:
-        for family in QFontDatabase.families():
-            if _supports_cjk_writing_system(QFontDatabase, family):
-                selected_family = family
-                break
-    if selected_family is None:
-        selected_family = "Segoe UI"
+    selected_family = _resolve_preferred_cjk_font_family()
 
     app_font = target_app.font()
     app_font.setFamily(selected_family)
@@ -273,7 +291,7 @@ class _CalendarPaletteFilter(QObject):
             QEvent.Type.Show,
         }:
             _apply_calendar_palette(watched)
-        return super().eventFilter(watched, event)
+        return False
 
 
 class _ComboPopupPaletteFilter(QObject):
@@ -283,41 +301,41 @@ class _ComboPopupPaletteFilter(QObject):
             QEvent.Type.Show,
         }:
             _apply_combo_popup_palette(watched)
-        return super().eventFilter(watched, event)
+        return False
 
 
 def _refresh_existing_widgets(app: QApplication) -> None:
     """Re-polish live surfaces after a preview without recreating workflow state."""
+    metrics = get_active_appearance_metrics()
     for top_level in app.topLevelWidgets():
-        widgets = [top_level, *top_level.findChildren(QWidget)]
-        for widget in widgets:
-            style = widget.style()
-            style.unpolish(widget)
-            style.polish(widget)
-            if isinstance(widget, QCalendarWidget):
-                _apply_calendar_palette(widget)
-            elif isinstance(widget, QComboBox):
-                _apply_combo_popup_palette(widget)
-            elif isinstance(widget, QTableView):
-                metrics = get_active_appearance_metrics()
-                widget.verticalHeader().setDefaultSectionSize(metrics["table_item_height"])
-                widget.horizontalHeader().setMinimumHeight(metrics["header_height"])
-                widget.setShowGrid(_active_preferences.table_grid_lines)
-                widget.setAlternatingRowColors(_active_preferences.alternating_row_colors)
-            if widget.metaObject().className().endswith("ChartView"):
-                _refresh_chart_visuals(widget)
-            apply_appearance = getattr(widget, "apply_appearance_metrics", None)
+        for calendar in top_level.findChildren(QCalendarWidget):
+            _apply_calendar_palette(calendar)
+        for combo in top_level.findChildren(QComboBox):
+            _apply_combo_popup_palette(combo)
+        for view in top_level.findChildren(QTableView):
+            view.verticalHeader().setDefaultSectionSize(metrics["table_item_height"])
+            view.horizontalHeader().setMinimumHeight(metrics["header_height"])
+            view.setShowGrid(_active_preferences.table_grid_lines)
+            view.setAlternatingRowColors(_active_preferences.alternating_row_colors)
+
+        if isinstance(top_level, QTableView):
+            top_level.verticalHeader().setDefaultSectionSize(metrics["table_item_height"])
+            top_level.horizontalHeader().setMinimumHeight(metrics["header_height"])
+            top_level.setShowGrid(_active_preferences.table_grid_lines)
+            top_level.setAlternatingRowColors(_active_preferences.alternating_row_colors)
+
+        for child in top_level.findChildren(QWidget):
+            if child.metaObject().className().endswith("ChartView"):
+                _refresh_chart_visuals(child)
+            apply_appearance = getattr(child, "apply_appearance_metrics", None)
             if callable(apply_appearance):
-                apply_appearance(get_active_appearance_metrics())
-            # A few compatibility widgets intentionally expose ``layout`` as an
-            # instance attribute.  Support both that form and QWidget.layout().
-            layout_accessor = getattr(widget, "layout", None)
-            layout = layout_accessor() if callable(layout_accessor) else layout_accessor
-            if layout is not None:
-                layout.activate()
-                layout.update()
-            widget.updateGeometry()
-            widget.update()
+                apply_appearance(metrics)
+
+        apply_appearance_top = getattr(top_level, "apply_appearance_metrics", None)
+        if callable(apply_appearance_top):
+            apply_appearance_top(metrics)
+
+        top_level.update()
 
 
 def apply_app_theme(

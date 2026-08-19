@@ -34,7 +34,7 @@ class DefectFormFieldResetGroupsTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.conn = sqlite3.connect(":memory:")
@@ -164,7 +164,7 @@ class DefectFormItemNoRequiredTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.conn = sqlite3.connect(":memory:")

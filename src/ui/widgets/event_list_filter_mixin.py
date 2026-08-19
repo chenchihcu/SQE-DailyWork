@@ -17,12 +17,17 @@ class _EventListFilterMixin:
       - Filter attributes: self._filter_event_scope | self._filter_event_type |
         self._filter_status | self._filter_supplier | self._filter_yyyymm |
         self._filter_overdue_only | self._sort_col | self._sort_asc |
-        self._all_rows
+        self._all_rows | self._load_failed (bool; default False)
       - UI widget attributes: self.source_tag_label | self.status_combo |
         self.event_scope_tab_bar | self.supplier_filter_input |
         self.all_months_checkbox | self.month_input | self.export_pdf_button |
         self.empty_state | self.table | self.pagination
       - Host methods: self.refresh_data() | self._render_current_page()
+
+    Load-failure state:
+      The host should set ``self._load_failed = True`` when the underlying
+      query raises, and ``self._load_failed = False`` on success. The mixin
+      reads this flag via ``getattr`` so hosts that do not set it still work.
     """
 
     # -- Scope / source helpers -----------------------------------------------
@@ -216,13 +221,23 @@ class _EventListFilterMixin:
 
     def _update_empty_state(self) -> None:
         has_rows = len(self._all_rows) > 0
+        load_failed = getattr(self, "_load_failed", False)
         self.empty_state.setVisible(not has_rows)
         self.table.setVisible(has_rows)
         if not has_rows:
-            if self._has_active_filters():
+            if load_failed:
+                self.empty_state.set_message(
+                    "資料載入失敗",
+                    "無法從資料庫載入事件清單，請檢查資料庫連線後重試。",
+                )
+            elif self._has_active_filters():
                 self.empty_state.set_message("找不到符合條件的事件，請調整篩選條件。")
             else:
                 self.empty_state.set_message(self._default_empty_message())
+
+    def _set_load_failed(self, failed: bool) -> None:
+        """Mark the most recent query as failed so the empty state can distinguish errors."""
+        self._load_failed = failed
 
     def _normalize_month_filter(self, yyyymm: str | None) -> str | None:
         text = str(yyyymm or "").strip().replace("-", "")

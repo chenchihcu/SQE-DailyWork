@@ -36,14 +36,14 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
 
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.window = MainWindow()
@@ -82,10 +82,14 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
             PROCESSING_LINE_OUTSOURCE,
             outsource_widget.processing_line_scope_notice.text(),
         )
+        self.assertFalse(outsource_widget.processing_line_scope_notice.isWindow())
+        self.assertIsNotNone(outsource_widget.processing_line_scope_notice.parent())
         self.assertIn(
             PROCESSING_LINE_MATERIAL,
             material_widget.processing_line_scope_notice.text(),
         )
+        self.assertFalse(material_widget.processing_line_scope_notice.isWindow())
+        self.assertIsNotNone(material_widget.processing_line_scope_notice.parent())
         self.assertEqual("trace", history_widget.workflow)
         for page in (create_page, outsource_page, material_page, history_page):
             self.assertIsNone(page.findChild(QTabWidget, "defectTrackerTabs"))
@@ -98,6 +102,8 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.assertIsNotNone(shell)
         assert shell is not None
         self.assertIs(shell.content_scroll.widget(), form.fields_widget)
+        self.assertFalse(form.feedback_label.isWindow())
+        self.assertIsNotNone(form.feedback_label.parent())
         self.assertEqual(1, len(form.findChildren(QScrollArea, "CreateWorkflowScroll")))
         panels = [
             frame

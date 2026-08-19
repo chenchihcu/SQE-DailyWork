@@ -24,11 +24,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._app = QApplication.instance() or QApplication([])
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls._app is not None:
-            cls._app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self._pandas_patch = patch.dict(sys.modules, {"pandas": ModuleType("pandas")})

@@ -25,7 +25,7 @@ class EventPdfExportTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.scratch = Path("scratch")
@@ -327,8 +327,6 @@ class EventPdfExportTests(unittest.TestCase):
                 target_dir.rmdir()
 
     def test_attachment_html_scales_large_and_multiple_images_for_pdf(self) -> None:
-        from services import attachment_manager
-
         anomaly_id = f"anomaly-layout-{uuid4().hex}"
         target_dir = attachment_manager.ANOMALY_ATTACHMENT_ROOT / anomaly_id
         target_dir.mkdir(parents=True, exist_ok=True)

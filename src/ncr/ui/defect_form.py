@@ -90,7 +90,6 @@ from ncr.ui.ui_style import (
     add_labeled_field,
     apply_form_inputs,
     create_form_grid,
-    create_page_shell,
     create_section_card,
     create_section_title,
     fit_window_to_available_screen,
@@ -99,6 +98,7 @@ from ncr.ui.ui_style import (
     set_button_role,
     format_datetime,
 )
+from ui.widgets.common_widgets import RequiredFieldLabel
 
 
 def _connect_dirty_tracking_signals(
@@ -361,6 +361,16 @@ class DefectFieldsWidget(QWidget):
         self.disposition_combo.addItems(DISPOSITION_OPTIONS)
         self.disposition_combo.setAccessibleName("處置方式")
 
+        self._apply_default_disposition()
+        try:
+            from services.appearance_preferences_service import load_application_preferences
+            prefs = load_application_preferences()
+            if prefs.auto_uppercase_part_no:
+                for line_edit in (self.work_order_input, self.internal_work_order_input, self.transfer_slip_input, self.item_no_input):
+                    line_edit.textChanged.connect(lambda t, w=line_edit: w.setText(t.upper()) if t != t.upper() else None)
+        except Exception:
+            pass
+
         self.responsibility_combo = QComboBox()
         self.responsibility_combo.addItems(RESPONSIBILITY_OPTIONS)
         self.responsibility_combo.setAccessibleName("責任歸屬")
@@ -384,6 +394,7 @@ class DefectFieldsWidget(QWidget):
                 self.responsibility_combo,
             ]
         )
+
 
         layout.setContentsMargins(*NCR_DEFECT_FORM_CONTENT_MARGINS)
         layout.setSpacing(NCR_SECTION_SPACING)
@@ -463,7 +474,6 @@ class DefectFieldsWidget(QWidget):
         self.supplier_hint_label = make_notice_label("", role="messageText")
         layout.addWidget(self.supplier_hint_label)
 
-        # 分隔線或間距也可以在此加
         layout.addSpacing(10)
 
         # 2. 不良現象紀錄
@@ -533,6 +543,17 @@ class DefectFieldsWidget(QWidget):
         field_column_span: int = 1,
         required: bool = False,
     ) -> QLabel:
+        # Use RequiredFieldLabel for required fields to match main-app pattern
+        # (ui-ux-universal §2: unified red asterisk markers)
+        if required:
+            from ncr.ui.ui_style import apply_input_style
+            label = RequiredFieldLabel(label_text)
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            label.setFixedWidth(FORM_COMPACT_LABEL_WIDTH)
+            apply_input_style(widget=field, minimum_width=NCR_FORM_COMPACT_FIELD_MIN_WIDTH)
+            layout.addWidget(label, row, column_offset)
+            layout.addWidget(field, row, column_offset + 1, 1, field_column_span)
+            return label
         return add_labeled_field(
             layout,
             row,
@@ -670,6 +691,22 @@ class DefectFieldsWidget(QWidget):
         "status", "disposition", "responsibility",
     })
 
+    def _apply_default_disposition(self) -> None:
+        """套用使用者偏好的預設處置方式；未設定或清單中不存在時退回第一個選項。
+
+        保留 try/except 防禦包覆與惰性 import：偏好服務為選用相依，
+        不可因偏好讀取失敗阻斷表單建構或欄位重置。
+        """
+        try:
+            from services.appearance_preferences_service import load_application_preferences
+            prefs = load_application_preferences()
+            if prefs.default_defect_disposition and self.disposition_combo.findText(prefs.default_defect_disposition) != -1:
+                self.disposition_combo.setCurrentText(prefs.default_defect_disposition)
+            else:
+                self.disposition_combo.setCurrentIndex(0)
+        except Exception:
+            self.disposition_combo.setCurrentIndex(0)
+
     def _reset_field_group(self, groups: set[str]) -> None:
         """Reset a named subset of form fields. Shared by reset_fields (all
         groups), prepare_next_continuous_entry (a subset that preserves
@@ -705,9 +742,10 @@ class DefectFieldsWidget(QWidget):
         if "status" in groups:
             self.status_combo.setCurrentText(STATUS_OPTIONS[0])
         if "disposition" in groups:
-            self.disposition_combo.setCurrentIndex(0)
+            self._apply_default_disposition()
         if "responsibility" in groups:
             self.responsibility_combo.setCurrentIndex(0)
+
         self._sync_supplier_outsource_guard()
 
     def reset_fields(self) -> None:
@@ -955,7 +993,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self.workflow_shell.add_action(self.clear_button)
         self.workflow_shell.add_action(self.save_button)
 
-        self.feedback_label = make_notice_label("", role="messageText")
+        self.feedback_label = self.workflow_shell.feedback_label
 
         self.fields_widget = DefectFieldsWidget(self.conn, lazy_load=lazy_load)
         self.fields_widget.product_created.connect(self._on_quick_product_created)
@@ -989,15 +1027,9 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         return self._is_dirty
 
     def _show_feedback(self, message: str, *, tone: str | None = None, visible: bool = True) -> None:
-        # role="messageText" is the shared inline-feedback style app-wide (see
-        # ui.widgets.common_widgets.make_inline_error_label / new_anomaly_dialog.py);
-        # tone selects the warning/danger/success color variant defined in _qss_base.py.
-        self.feedback_label.setProperty("role", "messageText")
-        self.feedback_label.setProperty("tone", tone)
-        self.feedback_label.setText(message)
-        self.feedback_label.style().unpolish(self.feedback_label)
-        self.feedback_label.style().polish(self.feedback_label)
-        self.feedback_label.setVisible(visible and bool(message))
+        if not visible:
+            message = ""
+        self.workflow_shell.show_feedback(message, tone=tone)
 
     def _confirm_discard_for_action(self, action_label: str) -> bool:
         if not self.has_unsaved_changes():

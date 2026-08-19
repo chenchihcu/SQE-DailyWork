@@ -66,14 +66,14 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
 
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self._widgets: list[StatsViewWidget] = []
@@ -163,10 +163,10 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertEqual(2, len(bar_sets))
         closed_set = bar_sets[0]
         open_set = bar_sets[1]
-        
+
         self.assertEqual("已結案", closed_set.label())
         self.assertEqual("未結案", open_set.label())
-        
+
         # In setup, B is last, so it's index 0 in reversed categories
         self.assertEqual(0, int(closed_set.at(0))) # B
         self.assertEqual(1, int(closed_set.at(1))) # A
@@ -174,7 +174,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertEqual(1, int(open_set.at(0))) # B
         self.assertEqual(2, int(open_set.at(1))) # A
         self.assertEqual(3, int(open_set.at(2))) # C
- 
+
         category_axis = next(
             axis
             for axis in widget._chart.axes(Qt.Orientation.Vertical)
@@ -184,7 +184,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             ["Supplier-B", "Supplier-A", "Supplier-C"],
             category_axis.categories(),
         )
- 
+
         self.assertEqual(
             QColor(get_status_palette("已結案").chart).name().lower(),
             closed_set.color().name().lower(),
@@ -194,7 +194,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             open_set.color().name().lower(),
         )
         self.assertTrue(widget._chart.legend().isVisible())
- 
+
         self.assertEqual([], widget.findChildren(QTabWidget))
         self.assertEqual("供應商事件", widget.source_tag_label.text())
         self.assertIn("倉庫不合格品統計", widget.source_tag_label.toolTip())
@@ -347,7 +347,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertEqual("", category_axis.titleText())
         self.assertFalse(category_axis.isTitleVisible())
 
-    def test_stats_view_chart_uses_enlarged_axis_fonts_and_shows_legend(self) -> None:
+    def test_stats_view_chart_uses_standardized_typography_hierarchy(self) -> None:
         summary = {
             "anomaly_count": 5,
             "visit_count": 1,
@@ -381,11 +381,14 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             if isinstance(axis, QBarCategoryAxis)
         )
 
-        self.assertEqual(11, value_axis.labelsFont().pointSize())
-        self.assertEqual(11, value_axis.titleFont().pointSize())
+        self.assertEqual(11, widget._chart.titleFont().pointSize())
+        self.assertTrue(widget._chart.titleFont().bold())
+        self.assertEqual(9, value_axis.labelsFont().pointSize())
+        self.assertEqual(9, value_axis.titleFont().pointSize())
+        self.assertTrue(value_axis.titleFont().bold())
         self.assertEqual(9, category_axis.labelsFont().pointSize())
-        self.assertEqual(11, category_axis.titleFont().pointSize())
         self.assertTrue(widget._chart.legend().isVisible())
+        self.assertEqual(8, widget._chart.legend().font().pointSize())
 
     def test_stats_view_chart_uses_dashed_gridline_and_clean_layout(self) -> None:
         rows = [
@@ -709,7 +712,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         }
         widget, _host = self._build_widget(summary, month=QDate(2026, 9, 1))
         assert widget._chart_series is not None
-        
+
         resp_data = [
             {
                 "responsible_person": "NorthStarSupplierAlpha",
@@ -733,6 +736,82 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         with patch("ui.widgets.stats_chart_mixin.QToolTip.hideText") as mock_hide:
             widget._on_resp_stacked_hovered(False, 0, resp_data)
         mock_hide.assert_called_once()
+
+    def test_all_chart_builders_adhere_to_typography_hierarchy(self) -> None:
+        """驗證所有統計圖表（責任人、柏拉圖、趨勢圖、訪廠圖）之字型設定均符合階層規範。"""
+        widget, _host = self._build_widget(
+            summary={"anomaly_count": 0, "visit_count": 0, "closed_anomaly_count": 0, "open_anomaly_count": 0},
+            month=QDate(2026, 10, 1),
+        )
+
+        # 1. 責任人堆疊圖
+        resp_rows = [
+            {"responsible_person": "張三", "total_count": 5, "closed_count": 3, "open_count": 2},
+            {"responsible_person": "李四", "total_count": 2, "closed_count": 1, "open_count": 1},
+        ]
+        resp_view = widget._build_responsible_stacked_chart(resp_rows)
+        self.assertIsNotNone(resp_view)
+        resp_chart = resp_view.chart()
+        self.assertEqual(11, resp_chart.titleFont().pointSize())
+        self.assertTrue(resp_chart.titleFont().bold())
+        self.assertEqual(8, resp_chart.legend().font().pointSize())
+        for axis in resp_chart.axes():
+            self.assertEqual(9, axis.labelsFont().pointSize())
+            if axis.titleText():
+                self.assertEqual(9, axis.titleFont().pointSize())
+                self.assertTrue(axis.titleFont().bold())
+
+        # 2. 柏拉圖
+        pareto_rows = [
+            {"category": "尺寸超差", "count": 10, "percent": 50.0, "cumulative_percent": 50.0},
+            {"category": "外觀刮傷", "count": 6, "percent": 30.0, "cumulative_percent": 80.0},
+            {"category": "組裝不良", "count": 4, "percent": 20.0, "cumulative_percent": 100.0},
+        ]
+        pareto_view = widget._build_category_pareto_chart(pareto_rows)
+        self.assertIsNotNone(pareto_view)
+        pareto_chart = pareto_view.chart()
+        self.assertEqual(11, pareto_chart.titleFont().pointSize())
+        self.assertTrue(pareto_chart.titleFont().bold())
+        self.assertEqual(8, pareto_chart.legend().font().pointSize())
+        for axis in pareto_chart.axes():
+            self.assertEqual(9, axis.labelsFont().pointSize())
+            if axis.titleText():
+                self.assertEqual(9, axis.titleFont().pointSize())
+                self.assertTrue(axis.titleFont().bold())
+
+        # 3. 趨勢圖
+        trend_rows = [
+            {"yyyymm": "2026-08", "total_count": 5, "closed_count": 4, "backlog_count": 1},
+            {"yyyymm": "2026-09", "total_count": 8, "closed_count": 6, "backlog_count": 2},
+        ]
+        trend_view = widget._build_trend_chart(trend_rows)
+        self.assertIsNotNone(trend_view)
+        trend_chart = trend_view.chart()
+        self.assertEqual(11, trend_chart.titleFont().pointSize())
+        self.assertTrue(trend_chart.titleFont().bold())
+        self.assertEqual(8, trend_chart.legend().font().pointSize())
+        for axis in trend_chart.axes():
+            self.assertEqual(9, axis.labelsFont().pointSize())
+            if axis.titleText():
+                self.assertEqual(9, axis.titleFont().pointSize())
+                self.assertTrue(axis.titleFont().bold())
+
+        # 4. 訪廠圖
+        visit_rows = [
+            {"yyyymm": "2026-08", "visit_count": 3, "visit_anomaly_count": 1},
+            {"yyyymm": "2026-09", "visit_count": 4, "visit_anomaly_count": 2},
+        ]
+        visit_view = widget._build_visit_trend_chart(visit_rows)
+        self.assertIsNotNone(visit_view)
+        visit_chart = visit_view.chart()
+        self.assertEqual(11, visit_chart.titleFont().pointSize())
+        self.assertTrue(visit_chart.titleFont().bold())
+        self.assertEqual(8, visit_chart.legend().font().pointSize())
+        for axis in visit_chart.axes():
+            self.assertEqual(9, axis.labelsFont().pointSize())
+            if axis.titleText():
+                self.assertEqual(9, axis.titleFont().pointSize())
+                self.assertTrue(axis.titleFont().bold())
 
 
 if __name__ == "__main__":

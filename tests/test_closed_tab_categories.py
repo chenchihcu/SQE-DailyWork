@@ -23,11 +23,10 @@ class ClosedTabCategoriesTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self._list_events_patch = patch(
@@ -40,7 +39,6 @@ class ClosedTabCategoriesTests(unittest.TestCase):
         self._list_events_patch.stop()
 
     def test_closed_tab_has_no_subtabs(self) -> None:
-        # Initialize with fixed_status="已結案"
         widget = EventListWidget(
             _DummyMainWindow(), 
             mode="query", 
@@ -48,10 +46,7 @@ class ClosedTabCategoriesTests(unittest.TestCase):
             fixed_status="已結案"
         )
         
-        # Verify sub-tabs are removed for unified "Closed" view
         self.assertIsNone(widget.event_scope_tab_bar)
-        
-        # Verify scope is fixed to CLOSED_ONLY
         self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, widget._filter_event_scope)
         
         widget.close()

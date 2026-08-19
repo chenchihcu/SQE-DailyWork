@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +23,7 @@ class BulletListItemRow(QWidget):
 
     def __init__(self, index: int = 1, text: str = "", parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(0, 2, 0, 2)
         self.layout.setSpacing(6)
@@ -32,6 +34,7 @@ class BulletListItemRow(QWidget):
         self.num_label.setProperty("uiRole", "bulletIndexLabel")
 
         self.line_edit = QLineEdit(text)
+        self.line_edit.setMinimumHeight(28)
         self.line_edit.setPlaceholderText(f"條目 {index}")
         self.line_edit.setAccessibleName(f"條目 {index}")
         self.line_edit.textChanged.connect(self._on_text_changed)
@@ -71,8 +74,10 @@ class BulletListWidget(QWidget):
 
     def __init__(self, placeholder: str = "新增條目...", parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self._rows: list[BulletListItemRow] = []
         self._placeholder = placeholder
+        self._read_only = False
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -98,6 +103,9 @@ class BulletListWidget(QWidget):
     def add_item(self, text: str = "") -> BulletListItemRow:
         index = len(self._rows) + 1
         row = BulletListItemRow(index=index, text=text, parent=self)
+        if self._read_only:
+            row.line_edit.setReadOnly(True)
+            row.btn_delete.setVisible(False)
         row.valueChanged.connect(self._on_row_value_changed)
         row.removeRequested.connect(self._remove_row)
         self._rows.append(row)
@@ -105,6 +113,7 @@ class BulletListWidget(QWidget):
         self._update_indices()
         self.items_layout.activate()
         self.items_layout.update()
+        self.updateGeometry()
         self.valueChanged.emit()
         return row
 
@@ -119,6 +128,9 @@ class BulletListWidget(QWidget):
             self.items_layout.removeWidget(row)
             row.deleteLater()
             self._update_indices()
+            self.items_layout.activate()
+            self.items_layout.update()
+            self.updateGeometry()
             self.valueChanged.emit()
 
     def _update_indices(self):
@@ -143,6 +155,9 @@ class BulletListWidget(QWidget):
         else:
             for item_text in items:
                 self.add_item(item_text)
+        self.items_layout.activate()
+        self.items_layout.update()
+        self.updateGeometry()
         self.valueChanged.emit()
 
     def get_formatted_text(self) -> str:
@@ -176,6 +191,9 @@ class BulletListWidget(QWidget):
         for row in self._rows:
             row.line_edit.setReadOnly(read_only)
             row.btn_delete.setVisible(not read_only)
+        self.items_layout.activate()
+        self.items_layout.update()
+        self.updateGeometry()
 
     def setPlainText(self, text: str):
         """Compatibility alias for QTextEdit.setPlainText."""

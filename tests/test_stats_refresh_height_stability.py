@@ -26,13 +26,13 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        pass  # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.widgets: list[QWidget] = []
@@ -89,7 +89,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
         ):
             widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
             self.widgets.append(widget)
-            
+
             widget.resize(1280, 800)
             widget.show()
             self.app.processEvents()
@@ -97,7 +97,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             # 找到 StatsScrollContent
             scroll_content = widget.findChild(QWidget, "StatsScrollContent")
             self.assertIsNotNone(scroll_content)
-            
+
             # 獲取初始高度
             initial_height = scroll_content.height()
             initial_size_hint = scroll_content.sizeHint().height()

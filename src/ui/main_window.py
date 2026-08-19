@@ -1,6 +1,8 @@
 import logging
+import os
 import sqlite3
 import sys
+
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,6 @@ from PySide6.QtWidgets import (
 from app_version import APP_TITLE
 from database.connection import get_connection
 from database import repository
-from services import event_service as event_service
 from services.appearance_preferences_service import load_application_preferences
 from services.event import _product_service, _query_service
 from ncr.db.database import DatabaseMigrationError
@@ -56,7 +57,10 @@ from ui.sidebar_nav import (
     SidebarNav,
 )
 from ui.theme import asset_path
-from ui.window_sizing import fit_widget_to_available_screen
+from ui.window_sizing import (
+    fit_widget_to_available_screen,
+    restore_or_fit_window_geometry,
+)
 from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.home_widget import HomeWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
@@ -119,8 +123,23 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         self.setWindowIcon(QIcon(str(asset_path("mitcorp_logo.png"))))
-        fit_widget_to_available_screen(
+        is_automated = (
+            os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+            or os.environ.get("SQE_TESTING") == "1"
+            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
+            or os.environ.get("SQE_PROBE") == "1"
+        )
+        prefs = load_application_preferences()
+        geom = None
+        if prefs.window_geometry_mode == "remember" and not is_automated:
+            from PySide6.QtCore import QSettings
+            settings = QSettings("Mitcorp", "SQEDailyWork")
+            geom = settings.value("main_window_geometry")
+
+        restore_or_fit_window_geometry(
             self,
+            geometry_mode="fit_screen" if is_automated else prefs.window_geometry_mode,
+            geometry_data=geom,
             preferred_width=MAIN_WINDOW_DEFAULT_WIDTH,
             preferred_height=MAIN_WINDOW_DEFAULT_HEIGHT,
             minimum_width=MAIN_WINDOW_MIN_WIDTH,
@@ -128,6 +147,7 @@ class MainWindow(QMainWindow):
             maximum_width=MAIN_WINDOW_MAX_WIDTH,
             maximum_height=MAIN_WINDOW_MAX_HEIGHT,
         )
+
         self._ncr: NcrController | None = None
         self._events_page: QWidget | None = None
         self._stats_page: QWidget | None = None
@@ -139,6 +159,8 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self._refresh_sidebar_badge)
+        QTimer.singleShot(100, self._check_startup_unresolved)
+
 
     def _ensure_ncr_controller(self) -> NcrController | None:
         """按需初始化倉庫 NCR 控制器。"""
@@ -358,11 +380,8 @@ class MainWindow(QMainWindow):
         self._header_bar = PageHeaderBar()
         content_layout.addWidget(self._header_bar)
 
-        # 頁面堆疊
         self.stack = QStackedWidget()
         self.stack.setObjectName("PageStack")
-
-        from ui.widgets.lazy_page_widget import LazyPageWidget
 
         self.home_widget = HomeWidget(self)
 
@@ -462,6 +481,8 @@ class MainWindow(QMainWindow):
         
         # 觸發延遲載入 (Lazy loading) 與統計頁面強制整理
         widget = self.stack.widget(page_index)
+        real_widget = None
+        should_refresh = False
         if widget is not None:
             if hasattr(widget, "ensure_widget"):
                 real_widget = widget.ensure_widget()
@@ -469,11 +490,16 @@ class MainWindow(QMainWindow):
                 real_widget = widget
 
             if page_index in (STATS_PAGE_INDEX, NCR_STATS_PAGE_INDEX):
-                if hasattr(real_widget, "refresh_data"):
-                    real_widget.refresh_data()
+                should_refresh = hasattr(real_widget, "refresh_data")
             elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
-                if hasattr(real_widget, "refresh_data"):
-                    real_widget.refresh_data()
+                should_refresh = hasattr(real_widget, "refresh_data")
+
+        if should_refresh:
+            self.statusBar().showMessage("載入中...", 0)
+            try:
+                real_widget.refresh_data()
+            finally:
+                self.statusBar().clearMessage()
 
         self.stack.setCurrentIndex(page_index)
         self._sync_sidebar_active(page_index)
@@ -555,10 +581,6 @@ class MainWindow(QMainWindow):
                 if child is not None:
                     return child
         return None
-
-    def findChildren(self, arg__1: type, *args: Any, **kwargs: Any) -> list:  # noqa: N802
-        results = super().findChildren(arg__1, *args, **kwargs)
-        return results
 
     def _open_master_data(self) -> None:
         self._switch_primary_page(MASTER_PAGE_INDEX)
@@ -699,9 +721,40 @@ class MainWindow(QMainWindow):
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_OUTSOURCE), outsource_count)
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_MATERIAL), material_count)
 
+    def _check_startup_unresolved(self) -> None:
+        try:
+            prefs = load_application_preferences()
+            if prefs.auto_check_unresolved_on_startup:
+                summary = _query_service.get_dashboard_summary()
+                open_count = int(summary.get("open_anomalies_count", summary.get("standalone_open_count", 0)))
+                if open_count > 0:
+                    self.statusBar().showMessage(f"系統已就緒。目前共有 {open_count} 筆待處理之品質異常事件。", 8000)
+                else:
+                    self.statusBar().showMessage("系統已就緒。目前無待處理異常事件。", 5000)
+        except Exception:
+            logger.exception("啟動未結案檢查失敗")
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):  # noqa: N802
+        try:
+            prefs = load_application_preferences()
+        except Exception:
+            logger.exception("讀取顯示偏好失敗，使用預設值")
+            from ui.appearance_preferences import AppearancePreferences
+            prefs = AppearancePreferences.default()
+        is_automated = (
+            os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+            or os.environ.get("SQE_TESTING") == "1"
+            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
+            or os.environ.get("SQE_PROBE") == "1"
+        )
+
+        if prefs.window_geometry_mode == "remember" and not is_automated:
+            from PySide6.QtCore import QSettings
+            settings = QSettings("Mitcorp", "SQEDailyWork")
+            settings.setValue("main_window_geometry", self.saveGeometry())
+
         # NCR 嵌入頁有未存資料則攔截關閉；否則關閉共用 DB 連線。
         if self._ncr is not None:
             for local_index in range(NCR_PAGE_COUNT):
@@ -709,6 +762,51 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
             self._ncr.close()
+        is_interactive = self.isVisible() and not is_automated
+        if prefs.auto_backup_prompt and is_interactive:
+            reply = QMessageBox.question(
+                self,
+                "結束確認",
+                "是否在結束工作前建立資料庫自動備份？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if reply == QMessageBox.StandardButton.Yes:
+
+                try:
+                    from database.connection import get_db_path
+                    from database.backup import backup_sqlite_database, prune_backups
+                    db_path = get_db_path()
+                    if db_path.exists():
+                        backup_dir = db_path.parent / "backups"
+                        backup_dir.mkdir(parents=True, exist_ok=True)
+                        from datetime import datetime
+                        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        backup_file = backup_dir / f"sqe_auto_backup_{stamp}.db"
+                        backup_sqlite_database(db_path, backup_file)
+                        prune_backups(backup_dir, prefs.backup_retention_count, pattern="sqe_auto_backup_*.db")
+                except Exception as exc:
+                    logger.exception("關閉時自動備份失敗: %s", exc)
+
+        if prefs.clean_temp_files_on_exit:
+            try:
+                import tempfile
+                from pathlib import Path
+                temp_dir = Path(tempfile.gettempdir())
+                for pattern in ("sqe_*", "SQE_*", "event_report_*"):
+                    for p in temp_dir.glob(pattern):
+                        if p.is_file():
+                            try:
+                                p.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+            except Exception as exc:
+                logger.exception("關閉時清理暫存檔失敗: %s", exc)
+
+
         event.accept()
 
 
@@ -719,3 +817,4 @@ if __name__ == "__main__":
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+

@@ -14,7 +14,6 @@ for _path in (_repo_root / "src", _repo_root):
     if _path_text not in sys.path:
         sys.path.insert(0, _path_text)
 
-# 載入 .env 環境變數 (若存在)
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -31,7 +30,6 @@ from services.appearance_preferences_service import load_application_preferences
 from ui.main_window import MainWindow
 from ui.theme import apply_app_theme
 
-# 可透過環境變數設定日誌層級
 _log_level = os.environ.get("SQE_LOG_LEVEL", "INFO").strip().upper()
 
 _logs_dir = _repo_root / "logs" / "app.log"
@@ -48,7 +46,11 @@ _logger = logging.getLogger("SQE")
 
 
 def _qt_message_handler(msg_type: QtMsgType, context, message: str) -> None:
-    """Qt 訊息處理 — 只記錄警告層級以上訊息。"""
+    """Qt 訊息處理 — 只記錄警告層級以上訊息，過濾 Windows 平台良性幾何裁切雜訊。"""
+    if "QWindowsWindow::setGeometry" in message:
+        _logger.debug("Qt 平台幾何通知: %s", message)
+        return
+
     if msg_type in {
         QtMsgType.QtWarningMsg,
         QtMsgType.QtCriticalMsg,
@@ -84,12 +86,10 @@ def _global_excepthook(exc_type, exc_value, exc_tb) -> None:
 
 
 def main() -> int:
-    # 1. 安裝全域例外處理
     sys.excepthook = _global_excepthook
     qInstallMessageHandler(_qt_message_handler)
     _logger.info("SQE DailyWork v%s 啟動", __version__)
 
-    # 2. 啟動鏈：初始化資料庫
     try:
         initialize_database()
     except Exception as e:
@@ -106,7 +106,6 @@ def main() -> int:
         )
         return 1
 
-    # 3. 啟動主 GUI
     # 高 DPI 支援 (PySide6 >= 6.6 預設啟用, 不再需要手動設定)
 
     app = QApplication(sys.argv)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from PySide6.QtCore import QDate, Qt
 
@@ -28,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from database import repository
 from services import event_service as event_service
-from services.appearance_preferences_service import load_application_preferences
+from services import appearance_preferences_service
 from services.event import _query_service
 from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
@@ -167,7 +168,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.supplier_filter_input.setMinimumWidth(FILTER_SUPPLIER_MIN_WIDTH)
             self.supplier_filter_input.setClearButtonEnabled(True)
             self.supplier_filter_input.returnPressed.connect(self._apply_filters_from_ui)
-            prefs = load_application_preferences()
+            prefs = appearance_preferences_service.load_application_preferences()
             if prefs.search_mode == "live":
                 self.supplier_filter_input.textEdited.connect(lambda _: self._apply_filters_from_ui())
 
@@ -407,7 +408,13 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             filters["yyyymm"] = self._filter_yyyymm
         if self._filter_overdue_only:
             filters["overdue_only"] = True
-        self._all_rows = _query_service.list_events(filters)
+        try:
+            self._all_rows = _query_service.list_events(filters)
+            self._set_load_failed(False)
+        except Exception:
+            logger.exception("事件清單載入失敗")
+            self._all_rows = []
+            self._set_load_failed(True)
         self._apply_sort()
         self._current_page = 1
         self._render_current_page()
@@ -477,6 +484,29 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.column_profile_button.setStatusTip(tooltip)
             apply_clickable_affordance(self.column_profile_button)
 
+    def _apply_sort(self) -> None:
+        # 使用者點擊表頭後以欄位排序(mixin 行為);否則套用偏好預設排序。
+        if getattr(self, "_sort_col", None) is not None:
+            return super()._apply_sort()
+        prefs = appearance_preferences_service.load_application_preferences()
+        sort_mode = getattr(self, "_sort_mode", None) or getattr(prefs, "default_list_sort_field", "none")
+        if sort_mode == "date_desc":
+            self._all_rows.sort(key=lambda r: str(r.get("event_date") or ""), reverse=True)
+        elif sort_mode == "status_first":
+            self._all_rows.sort(
+                key=lambda r: (
+                    0 if str(r.get("status") or "").strip() == "待處理" else 1,
+                    str(r.get("ref_no") or r.get("event_date") or ""),
+                ),
+                reverse=False,
+            )
+        elif sort_mode == "anomaly_no_desc" and getattr(self, "_sort_mode", None) == "anomaly_no_desc":
+            self._all_rows.sort(key=lambda r: str(r.get("ref_no") or r.get("event_date") or ""), reverse=True)
+
+    def _on_header_clicked(self, logical_index: int) -> None:
+        # 委派給 mixin 的欄位排序實作(表頭點擊排序)。
+        super()._on_header_clicked(logical_index)
+
     def _render_current_page(self):
         self._selected_event_row = None
         total_pages = self._total_pages()
@@ -485,12 +515,22 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         end = start + self._page_size
         page_rows = self._all_rows[start:end]
 
+        prefs = appearance_preferences_service.load_application_preferences()
+        date_slash = prefs.date_format_display == "YYYY/MM/DD"
+
+        def _fmt_date(val: Any) -> str:
+            s = str(val or "").strip()
+            if date_slash and "-" in s:
+                return s.replace("-", "/")
+            return s
+
         with preserve_table_sorting(self.table):
             self.table.setRowCount(0)
             for idx, row in enumerate(page_rows):
                 self.table.insertRow(idx)
-                no_val = row.get("ref_no") or row.get("event_date")
+                no_val = row.get("ref_no") or _fmt_date(row.get("event_date"))
                 no_item = SortableTableWidgetItem(self._text_or_dash(no_val), sort_key=str(no_val or ""))
+
                 no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
                 no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(idx, 0, no_item)
@@ -506,7 +546,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
                 self.table.setItem(idx, 9, self._text_cell(self._quality_report_required_text(row)))
                 status_text = str(row.get("status") or "").strip() or "-"
                 self.table.setItem(idx, 10, create_status_item(status_text, sort_key=status_text))
-                self.table.setItem(idx, 11, self._text_cell(row.get("closed_at")))
+                self.table.setItem(idx, 11, self._text_cell(_fmt_date(row.get("closed_at"))))
 
         self.table.clearSelection()
         self._sync_export_pdf_state()
@@ -516,6 +556,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             page_size=self._page_size,
         )
         self._update_empty_state()
+
 
     def _text_or_dash(self, value) -> str:
         text = str(value or "").strip()
@@ -625,7 +666,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.selectRow(row_idx)
         self._sync_export_pdf_state()
 
-        prefs = load_application_preferences()
+        prefs = appearance_preferences_service.load_application_preferences()
         action = prefs.table_double_click_action
         if action == "preview":
             if row.get("id"):

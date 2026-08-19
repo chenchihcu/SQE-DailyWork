@@ -151,3 +151,116 @@ def fit_dialog_to_available_screen(
         fraction=DIALOG_SCREEN_FRACTION,
         shrink_minimum_to_screen=True,
     )
+
+
+def restore_or_fit_window_geometry(
+    widget: QWidget,
+    *,
+    geometry_mode: str = "remember",
+    geometry_data: object | None = None,
+    preferred_width: int,
+    preferred_height: int,
+    minimum_width: int,
+    minimum_height: int,
+    maximum_width: int | None = None,
+    maximum_height: int | None = None,
+    margin_x: int = WINDOW_SCREEN_MARGIN,
+    margin_y: int = WINDOW_SCREEN_MARGIN,
+    fraction: float = WINDOW_SCREEN_FRACTION,
+) -> None:
+    """Restores saved geometry with screen boundary clamping or fits the window to the available screen."""
+    geometry = _available_geometry(widget)
+    if geometry is None:
+        widget.setMinimumSize(minimum_width, minimum_height)
+        if geometry_mode == "remember" and geometry_data:
+            try:
+                if not widget.restoreGeometry(geometry_data):
+                    widget.resize(preferred_width, preferred_height)
+            except Exception:
+                widget.resize(preferred_width, preferred_height)
+        else:
+            widget.resize(preferred_width, preferred_height)
+            if geometry_mode == "maximized":
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, widget.showMaximized)
+        return
+
+    usable_width = _usable_extent(
+        geometry.width(),
+        margin=margin_x,
+        fraction=fraction,
+        maximum=maximum_width,
+    )
+    usable_height = _usable_extent(
+        geometry.height(),
+        margin=margin_y,
+        fraction=fraction,
+        maximum=maximum_height,
+    )
+
+    effective_min_width, target_width = _target_extent(
+        preferred_width,
+        minimum=minimum_width,
+        usable=usable_width,
+        shrink_minimum_to_screen=False,
+    )
+    effective_min_height, target_height = _target_extent(
+        preferred_height,
+        minimum=minimum_height,
+        usable=usable_height,
+        shrink_minimum_to_screen=False,
+    )
+
+    widget.setMinimumSize(effective_min_width, effective_min_height)
+
+    if geometry_mode == "maximized":
+        widget.resize(target_width, target_height)
+        widget.move(
+            geometry.x() + (geometry.width() - target_width) // 2,
+            geometry.y() + (geometry.height() - target_height) // 2,
+        )
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, widget.showMaximized)
+        return
+
+    if geometry_mode == "remember" and geometry_data:
+        restored = False
+        try:
+            restored = bool(widget.restoreGeometry(geometry_data))
+        except Exception:
+            restored = False
+
+        if restored:
+            if not widget.isMaximized() and not widget.isFullScreen():
+                w = widget.width()
+                h = widget.height()
+                clamped_w = max(effective_min_width, min(w, usable_width))
+                clamped_h = max(effective_min_height, min(h, usable_height))
+
+                x = widget.x()
+                y = widget.y()
+
+                max_x = geometry.x() + geometry.width() - clamped_w
+                max_y = geometry.y() + geometry.height() - clamped_h
+
+                if (
+                    x > (geometry.x() + geometry.width() - 50)
+                    or (x + w) < (geometry.x() + 50)
+                    or y > (geometry.y() + geometry.height() - 50)
+                    or (y + h) < (geometry.y() + 50)
+                ):
+                    new_x = geometry.x() + (geometry.width() - clamped_w) // 2
+                    new_y = geometry.y() + (geometry.height() - clamped_h) // 2
+                else:
+                    new_x = max(geometry.x(), min(x, max_x))
+                    new_y = max(geometry.y(), min(y, max_y))
+
+                widget.resize(clamped_w, clamped_h)
+                widget.move(new_x, new_y)
+            return
+
+    widget.resize(target_width, target_height)
+    widget.move(
+        geometry.x() + (geometry.width() - target_width) // 2,
+        geometry.y() + (geometry.height() - target_height) // 2,
+    )

@@ -343,7 +343,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             if trend_view:
                 self.grid_layout.addWidget(trend_view, 0, 0)
 
-                last_month = trend_data[-1] if trend_data else None
+                last_month = trend_data[-1]
                 if last_month:
                     backlog_status = "積壓上升" if len(trend_data) > 1 and last_month["backlog_count"] > trend_data[-2]["backlog_count"] else "積壓穩定"
                     rate = (last_month["closed_count"] / last_month["total_count"] * 100) if last_month["total_count"] > 0 else 0
@@ -363,7 +363,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             if visit_view:
                 self.grid_layout.addWidget(visit_view, 0, 1)
 
-                last_month_visit = visit_trend_data[-1] if visit_trend_data else None
+                last_month_visit = visit_trend_data[-1]
                 if last_month_visit:
                     total_visits = last_month_visit["visit_count"]
                     total_anomalies = last_month_visit["visit_anomaly_count"]
@@ -431,8 +431,8 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 open_cases_stats = [r for r in resp_stats if r.get("open_count", 0) > 0]
                 if open_cases_stats:
                     most_backlogged = max(open_cases_stats, key=lambda x: x["open_count"])
-                    total_open = sum(r["open_count"] for r in resp_stats)
-                    
+                    total_open = sum(r.get("open_count", 0) for r in resp_stats)
+
                     def format_long_m(d):
                         if not d:
                             return "無"
@@ -451,7 +451,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
         else:
             self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
-        
+
         self._set_insights(insights)
 
         # 強制 Layout 重新佈局與刷新
@@ -467,15 +467,15 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         dialog = ExportRangeDialog("品質異常統計匯出設定", self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-            
+
         start_date, end_date = dialog.get_date_range()
-        
+
         # 2. 彈出儲存路徑
         import os
         from ui.export_helpers import get_default_export_filepath, handle_export_completion
         default_name = f"SQE_Quality_Report_{start_date.replace('-', '')}_to_{end_date.replace('-', '')}_{datetime.now().strftime('%H%M%S')}.xlsx"
         target_default = get_default_export_filepath(default_name)
-        
+
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "匯出 Excel 報告",
@@ -484,7 +484,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         )
         if not file_path:
             return
-            
+
         # 3. 處理與匯出
         temp_dir = os.path.dirname(file_path)
         pid = os.getpid()

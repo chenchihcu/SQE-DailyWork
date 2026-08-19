@@ -43,11 +43,10 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def test_home_no_longer_owns_lightweight_visit_defect_button(self) -> None:
         host = _HomeHost()

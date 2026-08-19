@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import logging
-
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -31,8 +30,6 @@ from ui.widgets.common_widgets import (
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 
-logger = logging.getLogger(__name__)
-
 
 class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
     def __init__(self, supplier_id: str, supplier_name: str, parent=None):
@@ -59,7 +56,6 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
         layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
         layout.setSpacing(FORM_VERTICAL_SPACING)
 
-        # Top form for adding new contact
         add_group = QFrame()
         add_group.setProperty("role", "panel")
         add_layout = QVBoxLayout(add_group)
@@ -100,7 +96,6 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
         add_layout.addWidget(self.inline_error)
         layout.addWidget(add_group)
 
-        # List of contacts
         self.table = QTableWidget()
         self.table.setAccessibleName("聯絡人清單")
         self.table.setColumnCount(6)

@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QMenu,
     QMessageBox,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +28,7 @@ from database.connection import get_connection
 from database.product_stage import normalize_product_stage_ui
 from services import master_import_service
 from services.event import _product_service as event_service
-from ui.layout_constants import CONTROL_ROW_SPACING
+from ui.layout_constants import CONTROL_ROW_SPACING, TAB_CONTENT_TOP_MARGIN
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
     SortableTableWidgetItem,
@@ -137,7 +137,6 @@ class _MasterDataProductMixin:
     def _build_product_tab(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        from ui.layout_constants import TAB_CONTENT_TOP_MARGIN
         layout.setContentsMargins(0, TAB_CONTENT_TOP_MARGIN, 0, 0)
         layout.setSpacing(8)
 
@@ -251,7 +250,6 @@ class _MasterDataProductMixin:
         self._sync_action_buttons()
 
     def _on_product_table_clicked(self, row_idx: int, _column_idx: int):
-        from PySide6.QtWidgets import QApplication
         modifiers = QApplication.keyboardModifiers()
         if modifiers & (
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
@@ -477,11 +475,17 @@ class _MasterDataProductMixin:
                     )
                     return
 
+                from services.appearance_preferences_service import load_application_preferences
+                prefs = load_application_preferences()
+                conflict_label_map = {"prompt": "提示確認", "skip": "略過重複項目", "overwrite": "覆蓋既有項目"}
+                strategy_label = conflict_label_map.get(prefs.import_conflict_strategy, "提示確認")
+
                 message = (
                     f"新增產品：{preview.add_count} 筆\n"
                     f"更新產品：{preview.update_count} 筆\n"
                     f"新增供應商：{preview.supplier_create_count} 筆\n"
-                    f"略過：{preview.skipped_count} 筆\n\n"
+                    f"略過：{preview.skipped_count} 筆\n"
+                    f"衝突處理策略：{strategy_label}\n\n"
                     "本匯入只寫入 suppliers/products 共用主檔，"
                     "不寫入訪廠缺失、正式異常或倉庫不合格品資料。\n\n"
                     "確認匯入？"
@@ -502,6 +506,7 @@ class _MasterDataProductMixin:
                 )
 
             self.refresh_data()
+
             self.main_window.refresh_all_views()
             backup_text = (
                 f"\n備份：{result.backup_path}"

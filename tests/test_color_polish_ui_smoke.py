@@ -27,16 +27,14 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
         apply_app_theme(cls.app)
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def test_main_window_exposes_color_polish_surfaces(self) -> None:
         window = MainWindow()
         try:
-            # Sidebar navigation replaces old QTabWidget
             self.assertIsNotNone(window.sidebar)
             self.assertIsInstance(window.sidebar, SidebarNav)
             # Navigation grows as separate supplier-event and warehouse routes are

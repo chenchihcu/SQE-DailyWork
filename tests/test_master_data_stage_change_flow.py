@@ -21,7 +21,7 @@ class MasterDataStageChangeFlowTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def _suppliers(self) -> list[dict]:
         return [

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -22,8 +20,6 @@ from ui.widgets.common_widgets import (
     style_table,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
-
-logger = logging.getLogger(__name__)
 
 
 class ProductStageLogDialog(QDialog):
@@ -76,7 +72,5 @@ class ProductStageLogDialog(QDialog):
         close_button.setAccessibleName("關閉對話框")
         mark_button_variant(close_button, "secondary")
         buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        buttons.clicked.connect(self.accept)
         layout.addWidget(buttons)
         fit_dialog_to_available_screen(self, preferred_width=960, preferred_height=620)

@@ -21,14 +21,12 @@ class SurfaceUsageStructureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
-
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.window = MainWindow()
@@ -125,7 +123,6 @@ class SurfaceUsageStructureTests(unittest.TestCase):
     def test_content_host_remains_transparent_tab_host_and_allows_page_panels(self) -> None:
         content_host = self.window.stack.parentWidget()
         self.assertIsInstance(content_host, QFrame)
-        assert isinstance(content_host, QFrame)
         self.assertIsNone(content_host.property("role"))
         self.assertEqual("ContentHost", content_host.objectName())
 

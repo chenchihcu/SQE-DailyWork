@@ -16,7 +16,7 @@ class AppearancePreferencesNavigationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        pass  # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
 
     def test_system_sidebar_has_the_only_global_appearance_entry(self) -> None:

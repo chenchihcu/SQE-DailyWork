@@ -10,9 +10,7 @@ from services.appearance_preferences_service import (
     APPEARANCE_PREFERENCES_KEY,
     APPEARANCE_PREFERENCES_V1_KEY,
     APPEARANCE_PREFERENCES_V2_KEY,
-    APPEARANCE_PREFERENCES_V3_KEY,
-    APPEARANCE_PREFERENCES_V4_KEY,
-    APPEARANCE_PREFERENCES_V5_KEY,
+    APPEARANCE_PREFERENCES_V7_KEY,
     load_preferences,
     save_preferences,
 )
@@ -35,7 +33,7 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
     def test_missing_setting_uses_standard_defaults(self) -> None:
         self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
 
-    def test_save_and_reload_v5_round_trip_without_touching_ncr_key(self) -> None:
+    def test_save_and_reload_v8_round_trip_without_touching_ncr_key(self) -> None:
         self.conn.execute(
             "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
             ("defect_list_columns", '["defect_no", "status"]'),
@@ -45,9 +43,14 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             density="comfortable",
             text_scale="large",
             sidebar_density="compact",
+            sidebar_icon_mode="compact_icon",
             table_density="comfortable",
             contrast_mode="high",
-            accent_color="emerald",
+            accent_color="violet",
+            theme_mode="dark_slate",
+            cjk_font_family_preference="noto_sans",
+            window_geometry_mode="maximized",
+            status_bar_detail_level="detailed",
             alternating_row_colors=False,
             table_grid_lines=True,
             enable_animations=True,
@@ -55,6 +58,14 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             search_mode="manual",
             stats_default_span_months=12,
             pareto_show_cutoff_line=False,
+            highlight_overdue_rows=False,
+            date_format_display="YYYY/MM/DD",
+            table_auto_scroll_to_top=False,
+            table_hover_highlight=False,
+            table_text_wrapping="wrap",
+            default_list_sort_field="date_desc",
+            table_show_row_numbers=True,
+            quick_filter_case_sensitive=True,
             default_startup_page="events",
             table_page_limit=100,
             auto_backup_prompt=False,
@@ -63,12 +74,38 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             default_sync_visit=False,
             default_due_days=14,
             default_visit_time_slot="上午",
+            default_anomaly_source="進料檢驗 (IQC)",
+            default_severity_level="重大",
+            default_visit_type="品質輔導",
+            auto_fill_anomaly_no_on_date_change=False,
+            default_closer_name="陳主管",
+            default_defect_disposition="特採",
+            auto_uppercase_part_no=False,
+            default_defect_sample_size=100,
+            require_defect_photos=True,
             default_export_dir="C:/Reports",
             export_completion_action="open_folder",
             report_organization_header="品質部",
             export_include_charts=False,
+            export_file_naming_rule="detailed",
+            pdf_page_orientation="landscape",
+            pdf_watermark_text="機密文件",
+            excel_autofit_columns=False,
+            excel_theme_style="forest_green",
+            pdf_font_density="compact",
+            export_include_disclaimer=False,
+            export_include_summary_sheet=False,
+            pdf_header_logo_visible=False,
             backup_retention_count=20,
             confirm_on_delete=False,
+            overdue_reminder_days=3,
+            auto_check_unresolved_on_startup=False,
+            clean_temp_files_on_exit=False,
+            log_level="DEBUG",
+            auto_save_drafts=False,
+            import_conflict_strategy="overwrite",
+            session_restore_last_filters=False,
+            auto_compact_db_on_exit=True,
         )
 
         save_preferences(self.conn, expected)
@@ -109,7 +146,7 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
                 self.conn.commit()
                 self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
 
-    def test_v1_v2_v3_and_v4_payloads_are_upgraded_in_memory(self) -> None:
+    def test_v1_to_v7_payloads_are_upgraded_in_memory(self) -> None:
         legacy_v1 = '{"density":"compact","text_scale":"large"}'
         self.conn.execute(
             "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
@@ -132,57 +169,91 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             load_preferences(self.conn),
         )
 
-        legacy_v3 = (
-            '{"density":"compact","text_scale":"standard","sidebar_density":"standard","table_density":"standard",'
-            '"contrast_mode":"standard","accent_color":"emerald","alternating_row_colors":false,'
-            '"table_grid_lines":false,"enable_animations":false,"default_startup_page":"stats",'
-            '"table_page_limit":25,"auto_backup_prompt":false}'
+        legacy_v7 = (
+            '{"density":"comfortable","text_scale":"large","sidebar_density":"compact","table_density":"comfortable",'
+            '"contrast_mode":"high","accent_color":"emerald","theme_mode":"dark_slate","cjk_font_family_preference":"noto_sans",'
+            '"window_geometry_mode":"maximized","status_bar_detail_level":"detailed",'
+            '"alternating_row_colors":false,"table_grid_lines":true,"enable_animations":true,"table_page_limit":100,'
+            '"table_double_click_action":"preview","search_mode":"manual","stats_default_span_months":12,'
+            '"pareto_show_cutoff_line":false,"highlight_overdue_rows":false,"date_format_display":"YYYY/MM/DD",'
+            '"table_auto_scroll_to_top":false,"table_hover_highlight":false,"table_text_wrapping":"wrap",'
+            '"default_list_sort_field":"date_desc","default_responsible_person":"王大明","default_anomaly_category":"零件缺件",'
+            '"default_sync_visit":false,"default_due_days":14,"default_visit_time_slot":"上午","default_anomaly_source":"進料檢驗 (IQC)",'
+            '"default_severity_level":"重大","default_visit_type":"品質輔導","auto_fill_anomaly_no_on_date_change":false,'
+            '"default_closer_name":"陳主管","default_defect_disposition":"特採","auto_uppercase_part_no":false,'
+            '"default_export_dir":"D:/Reports","export_completion_action":"open_folder","report_organization_header":"品保部",'
+            '"export_include_charts":false,"export_file_naming_rule":"detailed","pdf_page_orientation":"landscape",'
+            '"pdf_watermark_text":"機密文件","excel_autofit_columns":false,"excel_theme_style":"forest_green",'
+            '"pdf_font_density":"compact","export_include_disclaimer":false,"default_startup_page":"events",'
+            '"auto_backup_prompt":false,"backup_retention_count":20,"confirm_on_delete":false,"overdue_reminder_days":3,'
+            '"auto_check_unresolved_on_startup":false,"clean_temp_files_on_exit":false,"log_level":"DEBUG",'
+            '"auto_save_drafts":false,"import_conflict_strategy":"overwrite"}'
         )
+        self.conn.execute("DELETE FROM ui_settings")
         self.conn.execute(
             "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
-            (APPEARANCE_PREFERENCES_V3_KEY, legacy_v3),
+            (APPEARANCE_PREFERENCES_V7_KEY, legacy_v7),
         )
         self.conn.commit()
         self.assertEqual(
             AppearancePreferences(
-                density="compact",
+                density="comfortable",
+                text_scale="large",
+                sidebar_density="compact",
+                table_density="comfortable",
+                contrast_mode="high",
                 accent_color="emerald",
+                theme_mode="dark_slate",
+                cjk_font_family_preference="noto_sans",
+                window_geometry_mode="maximized",
+                status_bar_detail_level="detailed",
                 alternating_row_colors=False,
-                table_grid_lines=False,
-                enable_animations=False,
-                default_startup_page="stats",
-                table_page_limit=25,
-                auto_backup_prompt=False,
-            ),
-            load_preferences(self.conn),
-        )
-
-        legacy_v4 = (
-            '{"density":"standard","text_scale":"standard","sidebar_density":"standard","table_density":"standard",'
-            '"contrast_mode":"standard","accent_color":"electric_blue","alternating_row_colors":true,'
-            '"table_grid_lines":true,"table_page_limit":50,"enable_animations":false,'
-            '"default_responsible_person":"SQE01","default_anomaly_category":"尺寸超差",'
-            '"default_sync_visit":true,"default_due_days":7,"default_visit_time_slot":"下午",'
-            '"default_export_dir":"","export_completion_action":"open_file",'
-            '"report_organization_header":"SQE 供應商品質工程部","export_include_charts":true,'
-            '"default_startup_page":"events","auto_backup_prompt":true,"backup_retention_count":10,'
-            '"confirm_on_delete":true}'
-        )
-        self.conn.execute(
-            "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
-            (APPEARANCE_PREFERENCES_V4_KEY, legacy_v4),
-        )
-        self.conn.commit()
-        self.assertEqual(
-            AppearancePreferences(
-                enable_animations=False,
+                table_grid_lines=True,
+                enable_animations=True,
+                table_page_limit=100,
+                table_double_click_action="preview",
+                search_mode="manual",
+                stats_default_span_months=12,
+                pareto_show_cutoff_line=False,
+                highlight_overdue_rows=False,
+                date_format_display="YYYY/MM/DD",
+                table_auto_scroll_to_top=False,
+                table_hover_highlight=False,
+                table_text_wrapping="wrap",
+                default_list_sort_field="date_desc",
+                default_responsible_person="王大明",
+                default_anomaly_category="零件缺件",
+                default_sync_visit=False,
+                default_due_days=14,
+                default_visit_time_slot="上午",
+                default_anomaly_source="進料檢驗 (IQC)",
+                default_severity_level="重大",
+                default_visit_type="品質輔導",
+                auto_fill_anomaly_no_on_date_change=False,
+                default_closer_name="陳主管",
+                default_defect_disposition="特採",
+                auto_uppercase_part_no=False,
+                default_export_dir="D:/Reports",
+                export_completion_action="open_folder",
+                report_organization_header="品保部",
+                export_include_charts=False,
+                export_file_naming_rule="detailed",
+                pdf_page_orientation="landscape",
+                pdf_watermark_text="機密文件",
+                excel_autofit_columns=False,
+                excel_theme_style="forest_green",
+                pdf_font_density="compact",
+                export_include_disclaimer=False,
                 default_startup_page="events",
-                default_responsible_person="SQE01",
-                default_anomaly_category="尺寸超差",
-                table_double_click_action="menu",
-                search_mode="live",
-                stats_default_span_months=6,
-                pareto_show_cutoff_line=True,
+                auto_backup_prompt=False,
+                backup_retention_count=20,
+                confirm_on_delete=False,
+                overdue_reminder_days=3,
+                auto_check_unresolved_on_startup=False,
+                clean_temp_files_on_exit=False,
+                log_level="DEBUG",
+                auto_save_drafts=False,
+                import_conflict_strategy="overwrite",
             ),
             load_preferences(self.conn),
         )
@@ -196,10 +267,11 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
 class AppearanceThemeTests(unittest.TestCase):
     def test_density_and_accent_color_are_applied(self) -> None:
         qss = get_theme_qss(
-            AppearancePreferences(density="comfortable", text_scale="large", accent_color="amber")
+            AppearancePreferences(density="comfortable", text_scale="large", accent_color="violet")
         )
         self.assertIn("min-height: 40px;", qss)
         self.assertIn("font-size: 15px;", qss)
+        self.assertIn("#7C3AED", qss)
 
     def test_high_contrast_qss_and_runtime_table_sidebar_metrics(self) -> None:
         from PySide6.QtWidgets import QApplication, QTableWidget
@@ -224,6 +296,7 @@ class AppearanceThemeTests(unittest.TestCase):
         self.assertEqual(40, table.horizontalHeader().minimumHeight())
 
         apply_app_theme(app, AppearancePreferences(table_density="compact"))
+        style_table(table)
         self.assertEqual(26, table.verticalHeader().defaultSectionSize())
         self.assertEqual(30, table.horizontalHeader().minimumHeight())
         apply_app_theme(app)
@@ -231,5 +304,3 @@ class AppearanceThemeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

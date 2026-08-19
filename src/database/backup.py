@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseBackupError(RuntimeError):
@@ -110,3 +113,29 @@ def backup_sqlite_database(
         raise DatabaseBackupError("SQLite backup row-count parity check failed")
     report["verified"] = True
     return report
+
+
+def prune_backups(
+    backup_dir: str | Path,
+    max_count: int,
+    *,
+    pattern: str = "*backup*.db",
+) -> list[Path]:
+    """Prune older backups in backup_dir exceeding max_count, keeping the newest files."""
+    if max_count <= 0:
+        return []
+    directory = Path(backup_dir).expanduser().resolve()
+    if not directory.is_dir():
+        return []
+    files = [f for f in directory.glob(pattern) if f.is_file()]
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    removed: list[Path] = []
+    if len(files) > max_count:
+        for old_file in files[max_count:]:
+            try:
+                old_file.unlink(missing_ok=True)
+                removed.append(old_file)
+            except Exception:
+                logger.exception("刪除舊備份失敗: %s", old_file)
+    return removed
+

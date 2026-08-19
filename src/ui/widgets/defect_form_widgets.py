@@ -169,11 +169,6 @@ def set_text_edit_visible_rows(editor: QWidget, rows: int) -> None:
         editor.setFixedHeight(
             line_height * max(rows, 1) + vertical_padding + document_margin + frame_height
         )
-    else:
-        # Custom widgets such as BulletListWidget
-        editor.setFixedHeight(
-            TEXT_EDIT_FALLBACK_LINE_HEIGHT * max(rows, 1) + TEXT_EDIT_FALLBACK_PADDING
-        )
 
 
 

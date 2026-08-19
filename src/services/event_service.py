@@ -8,12 +8,7 @@ New code should import from the specific sub-module as needed.
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 from database import repository
-from database.connection import get_connection
 
 # Re-export module-level constants
 EVENT_SCOPE_VISIT_ONLY = repository.EVENT_SCOPE_VISIT_ONLY

@@ -15,14 +15,13 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        pass  # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
-
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.window = MainWindow()

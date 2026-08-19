@@ -5,20 +5,20 @@ from __future__ import annotations
 import logging
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QFrame,
     QLabel,
+    QLineEdit,
     QMessageBox,
-    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from services.appearance_preferences_service import load_application_preferences
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
     CLOSE_DIALOG_PROBLEM_MIN_HEIGHT,
@@ -35,9 +35,7 @@ from ui.widgets.common_widgets import (
     RequiredFieldLabel,
 )
 from ui.widgets.defect_form_widgets import (
-    ROOT_CAUSE_PARETO_OPTIONS,
     apply_dialog_layout,
-    set_combo_current_text,
     set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
@@ -46,8 +44,6 @@ from ui.widgets.defect_form_widgets import (
 logger = logging.getLogger(__name__)
 
 # ── Constants ──────────────────────────────────────────────────────────────
-ROOT_CAUSE_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
-
 IMPROVEMENT_DESC_MAX_LEN = 1000
 
 
@@ -69,22 +65,20 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.setWindowTitle("調整結案日期" if date_adjustment_only else "異常結案")
         self.setMinimumWidth(720)
         self.setMaximumWidth(FORM_MAX_WIDTH)
-        
-        # 取得異常詳情以設定預設的原因分類 (與原先 category 一致)
-        self.detail: dict = {}
-        self.initial_category = ""
+
+        # 取得異常詳情以設定預設值
         self.initial_anomaly_date = ""
         self.initial_closed_at = ""
+        self.initial_closed_by = ""
         self.initial_improvement_desc = ""
         try:
             detail = event_service.get_anomaly_detail(self.anomaly_id)
-            self.detail = detail
-            self.initial_category = str(detail.get("category_raw") or detail.get("category") or "")
             self.initial_anomaly_date = str(detail.get("anomaly_date") or "")
             self.initial_closed_at = str(detail.get("closed_at") or "")
+            self.initial_closed_by = str(detail.get("closed_by") or "")
             self.initial_improvement_desc = str(detail.get("improvement_desc") or "")
         except Exception:
-            logger.exception("Failed to get initial category for anomaly %s", self.anomaly_id)
+            logger.exception("Failed to get initial anomaly detail for anomaly %s", self.anomaly_id)
 
         self._setup_ui()
         self.attachment_editor.load_existing_attachments(self.anomaly_id)
@@ -134,6 +128,17 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         if self.date_adjustment_only:
             self.attachment_editor.setEnabled(False)
 
+        prefs = load_application_preferences()
+        self.closed_by_input = QLineEdit()
+        self.closed_by_input.setPlaceholderText("例如：陳主管 / SQE_LEAD（選填）")
+        self.closed_by_input.setAccessibleName("結案驗證人")
+        if self.initial_closed_by:
+            self.closed_by_input.setText(self.initial_closed_by)
+        elif prefs.default_closer_name:
+            self.closed_by_input.setText(prefs.default_closer_name)
+        if self.date_adjustment_only:
+            self.closed_by_input.setReadOnly(True)
+
         # 單一連續表單內容區（消除分頁切換摩擦）
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -162,6 +167,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
         form.addRow("", self.improvement_counter)
         form.addRow(RequiredFieldLabel("結案日期"), self.closed_at_input)
+        form.addRow("結案驗證人", self.closed_by_input)
         content_layout.addLayout(form)
 
         # 現場照片附件區
@@ -216,6 +222,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
     def _on_submit(self):
         text = self.improvement_input.toPlainText().strip()
         closed_at = self.closed_at_input.date().toString("yyyy-MM-dd")
+        closed_by = self.closed_by_input.text().strip()
         try:
             if self.date_adjustment_only:
                 result = event_service.update_anomaly_closed_at(
@@ -224,11 +231,15 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
                 )
                 completion_text = "結案日期已更新"
             else:
+                close_kwargs = {"closed_at": closed_at}
+                if closed_by:
+                    close_kwargs["closed_by"] = closed_by
                 result = event_service.close_anomaly(
                     self.anomaly_id,
                     text,
-                    closed_at=closed_at,
+                    **close_kwargs,
                 )
+
                 self.attachment_editor.save_to_anomaly(self.anomaly_id)
                 if self.attachment_editor._last_rename_failures:
                     QMessageBox.warning(

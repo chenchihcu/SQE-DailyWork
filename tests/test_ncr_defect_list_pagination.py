@@ -37,7 +37,7 @@ class NcrDefectListPaginationTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.conn = sqlite3.connect(":memory:")
@@ -176,6 +176,59 @@ class NcrDefectListPaginationTests(unittest.TestCase):
         self.assertEqual(2, len(exported_rows))
         self.assertEqual(exported_rows[0], exported_rows[1])
         self.assertTrue(all("work_order_no" in row for row in exported_rows[0]))
+
+
+class NcrDefectListMonthFilterTests(unittest.TestCase):
+    """Locks the month-filter semantics of _uses_month_filter / build_filters.
+
+    Regression: _uses_month_filter() used to check the month_filter_checkbox
+    compatibility alias (same widget as all_months_checkbox) and always
+    returned False, so the month filter never applied.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.app is not None:
+            pass  # do not terminate shared QApplication singleton in test runner
+
+    def setUp(self) -> None:
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        database.apply_schema(self.conn, with_version=True)
+        # combined workflow leaves all_months_checkbox unchecked by default.
+        self.widget = DefectListWidget(self.conn, workflow="combined")
+
+    def tearDown(self) -> None:
+        self.widget.close()
+        self.conn.close()
+
+    def test_month_filter_applied_when_all_months_unchecked(self) -> None:
+        self.assertFalse(self.widget.all_months_checkbox.isChecked())
+        self.assertTrue(self.widget._uses_month_filter())
+        filters = self.widget.build_filters()
+        self.assertIn("month", filters)
+        self.assertEqual(
+            self.widget.month_edit.date().toString("yyyy-MM"),
+            filters["month"],
+        )
+
+    def test_month_filter_skipped_when_all_months_checked(self) -> None:
+        self.widget.all_months_checkbox.setChecked(True)
+        self.assertFalse(self.widget._uses_month_filter())
+        filters = self.widget.build_filters()
+        self.assertNotIn("month", filters)
+
+    def test_month_filter_toggles_with_checkbox_state(self) -> None:
+        self.widget.all_months_checkbox.setChecked(False)
+        self.assertTrue(self.widget._uses_month_filter())
+        self.assertIn("month", self.widget.build_filters())
+        self.widget.all_months_checkbox.setChecked(True)
+        self.assertFalse(self.widget._uses_month_filter())
+        self.assertNotIn("month", self.widget.build_filters())
 
 
 if __name__ == "__main__":

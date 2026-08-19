@@ -75,7 +75,6 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
         apply_app_theme(cls.app)
 
     def setUp(self) -> None:

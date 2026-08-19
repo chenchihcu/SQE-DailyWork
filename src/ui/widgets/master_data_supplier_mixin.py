@@ -13,22 +13,21 @@ logger = logging.getLogger(__name__)
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDialog,
     QHBoxLayout,
     QInputDialog,
     QMenu,
     QMessageBox,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from services.event import _supplier_service as event_service
-from ui.layout_constants import CONTROL_ROW_SPACING
+from ui.layout_constants import CONTROL_ROW_SPACING, TAB_CONTENT_TOP_MARGIN
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
-    SortableTableWidgetItem,
     apply_table_action_affordance,
     create_status_item,
     preserve_table_sorting,
@@ -125,7 +124,6 @@ class _MasterDataSupplierMixin:
     def _build_supplier_tab(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        from ui.layout_constants import TAB_CONTENT_TOP_MARGIN
         layout.setContentsMargins(0, TAB_CONTENT_TOP_MARGIN, 0, 0)
         layout.setSpacing(8)
 
@@ -240,7 +238,6 @@ class _MasterDataSupplierMixin:
         self._sync_action_buttons()
 
     def _on_supplier_table_clicked(self, row_idx: int, _column_idx: int):
-        from PySide6.QtWidgets import QApplication
         modifiers = QApplication.keyboardModifiers()
         if modifiers & (
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier

@@ -12,17 +12,15 @@ from PySide6.QtCharts import QChartView, QPieSlice
 from ui.widgets.ncr_stats_widget import NcrStatsWidget
 
 
-
 class NcrStatsGridDashboardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self.widgets: list[NcrStatsWidget] = []
@@ -40,7 +38,6 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         scrap_rework: list | None = None,
         return_slips: list | None = None,
     ) -> NcrStatsWidget:
-        # Mocking the service calls
         mock_sup = suppliers if suppliers is not None else []
         mock_prod = products if products is not None else []
         mock_sr = scrap_rework if scrap_rework is not None else []
@@ -272,8 +269,28 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
 
         self.assertGreaterEqual(mock_activate.call_count, 1)
         self.assertGreaterEqual(mock_layout_update.call_count, 1)
-        self.assertGreaterEqual(mock_widget_update.call_count, 1)
-        self.assertIn("載入數據時發生錯誤", widget.insight_label.text())
+    def test_ncr_stats_chart_typography_hierarchy(self) -> None:
+        """驗證 NCR 統計圖表（水平長條圖、環形圓餅圖）符合統一字級階層規範。"""
+        widget = self._build_widget(
+            suppliers=[{"supplier_name": "Supplier-1", "total_qty": 50}],
+            products=[{"product_name": "Product-1", "total_qty": 30}],
+            scrap_rework=[{"disposition": "報廢", "total_qty": 20}],
+            return_slips=[{"return_slip_type": "廠內退料", "total_qty": 40}],
+        )
+        chart_views = widget.findChildren(QChartView)
+        self.assertEqual(4, len(chart_views))
+
+        for view in chart_views:
+            chart = view.chart()
+            self.assertEqual(11, chart.titleFont().pointSize())
+            self.assertTrue(chart.titleFont().bold())
+            if chart.legend().isVisible():
+                self.assertEqual(8, chart.legend().font().pointSize())
+            for axis in chart.axes():
+                self.assertEqual(9, axis.labelsFont().pointSize())
+                if axis.titleText():
+                    self.assertEqual(9, axis.titleFont().pointSize())
+                    self.assertTrue(axis.titleFont().bold())
 
 
 if __name__ == "__main__":

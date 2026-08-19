@@ -19,7 +19,11 @@ from database import repository
 from ui.design_tokens import PALETTE as _PALETTE
 from ui.layout_constants import (
     SIDEBAR_LOGO_HEIGHT,
+    SIDEBAR_LOGO_SECTION_BOTTOM_SPACING,
+    SIDEBAR_LOGO_SECTION_MARGINS,
+    SIDEBAR_LOGO_SECTION_SPACING,
     SIDEBAR_NAV_ITEM_HEIGHT,
+    SIDEBAR_NAV_TOP_SPACING,
     SIDEBAR_WIDTH,
 )
 from ui.theme import asset_path
@@ -218,7 +222,7 @@ class SidebarNav(QFrame):
         root.setSpacing(0)
 
         root.addWidget(self._build_logo_section())
-        root.addSpacing(8)
+        root.addSpacing(SIDEBAR_LOGO_SECTION_BOTTOM_SPACING)
 
         # ── 可捲動導覽區（logo 與 footer 固定，項目過多時於此捲動）──────────
         nav_scroll = QScrollArea()
@@ -236,7 +240,7 @@ class SidebarNav(QFrame):
 
         # 領域分組：群組標題（非按鈕 QLabel）+ 間距呈現工作流程結構；
         # 每個導覽列攜帶 action（("page", KEY) 或 ("scope", SCOPE)），不耦合堆疊索引。
-        nav_layout.addSpacing(4)
+        nav_layout.addSpacing(SIDEBAR_NAV_TOP_SPACING)
         for header, items in _NAV_GROUPS:
             if header is not None:
                 nav_layout.addSpacing(_NAV_GROUP_GAP)
@@ -273,8 +277,8 @@ class SidebarNav(QFrame):
         section.setFixedHeight(SIDEBAR_LOGO_HEIGHT)
 
         layout = QVBoxLayout(section)
-        layout.setContentsMargins(16, 10, 16, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(*SIDEBAR_LOGO_SECTION_MARGINS)
+        layout.setSpacing(SIDEBAR_LOGO_SECTION_SPACING)
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         white_logo = self._make_white_logo(str(asset_path("mitcorp_logo.png")), 130, 30)

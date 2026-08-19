@@ -44,7 +44,7 @@ class InlineValidationAndDirtyTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
         database_connection.DB_PATH = cls._original_db_path
         database_connection.LEGACY_DB_PATH = cls._original_legacy_db_path
         cls._database_temp_dir.cleanup()

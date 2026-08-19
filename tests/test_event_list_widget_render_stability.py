@@ -32,14 +32,13 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        cls.app.setStyle("Fusion")
+        # style initialized once in tests/__init__.py
         apply_app_theme(cls.app)
-
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.app is not None:
-            cls.app.quit()
+            pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
         self._list_events_patch = patch(
@@ -352,7 +351,6 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         item = self.widget.table.item(0, 0)
         payload = item.data(Qt.ItemDataRole.UserRole)
         self.assertIsInstance(payload, dict)
-        assert isinstance(payload, dict)
         self.assertEqual("a0", payload.get("event_id"))
         self.assertEqual("ANOMALY", payload.get("event_type"))
 
