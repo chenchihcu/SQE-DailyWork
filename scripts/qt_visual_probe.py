@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,16 +24,6 @@ if TYPE_CHECKING:
 LONG_SUPPLIER = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ股份有限公司"
 LONG_PRODUCT = "倉庫產品名稱-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ精密組件"
 
-# Targets that render a resizable top-level surface (so --size / --min-width apply).
-_RESIZABLE_TARGETS = {
-    "main",
-    "event-list",
-    "master-data",
-    "ncr-tracker",
-    "empty-states",
-    "stats-stress",
-    "ncr-stats",
-}
 MIN_WIDTH_SIZE = (1024, 680)
 
 
@@ -160,6 +151,11 @@ def parse_args() -> argparse.Namespace:
         help="Run platform and font checks without saving a screenshot.",
     )
     parser.add_argument(
+        "--audit-buttons",
+        action="store_true",
+        help="Run structural click audit on all instantiated main pages and buttons.",
+    )
+    parser.add_argument(
         "--target",
         choices=target_names,
         default="main",
@@ -259,9 +255,9 @@ def _settle_qt_paint(app: "QApplication", *, delay_ms: int = 120, cycles: int = 
     """Let native Qt layout/paint queues settle before pixel-baseline captures."""
     from PySide6.QtTest import QTest
 
-    for _ in range(max(cycles, 1)):
+    for _ in range(cycles):
         app.processEvents()
-        QTest.qWait(max(delay_ms, 0))
+        QTest.qWait(delay_ms)
     app.processEvents()
 
 
@@ -444,26 +440,23 @@ def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, in
 
 
 def _capture_appearance_settings(output: Path, app: "QApplication") -> list[str]:
-    """Capture default, table-settings tab, and full high-readability preview states without persistence."""
+    """Capture all 5 preference tabs and high-readability preview states without persistence."""
     from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
 
-    default_dialog = AppearancePreferencesDialog()
-    screenshots = [
-        _capture_widget(
-            default_dialog,
-            _target_output_path(output, "appearance-settings-default"),
-            app,
+    screenshots: list[str] = []
+    tab_names = ["theme", "tables", "forms", "exports", "system"]
+    for idx, name in enumerate(tab_names):
+        dialog = AppearancePreferencesDialog()
+        dialog.preference_tabs.setCurrentIndex(idx)
+        suffix = "default" if idx == 0 else f"{name}-tab"
+        screenshots.append(
+            _capture_widget(
+                dialog,
+                _target_output_path(output, f"appearance-settings-{suffix}"),
+                app,
+            )
         )
-    ]
-    table_tab_dialog = AppearancePreferencesDialog()
-    table_tab_dialog.preference_tabs.setCurrentIndex(1)
-    screenshots.append(
-        _capture_widget(
-            table_tab_dialog,
-            _target_output_path(output, "appearance-settings-tables-tab"),
-            app,
-        )
-    )
+
     preview_dialog = AppearancePreferencesDialog()
     preview_dialog._density_buttons["comfortable"].click()
     preview_dialog._text_scale_buttons["large"].click()
@@ -588,6 +581,83 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
     conn.row_factory = sqlite3.Row
     try:
         apply_schema(conn, with_version=True)
+        from ncr.services import defect_service
+        defect_service.create_defect(
+            conn,
+            {
+                "defect_no": "NCR-10012",
+                "event_date": "2026-04-17",
+                "processing_line": PROCESSING_LINE_OUTSOURCE,
+                "return_slip_type": "託外退料",
+                "work_order_no": "WO-260417-01",
+                "item_no": "60600480-00001",
+                "product_name": "60-D-4WAY-D-HD 鏡頭模組總成",
+                "qty": 3,
+                "category": "半成品",
+                "supplier_name": "醫電鼎眾",
+                "outsource_supplier_name": "振順豐",
+                "defect_desc": "轉向時,鏡頭管子歪斜(組裝公差過大導致偏擺)",
+                "status": "處理中",
+                "disposition": "重工",
+            },
+        )
+        defect_service.create_defect(
+            conn,
+            {
+                "defect_no": "NCR-10009",
+                "event_date": "2026-03-27",
+                "processing_line": PROCESSING_LINE_OUTSOURCE,
+                "return_slip_type": "託外退料",
+                "work_order_no": "WO-260327-02",
+                "item_no": "60390260-00002",
+                "product_name": "39-D-2WAY-F-HD 導引管組件",
+                "qty": 5,
+                "category": "委外加工品",
+                "supplier_name": "宏碩科技",
+                "outsource_supplier_name": "拓寶光電",
+                "defect_desc": "暗箱橫條紋，SMT錫膏回焊不良",
+                "status": "處理中",
+                "disposition": "重工",
+            },
+        )
+        defect_service.create_defect(
+            conn,
+            {
+                "defect_no": "NCR-10008",
+                "event_date": "2026-03-24",
+                "processing_line": PROCESSING_LINE_MATERIAL,
+                "return_slip_type": "廠內退料",
+                "work_order_no": "WO-260324-01",
+                "item_no": "302-000200004",
+                "product_name": "converter 轉接板 VS80",
+                "qty": 10,
+                "category": "原物料",
+                "supplier_name": "瑞太福",
+                "outsource_supplier_name": "",
+                "defect_desc": "畫面左半邊紅,可轉X光模式，焊點橋接短路",
+                "status": "處理中",
+                "disposition": "報廢",
+            },
+        )
+        defect_service.create_defect(
+            conn,
+            {
+                "defect_no": "NCR-10001",
+                "event_date": "2026-01-15",
+                "processing_line": PROCESSING_LINE_OUTSOURCE,
+                "return_slip_type": "託外退料",
+                "work_order_no": "WO-260115-01",
+                "item_no": "301-001100043",
+                "product_name": "CONVERTER轉接板PRSL300T-LINK1-V1.0 PCBA",
+                "qty": 2,
+                "category": "成品",
+                "supplier_name": "振順豐",
+                "outsource_supplier_name": "振順豐",
+                "defect_desc": "LED燈不亮，已更換驅動IC並重測合格",
+                "status": "已結案",
+                "disposition": "重工",
+            },
+        )
         pages = [
             (NcrWorkflowPage(DefectFormWidget(conn), "NcrCreatePage"), "ncr-create"),
             (
@@ -774,6 +844,103 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     return screenshots
 
 
+def _capture_button_audit(app: "QApplication") -> dict:
+    """Run structural click audit on all instantiated main pages and buttons."""
+    from PySide6.QtWidgets import QAbstractButton, QDialog, QMessageBox, QWidget, QApplication
+    from PySide6.QtCore import QTimer
+
+    def _close_msg_boxes():
+        for w in QApplication.topLevelWidgets():
+            if isinstance(w, (QMessageBox, QDialog)):
+                w.reject()
+
+    def instantiate_all_pages():
+        pages = []
+        from ui.main_window import MainWindow
+        pages.append(MainWindow())
+
+        from ui.widgets.event_create_page import EventCreatePage
+        pages.append(EventCreatePage(_ProbeHost(), "anomaly"))
+        pages.append(EventCreatePage(_ProbeHost(), "visit"))
+
+        from ui.widgets.defect_list_widget import EventListWidget
+        pages.append(EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False))
+
+        from ui.widgets.master_data_widget import MasterDataWidget
+        pages.append(MasterDataWidget(_ProbeHost(), lazy_load=False))
+
+        from ui.widgets.supplier_form_dialog import SupplierFormDialog
+        pages.append(SupplierFormDialog())
+
+        from ui.widgets.product_form_dialog import ProductFormDialog
+        pages.append(ProductFormDialog([{"id": "supplier-1", "supplier_name": "測試供應商"}]))
+
+        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
+        pages.append(AppearancePreferencesDialog())
+
+        try:
+            from ncr.db.database import apply_schema
+            import sqlite3
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
+            apply_schema(conn, with_version=True)
+            from ncr.ui.defect_form import DefectFormWidget
+            from ncr.ui.defect_list import DefectListWidget
+            pages.append(DefectFormWidget(conn))
+            pages.append(DefectListWidget(conn, workflow="trace"))
+        except Exception:
+            pass
+            
+        return pages
+
+    pages = instantiate_all_pages()
+    results = []
+    app.processEvents()
+    
+    for page in pages:
+        if isinstance(page, QWidget):
+            page.show()
+            app.processEvents()
+            buttons = page.findChildren(QAbstractButton)
+            
+            btn_info = []
+            for btn in buttons:
+                try:
+                    name = btn.objectName() or btn.text() or str(btn)
+                    btn_info.append((btn, name))
+                except RuntimeError:
+                    pass
+            
+            for btn, name in btn_info:
+                try:
+                    if not btn.isEnabled() or not btn.isVisible():
+                        continue
+                    
+                    QTimer.singleShot(100, _close_msg_boxes)
+                    btn.click()
+                    app.processEvents()
+                    results.append({"page": page.__class__.__name__, "name": name, "status": "OK", "error": None})
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    err = traceback.format_exc()
+                    results.append({"page": page.__class__.__name__, "name": name, "status": "ERROR", "error": str(e), "traceback": err})
+            
+            try:
+                page.close()
+            except RuntimeError:
+                pass
+            app.processEvents()
+
+    errors = [r for r in results if r["status"] == "ERROR"]
+    return {
+        "total_pages": len(pages),
+        "total_buttons": len(results),
+        "total_errors": len(errors),
+        "errors": errors
+    }
+
+
 def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
     """Cover the supplier-event and NCR combo theme paths with real popups."""
     import sqlite3
@@ -804,17 +971,19 @@ def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
             app,
         )
     )
+    anomaly_date_page = EventCreatePage(_ProbeHost(), "anomaly")
     screenshots.append(
         _capture_date_popup(
-            anomaly_dialog,
-            anomaly_dialog.date_edit,
+            anomaly_date_page,
+            anomaly_date_page.form.date_edit,
             _target_output_path(output, "anomaly-calendar-popup"),
             app,
         )
     )
+    anomaly_disabled_page = EventCreatePage(_ProbeHost(), "anomaly")
     screenshots.append(
         _capture_widget(
-            anomaly_dialog,
+            anomaly_disabled_page,
             _target_output_path(output, "anomaly-disabled-selected"),
             app,
         )
@@ -1155,6 +1324,11 @@ def main() -> int:
 
     output = _scale_output(args.output, scale)
     size = _resolve_size(args)
+
+    if args.audit_buttons:
+        audit_result = _capture_button_audit(app)
+        print(json.dumps(audit_result, ensure_ascii=False, indent=2))
+        return 1 if audit_result["total_errors"] > 0 else 0
 
     screenshot_path = None
     screenshots: list[str] = []

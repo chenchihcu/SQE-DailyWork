@@ -1,13 +1,13 @@
 ---
 name: sqe-dailywork-visual-qa
 version: 1.1.0
-description: 用於 SQE DailyWork 的 PySide6 UI、截圖、中文(CJK)文字渲染、字體排版、間距、工具列按鈕完整性、側欄導覽指令與視覺審查;需要原生 Windows Qt 的視覺證據。Use this skill 當要做 UI 視覺檢查、截圖分析或功能按鈕防回歸檢查時。觸發詞包含「PySide6」「UI」「截圖」「screenshot」「CJK」「中文渲染」「typography」「視覺審查」「visual QA」「按鈕遺失」「工具列」「側欄導覽」「首頁欄位」。
+description: 用於 SQE DailyWork 的 PySide6 視覺檢查與按鍵功能稽核。需原生 Windows Qt 視覺證據。Use this skill 當要做 UI 截圖分析、中文字體審查、防回歸檢查或執行全介面按鍵崩潰測試時。觸發詞包含「PySide6」「UI」「截圖」「screenshot」「CJK」「中文渲染」「typography」「視覺審查」「visual QA」「按鈕遺失」「按鍵功能稽核」「崩潰測試」「動態點擊」「button audit」。
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
 # SQE DailyWork Visual QA
 
-Use this skill for UI, layout, theme, screenshot, CJK text, typography, tab, widget, toolbar button preservation, sidebar command navigation, and visual-polish tasks on the PySide6 desktop app.
+Use this skill for UI visual-polish tasks (layout, theme, CJK typography, screenshots) and dynamic button crash testing on the PySide6 desktop app.
 
 For a broad multi-surface sweep (main shell + forms + every stats page), delegate to the `sqe-dailywork-qt-visual-reviewer` subagent. Use this skill for inline, single-surface checks while editing.
 
@@ -18,15 +18,16 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 - Read `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `docs/harness/README.md`, and the target `src/ui/` file.
 - Before adding any styling, check `src/ui/theme.py` and `src/ui/layout_constants.py` and reuse shared widgets. Prefer QSS `role` / `variant` and theme tokens over per-widget `setStyleSheet` (AGENTS.md §3–4). Pull layout values from `src/ui/layout_constants.py` (`FORM_MAX_WIDTH`, `GRID_GUTTER`, `ROW_GAP`, `PANEL_MARGINS`) instead of hardcoding pixels — those constants are the single source of truth (pinned by `tests/test_layout_constants.py`).
 - The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (首頁 / 事件管理 / 異常事件統計 / 不合格品 / 不合格品統計分析 / 基礎資料 / 顯示設定); the former anomaly / visit / closed lists are now scope tabs inside the consolidated 事件管理 page (see `src/ui/main_window.py` and `README.md`). Keep the home screen operational (no hero/cover panels, 8-column backlog table). Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
-- **Single font source of truth:** the CJK font fallback chain lives only in `src/ui/theme.py` (`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`); `src/ncr/ui/ui_style.py` imports it. Do not reintroduce a second list. Font-weight policy (CJK 400/700 only) 的正本與出處見 `.Codex/rules/visual_evidence_rules.md` §2(上游為 Institution 06 §6);兩條規則的機械防線與測試釘點也記錄在該檔。
+- **單一字體來源 (Single Font Source of Truth)**：CJK 字體 fallback 鏈僅定義於 `src/ui/theme.py`（`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`）；`src/ncr/ui/ui_style.py` 必須引入使用，禁止重新定義。字重策略 (僅限 CJK 400/700) 記錄於 `.Codex/rules/visual_evidence_rules.md` §2。
 
 ## Visual Evidence Rule
 
 - `QT_QPA_PLATFORM=offscreen` is structural smoke only — never visual evidence (it can miss Windows CJK fonts and render 方框).
 - Visual screenshots, CJK rendering, font, and typography judgments must use native Windows Qt via `scripts\qt_visual_probe.py` (it auto-forces `QT_QPA_PLATFORM=windows` on Windows).
+- **Automated Mode & Anti-Deadlock Guard**: Probes and test harnesses must run with `SQE_PROBE=1` or `SQE_TESTING=1` so that `MainWindow.closeEvent` and destructive action handlers bypass interactive modal question dialogs (`QMessageBox.question`). Custom event filters mounted on `QApplication` must directly `return False` for unhandled events to prevent PySide6 C++ trampoline recursion.
 - **Read the PNG, not the console.** The probe prints CJK to the console as cp950 mojibake — that is a display artifact, NOT broken data. Judge CJK only from the saved PNG.
 - **`grab()` cannot capture top-level popups.** `QMenu` (e.g. the event action menu), `QComboBox` dropdown lists, and tooltips render as separate native surfaces that a parent-widget `grab()` does not include. Verify those with a **structural assert** (e.g. `widget.toolTip()` / `accessibleName()` is set for elided cells, menu actions exist), not a screenshot.
-- Playwright / browser-tool policy: authority is `.Codex/rules/visual_evidence_rules.md` §1 — not visual evidence for this desktop app; do not restate the rule elsewhere.
+
 
 ## Running the probe
 
@@ -59,7 +60,34 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 
 `scripts\qt_visual_regress.py --target <t>` diffs the current capture against a committed baseline in `tests/visual_baseline/`. Baselines are generated natively with `--update` (see that folder's README). The check **skips** (never false-passes) when the environment does not match the baseline manifest. Refresh baselines deliberately after an intended visual change and review the diff.
 
-## Verification — the 15 dimensions
+## UI Button Functional Audit (動態按鍵功能稽核)
+
+除了靜態視覺截圖，為防止因刪除欄位、槽函數或是元件綁定導致應用程式在點擊特定按鈕時崩潰，請使用 `scripts\button_audit_report.py`。
+此腳本會在隔離的臨時測試資料庫環境中，自動實例化所有主要 UI 頁面（包含 MainWindow, EventCreatePage, MasterData 等），並模擬點擊每一個 `QAbstractButton` 元件（總計超過 70 個）。
+
+執行方式：
+```
+.venv\Scripts\python.exe scripts\button_audit_report.py
+```
+
+- **適用時機**：大規模重構、移除屬性或重新佈局表單後，做為比視覺檢查更深一層的功能性防崩潰保證。
+- **報告輸出**：執行完畢後會產生 `button_audit_report.md` 報表，請檢視該報表以確認是否有任何按鈕拋出例外錯誤 (Exceptions)。
+
+## 定義通過條件 (Passing Conditions)
+
+要宣稱本技能已「通過 (Passed)」或「完成 (Done)」，必須滿足對應測試類型的通過條件：
+
+1. **Visual Probe (視覺探針)**：
+   - 探針 JSON 輸出必須包含 `visual_trustworthy: true`，且 `qss_unknown_property_warnings == 0`。
+   - 命令列 exit code 必須為 `0`。
+   - 必須檢查並確認下方列出的「15 維度 (15 Dimensions)」中適用的所有項目。
+2. **Visual Regression (視覺回歸)**：
+   - `qt_visual_regress.py` 必須明確顯示 `pass`，或是因環境不符而合法 `skip`（不允許未解釋的 `failure`）。
+3. **Button Audit (動態按鍵稽核)**：
+   - `button_audit_report.md` 報表中的異常數量必須為 `0`。
+   - 任何拋出 Exceptions 的按鍵都必須修復完成，才可視為通過。
+
+### 視覺審查 15 維度 (The 15 Dimensions)
 
 A visual claim is "done" only after the relevant dimensions below are checked (skip ones that truly don't apply, and say which):
 

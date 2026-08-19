@@ -281,5 +281,55 @@ Next action: Ensure all newly introduced tables adopt standard sorting helpers.
 Harness update needed: yes
 Destination: `README.md`, `docs/ui-layout-theme-contract.md`, `docs/harness/closed-loop-log.md`
 
+## PySide6 Test Harness Deadlock, Event Loop & Automation RCA Entry
+
+Date: 2026-08-16
+Task: Eliminate background running hangs, PySide6 test deadlocks, and modal blockages across the entire test suite.
+Changes: Fixed `MainWindow.closeEvent` automated mode guard; removed `cls.app.quit()` from 37 test files; removed redundant `setStyle("Fusion")` from 19 test files; fixed `eventFilter` recursion in `src/ui/theme.py`; added `@lru_cache` to CJK font resolution; targeted `_refresh_existing_widgets` to `findChildren`; fixed `defect_list_widget.py` mock imports and `appearance_preferences_dialog.py` typo.
+Impact: All 486 unit tests now complete cleanly in a single run with 0 errors and 0 hangs; `scripts/verify.ps1 -Profile Focused` runs synchronously to 100% green without freezing.
+Verification: Passed 486/486 tests in `run_all_tests.py`; passed `scripts/verify.ps1 -Profile Focused`.
+Residual risk: None.
+Next action: Enforce anti-deadlock rules in all new PySide6 tests and UI dialogs.
+Debug/RCA:
+Observed: Background test runs and verify scripts frequently hung in "RUNNING" state indefinitely.
+Root cause: 1) `MainWindow.closeEvent` prompted modal question dialogs in unattended test/probe runs; 2) `cls.app.quit()` in test teardowns destroyed shared `QApplication` loop; 3) repeated `setStyle("Fusion")` caused Qt C++ style engine deadlocks; 4) `eventFilter` called `super().eventFilter` causing Python recursion depth exhaustion.
+Fix: Applied automated guards, centralized style init, removed `app.quit()`, returned `False` in event filters, and added font caches.
+Harness update needed: yes
+Destination: `AGENTS.md`, `~/.gemini/GEMINI.md`, `.agents/skills/sqe-dailywork-visual-qa/SKILL.md`, `.cursor/rules/agents_gateway.mdc`, `docs/harness/closed-loop-log.md`
+
+## Visual Regression Baseline Contract & Automated Mode Geometry Guard Entry
+
+Date: 2026-08-16
+Task: Fix visual regression baseline sizing mismatch and guard automated window geometry restore/save.
+Changes:
+- Added `not is_automated` guard to `MainWindow.__init__` and `MainWindow.closeEvent` so unattended test and visual probe executions neither restore dirty `QSettings` geometry nor overwrite user window placement.
+- Updated `scripts/qt_visual_regress.py` to automatically inherit `min_width` configuration from `scripts/qt_probe_targets.json`.
+- Updated visual regression baseline captures and ensured `tests/__init__.py` properly configures `sys.path`.
+Impact: Complete 6-stage verification suite (`scripts/verify.ps1` including all 492 tests, offscreen smoke, visual probe belt, and 10 visual regression targets) passes 100% green without platform or dimension drift.
+Verification: Passed full `scripts/verify.ps1` (492 tests + 10 visual regression targets).
+Residual risk: None.
+Next action: None.
+Debug/RCA:
+Observed: `verify.ps1` failed at step [5/6] with size mismatch on `main.png` and other resizable targets.
+Root cause: 1) `MainWindow` restored geometry from `QSettings` during probe runs; 2) `qt_visual_regress.py` did not inherit `min_width: true` from `qt_probe_targets.json` when running standalone or update.
+Fix: Guarded `MainWindow` geometry restore/save in automated environments; aligned `qt_visual_regress.py` with manifest settings; refreshed baselines.
+Harness update needed: yes
+Destination: `AGENTS.md`, `scripts/qt_visual_regress.py`, `src/ui/main_window.py`, `docs/harness/closed-loop-log.md`
+
+## Chart Typography Hierarchy Entry
+
+Date: 2026-08-16
+Task: Standardize chart typography hierarchy across all statistics pages.
+Changes: Centralized chart font constants and helpers in `src/ui/widgets/chart_style.py`; updated `stats_chart_mixin.py` and `ncr_stats_chart_mixin.py` to use `apply_chart_surface` and `apply_axis_typography`; added typography hierarchy unit tests in `test_stats_view_anomaly_chart.py` and `test_ncr_stats_grid_dashboard.py`.
+Impact: Standardizes all chart titles (11pt Bold), axis titles (9pt Bold), axis labels (9pt), legend (8pt), and data labels (8pt) with zero font drift across pages.
+Verification: Ran `test_stats_view_anomaly_chart.py`, `test_ncr_stats_grid_dashboard.py`, `scripts\verify.ps1 -Profile Focused`, and native Qt visual probes (`stats-stress`, `ncr-stats`).
+Residual risk: None.
+Next action: Maintain single source of truth in `chart_style.py` for any new charts.
+Debug/RCA:
+Observed: Inconsistent font sizes (11pt, 9pt, default unstyled) across supplier event statistics and warehouse NCR charts.
+Root cause: Lack of centralized chart font scale and omission of `setTitleFont`/`legend().setFont`/`setLabelsFont` in individual chart builders.
+Fix: Define centralized constants and `apply_axis_typography`/`apply_chart_surface` helpers in `chart_style.py`, apply to all builders, and pin with unit tests.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/ui-layout-theme-contract.md`, `docs/harness/closed-loop-log.md`
 
 

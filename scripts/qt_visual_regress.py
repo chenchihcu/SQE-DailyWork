@@ -120,7 +120,10 @@ def main() -> int:
     }
     if args.target not in target_rules:
         raise SystemExit(f"target is not registered in {TARGET_MANIFEST}: {args.target}")
-    baseline_required = bool(target_rules[args.target].get("baseline_required"))
+    target_cfg = target_rules[args.target]
+    baseline_required = bool(target_cfg.get("baseline_required"))
+    if not args.min_width and target_cfg.get("min_width"):
+        args.min_width = True
     probe_json = _run_probe(args)
     screenshots = [Path(p) for p in probe_json.get("screenshots", []) if p]
     if not screenshots and probe_json.get("screenshot"):

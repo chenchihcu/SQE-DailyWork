@@ -103,6 +103,13 @@
 ## Theme Rules
 
 - Keep colors, radius, typography, and control sizing in shared modules instead of page-local styles.
+- **Chart Typography Hierarchy Contract**: All charts across `StatsViewWidget` (anomaly events) and `NcrStatsWidget` (warehouse nonconforming products) must consume the centralized font scale and helpers in `src/ui/widgets/chart_style.py`:
+  - Chart Title: `11pt Bold` (`CHART_TITLE_POINT_SIZE`)
+  - Axis Title: `9pt Bold` (`CHART_AXIS_TITLE_POINT_SIZE`)
+  - Axis Labels (categories & tick values): `9pt Regular` (`CHART_AXIS_LABEL_POINT_SIZE`)
+  - Legend Labels: `8pt Regular` (`CHART_LEGEND_POINT_SIZE`)
+  - Data / Series / Point / Slice Labels: `8pt Regular / Bold` (`CHART_DATA_LABEL_POINT_SIZE`)
+  Both modules inherit the active CJK font family chain and shared semantic tokens (`text_primary`, `chart_axis_text`, `chart_plot_bg`). Ad-hoc QFont sizing in individual chart builders is forbidden.
 - Calendar popup QSS defines the light grid and explicit normal/disabled date
   text colors. `apply_app_theme` also installs the shared native-calendar
   palette guard because Windows ignores the QSS background for the internal
