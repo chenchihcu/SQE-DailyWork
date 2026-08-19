@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from ui.theme import apply_app_theme
 from ui.widgets.defect_list_widget import EventListWidget
-from ui.widgets.event_actions import build_event_action_menu
+from ui.widgets.event_actions import EventActionsController, build_event_action_menu
 
 
 class _DummyMainWindow:
@@ -51,6 +51,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             "linked_visit_id": "visit-001",
         }
         self.main_window = _DummyMainWindow()
+        self.main_window.open_anomaly_management = Mock()
 
     def test_event_query_menu_keeps_pending_linked_anomaly_actions(self) -> None:
         with patch(
@@ -108,6 +109,28 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             ],
             actions,
         )
+
+    def test_preview_uses_read_only_form_instead_of_management_route(self) -> None:
+        controller = EventActionsController(self.main_window, self.main_window)
+        detail = {"anomaly_no": "20260415001", "problem_desc": "內容"}
+        with (
+            patch("ui.widgets.event_actions._anomaly_service.get_anomaly_detail", return_value=detail),
+            patch("ui.widgets.event_actions.NewAnomalyDialog") as dialog_type,
+        ):
+            dialog_type.return_value.exec.return_value = 0
+            controller.open_preview_anomaly_dialog("anomaly-001")
+
+        self.main_window.open_anomaly_management.assert_not_called()
+        self.assertTrue(dialog_type.call_args.kwargs["read_only"])
+
+    def test_workbench_overview_uses_overview_dialog(self) -> None:
+        controller = EventActionsController(self.main_window, self.main_window)
+        with patch("ui.widgets.anomaly_overview_dialog.AnomalyOverviewDialog") as dialog_type:
+            dialog_type.return_value.exec.return_value = 0
+            controller.open_overview_dialog("anomaly-001")
+
+        self.main_window.open_anomaly_management.assert_not_called()
+        dialog_type.assert_called_once_with("anomaly-001", self.main_window)
 
 
 if __name__ == "__main__":

@@ -1046,6 +1046,7 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
     from unittest import mock
 
     from services.event import _anomaly_action_service, _anomaly_service, _anomaly_workbench_service
+    from ui.widgets.anomaly_management_page import AnomalyManagementPage
     from ui.widgets.anomaly_overview_dialog import AnomalyOverviewDialog
 
     payload = _workbench_overview_payload()
@@ -1108,6 +1109,22 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
 
     screenshots: list[str] = []
     try:
+        page = AnomalyManagementPage(_ProbeHost())
+        page.load_anomaly("probe-workbench")
+        page.resize(*(size or (1024, 720)))
+        for index, suffix in enumerate(
+            ("overview", "timeline", "analysis", "eight-d", "corrective", "attachments", "history")
+        ):
+            page.tabs.setCurrentIndex(index)
+            _settle_qt_paint(app, delay_ms=100, cycles=2)
+            screenshots.append(
+                _capture_widget(
+                    page,
+                    _target_output_path(output, f"workbench-page-{suffix}"),
+                    app,
+                )
+            )
+
         dialog = AnomalyOverviewDialog("probe-workbench", parent=None)
         dialog.resize(*(size or (1024, 720)))
         _settle_qt_paint(app, delay_ms=150, cycles=2)
@@ -1783,7 +1800,9 @@ def main() -> int:
     screenshots: list[str] = []
     pdf_info: dict = {}
     if not args.no_screenshot:
-        if args.target == "stats-stress":
+        if args.target == "home":
+            screenshots = _capture_home_window(output, app, size)
+        elif args.target == "stats-stress":
             screenshots = _capture_stats_stress(output, app, size)
         elif args.target == "event-create":
             screenshots = _capture_event_create(output, app, size)

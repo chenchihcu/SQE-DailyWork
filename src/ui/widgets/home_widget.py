@@ -29,6 +29,13 @@ from services.event import _query_service as event_service
 from ui.layout_constants import (
     BACKLOG_SUPPLIER_MAX_COL_WIDTH,
     CONTROL_ROW_SPACING,
+    HOME_BACKLOG_ANOMALY_NO_WIDTH,
+    HOME_BACKLOG_ITEM_NO_WIDTH,
+    HOME_BACKLOG_PRODUCT_WIDTH,
+    HOME_BACKLOG_QUALITY_WIDTH,
+    HOME_BACKLOG_RESPONSIBLE_WIDTH,
+    HOME_BACKLOG_STATUS_WIDTH,
+    HOME_BACKLOG_SUPPLIER_WIDTH,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
 )
@@ -97,9 +104,22 @@ class HomeWidget(QWidget):
             "點擊待辦列開啟事件管理頁，並帶入該供應商的待處理異常篩選",
         )
         header = self._backlog_table.horizontalHeader()
-        for i in range(8):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        fixed_widths = (
+            HOME_BACKLOG_ANOMALY_NO_WIDTH,
+            HOME_BACKLOG_SUPPLIER_WIDTH,
+            HOME_BACKLOG_ITEM_NO_WIDTH,
+            HOME_BACKLOG_PRODUCT_WIDTH,
+            HOME_BACKLOG_QUALITY_WIDTH,
+            HOME_BACKLOG_RESPONSIBLE_WIDTH,
+            None,
+            HOME_BACKLOG_STATUS_WIDTH,
+        )
+        for index, width in enumerate(fixed_widths):
+            if width is None:
+                header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
+            else:
+                header.setSectionResizeMode(index, QHeaderView.ResizeMode.Fixed)
+                self._backlog_table.setColumnWidth(index, width)
         self._backlog_table.cellClicked.connect(self._on_backlog_row_clicked)
         outer.addWidget(self._backlog_table, 1)
 
