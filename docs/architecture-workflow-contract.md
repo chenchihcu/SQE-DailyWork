@@ -11,11 +11,30 @@ shared master-data area.
 | Area | Tables | Source | Writes Allowed From | Must Not Write |
 | --- | --- | --- | --- | --- |
 | Shared master data | `suppliers`, `products` | Company product and supplier master data | Manual master-data dialogs; ERP/Excel master import | Supplier events, visit/audit defect notes, warehouse defect records |
-| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes | `defect_records` |
-| Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` |
+| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `anomaly_actions`, `anomaly_analysis_notes`, `anomaly_root_causes`, `corrective_actions`, `effectiveness_verifications`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; anomaly workbench CRUD through `_anomaly_action_service` / `_anomaly_workbench_service` | `defect_records` |
+| Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` (and all anomaly sub-tables) |
 | Import audit | `import_batches`, `import_batch_rows` | ERP/Excel import runs | Import services | Workflow data rows |
 
 ## Flow Boundaries
+
+0. **Anomaly case-workbench sub-tables** belong exclusively to the supplier-event
+   management line. `anomaly_actions`, `anomaly_analysis_notes`,
+   `anomaly_root_causes`, `corrective_actions`, `effectiveness_verifications`,
+   `anomaly_attachments`, `anomaly_eight_d_reviews`, and `anomaly_audit_logs`
+   are read/written only through the service adapters in
+   `src/services/event/_anomaly_action_service.py` and
+   `src/services/event/_anomaly_workbench_service.py`. They must never be
+   written from the warehouse tracker and must never be read for warehouse
+   statistics. Timeline is a projection over the authoritative audit log plus
+   sub-table rows and must not double count an event that already has an audit
+   entry.
+   - Status-changing service helpers (`complete_action`, `cancel_action`,
+     `record_ca_completion_with_audit`, `record_ca_status_change_with_audit`,
+     `record_verification_with_audit`, `create_eight_d_review_with_audit`,
+     `append_manual_audit`) bundle the sub-table write with an
+     `anomaly_audit_logs` row so the timeline reflects every transition
+     without callers re-implementing audit logic. UI dialogs must call these
+     helpers instead of the repository directly.
 
 1. `visit_defect_notes` remains a compatible supplier-event store for existing
    visit or audit notes. The current `NewVisitDialog` preserves those notes on
@@ -121,6 +140,24 @@ shared master-data area.
   labeled as warehouse physical nonconforming-product analysis.
 - A combined quality metric is allowed only when the UI explicitly separates the
   two sources in the same view.
+
+## Anomaly Workbench Read Model Parity
+
+- `repository.get_anomaly_overview_card` is the single source of truth for the
+  workbench summary (current next action, overdue flag, open action count, root
+  cause status, corrective action status, effectiveness verification result,
+  analysis notes flag, attachment count). The UI dialog, the event list, the
+  Excel detail sheet, the PDF payload, and the Markdown snapshot must all
+  consume this read model — UI / exporters must not recompute their own join.
+- `_query_service.list_events` and `_query_service.list_events_by_range`
+  annotate each anomaly row with the overview card fields so every consumer
+  (table, dashboard cards, export) sees the same numbers.
+- Excel 異常 detail sheet appends the parity columns (`逾期`, `目前處置`,
+  `進行中處置數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`)
+  after the existing legacy fields. Removing any of the legacy columns is a
+  contract change and must follow the standard change checklist.
+- VISIT rows are intentionally not enriched; only ANOMALY rows own the workbench
+  sub-tables and the parity rules.
 
 ## Change Checklist
 

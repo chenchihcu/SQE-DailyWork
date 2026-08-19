@@ -32,6 +32,38 @@ from database.repo_helpers import (
     EVENT_SCOPE_VALUES,
     DEFECT_NOTE_IMPROVED,
     DEFECT_NOTE_PENDING_IMPROVEMENT,
+    ANOMALY_ACTION_STATUS_OPEN,
+    ANOMALY_ACTION_STATUS_COMPLETED,
+    ANOMALY_ACTION_STATUS_CANCELLED,
+    ANOMALY_ACTION_STATUSES,
+    ANOMALY_ACTIONS_MIGRATION_META_KEY,
+    ANOMALY_ACTIONS_BACKFILL_META_KEY,
+    ANOMALY_EVIDENCE_TYPES,
+    ANOMALY_EVIDENCE_LABELS,
+    ANOMALY_EVIDENCE_UNKNOWN,
+    ANOMALY_ROOT_CAUSE_STATUSES,
+    ANOMALY_ROOT_CAUSE_NOT_STARTED,
+    ANOMALY_ROOT_CAUSE_VERIFIED,
+    ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
+    CORRECTIVE_ACTION_STATUSES,
+    CORRECTIVE_ACTION_STATUS_PLANNED,
+    CORRECTIVE_ACTION_STATUS_IN_PROGRESS,
+    CORRECTIVE_ACTION_STATUS_IMPLEMENTED,
+    CORRECTIVE_ACTION_STATUS_CANCELLED,
+    CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING,
+    CORRECTIVE_ACTION_STATUS_EFFECTIVE,
+    CORRECTIVE_ACTION_STATUS_INEFFECTIVE,
+    EFFECTIVENESS_VERIFICATION_RESULTS,
+    EFFECTIVENESS_VERIFICATION_RESULT_PENDING,
+    EFFECTIVENESS_VERIFICATION_RESULT_EFFECTIVE,
+    EFFECTIVENESS_VERIFICATION_RESULT_INEFFECTIVE,
+    ANOMALY_ANALYSIS_NOTES_MIGRATION_META_KEY,
+    ANOMALY_ROOT_CAUSES_MIGRATION_META_KEY,
+    CORRECTIVE_ACTIONS_MIGRATION_META_KEY,
+    EFFECTIVENESS_VERIFICATIONS_MIGRATION_META_KEY,
+    ANOMALY_ATTACHMENTS_MIGRATION_META_KEY,
+    ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY,
+    ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY,
     # ── TypedDicts ──
     SupplierDeleteFailure,
     SupplierDeleteResult,
@@ -51,6 +83,7 @@ from database.repo_helpers import (
     _as_int,
     _normalize_date,
     _normalize_strict_iso_date,
+    _normalize_loose_iso_date,
     _ensure_date_not_in_future,
     _normalize_non_negative_int,
     _normalize_month,
@@ -236,6 +269,153 @@ def create_schema(conn: sqlite3.Connection) -> None:
             closed_anomaly_count INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+
+        -- Anomaly next-action sub-table (Phase 1).
+        -- Each anomaly may have one or more actions; lifecycle is tracked here
+        -- rather than implicitly on anomalies.pending_items + due_date so that
+        -- "in progress / completed / cancelled" history is preserved.
+        CREATE TABLE IF NOT EXISTS anomaly_actions (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            description TEXT NOT NULL,
+            owner TEXT NOT NULL DEFAULT '',
+            due_date TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '進行中'
+                CHECK (status IN ('進行中','已完成','已取消')),
+            completed_at TEXT,
+            completed_note TEXT NOT NULL DEFAULT '',
+            cancelled_at TEXT,
+            cancelled_note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_actions_anomaly
+            ON anomaly_actions(anomaly_id, status, due_date);
+        CREATE INDEX IF NOT EXISTS idx_anomaly_actions_due
+            ON anomaly_actions(status, due_date);
+
+        -- Anomaly analysis notes + root cause (Phase 2).
+        CREATE TABLE IF NOT EXISTS anomaly_analysis_notes (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            evidence_type TEXT NOT NULL DEFAULT 'UNKNOWN'
+                CHECK (evidence_type IN ('FACT','INFERENCE','ASSUMPTION','UNKNOWN')),
+            author_name TEXT NOT NULL DEFAULT '',
+            attachment_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_notes_anomaly
+            ON anomaly_analysis_notes(anomaly_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS anomaly_root_causes (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL UNIQUE,
+            statement TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '尚未開始'
+                CHECK (status IN ('尚未開始','調查中','提案','已驗證','無法確認')),
+            validation_method TEXT NOT NULL DEFAULT '',
+            validation_evidence TEXT NOT NULL DEFAULT '',
+            conclusion_note TEXT NOT NULL DEFAULT '',
+            not_established_reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_root_causes_anomaly
+            ON anomaly_root_causes(anomaly_id);
+
+        -- Corrective actions + effectiveness verifications (Phase 3).
+        CREATE TABLE IF NOT EXISTS corrective_actions (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            description TEXT NOT NULL,
+            responsible_party TEXT NOT NULL DEFAULT '',
+            target_date TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '已規劃'
+                CHECK (status IN ('已規劃','執行中','已實施','待有效性驗證','有效','無效','已取消')),
+            implementation_evidence TEXT NOT NULL DEFAULT '',
+            completion_date TEXT,
+            effectiveness_verification_required INTEGER NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_corrective_actions_anomaly
+            ON corrective_actions(anomaly_id, status);
+
+        CREATE TABLE IF NOT EXISTS effectiveness_verifications (
+            id TEXT PRIMARY KEY,
+            corrective_action_id TEXT NOT NULL,
+            method TEXT NOT NULL DEFAULT '',
+            acceptance_criteria TEXT NOT NULL DEFAULT '',
+            period_sample TEXT NOT NULL DEFAULT '',
+            result TEXT NOT NULL DEFAULT '待驗證'
+                CHECK (result IN ('待驗證','有效','無效','無法判定')),
+            evidence TEXT NOT NULL DEFAULT '',
+            conclusion TEXT NOT NULL DEFAULT '',
+            verified_by TEXT NOT NULL DEFAULT '',
+            verified_date TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (corrective_action_id)
+                REFERENCES corrective_actions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_eff_verifications_ca
+            ON effectiveness_verifications(corrective_action_id);
+
+        -- Anomaly attachments (Phase 4). Existing physical files are managed by
+        -- the attachment store; this table adds classification + relationship.
+        CREATE TABLE IF NOT EXISTS anomaly_attachments (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            file_name TEXT NOT NULL DEFAULT '',
+            stored_name TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '其他',
+            description TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            revision TEXT NOT NULL DEFAULT '',
+            related_ca_id TEXT,
+            uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
+            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_attachments_anomaly
+            ON anomaly_attachments(anomaly_id);
+
+        -- Supplier 8D revision reviews (append-only, Phase 4).
+        CREATE TABLE IF NOT EXISTS anomaly_eight_d_reviews (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            revision TEXT NOT NULL DEFAULT '',
+            review_status TEXT NOT NULL DEFAULT '需補充證據'
+                CHECK (review_status IN ('接受','退回修正','需補充證據')),
+            review_comment TEXT NOT NULL DEFAULT '',
+            attachment_id TEXT,
+            review_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
+            FOREIGN KEY (attachment_id) REFERENCES anomaly_attachments(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_8d_anomaly
+            ON anomaly_eight_d_reviews(anomaly_id, review_date);
+
+        -- Anomaly audit log (append-only, Phase 4).
+        CREATE TABLE IF NOT EXISTS anomaly_audit_logs (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            before_value TEXT NOT NULL DEFAULT '',
+            after_value TEXT NOT NULL DEFAULT '',
+            actor_name TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_audit_anomaly
+            ON anomaly_audit_logs(anomaly_id, created_at);
 
         CREATE TABLE IF NOT EXISTS migration_meta (
             key TEXT PRIMARY KEY,
@@ -518,6 +698,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "anomalies", "rc_in_transit", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "rc_internal_inventory", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "is_tech_transfer", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_anomaly_actions_v1(conn)
+    _ensure_anomaly_evidence_tables_v1(conn)
     conn.execute(
         """
         UPDATE products
@@ -844,6 +1026,597 @@ def _normalize_supplier_name_for_storage(supplier_name: str) -> str:
         return ""
     canonical = canonicalize_supplier_name(raw)
     return canonical or raw
+
+
+def _ensure_anomaly_actions_v1(conn: sqlite3.Connection) -> None:
+    """Idempotent upgrade helper for the ``anomaly_actions`` sub-table.
+
+    Older databases may have been created before the schema was extended. The
+    ``CREATE TABLE IF NOT EXISTS`` clause in :func:`create_schema` only handles
+    fresh databases, so this helper creates the table and indexes on existing
+    installs as well. It also performs a one-shot back-fill of a single
+    "history" action per open anomaly that already carries pending items,
+    responsible person, or due date so that the new read model has data to
+    surface for historical rows.
+    """
+    if not _table_exists(conn, "anomaly_actions"):
+        conn.executescript(
+            """
+            CREATE TABLE anomaly_actions (
+                id TEXT PRIMARY KEY,
+                anomaly_id TEXT NOT NULL,
+                description TEXT NOT NULL,
+                owner TEXT NOT NULL DEFAULT '',
+                due_date TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT '進行中'
+                    CHECK (status IN ('進行中','已完成','已取消')),
+                completed_at TEXT,
+                completed_note TEXT NOT NULL DEFAULT '',
+                cancelled_at TEXT,
+                cancelled_note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_anomaly_actions_anomaly
+                ON anomaly_actions(anomaly_id, status, due_date);
+            CREATE INDEX IF NOT EXISTS idx_anomaly_actions_due
+                ON anomaly_actions(status, due_date);
+            """
+        )
+    if get_migration_meta(conn, ANOMALY_ACTIONS_MIGRATION_META_KEY) == "1":
+        return
+    upsert_migration_meta(conn, ANOMALY_ACTIONS_MIGRATION_META_KEY, "1")
+    if get_migration_meta(conn, ANOMALY_ACTIONS_BACKFILL_META_KEY) == "1":
+        return
+    _backfill_legacy_anomaly_actions(conn)
+    conn.commit()
+    upsert_migration_meta(conn, ANOMALY_ACTIONS_BACKFILL_META_KEY, "1")
+
+
+def _backfill_legacy_anomaly_actions(conn: sqlite3.Connection) -> None:
+    """Create a single legacy action per open anomaly that has actionable data.
+
+    Only writes when the anomaly has :attr:`pending_items`, :attr:`responsible_person`,
+    or :attr:`due_date` populated. Closed anomalies are intentionally skipped
+    because their ``improvement_desc`` is already part of the closed-state
+    snapshot; we do not want to back-fill a "history" action that duplicates
+    an already-completed closure record.
+    """
+    rows = conn.execute(
+        """
+        SELECT id AS anomaly_id,
+               trim(coalesce(pending_items, '')) AS pending_items,
+               trim(coalesce(responsible_person, '')) AS responsible_person,
+               trim(coalesce(due_date, '')) AS due_date
+        FROM anomalies
+        WHERE status = '待處理'
+        """
+    ).fetchall()
+    for row in rows:
+        if not (
+            row["pending_items"]
+            or row["responsible_person"]
+            or row["due_date"]
+        ):
+            continue
+        conn.execute(
+            """
+            INSERT INTO anomaly_actions(
+                id, anomaly_id, description, owner, due_date, status,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, '進行中', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (
+                _gen_id(),
+                row["anomaly_id"],
+                row["pending_items"] or "（歷史待追蹤）",
+                row["responsible_person"],
+                row["due_date"],
+            ),
+        )
+
+
+def _ensure_anomaly_evidence_tables_v1(conn: sqlite3.Connection) -> None:
+    """Idempotent upgrade helper for the Phase 2–4 sub-tables.
+
+    Fresh installs get these tables via :func:`create_schema`; older databases
+    that predate the extension rely on this helper to create the tables and
+    indexes. Each table is gated by its own ``migration_meta`` key so a partial
+    upgrade never re-runs half-applied schema work.
+    """
+    _create_if_missing(
+        conn,
+        ANOMALY_ANALYSIS_NOTES_MIGRATION_META_KEY,
+        "anomaly_analysis_notes",
+        """
+        CREATE TABLE anomaly_analysis_notes (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            evidence_type TEXT NOT NULL DEFAULT 'UNKNOWN'
+                CHECK (evidence_type IN ('FACT','INFERENCE','ASSUMPTION','UNKNOWN')),
+            author_name TEXT NOT NULL DEFAULT '',
+            attachment_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_notes_anomaly
+            ON anomaly_analysis_notes(anomaly_id, created_at);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        ANOMALY_ROOT_CAUSES_MIGRATION_META_KEY,
+        "anomaly_root_causes",
+        """
+        CREATE TABLE anomaly_root_causes (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL UNIQUE,
+            statement TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '尚未開始'
+                CHECK (status IN ('尚未開始','調查中','提案','已驗證','無法確認')),
+            validation_method TEXT NOT NULL DEFAULT '',
+            validation_evidence TEXT NOT NULL DEFAULT '',
+            conclusion_note TEXT NOT NULL DEFAULT '',
+            not_established_reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_root_causes_anomaly
+            ON anomaly_root_causes(anomaly_id);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        CORRECTIVE_ACTIONS_MIGRATION_META_KEY,
+        "corrective_actions",
+        """
+        CREATE TABLE corrective_actions (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            description TEXT NOT NULL,
+            responsible_party TEXT NOT NULL DEFAULT '',
+            target_date TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '已規劃'
+                CHECK (status IN ('已規劃','執行中','已實施','待有效性驗證','有效','無效','已取消')),
+            implementation_evidence TEXT NOT NULL DEFAULT '',
+            completion_date TEXT,
+            effectiveness_verification_required INTEGER NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_corrective_actions_anomaly
+            ON corrective_actions(anomaly_id, status);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        EFFECTIVENESS_VERIFICATIONS_MIGRATION_META_KEY,
+        "effectiveness_verifications",
+        """
+        CREATE TABLE effectiveness_verifications (
+            id TEXT PRIMARY KEY,
+            corrective_action_id TEXT NOT NULL,
+            method TEXT NOT NULL DEFAULT '',
+            acceptance_criteria TEXT NOT NULL DEFAULT '',
+            period_sample TEXT NOT NULL DEFAULT '',
+            result TEXT NOT NULL DEFAULT '待驗證'
+                CHECK (result IN ('待驗證','有效','無效','無法判定')),
+            evidence TEXT NOT NULL DEFAULT '',
+            conclusion TEXT NOT NULL DEFAULT '',
+            verified_by TEXT NOT NULL DEFAULT '',
+            verified_date TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (corrective_action_id)
+                REFERENCES corrective_actions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_eff_verifications_ca
+            ON effectiveness_verifications(corrective_action_id);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        ANOMALY_ATTACHMENTS_MIGRATION_META_KEY,
+        "anomaly_attachments",
+        """
+        CREATE TABLE anomaly_attachments (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            file_name TEXT NOT NULL DEFAULT '',
+            stored_name TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '其他',
+            description TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            revision TEXT NOT NULL DEFAULT '',
+            related_ca_id TEXT,
+            uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
+            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_attachments_anomaly
+            ON anomaly_attachments(anomaly_id);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY,
+        "anomaly_eight_d_reviews",
+        """
+        CREATE TABLE anomaly_eight_d_reviews (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            revision TEXT NOT NULL DEFAULT '',
+            review_status TEXT NOT NULL DEFAULT '需補充證據'
+                CHECK (review_status IN ('接受','退回修正','需補充證據')),
+            review_comment TEXT NOT NULL DEFAULT '',
+            attachment_id TEXT,
+            review_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
+            FOREIGN KEY (attachment_id) REFERENCES anomaly_attachments(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_8d_anomaly
+            ON anomaly_eight_d_reviews(anomaly_id, review_date);
+        """,
+    )
+    _create_if_missing(
+        conn,
+        ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY,
+        "anomaly_audit_logs",
+        """
+        CREATE TABLE anomaly_audit_logs (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            before_value TEXT NOT NULL DEFAULT '',
+            after_value TEXT NOT NULL DEFAULT '',
+            actor_name TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_audit_anomaly
+            ON anomaly_audit_logs(anomaly_id, created_at);
+        """,
+    )
+    conn.commit()
+
+
+def _create_if_missing(
+    conn: sqlite3.Connection,
+    meta_key: str,
+    table_name: str,
+    ddl: str,
+) -> None:
+    """Create a table/index set once, guarded by a migration meta key."""
+    if get_migration_meta(conn, meta_key) == "1":
+        return
+    # A fresh install already created this table via create_schema's
+    # executescript (IF NOT EXISTS). If it is present, just record the meta
+    # marker so we do not try to re-create it with the plain CREATE TABLE DDL.
+    if _table_exists(conn, table_name):
+        upsert_migration_meta(conn, meta_key, "1")
+        return
+    conn.executescript(ddl)
+    conn.commit()
+    upsert_migration_meta(conn, meta_key, "1")
+
+
+def create_anomaly_action(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    description: str,
+    owner: str = "",
+    due_date: str = "",
+    status: str = ANOMALY_ACTION_STATUS_OPEN,
+) -> str:
+    """Insert a new next-action row for an anomaly.
+
+    Validates that the anomaly exists and stays aligned with the v2 status
+    constraint (``待處理/已結案``). Closed anomalies may still receive
+    informative next actions as long as the description is non-empty, so we
+    do not block creation here — UI / service layer decide when to surface
+    the action.
+    """
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        raise ValueError("Anomaly id is required")
+    normalized_description = (description or "").strip()
+    if not normalized_description:
+        raise ValueError("Action description is required")
+    if get_anomaly_detail(conn, anomaly_key) is None:
+        raise ValueError("Anomaly not found")
+    if status not in ANOMALY_ACTION_STATUSES:
+        raise ValueError("Action status must be 進行中 / 已完成 / 已取消")
+    normalized_due = ""
+    if due_date:
+        normalized_due = _normalize_loose_iso_date(
+            due_date, field_name="Action due date"
+        )
+    action_id = _gen_id()
+    conn.execute(
+        """
+        INSERT INTO anomaly_actions(
+            id, anomaly_id, description, owner, due_date, status,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (
+            action_id,
+            anomaly_key,
+            normalized_description,
+            (owner or "").strip(),
+            normalized_due,
+            status,
+        ),
+    )
+    conn.commit()
+    return action_id
+
+
+def list_anomaly_actions(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    *,
+    include_completed: bool = True,
+    include_cancelled: bool = True,
+) -> list[dict]:
+    """Return all actions for an anomaly, ordered by status then due date."""
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        return []
+    statuses: list[str] = [ANOMALY_ACTION_STATUS_OPEN]
+    if include_completed:
+        statuses.append(ANOMALY_ACTION_STATUS_COMPLETED)
+    if include_cancelled:
+        statuses.append(ANOMALY_ACTION_STATUS_CANCELLED)
+    placeholders = ",".join("?" for _ in statuses)
+    rows = conn.execute(
+        f"""
+        SELECT id, anomaly_id, description, owner, due_date, status,
+               completed_at, completed_note, cancelled_at, cancelled_note,
+               created_at, updated_at
+        FROM anomaly_actions
+        WHERE anomaly_id = ? AND status IN ({placeholders})
+        ORDER BY
+            CASE status
+                WHEN '進行中' THEN 0
+                WHEN '已完成' THEN 1
+                WHEN '已取消' THEN 2
+                ELSE 3
+            END,
+            CASE WHEN trim(coalesce(due_date, '')) = '' THEN 1 ELSE 0 END,
+            due_date ASC,
+            created_at ASC
+        """,
+        (anomaly_key, *statuses),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_anomaly_action(
+    conn: sqlite3.Connection, action_id: str
+) -> dict | None:
+    key = (action_id or "").strip()
+    if not key:
+        return None
+    row = conn.execute(
+        """
+        SELECT id, anomaly_id, description, owner, due_date, status,
+               completed_at, completed_note, cancelled_at, cancelled_note,
+               created_at, updated_at
+        FROM anomaly_actions
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (key,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_anomaly_action(
+    conn: sqlite3.Connection,
+    action_id: str,
+    *,
+    description: str | None = None,
+    owner: str | None = None,
+    due_date: str | None = None,
+) -> None:
+    """Edit description / owner / due_date of an existing action.
+
+    Status transitions go through :func:`complete_anomaly_action` or
+    :func:`cancel_anomaly_action` so the audit-relevant timestamps stay
+    consistent.
+    """
+    key = (action_id or "").strip()
+    if not key:
+        raise ValueError("Action id is required")
+    existing = get_anomaly_action(conn, key)
+    if existing is None:
+        raise ValueError("Action not found")
+    if existing["status"] != ANOMALY_ACTION_STATUS_OPEN:
+        raise ValueError("Only 進行中 actions are editable")
+    fields: dict[str, object] = {}
+    if description is not None:
+        normalized = (description or "").strip()
+        if not normalized:
+            raise ValueError("Action description is required")
+        fields["description"] = normalized
+    if owner is not None:
+        fields["owner"] = (owner or "").strip()
+    if due_date is not None:
+        if due_date:
+            fields["due_date"] = _normalize_loose_iso_date(
+                due_date, field_name="Action due date"
+            )
+        else:
+            fields["due_date"] = ""
+    if not fields:
+        return
+    assignments = ", ".join(f"{col} = ?" for col in fields)
+    params: list[object] = list(fields.values()) + [
+        _now_iso(),
+        key,
+    ]
+    conn.execute(
+        f"""
+        UPDATE anomaly_actions
+        SET {assignments}, updated_at = ?
+        WHERE id = ?
+        """,
+        params,
+    )
+    conn.commit()
+
+
+def complete_anomaly_action(
+    conn: sqlite3.Connection,
+    action_id: str,
+    *,
+    completion_note: str = "",
+    completed_at: str | None = None,
+) -> None:
+    """Mark an action as 已完成 with timestamp and optional note."""
+    key = (action_id or "").strip()
+    if not key:
+        raise ValueError("Action id is required")
+    existing = get_anomaly_action(conn, key)
+    if existing is None:
+        raise ValueError("Action not found")
+    if existing["status"] != ANOMALY_ACTION_STATUS_OPEN:
+        raise ValueError("Only 進行中 actions can be completed")
+    normalized_at = _normalize_strict_iso_date(
+        completed_at,
+        field_name="Completion date",
+        fallback=date.today().isoformat(),
+    )
+    _ensure_date_not_in_future(normalized_at, field_name="Completion date")
+    conn.execute(
+        """
+        UPDATE anomaly_actions
+        SET status = '已完成',
+            completed_at = ?,
+            completed_note = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            normalized_at,
+            (completion_note or "").strip(),
+            _now_iso(),
+            key,
+        ),
+    )
+    conn.commit()
+
+
+def cancel_anomaly_action(
+    conn: sqlite3.Connection,
+    action_id: str,
+    *,
+    cancel_note: str = "",
+    cancelled_at: str | None = None,
+) -> None:
+    """Mark an action as 已取消 with timestamp and optional reason."""
+    key = (action_id or "").strip()
+    if not key:
+        raise ValueError("Action id is required")
+    existing = get_anomaly_action(conn, key)
+    if existing is None:
+        raise ValueError("Action not found")
+    if existing["status"] != ANOMALY_ACTION_STATUS_OPEN:
+        raise ValueError("Only 進行中 actions can be cancelled")
+    normalized_at = _normalize_strict_iso_date(
+        cancelled_at,
+        field_name="Cancellation date",
+        fallback=date.today().isoformat(),
+    )
+    _ensure_date_not_in_future(normalized_at, field_name="Cancellation date")
+    conn.execute(
+        """
+        UPDATE anomaly_actions
+        SET status = '已取消',
+            cancelled_at = ?,
+            cancelled_note = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            normalized_at,
+            (cancel_note or "").strip(),
+            _now_iso(),
+            key,
+        ),
+    )
+    conn.commit()
+
+
+def is_anomaly_overdue(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    *,
+    today: str | None = None,
+) -> bool:
+    """Return True when an open anomaly has at least one due action that is
+    overdue.
+
+    Closed anomalies are never overdue. Cancelled actions are ignored.
+    """
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        return False
+    detail = get_anomaly_detail(conn, anomaly_key)
+    if detail is None:
+        return False
+    if detail.get("status") != "待處理":
+        return False
+    today_iso = _normalize_strict_iso_date(
+        today, field_name="Today", fallback=date.today().isoformat()
+    )
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM anomaly_actions
+        WHERE anomaly_id = ?
+          AND status = '進行中'
+          AND trim(coalesce(due_date, '')) <> ''
+          AND due_date < ?
+        LIMIT 1
+        """,
+        (anomaly_key, today_iso),
+    ).fetchone()
+    return row is not None
+
+
+def get_current_anomaly_action(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+) -> dict | None:
+    """Return the most actionable 進行中 row or ``None`` when none is open."""
+    anomaly_key = (anomaly_id or "").strip()
+    if not anomaly_key:
+        return None
+    row = conn.execute(
+        """
+        SELECT id, anomaly_id, description, owner, due_date, status,
+               completed_at, completed_note, cancelled_at, cancelled_note,
+               created_at, updated_at
+        FROM anomaly_actions
+        WHERE anomaly_id = ? AND status = '進行中'
+        ORDER BY
+            CASE WHEN trim(coalesce(due_date, '')) = '' THEN 1 ELSE 0 END,
+            due_date ASC,
+            created_at ASC
+        LIMIT 1
+        """,
+        (anomaly_key,),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def align_legacy_anomaly_categories(conn: sqlite3.Connection) -> int:
@@ -2745,6 +3518,696 @@ def create_anomaly(
         conn.rollback()
         raise
     return anomaly_no
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: analysis notes + root cause
+# ---------------------------------------------------------------------------
+def require_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> dict:
+    """Return an anomaly detail or raise ``ValueError`` with a stable message."""
+    detail = get_anomaly_detail(conn, anomaly_id)
+    if detail is None:
+        raise ValueError("Anomaly not found")
+    return detail
+
+
+def create_anomaly_analysis_note(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    content: str,
+    evidence_type: str = ANOMALY_EVIDENCE_UNKNOWN,
+    author_name: str = "",
+    attachment_count: int = 0,
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    text = (content or "").strip()
+    if not text:
+        raise ValueError("Analysis note content is required")
+    ev = (evidence_type or "").strip()
+    if ev not in ANOMALY_EVIDENCE_TYPES:
+        raise ValueError("Evidence type must be FACT / INFERENCE / ASSUMPTION / UNKNOWN")
+    note_id = _gen_id()
+    conn.execute(
+        """
+        INSERT INTO anomaly_analysis_notes(
+            id, anomaly_id, content, evidence_type, author_name,
+            attachment_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (
+            note_id,
+            anomaly_id.strip(),
+            text,
+            ev,
+            (author_name or "").strip(),
+            _normalize_non_negative_int(attachment_count, field_name="Attachment count"),
+        ),
+    )
+    conn.commit()
+    return note_id
+
+
+def list_anomaly_analysis_notes(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, anomaly_id, content, evidence_type, author_name,
+               attachment_count, created_at, updated_at
+        FROM anomaly_analysis_notes
+        WHERE anomaly_id = ?
+        ORDER BY created_at ASC, rowid ASC
+        """,
+        (anomaly_id or "",),
+    ).fetchall()
+    result: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        item["evidence_label"] = ANOMALY_EVIDENCE_LABELS.get(
+            item.get("evidence_type"), item.get("evidence_type")
+        )
+        result.append(item)
+    return result
+
+
+def get_anomaly_root_cause(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT id, anomaly_id, statement, status, validation_method,
+               validation_evidence, conclusion_note, not_established_reason,
+               created_at, updated_at
+        FROM anomaly_root_causes
+        WHERE anomaly_id = ?
+        LIMIT 1
+        """,
+        (anomaly_id or "",),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_anomaly_root_cause(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    statement: str = "",
+    status: str = ANOMALY_ROOT_CAUSE_NOT_STARTED,
+    validation_method: str = "",
+    validation_evidence: str = "",
+    conclusion_note: str = "",
+    not_established_reason: str = "",
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    if status not in ANOMALY_ROOT_CAUSE_STATUSES:
+        raise ValueError("Invalid root cause status")
+    # Conditional requirement: Verified / Not Established require a statement.
+    if status in (ANOMALY_ROOT_CAUSE_VERIFIED, ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED):
+        if not (statement or "").strip():
+            raise ValueError("Root cause statement is required for this status")
+    existing = get_anomaly_root_cause(conn, anomaly_id)
+    if existing is None:
+        rc_id = _gen_id()
+        conn.execute(
+            """
+            INSERT INTO anomaly_root_causes(
+                id, anomaly_id, statement, status, validation_method,
+                validation_evidence, conclusion_note, not_established_reason,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (
+                rc_id,
+                anomaly_id.strip(),
+                (statement or "").strip(),
+                status,
+                (validation_method or "").strip(),
+                (validation_evidence or "").strip(),
+                (conclusion_note or "").strip(),
+                (not_established_reason or "").strip(),
+            ),
+        )
+        conn.commit()
+        return rc_id
+    conn.execute(
+        """
+        UPDATE anomaly_root_causes
+        SET statement = ?, status = ?, validation_method = ?,
+            validation_evidence = ?, conclusion_note = ?,
+            not_established_reason = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            (statement or "").strip(),
+            status,
+            (validation_method or "").strip(),
+            (validation_evidence or "").strip(),
+            (conclusion_note or "").strip(),
+            (not_established_reason or "").strip(),
+            existing["id"],
+        ),
+    )
+    conn.commit()
+    return str(existing["id"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: corrective actions + effectiveness verifications
+# ---------------------------------------------------------------------------
+def create_corrective_action(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    description: str,
+    responsible_party: str = "",
+    target_date: str = "",
+    status: str = CORRECTIVE_ACTION_STATUS_PLANNED,
+    effectiveness_verification_required: bool = False,
+    notes: str = "",
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    text = (description or "").strip()
+    if not text:
+        raise ValueError("Corrective action description is required")
+    if status not in CORRECTIVE_ACTION_STATUSES:
+        raise ValueError("Invalid corrective action status")
+    ca_id = _gen_id()
+    normalized_target = ""
+    if target_date:
+        normalized_target = _normalize_loose_iso_date(
+            target_date, field_name="Target date"
+        )
+    conn.execute(
+        """
+        INSERT INTO corrective_actions(
+            id, anomaly_id, description, responsible_party, target_date, status,
+            effectiveness_verification_required, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (
+            ca_id,
+            anomaly_id.strip(),
+            text,
+            (responsible_party or "").strip(),
+            normalized_target,
+            status,
+            1 if effectiveness_verification_required else 0,
+            (notes or "").strip(),
+        ),
+    )
+    conn.commit()
+    return ca_id
+
+
+def list_corrective_actions(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, anomaly_id, description, responsible_party, target_date,
+               status, implementation_evidence, completion_date,
+               effectiveness_verification_required, notes, created_at, updated_at
+        FROM corrective_actions
+        WHERE anomaly_id = ?
+        ORDER BY created_at ASC, rowid ASC
+        """,
+        (anomaly_id or "",),
+    ).fetchall()
+    result: list[dict] = []
+    for item in rows:
+        d = dict(item)
+        d["effectiveness_verification_required"] = bool(
+            _as_int(d.get("effectiveness_verification_required"), 0)
+        )
+        result.append(d)
+    return result
+
+
+def get_corrective_action(
+    conn: sqlite3.Connection, ca_id: str
+) -> dict | None:
+    key = (ca_id or "").strip()
+    if not key:
+        return None
+    row = conn.execute(
+        """
+        SELECT id, anomaly_id, description, responsible_party, target_date,
+               status, implementation_evidence, completion_date,
+               effectiveness_verification_required, notes, created_at, updated_at
+        FROM corrective_actions
+        WHERE id = ?
+        LIMIT 1
+        """,
+        (key,),
+    ).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    d["effectiveness_verification_required"] = bool(
+        _as_int(d.get("effectiveness_verification_required"), 0)
+    )
+    return d
+
+
+def update_corrective_action(
+    conn: sqlite3.Connection,
+    ca_id: str,
+    *,
+    responsible_party: str | None = None,
+    target_date: str | None = None,
+    notes: str | None = None,
+    implementation_evidence: str | None = None,
+) -> None:
+    existing = get_corrective_action(conn, ca_id)
+    if existing is None:
+        raise ValueError("Corrective action not found")
+    fields: dict[str, object] = {}
+    if responsible_party is not None:
+        fields["responsible_party"] = (responsible_party or "").strip()
+    if target_date is not None:
+        if target_date:
+            fields["target_date"] = _normalize_loose_iso_date(
+                target_date, field_name="Target date"
+            )
+        else:
+            fields["target_date"] = ""
+    if notes is not None:
+        fields["notes"] = (notes or "").strip()
+    if implementation_evidence is not None:
+        fields["implementation_evidence"] = (implementation_evidence or "").strip()
+    if not fields:
+        return
+    assignments = ", ".join(f"{col} = ?" for col in fields)
+    params: list[object] = list(fields.values())
+    params.append(_now_iso())
+    params.append(str(existing["id"]))
+    conn.execute(
+        f"UPDATE corrective_actions SET {assignments}, updated_at = ? WHERE id = ?",
+        params,
+    )
+    conn.commit()
+
+
+def complete_corrective_action(
+    conn: sqlite3.Connection,
+    ca_id: str,
+    *,
+    implementation_evidence: str = "",
+    completion_date: str | None = None,
+) -> None:
+    existing = get_corrective_action(conn, ca_id)
+    if existing is None:
+        raise ValueError("Corrective action not found")
+    completion = _normalize_strict_iso_date(
+        completion_date,
+        field_name="Completion date",
+        fallback=date.today().isoformat(),
+    )
+    _ensure_date_not_in_future(completion, field_name="Completion date")
+    next_status = (
+        CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING
+        if existing.get("effectiveness_verification_required")
+        else CORRECTIVE_ACTION_STATUS_IMPLEMENTED
+    )
+    conn.execute(
+        """
+        UPDATE corrective_actions
+        SET status = ?, implementation_evidence = ?, completion_date = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            next_status,
+            (implementation_evidence or "").strip(),
+            completion,
+            _now_iso(),
+            str(existing["id"]),
+        ),
+    )
+    conn.commit()
+
+
+def change_corrective_action_status(
+    conn: sqlite3.Connection, ca_id: str, status: str
+) -> None:
+    existing = get_corrective_action(conn, ca_id)
+    if existing is None:
+        raise ValueError("Corrective action not found")
+    if status not in CORRECTIVE_ACTION_STATUSES:
+        raise ValueError("Invalid corrective action status")
+    conn.execute(
+        "UPDATE corrective_actions SET status = ?, updated_at = ? WHERE id = ?",
+        (status, _now_iso(), str(existing["id"])),
+    )
+    conn.commit()
+
+
+def create_effectiveness_verification(
+    conn: sqlite3.Connection,
+    *,
+    corrective_action_id: str,
+    method: str = "",
+    acceptance_criteria: str = "",
+    period_sample: str = "",
+    result: str = EFFECTIVENESS_VERIFICATION_RESULT_PENDING,
+    evidence: str = "",
+    conclusion: str = "",
+    verified_by: str = "",
+    verified_date: str | None = None,
+) -> str:
+    existing = get_corrective_action(conn, corrective_action_id)
+    if existing is None:
+        raise ValueError("Corrective action not found")
+    if result not in EFFECTIVENESS_VERIFICATION_RESULTS:
+        raise ValueError("Invalid verification result")
+    vid = _gen_id()
+    vdate = ""
+    if verified_date:
+        vdate = _normalize_strict_iso_date(verified_date, field_name="Verified date")
+    conn.execute(
+        """
+        INSERT INTO effectiveness_verifications(
+            id, corrective_action_id, method, acceptance_criteria, period_sample,
+            result, evidence, conclusion, verified_by, verified_date,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """,
+        (
+            vid,
+            str(existing["id"]),
+            (method or "").strip(),
+            (acceptance_criteria or "").strip(),
+            (period_sample or "").strip(),
+            result,
+            (evidence or "").strip(),
+            (conclusion or "").strip(),
+            (verified_by or "").strip(),
+            vdate or None,
+        ),
+    )
+    # If the outcome is conclusive, reflect it on the corrective action.
+    if result == EFFECTIVENESS_VERIFICATION_RESULT_EFFECTIVE:
+        conn.execute(
+            "UPDATE corrective_actions SET status = '有效', updated_at = ? WHERE id = ?",
+            (_now_iso(), str(existing["id"])),
+        )
+    elif result == EFFECTIVENESS_VERIFICATION_RESULT_INEFFECTIVE:
+        conn.execute(
+            "UPDATE corrective_actions SET status = '無效', updated_at = ? WHERE id = ?",
+            (_now_iso(), str(existing["id"])),
+        )
+    conn.commit()
+    return vid
+
+
+def list_effectiveness_verifications(
+    conn: sqlite3.Connection, corrective_action_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, corrective_action_id, method, acceptance_criteria,
+               period_sample, result, evidence, conclusion, verified_by,
+               verified_date, created_at, updated_at
+        FROM effectiveness_verifications
+        WHERE corrective_action_id = ?
+        ORDER BY created_at DESC, rowid DESC
+        """,
+        (corrective_action_id or "",),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: attachments + Supplier 8D + audit log
+# ---------------------------------------------------------------------------
+def create_anomaly_attachment(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    file_name: str,
+    stored_name: str = "",
+    category: str = "其他",
+    description: str = "",
+    file_size: int = 0,
+    revision: str = "",
+    related_ca_id: str | None = None,
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    fname = (file_name or "").strip()
+    if not fname:
+        raise ValueError("Attachment file name is required")
+    if related_ca_id and get_corrective_action(conn, related_ca_id) is None:
+        raise ValueError("Related corrective action not found")
+    aid = _gen_id()
+    conn.execute(
+        """
+        INSERT INTO anomaly_attachments(
+            id, anomaly_id, file_name, stored_name, category, description,
+            file_size, revision, related_ca_id, uploaded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (
+            aid,
+            anomaly_id.strip(),
+            fname,
+            (stored_name or "").strip(),
+            (category or "其他").strip(),
+            (description or "").strip(),
+            _normalize_non_negative_int(file_size, field_name="File size"),
+            (revision or "").strip(),
+            (related_ca_id or "").strip() or None,
+        ),
+    )
+    conn.commit()
+    return aid
+
+
+def list_anomaly_attachments(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, anomaly_id, file_name, stored_name, category, description,
+               file_size, revision, related_ca_id, uploaded_at
+        FROM anomaly_attachments
+        WHERE anomaly_id = ?
+        ORDER BY uploaded_at ASC, rowid ASC
+        """,
+        (anomaly_id or "",),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_anomaly_eight_d_review(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    revision: str,
+    review_status: str = "需補充證據",
+    review_comment: str = "",
+    attachment_id: str | None = None,
+    review_date: str | None = None,
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    rev = (revision or "").strip()
+    if not rev:
+        raise ValueError("8D revision is required")
+    if review_status not in ("接受", "退回修正", "需補充證據"):
+        raise ValueError("Invalid 8D review status")
+    if attachment_id:
+        att = conn.execute(
+            "SELECT 1 FROM anomaly_attachments WHERE id = ?", (attachment_id,)
+        ).fetchone()
+        if att is None:
+            raise ValueError("Attachment not found")
+    rid = _gen_id()
+    rdate = "CURRENT_TIMESTAMP"
+    rval: list[object] = [
+        rid,
+        anomaly_id.strip(),
+        rev,
+        review_status,
+        (review_comment or "").strip(),
+        (attachment_id or "").strip() or None,
+    ]
+    if review_date:
+        rdate = "?"
+        rval.append(
+            _normalize_strict_iso_date(review_date, field_name="Review date")
+        )
+    conn.execute(
+        f"""
+        INSERT INTO anomaly_eight_d_reviews(
+            id, anomaly_id, revision, review_status, review_comment,
+            attachment_id, review_date
+        ) VALUES (?, ?, ?, ?, ?, ?, {rdate})
+        """,
+        tuple(rval),
+    )
+    conn.commit()
+    return rid
+
+
+def list_anomaly_eight_d_reviews(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, anomaly_id, revision, review_status, review_comment,
+               attachment_id, review_date
+        FROM anomaly_eight_d_reviews
+        WHERE anomaly_id = ?
+        ORDER BY review_date ASC, rowid ASC
+        """,
+        (anomaly_id or "",),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def append_anomaly_audit_log(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_id: str,
+    action: str,
+    before_value: str = "",
+    after_value: str = "",
+    actor_name: str = "",
+) -> str:
+    require_anomaly(conn, anomaly_id)
+    act = (action or "").strip()
+    if not act:
+        raise ValueError("Audit action is required")
+    lid = _gen_id()
+    conn.execute(
+        """
+        INSERT INTO anomaly_audit_logs(
+            id, anomaly_id, action, before_value, after_value, actor_name,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (
+            lid,
+            anomaly_id.strip(),
+            act,
+            (before_value or "").strip(),
+            (after_value or "").strip(),
+            (actor_name or "").strip(),
+        ),
+    )
+    conn.commit()
+    return lid
+
+
+def list_anomaly_audit_logs(
+    conn: sqlite3.Connection, anomaly_id: str
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, anomaly_id, action, before_value, after_value, actor_name,
+               created_at
+        FROM anomaly_audit_logs
+        WHERE anomaly_id = ?
+        ORDER BY created_at ASC, rowid ASC
+        """,
+        (anomaly_id or "",),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_anomaly_timeline(conn: sqlite3.Connection, anomaly_id: str) -> list[dict]:
+    """Return a merged, deduped event feed for an anomaly.
+
+    Timeline is a projection across the append-only audit log and the mutable
+    sub-tables. To avoid double counting, the audit log is the authoritative
+    event source when present; sub-table rows are only included when they are
+    not already represented by an audit entry (keyed by a stable action).
+
+    Returns rows ordered newest-first, each with ``ts``, ``kind``, ``summary``,
+    ``actor``.
+    """
+    audit = list_anomaly_audit_logs(conn, anomaly_id)
+    events: list[dict] = []
+    for entry in audit:
+        events.append(
+            {
+                "ts": entry.get("created_at") or "",
+                "kind": entry.get("action") or "AUDIT",
+                "summary": entry.get("after_value") or entry.get("before_value") or "",
+                "actor": entry.get("actor_name") or "",
+                "source": "audit",
+            }
+        )
+    # The audit log is authoritative; avoid duplicating CA/root-cause events.
+    seen_kinds = {e["kind"] for e in events}
+    rc = get_anomaly_root_cause(conn, anomaly_id)
+    if rc and rc.get("status") != ANOMALY_ROOT_CAUSE_NOT_STARTED and "ROOT_CAUSE_UPDATED" not in seen_kinds:
+        events.append(
+            {
+                "ts": rc.get("updated_at") or "",
+                "kind": "ROOT_CAUSE_UPDATED",
+                "summary": rc.get("statement") or "",
+                "actor": "",
+                "source": "root_cause",
+            }
+        )
+    for ca in list_corrective_actions(conn, anomaly_id):
+        if "CA_CREATED" not in seen_kinds:
+            events.append(
+                {
+                    "ts": ca.get("created_at") or "",
+                    "kind": "CA_CREATED",
+                    "summary": ca.get("description") or "",
+                    "actor": "",
+                    "source": "corrective_action",
+                }
+            )
+    events.sort(key=lambda e: e["ts"] or "", reverse=True)
+    return events
+
+
+def get_anomaly_overview_card(conn: sqlite3.Connection, anomaly_id: str) -> dict:
+    """Aggregate the case-overview summary used by UI / export / snapshot."""
+    detail = require_anomaly(conn, anomaly_id)
+    actions = list_anomaly_actions(conn, anomaly_id)
+    current = get_current_anomaly_action(conn, anomaly_id)
+    overdue = is_anomaly_overdue(conn, anomaly_id)
+    rc = get_anomaly_root_cause(conn, anomaly_id)
+    cas = list_corrective_actions(conn, anomaly_id)
+    ca_status = ""
+    if cas:
+        worst_order = {
+            CORRECTIVE_ACTION_STATUS_INEFFECTIVE: 0,
+            CORRECTIVE_ACTION_STATUS_EFFECTIVE: 1,
+            CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING: 2,
+            CORRECTIVE_ACTION_STATUS_IMPLEMENTED: 3,
+            CORRECTIVE_ACTION_STATUS_IN_PROGRESS: 4,
+            CORRECTIVE_ACTION_STATUS_PLANNED: 5,
+            CORRECTIVE_ACTION_STATUS_CANCELLED: 6,
+        }
+        ca_status = min(
+            cas, key=lambda c: worst_order.get(c.get("status"), 9)
+        ).get("status", "")
+    verify_result = ""
+    for ca in cas:
+        verifications = list_effectiveness_verifications(conn, ca["id"])
+        if verifications and verifications[0].get("result") not in ("", "待驗證"):
+            verify_result = verifications[0].get("result", "")
+            break
+    return {
+        "anomaly_id": anomaly_id,
+        "status": detail.get("status") or "待處理",
+        "overdue": overdue if detail.get("status") == "待處理" else False,
+        "current_action": current,
+        "open_action_count": sum(
+            1 for a in actions if a.get("status") == ANOMALY_ACTION_STATUS_OPEN
+        ),
+        "root_cause_status": (rc or {}).get("status", ANOMALY_ROOT_CAUSE_NOT_STARTED),
+        "corrective_action_status": ca_status or "—",
+        "verification_result": verify_result or "—",
+        "has_analysis_notes": bool(list_anomaly_analysis_notes(conn, anomaly_id)),
+        "attachment_count": len(list_anomaly_attachments(conn, anomaly_id)),
+    }
 
 
 def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None:

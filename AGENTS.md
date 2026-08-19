@@ -98,6 +98,27 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **CJK Font Resolution Cache**: Wrap OS font registry scans in `@lru_cache(maxsize=1)` to avoid multi-second startup and rendering stalls.
 
 
+## 4.1 Design Framework Cross-Reference (SQE Incident Management v0.1 §7.7 1-9)
+The design framework document `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md`
+chapter 7 section 7 lists 15 candidate advantages to borrow from the Web app.
+Items 1-9 are already implemented through shared helpers and **must not be
+duplicated**:
+- Semantic tokens → `src/ui/theme_tokens.py` + `src/ui/design_tokens.py`
+- CJK font fallback → `src/ui/theme_tokens.py` (`PREFERRED_CJK_FONT_FAMILIES`)
+- Three workflow shells → `src/ui/widgets/common_widgets.py` (`QueryWorkflowShell` / `AnalyticsWorkflowShell` / `CreateWorkflowShell`)
+- CreateWorkflowShell command bar → `CreateWorkflowShell.command_row`; modal dialogs keep `QDialogButtonBox` footer
+- DirtyTrackingMixin → `src/ui/widgets/common_widgets.py`; applied to event / visit / close / supplier / product / contact dialogs
+- RequiredFieldLabel + field-level validation → `RequiredFieldLabel`, `set_field_invalid`, `make_inline_error_label`, `repolish`
+- EmptyStateWidget → `src/ui/widgets/common_widgets.py` (`EmptyStateWidget`)
+- Layout constants single source → `src/ui/layout_constants.py`; window helpers in `src/ui/window_sizing.py`
+- Workflow-first sidebar + badge symmetry → `src/ui/sidebar_nav.py` (`_NAV_GROUPS`, `nav_activated`) + `src/ui/main_window.py` (`_PAGE_KEY_TO_INDEX`, `_refresh_sidebar_badge`)
+Item 10 (responsive column profile / 重點欄位) is intentionally out of scope for
+high-impact UI passes; items 11-15 are documented for future planning only.
+When introducing a new shared UI helper, ship it together with its focused
+tests and update the cross-reference table in
+`docs/ui-layout-theme-contract.md`.
+
+
 ## 5. AI Verification Guardrails (Evidence-First Protocol)
 To ensure system stability and avoid "suspicion-based" errors, the following rules are mandatory:
 1. **NO GUESS-WORK**: Never modify code based on a guess or "suspicion." You must use diagnostic tools to confirm the state before proposing a fix.

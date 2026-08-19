@@ -17,7 +17,7 @@ from ._helpers import _month_now
 def list_events(filters: dict | None = None) -> list[dict]:
     params = filters or {}
     with _connection.get_connection() as conn:
-        return repository.list_events(
+        events = repository.list_events(
             conn,
             event_type=params.get("event_type", "ALL"),
             status=params.get("status", "ALL"),
@@ -27,6 +27,37 @@ def list_events(filters: dict | None = None) -> list[dict]:
             event_scope=params.get("event_scope"),
             overdue_only=bool(params.get("overdue_only", False)),
         )
+        _enrich_events_with_overview(conn, events)
+        return events
+
+
+def _enrich_events_with_overview(
+    conn, events: list[dict]
+) -> None:
+    """Annotate anomaly rows with the workbench overview read model.
+
+    Visits stay unchanged because they don't own an anomaly; only ``ANOMALY``
+    rows receive the additional fields so every downstream consumer (list,
+    export, dashboard cards) reads the same single source of truth.
+    """
+    for row in events:
+        if row.get("event_type") != "ANOMALY":
+            continue
+        event_id = str(row.get("event_id") or "").strip()
+        if not event_id:
+            continue
+        try:
+            card = repository.get_anomaly_overview_card(conn, event_id)
+        except ValueError:
+            continue
+        row["current_action"] = card.get("current_action")
+        row["open_action_count"] = card.get("open_action_count", 0)
+        row["overdue"] = bool(card.get("overdue"))
+        row["root_cause_status"] = card.get("root_cause_status")
+        row["corrective_action_status"] = card.get("corrective_action_status")
+        row["verification_result"] = card.get("verification_result")
+        row["has_analysis_notes"] = bool(card.get("has_analysis_notes"))
+        row["attachment_count"] = int(card.get("attachment_count", 0))
 
 
 def get_dashboard_summary() -> dict:
@@ -100,6 +131,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             events.append(dict(row))
         for row in conn.execute(visit_sql, (start_date, end_date)).fetchall():
             events.append(dict(row))
+        _enrich_events_with_overview(conn, events)
     events.sort(key=lambda x: (x["event_date"], x["event_id"]), reverse=True)
     return events
 

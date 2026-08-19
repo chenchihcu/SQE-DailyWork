@@ -425,6 +425,17 @@ def export_events_report(
                 quality_report_required = "未設定"
             else:
                 quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
+            current = row.get("current_action") or {}
+            current_desc = str(current.get("description") or "").strip()
+            current_owner = str(current.get("owner") or "").strip()
+            current_due = str(current.get("due_date") or "").strip()
+            if current_desc:
+                if current_due:
+                    current_text = f"{current_desc}（{current_owner or '—'} / {current_due}）"
+                else:
+                    current_text = f"{current_desc}（{current_owner or '—'}）"
+            else:
+                current_text = ""
             return [
                 str(row.get("ref_no") or ""),
                 row.get("event_date") or "",
@@ -440,6 +451,13 @@ def export_events_report(
                 quality_report_required,
                 row.get("improvement_desc") or "",
                 row.get("closed_at") or "",
+                "是" if row.get("overdue") else "否",
+                current_text,
+                int(row.get("open_action_count") or 0),
+                str(row.get("root_cause_status") or "尚未開始"),
+                str(row.get("corrective_action_status") or "—"),
+                str(row.get("verification_result") or "—"),
+                int(row.get("attachment_count") or 0),
             ]
 
         _build_event_detail_sheet(
@@ -459,10 +477,17 @@ def export_events_report(
                 "品質異常單要求",
                 "改善說明",
                 "結案日期",
+                "逾期",
+                "目前處置",
+                "進行中處置數",
+                "根本原因狀態",
+                "改善措施狀態",
+                "有效性驗證",
+                "附件數",
             ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2, 7, 11, 12, 14},
+            {1, 2, 7, 11, 12, 14, 15, 17, 18, 19, 20, 21},
         )
 
         # 4. 責任人排行榜頁

@@ -31,6 +31,10 @@ from ui.layout_constants import (
     INLINE_TIGHT_SPACING,
     PANEL_MARGINS,
     RANK_PANEL_MARGINS,
+    STATS_EXPORT_BUTTON_MIN_WIDTH,
+    STATS_INSIGHT_MIN_HEIGHT,
+    STATS_REFRESH_BUTTON_MIN_WIDTH,
+    STATS_SOURCE_TAG_MIN_WIDTH,
 )
 from ui.popup_i18n import localize_exception
 from ui.widgets.common_widgets import (
@@ -117,7 +121,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         self.source_tag_label = QLabel("供應商事件")
         self.source_tag_label.setProperty("role", "sourceTag")
-        self.source_tag_label.setMinimumWidth(126)
+        self.source_tag_label.setMinimumWidth(STATS_SOURCE_TAG_MIN_WIDTH)
         self.source_tag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.source_tag_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.source_tag_label.setToolTip("本頁僅分析權責與已結案紀錄；倉庫不合格品統計請參閱獨立不合格品模組。")
@@ -126,14 +130,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         btn_refresh = QPushButton("重新整理")
         btn_refresh.setProperty("variant", "secondary")
-        btn_refresh.setMinimumWidth(100)
+        btn_refresh.setMinimumWidth(STATS_REFRESH_BUTTON_MIN_WIDTH)
         apply_clickable_affordance(btn_refresh, tooltip="重新整理統計數據")
         btn_refresh.clicked.connect(self.refresh_data)
         top_layout.addWidget(btn_refresh)
 
         btn_export = QPushButton("匯出 Excel")
         btn_export.setProperty("variant", "primary")
-        btn_export.setMinimumWidth(118)
+        btn_export.setMinimumWidth(STATS_EXPORT_BUTTON_MIN_WIDTH)
         apply_clickable_affordance(btn_export, tooltip="匯出目前篩選統計 Excel")
         btn_export.clicked.connect(self.export_monthly_excel)
         top_layout.addWidget(btn_export)
@@ -165,7 +169,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         scroll_layout.addWidget(chart_panel)
 
         self.insight_label = self._create_insight_label("載入中...")
-        self.insight_label.setMinimumHeight(40)
+        self.insight_label.setMinimumHeight(STATS_INSIGHT_MIN_HEIGHT)
         scroll_layout.addWidget(self.insight_label)
 
         root.addWidget(scroll, 1)

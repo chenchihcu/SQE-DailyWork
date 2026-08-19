@@ -2,6 +2,7 @@
   "version": 1,
   "required_scales": ["1.0", "1.25", "1.5"],
   "targets": [
+    {"name": "home", "baseline_required": true, "min_width": true},
     {"name": "main", "baseline_required": true, "min_width": true},
     {"name": "event-create", "baseline_required": false, "min_width": true},
     {"name": "appearance-settings", "baseline_required": true, "min_width": false},
@@ -13,6 +14,8 @@
     {"name": "master-data", "baseline_required": true, "min_width": true},
     {"name": "ncr-tracker", "baseline_required": true, "min_width": true},
     {"name": "empty-states", "baseline_required": true, "min_width": true},
-    {"name": "pdf-export", "baseline_required": false, "min_width": false}
+    {"name": "pdf-export", "baseline_required": false, "min_width": false},
+    {"name": "workbench", "baseline_required": true, "min_width": true},
+    {"name": "dialog-density", "baseline_required": true, "min_width": false}
   ]
 }

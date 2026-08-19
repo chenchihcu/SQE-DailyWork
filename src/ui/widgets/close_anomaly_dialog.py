@@ -28,6 +28,7 @@ from ui.layout_constants import (
     FORM_HORIZONTAL_SPACING,
     FORM_MAX_WIDTH,
     FORM_VERTICAL_SPACING,
+    WORKBENCH_DIALOG_WIDE_MIN_WIDTH,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.common_widgets import (
@@ -63,7 +64,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self.date_adjustment_only = date_adjustment_only
         self.setModal(True)
         self.setWindowTitle("調整結案日期" if date_adjustment_only else "異常結案")
-        self.setMinimumWidth(720)
+        self.setMinimumWidth(WORKBENCH_DIALOG_WIDE_MIN_WIDTH)
         self.setMaximumWidth(FORM_MAX_WIDTH)
 
         # 取得異常詳情以設定預設值

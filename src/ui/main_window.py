@@ -64,6 +64,7 @@ from ui.window_sizing import (
 from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.home_widget import HomeWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
+from ui.widgets.anomaly_management_page import AnomalyManagementPage
 
 HOME_PAGE_INDEX = 0
 EVENT_PAGE_INDEX = 1
@@ -81,6 +82,7 @@ NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
 MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
 VISIT_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 1
 ANOMALY_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 2
+ANOMALY_MANAGEMENT_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX + 1
 EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
 EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
@@ -92,6 +94,7 @@ _PAGE_TITLES = {
     MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
     VISIT_CREATE_PAGE_INDEX: ("新增訪廠", "建立供應商訪廠紀錄"),
     ANOMALY_CREATE_PAGE_INDEX: ("新增異常", "建立供應商異常事件單"),
+    ANOMALY_MANAGEMENT_PAGE_INDEX: ("異常案件管理", "查看與維護單一供應商異常案件"),
 }
 
 # Compatibility alias kept for external callers
@@ -155,6 +158,7 @@ class MainWindow(QMainWindow):
         self._master_page: QWidget | None = None
         self._new_visit_page: QWidget | None = None
         self._new_anomaly_page: QWidget | None = None
+        self._anomaly_management_page: AnomalyManagementPage | None = None
         self._ncr_pages: list[QWidget] = []
         self._setup_ui()
         from PySide6.QtCore import QTimer
@@ -439,6 +443,8 @@ class MainWindow(QMainWindow):
         # ── 供應商事件全頁建立表單（索引 9/10）──
         self.stack.insertWidget(VISIT_CREATE_PAGE_INDEX, self._new_visit_page)
         self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self._new_anomaly_page)
+        self._anomaly_management_page = AnomalyManagementPage(self, self)
+        self.stack.insertWidget(ANOMALY_MANAGEMENT_PAGE_INDEX, self._anomaly_management_page)
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -473,6 +479,15 @@ class MainWindow(QMainWindow):
     def _switch_primary_page(self, page_index: int) -> None:
         count = self.stack.count()
         if page_index < 0 or page_index >= count:
+            return
+
+        current_index = self.stack.currentIndex()
+        if (
+            current_index == ANOMALY_MANAGEMENT_PAGE_INDEX
+            and page_index != current_index
+            and self._anomaly_management_page is not None
+            and not self._anomaly_management_page.can_leave()
+        ):
             return
 
         if page_index in (VISIT_CREATE_PAGE_INDEX, ANOMALY_CREATE_PAGE_INDEX):
@@ -518,6 +533,13 @@ class MainWindow(QMainWindow):
         """依目前頁面（事件頁則依目前 scope）高亮對應的側欄導覽列。"""
         if page_index == EVENT_PAGE_INDEX:
             scope = getattr(self.events_widget, "_filter_event_scope", None)
+            self.sidebar.set_active(("scope", scope))
+        elif page_index == ANOMALY_MANAGEMENT_PAGE_INDEX:
+            scope = getattr(
+                self._anomaly_management_page,
+                "_source_scope",
+                repository.EVENT_SCOPE_ANOMALY_ONLY,
+            )
             self.sidebar.set_active(("scope", scope))
         else:
             key = _PAGE_INDEX_TO_KEY.get(page_index)
@@ -611,6 +633,23 @@ class MainWindow(QMainWindow):
         )
         # apply_quick_filters 更新了 scope，重新同步側欄高亮到對應 scope 列。
         self._sync_sidebar_active(EVENT_PAGE_INDEX)
+
+    def open_anomaly_management(self, anomaly_id: str, *, edit: bool = False) -> None:
+        """Open an anomaly in the main content area instead of a modal dialog."""
+        if self._anomaly_management_page is None:
+            return
+        try:
+            self._anomaly_management_page._source_scope = getattr(
+                self.events_widget,
+                "_filter_event_scope",
+                repository.EVENT_SCOPE_ANOMALY_ONLY,
+            )
+            self._anomaly_management_page.load_anomaly(anomaly_id, edit=edit)
+        except Exception as exc:
+            logger.exception("開啟異常管理頁失敗")
+            QMessageBox.critical(self, "錯誤", f"開啟異常管理頁失敗：{exc}")
+            return
+        self._switch_primary_page(ANOMALY_MANAGEMENT_PAGE_INDEX)
 
     # ── Dialogs ─────────────────────────────────────────────────────────────
 

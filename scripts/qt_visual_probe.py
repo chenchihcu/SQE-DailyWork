@@ -411,6 +411,18 @@ def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int
     return [_capture_widget(window, output, app)]
 
 
+def _capture_home_window(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    """Capture the actual home workbench rather than the event-management page."""
+    from database.connection import initialize_database
+    from ui.main_window import HOME_PAGE_INDEX, MainWindow
+
+    initialize_database()
+    window = MainWindow()
+    window.resize(*(size or (1100, 740)))
+    window._switch_primary_page(HOME_PAGE_INDEX)
+    return [_capture_widget(window, output, app)]
+
+
 def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     """Capture both full-page supplier-event create flows in the shell."""
     from database.connection import initialize_database
@@ -840,6 +852,443 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
         )
     finally:
         conn.close()
+
+    return screenshots
+
+
+def _workbench_overview_payload() -> dict:
+    """Return a representative read-model payload for AnomalyOverviewDialog.
+
+    The probe mocks every read-side service call so the workbench can render
+    full CJK content without touching the disposable DB. Each list is sized to
+    exercise the scroll body, footer, and section-card density.
+    """
+
+    return {
+        "detail": {
+            "anomaly_no": "20260615001",
+            "supplier_name": LONG_SUPPLIER,
+            "status": "待處理",
+            "pending_items": "向供應商確認 8D 報告並回填改善措施",
+            "responsible_person": "品保工程師 王小明",
+            "due_date": "2026-07-15",
+        },
+        "overview": {
+            "status": "待處理",
+            "overdue": True,
+            "current_action": {
+                "description": "追蹤供應商 8D 報告並回填改善措施進度",
+                "owner": "品保工程師 王小明",
+                "due_date": "2026-07-15",
+            },
+            "open_action_count": 2,
+            "root_cause_status": "已建立",
+            "corrective_action_status": "執行中",
+            "verification_result": "待驗證",
+            "has_analysis_notes": True,
+        },
+        "root_cause": {
+            "status": "已建立",
+            "statement": (
+                "供應商射出成型參數偏移，導致尺寸超出公差；"
+                "進一步以 5-Why 釐清人員未依標準作業書更新模具溫度。"
+            ),
+            "validation_method": "30 天監控量測資料並比對 SPC 管制圖",
+        },
+        "analysis_notes": [
+            {
+                "evidence_label": "事實（FACT）",
+                "evidence_type": "FACT",
+                "author_name": "品保工程師 王小明",
+                "content": (
+                    "批次 A-2026-06-10 共 1200 pcs，其中 47 pcs 尺寸超規；"
+                    "尺寸量測平均值 12.07 mm（規格 12.00 ± 0.05）。"
+                ),
+            },
+            {
+                "evidence_label": "推論（INFERENCE）",
+                "evidence_type": "INFERENCE",
+                "author_name": "製程工程師 李小華",
+                "content": (
+                    "模具溫度由 80°C 偏移至 95°C，可能與近期更換熱電偶有關。"
+                ),
+            },
+            {
+                "evidence_label": "假設（ASSUMPTION）",
+                "evidence_type": "ASSUMPTION",
+                "author_name": "供應商窗口",
+                "content": "新進操作員尚未完成標準作業書培訓。",
+            },
+        ],
+        "actions": [
+            {
+                "id": "act-1",
+                "description": "要求供應商於 2026/06/25 前提交 8D Rev A 報告",
+                "status": "進行中",
+                "owner": "品保工程師 王小明",
+                "due_date": "2026-06-25",
+            },
+            {
+                "id": "act-2",
+                "description": "安排現場稽核並更新標準作業書",
+                "status": "進行中",
+                "owner": "製程工程師 李小華",
+                "due_date": "2026-07-05",
+            },
+            {
+                "id": "act-3",
+                "description": "向客戶回覆初判結果",
+                "status": "已完成",
+                "owner": "業務窗口 張大成",
+                "due_date": "2026-06-12",
+            },
+        ],
+        "corrective_actions": [
+            {
+                "id": "ca-1",
+                "description": "更新模具溫度標準作業書並重新培訓操作員",
+                "status": "執行中",
+                "responsible_party": "供應商製造部",
+                "target_date": "2026-07-05",
+                "effectiveness_verification_required": True,
+            },
+            {
+                "id": "ca-2",
+                "description": "導入 SPC 監控並設置自動警報",
+                "status": "待有效性驗證",
+                "responsible_party": "品保工程師 王小明",
+                "target_date": "2026-07-20",
+                "effectiveness_verification_required": True,
+            },
+        ],
+        "verifications": [
+            {
+                "result": "待驗證",
+                "verified_by": "品保工程師 王小明",
+                "verified_date": "2026-07-12",
+            },
+        ],
+        "eight_d_reviews": [
+            {
+                "revision": "Rev A",
+                "review_status": "需補充證據",
+                "review_comment": "請補上 SPC 管制圖與 30 天監控資料。",
+            },
+            {
+                "revision": "Rev B",
+                "review_status": "退回修正",
+                "review_comment": "請明確說明模具溫度標準作業書差異。",
+            },
+        ],
+        "attachments": [
+            {
+                "file_name": "供應商 8D 報告 Rev B.pdf",
+                "category": "改善措施",
+            },
+            {
+                "file_name": "尺寸量測 SPC 資料.xlsx",
+                "category": "分析紀錄",
+            },
+            {
+                "file_name": "現場稽核照片合輯.zip",
+                "category": "訪廠紀錄",
+            },
+        ],
+        "timeline": [
+            {
+                "ts": "2026-06-10 09:15",
+                "kind": "建立異常",
+                "actor": "品保工程師 王小明",
+                "summary": "由訪廠紀錄升級為正式異常單 20260615001。",
+            },
+            {
+                "ts": "2026-06-12 14:00",
+                "kind": "回覆客戶",
+                "actor": "業務窗口 張大成",
+                "summary": "通知客戶初判結果與處置時程。",
+            },
+            {
+                "ts": "2026-06-18 10:30",
+                "kind": "新增處置",
+                "actor": "品保工程師 王小明",
+                "summary": "要求供應商於 2026/06/25 前提交 8D 報告。",
+            },
+            {
+                "ts": "2026-06-22 16:45",
+                "kind": "新增改善措施",
+                "actor": "製程工程師 李小華",
+                "summary": "更新模具溫度 SOP 並重新培訓操作員。",
+            },
+            {
+                "ts": "2026-06-26 11:10",
+                "kind": "8D 審查",
+                "actor": "品保工程師 王小明",
+                "summary": "退回 Rev A，要求補上 SPC 監控資料。",
+            },
+            {
+                "ts": "2026-07-02 09:00",
+                "kind": "處理紀錄",
+                "actor": "供應商窗口",
+                "summary": "提交 8D Rev B 並補充模具溫度差異說明。",
+            },
+        ],
+    }
+
+
+def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    """Capture AnomalyOverviewDialog with representative read-model data.
+
+    Uses ``unittest.mock`` to stub the service-layer read paths so the dialog
+    renders full CJK content with cards, actions, scroll body and footer
+    without touching the disposable database.
+    """
+
+    from unittest import mock
+
+    from services.event import _anomaly_action_service, _anomaly_service, _anomaly_workbench_service
+    from ui.widgets.anomaly_overview_dialog import AnomalyOverviewDialog
+
+    payload = _workbench_overview_payload()
+
+    patchers = [
+        mock.patch.object(
+            _anomaly_service,
+            "get_anomaly_detail",
+            return_value=payload["detail"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "get_overview_card",
+            return_value=payload["overview"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "get_root_cause",
+            return_value=payload["root_cause"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_analysis_notes",
+            return_value=payload["analysis_notes"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_corrective_actions",
+            return_value=payload["corrective_actions"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_effectiveness_verifications",
+            side_effect=lambda ca_id: payload["verifications"] if ca_id == "ca-2" else [],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_eight_d_reviews",
+            return_value=payload["eight_d_reviews"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_attachments",
+            return_value=payload["attachments"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_timeline",
+            return_value=payload["timeline"],
+        ),
+        mock.patch.object(
+            _anomaly_action_service,
+            "list_actions",
+            return_value=payload["actions"],
+        ),
+    ]
+
+    for patcher in patchers:
+        patcher.start()
+
+    screenshots: list[str] = []
+    try:
+        dialog = AnomalyOverviewDialog("probe-workbench", parent=None)
+        dialog.resize(*(size or (1024, 720)))
+        _settle_qt_paint(app, delay_ms=150, cycles=2)
+        screenshots.append(
+            _capture_widget(
+                dialog,
+                _target_output_path(output, "workbench-default"),
+                app,
+            )
+        )
+
+        # Capture the top of the dense scroll body at the dialog's narrow
+        # contract width so long CJK and footer visibility are checked.
+        dialog = AnomalyOverviewDialog("probe-workbench", parent=None)
+        dialog.resize(720, 640)
+        _settle_qt_paint(app, delay_ms=150, cycles=2)
+        screenshots.append(
+            _capture_widget(
+                dialog,
+                _target_output_path(output, "workbench-narrow"),
+                app,
+            )
+        )
+    finally:
+        for patcher in patchers:
+            patcher.stop()
+
+    return screenshots
+
+
+def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
+    """Capture the new workbench write dialogs without touching the disposable DB.
+
+    Each dialog is instantiated with stubbed ``actor_name`` so the probe does
+    not require a logged-in user. Service writes remain unstubbed because the
+    dialogs are only rendered (never submitted) by the probe — no real write
+    path executes. If a future change makes construction eagerly write, add the
+    relevant ``mock.patch`` here.
+    """
+
+    from database.connection import initialize_database
+    from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
+    from ui.widgets.add_corrective_action_dialog import AddCorrectiveActionDialog
+    from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
+    from ui.widgets.add_verification_dialog import AddVerificationDialog
+    from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
+    from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
+    from ui.widgets.complete_action_dialog import CompleteActionDialog
+    from ui.widgets.complete_corrective_action_dialog import (
+        CompleteCorrectiveActionDialog,
+    )
+
+    initialize_database()
+    screenshots: list[str] = []
+
+    # Each dialog supports ``DirtyTrackingMixin``; programmatically filling the
+    # inputs flips ``_dirty`` and would trigger the unsaved-changes prompt on
+    # close. The probe only renders the dialog (never submits), so suppress
+    # the dirty guard and ensure the dialog closes cleanly between captures.
+    def _capture_dialog(dialog, suffix: str) -> None:
+        if hasattr(dialog, "_dirty"):
+            dialog._dirty = False
+        screenshots.append(
+            _capture_widget(dialog, _target_output_path(output, suffix), app)
+        )
+        if hasattr(dialog, "_dirty"):
+            dialog._dirty = False
+        dialog.close()
+        dialog.deleteLater()
+        app.processEvents()
+
+    def _fill(dialog, **values: object) -> None:
+        """Programmatically populate inputs; called after _init_dirty_tracking."""
+        for name, value in values.items():
+            widget = getattr(dialog, name, None)
+            if widget is None:
+                continue
+            if hasattr(widget, "setPlainText"):
+                widget.setPlainText(str(value))
+            elif hasattr(widget, "setText"):
+                widget.setText(str(value))
+            elif hasattr(widget, "setChecked"):
+                widget.setChecked(bool(value))
+            elif hasattr(widget, "setCurrentIndex"):
+                widget.setCurrentIndex(int(value))
+        if hasattr(dialog, "_dirty"):
+            dialog._dirty = False
+
+    action_dialog = AddAnomalyActionDialog("probe-density", parent=None)
+    _fill(
+        action_dialog,
+        description_input=(
+            "向供應商要求 8D 報告並於 7 日內回覆改善措施；"
+            "逾期則升級為品保月報專案。"
+        ),
+        owner_input="品保工程師 王小明",
+    )
+    _capture_dialog(action_dialog, "dialog-density-add-action")
+
+    note_dialog = AnomalyNoteDialog("probe-density", parent=None)
+    _fill(
+        note_dialog,
+        content_input=(
+            "現場量測 30 筆資料，NG 率 3.9%，主要為尺寸超公差；"
+            "建議將 SPC 管制圖作為有效性驗證證據。"
+        ),
+    )
+    _capture_dialog(note_dialog, "dialog-density-add-note")
+
+    ca_dialog = AddCorrectiveActionDialog("probe-density", parent=None)
+    _fill(
+        ca_dialog,
+        description_input=(
+            "更新模具溫度標準作業書並重新培訓操作員；"
+            "同步導入 SPC 自動監控。"
+        ),
+        responsible_input="供應商製造部／王小明",
+        verify_check=True,
+    )
+    _capture_dialog(ca_dialog, "dialog-density-add-corrective")
+
+    complete_action_dialog = CompleteActionDialog(
+        "act-density",
+        action_summary="要求供應商於 2026/06/25 前提交 8D Rev A 報告",
+        parent=None,
+        actor_name="品保工程師 王小明",
+    )
+    _fill(
+        complete_action_dialog,
+        note_input="供應商已於期限內提交 8D 報告，進入審查階段。",
+    )
+    _capture_dialog(complete_action_dialog, "dialog-density-complete-action")
+
+    complete_ca_dialog = CompleteCorrectiveActionDialog(
+        "ca-density",
+        description="更新模具溫度 SOP 並重新培訓操作員",
+        verification_required=True,
+        parent=None,
+        actor_name="品保工程師 王小明",
+    )
+    _capture_dialog(complete_ca_dialog, "dialog-density-complete-corrective")
+
+    verification_dialog = AddVerificationDialog(
+        "ca-density",
+        description="更新模具溫度 SOP 並重新培訓操作員",
+        parent=None,
+        actor_name="品保工程師 王小明",
+    )
+    _fill(
+        verification_dialog,
+        method_input="30 天 SPC 監控",
+        criteria_input="NG 率 < 0.5%",
+        sample_input="3 批 / 共 1200 pcs",
+    )
+    _capture_dialog(verification_dialog, "dialog-density-add-verification")
+
+    eight_d_dialog = AddEightDReviewDialog(
+        "probe-density",
+        next_revision_hint="Rev B",
+        parent=None,
+        actor_name="品保工程師 王小明",
+    )
+    _fill(
+        eight_d_dialog,
+        comment_input=(
+            "請補上 SPC 管制圖、30 天監控資料與模具溫度差異說明。"
+        ),
+    )
+    _capture_dialog(eight_d_dialog, "dialog-density-add-eight-d")
+
+    audit_dialog = AddAuditLogDialog(
+        "probe-density", parent=None, actor_name="品保工程師 王小明"
+    )
+    _fill(
+        audit_dialog,
+        message_input=(
+            "已與供應商窗口電話會議確認改善時程；"
+            "下週二現場稽核並提交 Rev B 報告。"
+        ),
+    )
+    _capture_dialog(audit_dialog, "dialog-density-add-audit")
 
     return screenshots
 
@@ -1356,6 +1805,10 @@ def main() -> int:
             screenshots = _capture_empty_states(output, app, size)
         elif args.target == "pdf-export":
             pdf_info = _capture_pdf_export(output)
+        elif args.target == "workbench":
+            screenshots = _capture_workbench(output, app, size)
+        elif args.target == "dialog-density":
+            screenshots = _capture_dialog_density(output, app)
         else:
             screenshots = _capture_main_window(output, app, size)
         screenshot_path = screenshots[0] if screenshots else None

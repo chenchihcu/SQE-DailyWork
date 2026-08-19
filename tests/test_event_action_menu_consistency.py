@@ -66,7 +66,16 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             self.app.processEvents()
 
         self.assertEqual(
-            ["預覽內容", "編輯異常", "刪除異常", "結案", "關聯訪廠", "", "傳送精簡報告至 LINE"],
+            [
+                "工作台概況",
+                "預覽內容",
+                "編輯異常",
+                "刪除異常",
+                "結案",
+                "關聯訪廠",
+                "",
+                "傳送精簡報告至 LINE",
+            ],
             actions,
         )
 
@@ -87,6 +96,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
 
         self.assertEqual(
             [
+                "工作台概況",
                 "預覽內容",
                 "編輯異常",
                 "刪除異常",

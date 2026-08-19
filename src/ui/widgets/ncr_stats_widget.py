@@ -26,6 +26,8 @@ from ui.layout_constants import (
     INLINE_SPACING,
     INLINE_TIGHT_SPACING,
     RANK_PANEL_MARGINS,
+    STATS_EXPORT_BUTTON_MIN_WIDTH,
+    STATS_REFRESH_BUTTON_MIN_WIDTH,
 )
 from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.stats_dashboard_helpers import (
@@ -97,14 +99,14 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         btn_refresh = QPushButton("重新整理")
         btn_refresh.setProperty("variant", "secondary")
-        btn_refresh.setMinimumWidth(100)
+        btn_refresh.setMinimumWidth(STATS_REFRESH_BUTTON_MIN_WIDTH)
         apply_clickable_affordance(btn_refresh, tooltip="重新整理統計數據")
         btn_refresh.clicked.connect(self.refresh_data)
         control_row.addWidget(btn_refresh)
 
         self.btn_export = QPushButton("匯出 Excel")
         self.btn_export.setProperty("variant", "primary")
-        self.btn_export.setMinimumWidth(118)
+        self.btn_export.setMinimumWidth(STATS_EXPORT_BUTTON_MIN_WIDTH)
         apply_clickable_affordance(self.btn_export, tooltip="匯出自訂日期區間的統計 Excel 報告")
         self.btn_export.clicked.connect(self.export_ncr_excel)
         control_row.addWidget(self.btn_export)

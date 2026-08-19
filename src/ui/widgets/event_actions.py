@@ -28,6 +28,7 @@ ACTION_EDIT_VISIT = "edit_visit"
 ACTION_DELETE_VISIT = "delete_visit"
 ACTION_VIEW_VISIT_DETAIL = "view_visit_detail"
 ACTION_PREVIEW_ANOMALY = "preview_anomaly"
+ACTION_OVERVIEW_ANOMALY = "overview_anomaly"
 ACTION_PREVIEW_VISIT = "preview_visit"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
 ACTION_UPDATE_CLOSED_AT = "update_closed_at"
@@ -46,6 +47,7 @@ def build_event_action_menu(
 
     event_type = str(row.get("event_type") or "").strip().upper()
     if event_type == "ANOMALY":
+        _add_action("工作台概況", ACTION_OVERVIEW_ANOMALY)
         _add_action("預覽內容", ACTION_PREVIEW_ANOMALY)
         _add_action("編輯異常", ACTION_EDIT_ANOMALY)
         _add_action("刪除異常", ACTION_DELETE_ANOMALY)
@@ -121,6 +123,7 @@ def dispatch_event_action(
     on_delete_visit: Callable[[str, str], None],
     on_open_visit_detail: Callable[[str], None],
     on_preview_anomaly: Callable[[str], None] | None = None,
+    on_overview_anomaly: Callable[[str], None] | None = None,
     on_preview_visit: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
     on_update_closed_at: Callable[[str, str], None] | None = None,
@@ -128,6 +131,9 @@ def dispatch_event_action(
 ) -> None:
     event_id = str(row.get("event_id") or "").strip()
     if not event_id:
+        return
+    if action_key == ACTION_OVERVIEW_ANOMALY and on_overview_anomaly:
+        on_overview_anomaly(event_id)
         return
     if action_key == ACTION_EDIT_ANOMALY:
         on_edit_anomaly(event_id)
@@ -197,6 +203,10 @@ class EventActionsController:
         self._refresh_all_views()
 
     def open_edit_anomaly_dialog(self, anomaly_id: str) -> None:
+        open_management = getattr(self._main_window, "open_anomaly_management", None)
+        if callable(open_management):
+            open_management(anomaly_id, edit=True)
+            return
         def _op() -> None:
             detail = _anomaly_service.get_anomaly_detail(anomaly_id)
             dialog = NewAnomalyDialog(
@@ -278,6 +288,20 @@ class EventActionsController:
                 "錯誤",
                 localize_popup_message(f"開啟預覽失敗：{localize_exception(exc)}"),
             )
+
+    def open_overview_dialog(self, anomaly_id: str) -> None:
+        """Open the anomaly case-workbench overview."""
+        def _op() -> None:
+            from ui.widgets.anomaly_overview_dialog import AnomalyOverviewDialog
+            dialog = AnomalyOverviewDialog(anomaly_id, self._parent)
+            dialog.exec()
+        safe_ui_operation(
+            self._parent,
+            _op,
+            warning_title="概況載入失敗",
+            logger_msg="開啟異常工作台概況失敗",
+            error_msg="開啟工作台概況失敗：",
+        )
 
     def open_preview_visit_dialog(self, visit_id: str) -> None:
         """Open the visit form in read-only mode."""

@@ -57,6 +57,85 @@ EVENT_SCOPE_VALUES = {
 DEFECT_NOTE_IMPROVED = "已記錄改善"
 DEFECT_NOTE_PENDING_IMPROVEMENT = "待補改善"
 
+# ── Anomaly action (Next Action) constants ──────────────────────────────────
+ANOMALY_ACTION_STATUS_OPEN = "進行中"
+ANOMALY_ACTION_STATUS_COMPLETED = "已完成"
+ANOMALY_ACTION_STATUS_CANCELLED = "已取消"
+ANOMALY_ACTION_STATUSES: tuple[str, ...] = (
+    ANOMALY_ACTION_STATUS_OPEN,
+    ANOMALY_ACTION_STATUS_COMPLETED,
+    ANOMALY_ACTION_STATUS_CANCELLED,
+)
+ANOMALY_ACTIONS_MIGRATION_META_KEY = "anomaly_actions_v1"
+ANOMALY_ACTIONS_BACKFILL_META_KEY = "anomaly_actions_backfill_v1"
+
+# ── Anomaly analysis / root cause / CA / verification constants ─────────────
+ANOMALY_EVIDENCE_FACT = "FACT"
+ANOMALY_EVIDENCE_INFERENCE = "INFERENCE"
+ANOMALY_EVIDENCE_ASSUMPTION = "ASSUMPTION"
+ANOMALY_EVIDENCE_UNKNOWN = "UNKNOWN"
+ANOMALY_EVIDENCE_TYPES: tuple[str, ...] = (
+    ANOMALY_EVIDENCE_FACT,
+    ANOMALY_EVIDENCE_INFERENCE,
+    ANOMALY_EVIDENCE_ASSUMPTION,
+    ANOMALY_EVIDENCE_UNKNOWN,
+)
+ANOMALY_EVIDENCE_LABELS: dict[str, str] = {
+    ANOMALY_EVIDENCE_FACT: "已確認事實",
+    ANOMALY_EVIDENCE_INFERENCE: "推論",
+    ANOMALY_EVIDENCE_ASSUMPTION: "假設",
+    ANOMALY_EVIDENCE_UNKNOWN: "待確認",
+}
+
+ANOMALY_ROOT_CAUSE_NOT_STARTED = "尚未開始"
+ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION = "調查中"
+ANOMALY_ROOT_CAUSE_PROPOSED = "提案"
+ANOMALY_ROOT_CAUSE_VERIFIED = "已驗證"
+ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED = "無法確認"
+ANOMALY_ROOT_CAUSE_STATUSES: tuple[str, ...] = (
+    ANOMALY_ROOT_CAUSE_NOT_STARTED,
+    ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION,
+    ANOMALY_ROOT_CAUSE_PROPOSED,
+    ANOMALY_ROOT_CAUSE_VERIFIED,
+    ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
+)
+
+CORRECTIVE_ACTION_STATUS_PLANNED = "已規劃"
+CORRECTIVE_ACTION_STATUS_IN_PROGRESS = "執行中"
+CORRECTIVE_ACTION_STATUS_IMPLEMENTED = "已實施"
+CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING = "待有效性驗證"
+CORRECTIVE_ACTION_STATUS_EFFECTIVE = "有效"
+CORRECTIVE_ACTION_STATUS_INEFFECTIVE = "無效"
+CORRECTIVE_ACTION_STATUS_CANCELLED = "已取消"
+CORRECTIVE_ACTION_STATUSES: tuple[str, ...] = (
+    CORRECTIVE_ACTION_STATUS_PLANNED,
+    CORRECTIVE_ACTION_STATUS_IN_PROGRESS,
+    CORRECTIVE_ACTION_STATUS_IMPLEMENTED,
+    CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING,
+    CORRECTIVE_ACTION_STATUS_EFFECTIVE,
+    CORRECTIVE_ACTION_STATUS_INEFFECTIVE,
+    CORRECTIVE_ACTION_STATUS_CANCELLED,
+)
+
+EFFECTIVENESS_VERIFICATION_RESULT_PENDING = "待驗證"
+EFFECTIVENESS_VERIFICATION_RESULT_EFFECTIVE = "有效"
+EFFECTIVENESS_VERIFICATION_RESULT_INEFFECTIVE = "無效"
+EFFECTIVENESS_VERIFICATION_RESULT_INCONCLUSIVE = "無法判定"
+EFFECTIVENESS_VERIFICATION_RESULTS: tuple[str, ...] = (
+    EFFECTIVENESS_VERIFICATION_RESULT_PENDING,
+    EFFECTIVENESS_VERIFICATION_RESULT_EFFECTIVE,
+    EFFECTIVENESS_VERIFICATION_RESULT_INEFFECTIVE,
+    EFFECTIVENESS_VERIFICATION_RESULT_INCONCLUSIVE,
+)
+
+ANOMALY_ANALYSIS_NOTES_MIGRATION_META_KEY = "anomaly_analysis_notes_v1"
+ANOMALY_ROOT_CAUSES_MIGRATION_META_KEY = "anomaly_root_causes_v1"
+CORRECTIVE_ACTIONS_MIGRATION_META_KEY = "corrective_actions_v1"
+EFFECTIVENESS_VERIFICATIONS_MIGRATION_META_KEY = "effectiveness_verifications_v1"
+ANOMALY_ATTACHMENTS_MIGRATION_META_KEY = "anomaly_attachments_v1"
+ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY = "anomaly_eight_d_reviews_v1"
+ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY = "anomaly_audit_logs_v1"
+
 
 # ── TypedDict result types ─────────────────────────────────────────────────
 class SupplierDeleteFailure(TypedDict):
@@ -158,6 +237,27 @@ def _normalize_strict_iso_date(
 def _ensure_date_not_in_future(value: str, *, field_name: str) -> None:
     if date.fromisoformat(value) > date.today():
         raise ValueError(f"{field_name} cannot be in the future")
+
+
+def _normalize_loose_iso_date(
+    value: object,
+    *,
+    field_name: str,
+) -> str:
+    """Accept ``YYYY-MM-DD`` or ``YYYY/MM/DD`` and return the ISO form.
+
+    Strict ISO date validation is used everywhere else; this helper exists for
+    action due dates so simple UI shortcuts like ``2026/07/01`` are accepted
+    without forcing the caller to pre-format. The result is always at the
+    YYYY-MM-DD resolution.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    text = text.replace("/", "-")
+    return _normalize_strict_iso_date(text, field_name=field_name)
 
 
 def _normalize_non_negative_int(value: object, *, field_name: str) -> int:

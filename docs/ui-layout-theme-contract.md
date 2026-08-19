@@ -25,6 +25,9 @@
 | Edit / preview visit | Event action menu | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | Event list | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Close anomaly | Event action menu | `src/ui/widgets/close_anomaly_dialog.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/visit_detail_dialog.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
+| Anomaly management page | Event action menu `工作台概況` / `預覽內容` / `編輯異常` | `src/ui/widgets/anomaly_management_page.py` / `AnomalyManagementPage` | MainWindow stack, opened from EventListWidget | Main content page, one scroll owner per tab | Seven existing management areas: 案件概況, 處理歷程, 異常分析, Supplier 8D, 改善措施, 附件, 變更紀錄. Basic anomaly editing embeds `NewAnomalyDialog(embedded=True, page_mode=True)`; focused write actions retain existing dialogs | Shared theme tokens | `tests/test_anomaly_management_page.py`, `scripts/qt_visual_probe.py --target workbench` |
+| Anomaly workbench write dialogs | Management page action flows | `src/ui/widgets/complete_action_dialog.py` / `complete_corrective_action_dialog.py` / `add_verification_dialog.py` / `add_eight_d_review_dialog.py` / `add_audit_log_dialog.py` | Anomaly management page | Dialog helper clamps to active screen | One scroll body per dialog with required-field validation + dirty guard; status writes bundled with `anomaly_audit_logs` entry | Shared theme tokens | `tests/test_anomaly_workbench_write_dialogs.py` |
+| Anomaly workbench write dialogs | Overview buttons | `src/ui/widgets/complete_action_dialog.py` / `complete_corrective_action_dialog.py` / `add_verification_dialog.py` / `add_eight_d_review_dialog.py` / `add_audit_log_dialog.py` | Anomaly workbench | Dialog helper clamps to active screen | One scroll body per dialog with required-field validation + dirty guard; status writes bundled with `anomaly_audit_logs` entry | Shared theme tokens | `tests/test_anomaly_workbench_write_dialogs.py` |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
 
 ## Screen-Fit Rules
@@ -325,3 +328,33 @@
   `defect_records.processing_line`; `未分流` is only a migrated cleanup state.
   NCR stack indexes are now `3 建立不合格品 / 4 待處理委外加工 / 5 待處理原物料 /
   6 歷史紀錄`, while `不合格品統計分析` is index 7 and `基礎資料` is index 8.
+
+## Design Framework Cross-Reference (SQE Incident Management UI Design Framework v0.1 §7.7 items 1-9)
+
+This contract is the **single source of truth for SQE DailyWork**; the design
+framework document `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md`
+chapter 7 section 7 ("DailyWork 整合映射") lists 15 "borrow from Web" candidate
+advantages. Items 1-9 are already implemented in this project through the shared
+helpers below. Item 10 (responsive 重點/完整 column profile) is intentionally
+**out of scope** for the high-impact UI pass — its current implementation is
+already stable, and extending it risks drift across the supplier-event and NCR
+lists. Items 11-15 are documented for future planning only and do not require
+new work in the current cycle.
+
+| # | Framework advantage | SQE DailyWork authoritative location | Pinned by |
+| - | --- | --- | --- |
+| 1 | Semantic design tokens (no raw hex) | `src/ui/theme_tokens.py` (`TOKENS`, `TYPOGRAPHY`); palette source `src/ui/design_tokens.py` | `tests/test_theme_typography_consistency.py`, `tests/test_theme_minimal_surfaces.py` |
+| 2 | CJK font fallback chain single source of truth | `src/ui/theme_tokens.py` (`PREFERRED_CJK_FONT_FAMILIES`, `CJK_FONT_FAMILY_CSS`); reused by `src/ncr/ui/ui_style.py` | `tests/test_font_source_single_truth.py` |
+| 3 | Three workflow shells (Query / Analytics / Create) | `src/ui/widgets/common_widgets.py` (`QueryWorkflowShell`, `AnalyticsWorkflowShell`, `CreateWorkflowShell`) | Shell usage pinned by `tests/test_ncr_embedding_smoke.py`, `tests/test_event_list_widget_render_stability.py`, manual coverage by `scripts/qt_visual_probe.py --target main` |
+| 4 | CreateWorkflowShell top command row + scroll body, fixed footer absent | `src/ui/widgets/common_widgets.py` (`CreateWorkflowShell`); modal dialogs retain `QDialogButtonBox` footer | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_event_list_widget_render_stability.py` |
+| 5 | DirtyTrackingMixin unified unsaved-changes guard | `src/ui/widgets/common_widgets.py` (`DirtyTrackingMixin`); applied to `NewAnomalyDialog` / `NewVisitDialog` / `CloseAnomalyDialog` / `SupplierFormDialog` / `ProductFormDialog` / `SupplierContactManagerDialog` / `AddAnomalyActionDialog` / `AnomalyNoteDialog` / `AddCorrectiveActionDialog` / `CompleteActionDialog` / `CompleteCorrectiveActionDialog` / `AddVerificationDialog` / `AddEightDReviewDialog` / `AddAuditLogDialog` | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_anomaly_workbench_write_dialogs.py` |
+| 6 | Required marker + field-level instant validation | `src/ui/widgets/common_widgets.py` (`RequiredFieldLabel`, `set_field_invalid`, `make_inline_error_label`, `repolish`); QSS `[invalid]` selector in `src/ui/theme.py` | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_form_field_pairing_layout.py` |
+| 7 | EmptyStateWidget four-state ready | `src/ui/widgets/common_widgets.py` (`EmptyStateWidget`); used by home, event list, NCR list, statistics pages | `tests/test_layout_constants.py` (`EMPTY_STATE_MARGINS`), `scripts/qt_visual_probe.py --target empty-states` |
+| 8 | Layout constants single source (min / preferred / max contract) | `src/ui/layout_constants.py`; window sizing helpers in `src/ui/window_sizing.py` | `tests/test_layout_constants.py`, `tests/test_window_sizing.py` |
+| 9 | Workflow-first sidebar + routing decoupling + badge symmetry | `src/ui/sidebar_nav.py` (`_NAV_GROUPS`, `nav_activated` signal); `src/ui/main_window.py` (`_PAGE_KEY_TO_INDEX`, `_on_nav_activated`, `_refresh_sidebar_badge`) | `tests/test_top_nav_compact_height.py`, `tests/test_home_recent_events_panel.py`, `scripts/qt_visual_probe.py --target main` |
+
+When updating any of the locations above, keep the pinned tests green and add a
+new entry in the change-log at the top of this file (or in
+`docs/harness/closed-loop-log.md` for behavioural changes). New shared UI
+helpers should ship together with their focused tests before being adopted by
+widget pages — the AGENTS.md single-source rule forbids divergent copies.
