@@ -35,6 +35,7 @@ from ui.popup_i18n import localize_popup_message
 from ui.layout_constants import (
     CONTROL_ROW_SPACING,
     EVENT_LIST_FULL_COLUMNS_MIN_WIDTH,
+    EVENT_LIST_ITEMS_PER_PAGE,
     EVENT_LIST_NAME_COL_MIN_WIDTH,
     FILTER_MONTH_INPUT_WIDTH,
     FILTER_STATUS_COMBO_WIDTH,
@@ -98,7 +99,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.fixed_status = fixed_status
         self._all_rows: list[dict] = []
         self._current_page = 1
-        self._page_size = 12
+        self._page_size = EVENT_LIST_ITEMS_PER_PAGE
         self._filter_event_type = "ALL"
         self._sort_col: int | None = None
         self._sort_asc: bool = True
