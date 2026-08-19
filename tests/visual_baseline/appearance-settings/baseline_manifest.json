@@ -7,6 +7,10 @@
   },
   "files": [
     "appearance-settings_appearance-settings-default.png",
+    "appearance-settings_appearance-settings-tables-tab.png",
+    "appearance-settings_appearance-settings-forms-tab.png",
+    "appearance-settings_appearance-settings-exports-tab.png",
+    "appearance-settings_appearance-settings-system-tab.png",
     "appearance-settings_appearance-settings-comfortable-large.png"
   ]
 }
