@@ -104,7 +104,7 @@ def get_controls_qss() -> str:
             border: 1px solid {TOKENS["border"]};
             background: {TOKENS["panel_alt_bg"]};
             color: {TOKENS["text_primary"]};
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QPushButton:hover {{
@@ -134,7 +134,7 @@ def get_controls_qss() -> str:
             border: 1px solid {TOKENS["primary_btn"]};
             background: {TOKENS["primary_btn"]};
             color: #FFFFFF;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[variant="primary"]:hover,
@@ -165,7 +165,7 @@ def get_controls_qss() -> str:
             border: 1px solid {TOKENS["border"]};
             background: {TOKENS["panel_bg"]};
             color: {TOKENS["text_secondary"]};
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QPushButton[variant="secondary"]:hover,
@@ -183,7 +183,7 @@ def get_controls_qss() -> str:
             text-align: left;
             border-radius: {TOKENS["radius_md"]}px;
             font-size: {TYPOGRAPHY["label_strong"]}px;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[role="quickActionButton"][tone="visit"] {{
@@ -247,7 +247,7 @@ def get_controls_qss() -> str:
             background: {TOKENS["panel_bg"]};
             color: {TOKENS["text_secondary"]};
             font-size: {TYPOGRAPHY["helper_text"]}px;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[role="decisionSummary"]:hover {{
@@ -272,7 +272,7 @@ def get_controls_qss() -> str:
             border: 1px solid {TOKENS["toolbar_ghost_border"]};
             background: {TOKENS["toolbar_ghost_bg"]};
             color: {TOKENS["toolbar_ghost_text"]};
-            font-weight: 600;
+            font-weight: 400;
         }}
 
         QPushButton[variant="toolbarGhost"]:hover {{
@@ -311,7 +311,7 @@ def get_controls_qss() -> str:
             color: {TOKENS["danger"]};
             padding: 2px 6px;
             font-size: {TYPOGRAPHY["caption"]}px;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[variant="dangerOutline"]:hover {{
@@ -327,7 +327,7 @@ def get_controls_qss() -> str:
             border-radius: {TOKENS["radius_sm"]}px;
             padding: 6px 12px;
             font-size: {TYPOGRAPHY["body_small"]}px;
-            font-weight: 600;
+            font-weight: 700;
         }}
 
         QPushButton[variant="dashedPrimary"]:hover {{

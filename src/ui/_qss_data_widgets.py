@@ -62,7 +62,7 @@ def get_data_widgets_qss() -> str:
         QHeaderView::section {{
             background: {TOKENS["panel_alt_bg"]};
             color: {TOKENS["text_primary"]};
-            font-weight: 600;
+            font-weight: 700;
             border: none;
             border-right: 1px solid {TOKENS["grid"]};
             border-bottom: 1px solid {TOKENS["border"]};

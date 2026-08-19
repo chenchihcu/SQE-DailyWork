@@ -42,6 +42,11 @@ class FontSourceSingleTruthTests(unittest.TestCase):
         offenders = re.findall(r"font-weight:\s*(500|600)\b", ui_style.app_stylesheet())
         self.assertEqual(offenders, [], f"NCR QSS still uses 500/600: {offenders}")
 
+    def test_main_stylesheet_avoids_medium_font_weights(self) -> None:
+        qss = theme.get_theme_qss()
+        offenders = re.findall(r"font-weight:\s*(500|600)\b", qss)
+        self.assertEqual(offenders, [], f"main QSS still uses 500/600: {offenders}")
+
 
 if __name__ == "__main__":
     unittest.main()
