@@ -11,6 +11,7 @@ screenshots, exports, database snapshots, and one-off debugging artifacts out of
 | `../README.md` | Product, runtime, folder-structure, and validation overview. |
 | `architecture-workflow-contract.md` | Data boundaries, workflow boundaries, UI entrypoint boundaries, and folder ownership rules. |
 | `ui-layout-theme-contract.md` | Qt layout, theme, sidebar color hierarchy, visual stress, and native probe acceptance rules. |
+| `SQE_Incident_Management_UI_Design_Framework_v0.1` | 跨專案設計框架參考（Web 端異常案件 UI），V-1~V-3 已裁決並整合 |
 | `risk-ledger.md` | Durable risk notes for changes that need explicit tracking. |
 | `exec-plans/` | Active and completed plans for complex work only. |
 | `harness/` | Agent governance, verification routing, source baselines, and compatibility notes. |

@@ -11,6 +11,7 @@ global baseline.
 - Product and runtime overview: `README.md`.
 - Architecture and data-boundary contract: `docs/architecture-workflow-contract.md`.
 - UI layout and theme contract: `docs/ui-layout-theme-contract.md`.
+- UI design framework (cross-project): `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md`.
 - Cursor rules: `.cursor/rules/agents_gateway.mdc`.
 - Active risks: `docs/risk-ledger.md`.
 - Closed-loop harness: `docs/harness/README.md`, `docs/harness/closed-loop-log.md`, `docs/harness/quality-score.md`, and `docs/harness/doc-gardening.md`.
