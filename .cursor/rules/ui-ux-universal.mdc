@@ -1,7 +1,7 @@
 ---
-description: "通用 UI/UX 規則(跨專案;由 ~/.claude/sync-ai-rules.ps1 自動同步,勿手改本檔)"
-globs: "*"
-alwaysApply: true
+description: "通用 UI/UX 規則：版面、主題、表單、互動、無障礙（跨專案；由 ~/.claude/sync-ai-rules.ps1 自動同步,勿手改本檔）"
+globs: "**/*.{tsx,ts,jsx,js,vue,css,scss,sass,less,qss,ui,html}"
+alwaysApply: false
 ---
 
 # 通用 UI/UX 規則(單一真本 / Single Source of Truth)
