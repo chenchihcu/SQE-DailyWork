@@ -2,11 +2,77 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "workbench_workbench-default.png",
-    "workbench_workbench-narrow.png"
-  ]
+    "workbench@1.5x_workbench-page-overview.png",
+    "workbench@1.5x_workbench-page-timeline.png",
+    "workbench@1.5x_workbench-page-analysis.png",
+    "workbench@1.5x_workbench-page-eight-d.png",
+    "workbench@1.5x_workbench-page-corrective.png",
+    "workbench@1.5x_workbench-page-attachments.png",
+    "workbench@1.5x_workbench-page-history.png",
+    "workbench@1.5x_workbench-default.png",
+    "workbench@1.5x_workbench-narrow.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "workbench_workbench-page-overview.png",
+        "workbench_workbench-page-timeline.png",
+        "workbench_workbench-page-analysis.png",
+        "workbench_workbench-page-eight-d.png",
+        "workbench_workbench-page-corrective.png",
+        "workbench_workbench-page-attachments.png",
+        "workbench_workbench-page-history.png",
+        "workbench_workbench-default.png",
+        "workbench_workbench-narrow.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "workbench@1.25x_workbench-page-overview.png",
+        "workbench@1.25x_workbench-page-timeline.png",
+        "workbench@1.25x_workbench-page-analysis.png",
+        "workbench@1.25x_workbench-page-eight-d.png",
+        "workbench@1.25x_workbench-page-corrective.png",
+        "workbench@1.25x_workbench-page-attachments.png",
+        "workbench@1.25x_workbench-page-history.png",
+        "workbench@1.25x_workbench-default.png",
+        "workbench@1.25x_workbench-narrow.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "workbench@1.5x_workbench-page-overview.png",
+        "workbench@1.5x_workbench-page-timeline.png",
+        "workbench@1.5x_workbench-page-analysis.png",
+        "workbench@1.5x_workbench-page-eight-d.png",
+        "workbench@1.5x_workbench-page-corrective.png",
+        "workbench@1.5x_workbench-page-attachments.png",
+        "workbench@1.5x_workbench-page-history.png",
+        "workbench@1.5x_workbench-default.png",
+        "workbench@1.5x_workbench-narrow.png"
+      ]
+    }
+  }
 }

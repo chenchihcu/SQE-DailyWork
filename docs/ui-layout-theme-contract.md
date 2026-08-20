@@ -21,6 +21,8 @@
 | Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Zero-noise supplier-event dashboard with date range, refresh, export, and trend / responsibility / supplier-risk chart panels; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
+| Supplier overview | Sidebar `供應商總覽` | `src/ui/widgets/supplier_overview_page.py` / `SupplierOverviewPage` | `MainWindow` | Fills content stack | Read-only supplier quality columns; double-click opens supplier 360 | Shared theme tokens | UI smoke |
+| Supplier 360 | Supplier overview row | `src/ui/widgets/supplier_360_page.py` / `Supplier360Page` | `MainWindow` | Fills content stack | Source-labelled read-only timeline and separate anomaly / visit / NCR tabs; actions route to existing create flows | Shared theme tokens | UI smoke plus native probe |
 | Edit / preview anomaly | Event action menu | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | Event list | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Edit / preview visit | Event action menu | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | Event list | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Close anomaly | Event action menu | `src/ui/widgets/close_anomaly_dialog.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
@@ -160,14 +162,14 @@
   reintroduce the retired outer `DefectTrackerPage` tab host for these
   entrypoints. Pending pages must be backed by visible `processing_line` scope,
   not by hidden filters or inferred category/return-slip values.
-- Sidebar information architecture is workflow-first with three domain group
-  headers (text labels): 供應商事件, 倉庫不合格品, 系統. 供應商事件先提供兩個建立頁
-  `新增訪廠` / `新增異常`；其後的四個 supplier-event
-  scopes are first-class nav rows (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案,
-  default 單獨異常; the 已結案 row locks the status filter to 已結案) plus 異常事件統計;
-  倉庫不合格品 holds 建立不合格品 / 待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. There is no
-  in-page scope tab bar — the event page is driven by the active sidebar scope row,
-  shown via the source tag. Stack page indexes are
+- Sidebar information architecture is workflow-first with four domain group
+  headers (text labels): 供應商事件, 倉庫不合格品, 供應商管理, 系統. 供應商事件提供
+  `新增訪廠` / `新增異常` / `事件管理` / `異常事件統計`; 事件管理頁內以
+  `EVENT_QUERY_SCOPE_TABS` 對應的 scope chips 切換 單獨異常 / 訪廠發現異常 /
+  訪廠紀錄 / 已結案，已結案 chip 鎖定狀態為 已結案。倉庫不合格品 holds
+  建立不合格品 / 待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析;
+  供應商管理 holds 供應商總覽 / 基礎資料; 系統 holds 顯示設定。事件頁的
+  source tag 與 chips 必須同步，程式化 scope action 僅保留相容用途。Stack page indexes are
   (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 / 4 待處理委外加工 /
   5 待處理原物料 / 6 歷史紀錄 / 7 不合格品統計分析 / 8 基礎資料 /
   9 新增訪廠 / 10 新增異常`, NCR offset 3). 導覽項目高度為 38px，群組間距為 10px；
@@ -180,7 +182,8 @@
   (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`), `ncr.embed.NCR_PAGE_OFFSET`,
   `_PAGE_KEY_TO_INDEX`, and the affected tests together (Atomic Path).
 - Sidebar badges must expose pending work symmetrically: the supplier-event badge
-  rides the 單獨異常 scope row (open anomalies), and warehouse badges ride
+  rides the 事件管理 page row (all open supplier anomalies), while the event page
+  chips expose scope-specific counts. Warehouse badges ride
   `待處理委外加工` / `待處理原物料` with count queries constrained to
   `status <> '已結案' AND processing_line = <formal line>`. `未分流` records are
   cleanup warnings/to-dos and must not be merged into either formal badge.

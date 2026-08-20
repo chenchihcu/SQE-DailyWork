@@ -125,7 +125,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             "基於倉庫不良品登記主檔分析；Top5 依期間不合格數量（qty 加總）排序。",
             "協助 SQE 與倉管人員追蹤產線不良退料模式、聚焦不良高發廠商與產品，以及退料類型佔比。"
         )
-        self.scroll_layout.addWidget(self.info_banner)
+        self.info_banner.hide()
 
         # 2x2 網格佈局容器
         chart_panel = QFrame()
@@ -137,11 +137,12 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         self.grid_layout = create_stats_grid_layout(equal_rows=True)
         chart_layout.addLayout(self.grid_layout)
 
-        self.scroll_layout.addWidget(chart_panel)
+        self.scroll_layout.addWidget(chart_panel, 1)
         
         # 底部建議資訊欄 (Insights)
         self.insight_label = self._create_insight_label("載入中...")
-        self.scroll_layout.addWidget(self.insight_label)
+        self.insight_label.setMinimumHeight(0)
+        self.insight_label.hide()
 
         root.addWidget(scroll, 1)
 

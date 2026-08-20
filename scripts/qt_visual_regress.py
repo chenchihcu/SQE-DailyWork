@@ -139,7 +139,19 @@ def main() -> int:
             dest = baseline_dir / shot.name
             dest.write_bytes(shot.read_bytes())
             names.append(shot.name)
-        manifest = {"env": _current_env(probe_json), "files": names}
+        existing = {}
+        if manifest_path.exists():
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        scales = dict(existing.get("scales") or {})
+        scales[str(args.scale)] = {
+            "env": _current_env(probe_json),
+            "files": names,
+        }
+        manifest = {
+            "env": _current_env(probe_json),
+            "files": names,
+            "scales": scales,
+        }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps({"updated": str(baseline_dir), **manifest}, ensure_ascii=False, indent=2))
         return 0
@@ -153,12 +165,13 @@ def main() -> int:
         return 1 if baseline_required else 0
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    scale_manifest = (manifest.get("scales") or {}).get(str(args.scale), manifest)
     current = _current_env(probe_json)
-    if manifest.get("env") != current:
+    if scale_manifest.get("env") != current:
         print(json.dumps({
             "result": "skipped",
             "reason": "environment differs from baseline (font/platform/scale) — pixel diff would be unreliable",
-            "baseline_env": manifest.get("env"),
+            "baseline_env": scale_manifest.get("env"),
             "current_env": current,
         }, ensure_ascii=False, indent=2))
         return 2
@@ -173,7 +186,7 @@ def main() -> int:
 
     failures = []
     captured_names = [shot.name for shot in screenshots]
-    manifest_names = list(manifest.get("files") or [])
+    manifest_names = list(scale_manifest.get("files") or [])
     if captured_names != manifest_names:
         failures.append(
             {

@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from database import repository
 from ui.design_tokens import PALETTE as _PALETTE
 from ui.layout_constants import (
     SIDEBAR_LOGO_HEIGHT,
@@ -37,6 +36,8 @@ _NAV_ICON_COLOR_ACTIVE = _PALETTE["sidebar_text_active"]
 PAGE_HOME = "HOME"
 PAGE_VISIT_CREATE = "VISIT_CREATE"
 PAGE_ANOMALY_CREATE = "ANOMALY_CREATE"
+PAGE_EVENT_QUERY = "EVENT_QUERY"
+PAGE_SUPPLIER_OVERVIEW = "SUPPLIER_OVERVIEW"
 PAGE_EVENT_CREATE_VISIT = PAGE_VISIT_CREATE
 PAGE_EVENT_CREATE_ANOMALY = PAGE_ANOMALY_CREATE
 PAGE_STATS = "STATS"
@@ -54,7 +55,7 @@ PAGE_MASTER = "MASTER"
 ACTION_OPEN_APPEARANCE_REDESIGN = "OPEN_APPEARANCE_REDESIGN"
 
 # 導覽 action 形式：("page", PAGE_KEY) 或 ("scope", EVENT_SCOPE_*) 或 ("command", COMMAND_KEY)。
-# 事件的 4 個 scope 升級為一等導覽列，事件頁不再有頁內 scope 分頁。
+# 事件 scope 在事件管理頁內以 filter chips 切換；保留 scope action 供相容呼叫端使用。
 # 結構：(群組標題 | None, [(label, action, badge_enabled, icon), ...])
 _NAV_GROUPS = [
     (None, [
@@ -63,10 +64,7 @@ _NAV_GROUPS = [
     ("供應商事件", [
         ("新增訪廠", ("page", PAGE_VISIT_CREATE), False, "icons/visit.svg"),
         ("新增異常", ("page", PAGE_ANOMALY_CREATE), False, "icons/anomaly.svg"),
-        ("單獨異常", ("scope", repository.EVENT_SCOPE_ANOMALY_ONLY), True, "icons/anomaly.svg"),
-        ("訪廠發現異常", ("scope", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY), False, "icons/visit.svg"),
-        ("訪廠紀錄", ("scope", repository.EVENT_SCOPE_VISIT_ONLY), False, "icons/visit.svg"),
-        ("已結案", ("scope", repository.EVENT_SCOPE_CLOSED_ONLY), False, "icons/closed.svg"),
+        ("事件管理", ("page", PAGE_EVENT_QUERY), True, "icons/anomaly.svg"),
         ("異常事件統計", ("page", PAGE_STATS), False, "icons/stats.svg"),
     ]),
     ("倉庫不合格品", [
@@ -76,8 +74,11 @@ _NAV_GROUPS = [
         ("歷史紀錄", ("page", PAGE_NCR_HISTORY), False, "icons/closed.svg"),
         ("不合格品統計分析", ("page", PAGE_NCR_STATS), False, "icons/stats.svg"),
     ]),
-    ("系統", [
+    ("供應商管理", [
+        ("供應商總覽", ("page", PAGE_SUPPLIER_OVERVIEW), False, "icons/master.svg"),
         ("基礎資料", ("page", PAGE_MASTER), False, "icons/master.svg"),
+    ]),
+    ("系統", [
         ("顯示設定", ("command", ACTION_OPEN_APPEARANCE_REDESIGN), False, "icons/master.svg"),
     ]),
 ]

@@ -172,7 +172,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         content_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
         content_layout.setSpacing(VISIT_FORM_CONTENT_SPACING)
 
-        basic_title = QLabel("基本資訊")
+        basic_title = QLabel("📋 基本資訊")
         basic_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(basic_title)
         form = QFormLayout()
@@ -230,7 +230,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         secondary_layout = QVBoxLayout()
         secondary_layout.setContentsMargins(0, 0, 0, 0)
         secondary_layout.setSpacing(8)
-        secondary_layout.addWidget(QLabel("活動摘要"))
+        secondary_layout.addWidget(QLabel("📝 活動摘要"))
         secondary_layout.addWidget(self.summary_input, 1)
         details_grid.addLayout(secondary_layout, 0, 1)
         details_grid.setColumnStretch(0, 1)
@@ -245,11 +245,11 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         for idx, (field_key, field_label) in enumerate(VISIT_TECH_TRANSFER_ITEMS):
             card = TechTransferCard(field_key, field_label, self)
             card.yes_radio.toggled.connect(self._on_any_tech_transfer_item_toggled)
-            cards_grid.addWidget(card, 0, idx)
+            cards_grid.addWidget(card, idx // 3, idx % 3)
             self._tech_transfer_cards[field_key] = card
             self._tech_transfer_groups[field_key] = card.group
 
-        tech_title = QLabel("技轉")
+        tech_title = QLabel("⚙️ 技轉查核")
         tech_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(tech_title)
         content_layout.addWidget(cards_container)
@@ -307,6 +307,37 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             preferred_height=ANOMALY_DIALOG_PREFERRED_HEIGHT,
             maximum_width=FORM_MAX_WIDTH,
         )
+        self._setup_tab_order()
+
+    def _setup_tab_order(self) -> None:
+        """Tab follows visual reading order across fields, summary and cards."""
+        order = [
+            self.date_edit,
+            self.time_slot_input,
+            self.supplier_combo,
+            self.product_combo,
+            self.work_order_input,
+            self.qty_input,
+            self.tech_transfer_check,
+            self.summary_input,
+        ]
+        for card in self._tech_transfer_cards.values():
+            if hasattr(card, "yes_radio"):
+                order.append(card.yes_radio)
+            if hasattr(card, "no_radio"):
+                order.append(card.no_radio)
+
+        if self._button_box is not None:
+            save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
+            cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if save_btn is not None:
+                order.append(save_btn)
+            if cancel_btn is not None:
+                order.append(cancel_btn)
+
+        valid_widgets = [w for w in order if w is not None]
+        for earlier, later in zip(valid_widgets, valid_widgets[1:], strict=False):
+            self.setTabOrder(earlier, later)
 
     def _apply_read_only(self) -> None:
         """Disable all input widgets to prevent modification."""

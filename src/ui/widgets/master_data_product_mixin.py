@@ -148,8 +148,16 @@ class _MasterDataProductMixin:
         style_table(self.product_table)
         _prod_header = self.product_table.horizontalHeader()
         _prod_header.setStretchLastSection(False)
+        _prod_header.setSectionResizeMode(0, _prod_header.ResizeMode.Interactive)
         _prod_header.setSectionResizeMode(1, _prod_header.ResizeMode.Stretch)
+        _prod_header.setSectionResizeMode(2, _prod_header.ResizeMode.Interactive)
+        _prod_header.setSectionResizeMode(3, _prod_header.ResizeMode.Interactive)
+        _prod_header.setSectionResizeMode(4, _prod_header.ResizeMode.Interactive)
         _prod_header.setSectionResizeMode(5, _prod_header.ResizeMode.ResizeToContents)
+        self.product_table.setColumnWidth(0, 150)
+        self.product_table.setColumnWidth(2, 70)
+        self.product_table.setColumnWidth(3, 140)
+        self.product_table.setColumnWidth(4, 140)
         apply_table_action_affordance(
             self.product_table,
             "點擊產品列開啟編輯、停用、刪除或階段紀錄動作",

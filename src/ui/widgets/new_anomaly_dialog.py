@@ -221,7 +221,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         content_layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
         content_layout.setSpacing(FORM_VERTICAL_SPACING)
 
-        basic_title = QLabel("基本資訊")
+        basic_title = QLabel("📋 基本資訊")
         basic_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(basic_title)
 
@@ -255,14 +255,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
         grid.addWidget(QLabel("異常類別"), 2, 0)
         grid.addWidget(self.category_input, 2, 1, 1, 2)
-        grid.addWidget(QLabel("數量"), 2, 3)
-        grid.addWidget(self.batch_qty_input, 2, 4, 1, 2)
+        grid.addWidget(QLabel("責任人"), 2, 3)
+        grid.addWidget(self.responsible_person_input, 2, 4, 1, 2)
 
-        self._lbl_order = QLabel("委外工單")
-        grid.addWidget(self._lbl_order, 3, 0)
-        grid.addWidget(self.outsource_work_order_input, 3, 1, 1, 2)
-        grid.addWidget(QLabel("責任人"), 3, 3)
-        grid.addWidget(self.responsible_person_input, 3, 4, 1, 2)
+        grid.addWidget(QLabel("異常單號"), 3, 0)
+        grid.addWidget(self.anomaly_no_preview_input, 3, 1, 1, 2)
+        grid.addWidget(QLabel("數量"), 3, 3)
+        grid.addWidget(self.batch_qty_input, 3, 4, 1, 2)
 
         due_row = QWidget()
         dr_layout = QHBoxLayout(due_row)
@@ -270,10 +269,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         dr_layout.setSpacing(INLINE_SPACING)
         dr_layout.addWidget(self.due_date_check)
         dr_layout.addWidget(self.due_date_edit, 1)
-        grid.addWidget(QLabel("異常單號"), 4, 0)
-        grid.addWidget(self.anomaly_no_preview_input, 4, 1, 1, 2)
-        grid.addWidget(QLabel("預計回覆日"), 4, 3)
-        grid.addWidget(due_row, 4, 4, 1, 2)
 
         quality_report_row = QWidget()
         quality_report_layout = QHBoxLayout(quality_report_row)
@@ -282,8 +277,15 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         quality_report_layout.addWidget(self.quality_report_yes_radio)
         quality_report_layout.addWidget(self.quality_report_no_radio)
         quality_report_layout.addStretch(1)
-        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 5, 3)
-        grid.addWidget(quality_report_row, 5, 4, 1, 2)
+
+        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 4, 0)
+        grid.addWidget(quality_report_row, 4, 1, 1, 2)
+        grid.addWidget(QLabel("預計回覆日"), 4, 3)
+        grid.addWidget(due_row, 4, 4, 1, 2)
+
+        self._lbl_order = QLabel("委外工單")
+        grid.addWidget(self._lbl_order, 5, 0)
+        grid.addWidget(self.outsource_work_order_input, 5, 1, 1, 2)
 
         content_layout.addLayout(grid)
         self._product_guard_label = QLabel("")
@@ -300,15 +302,15 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._same_day_visit_hint_label.setVisible(False)
         content_layout.addWidget(self._same_day_visit_hint_label)
 
-        desc_title = QLabel("問題描述")
+        desc_title = QLabel("🔍 問題描述")
         desc_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(desc_title)
         content_layout.addWidget(RequiredFieldLabel("不良現象描述"))
         content_layout.addWidget(self.problem_input)
-        content_layout.addWidget(QLabel("確認事項 / 待追蹤"))
+        content_layout.addWidget(QLabel("📌 確認事項 / 待追蹤"))
         content_layout.addWidget(self.pending_items_input)
 
-        ref_title = QLabel("風險與參考")
+        ref_title = QLabel("📊 風險與參考")
         ref_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(ref_title)
 
@@ -379,7 +381,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         rc_layout.addWidget(self.rc_internal_inv_combo, 1, 3)
         content_layout.addWidget(self._rc_group)
 
-        photo_title = QLabel("現場照片")
+        photo_title = QLabel("📷 現場照片")
         photo_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(photo_title)
         self.attachment_editor = AttachmentEditor(self)
@@ -423,6 +425,45 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.is_tech_transfer_check.toggled.connect(self._update_ref_group_visibility)
         self._update_outsource_row_visibility()
         self._update_ref_group_visibility()
+        self._setup_tab_order()
+
+    def _setup_tab_order(self) -> None:
+        """Tab follows visual reading order across fields, lists and actions."""
+        order = [
+            self.date_edit,
+            self.anomaly_no_preview_input,
+            self.supplier_combo,
+            self.product_combo,
+            self.responsible_person_input,
+            self.due_date_check,
+            self.due_date_edit,
+            self.is_tech_transfer_check,
+            self.quality_report_yes_radio,
+            self.quality_report_no_radio,
+            self.category_input,
+            self.outsource_work_order_input,
+            self.batch_qty_input,
+            self.sync_visit_check,
+            self.problem_input,
+            self.pending_items_input,
+            self.link_visit_button,
+            self.rc_supplier_inv_combo,
+            self.rc_supplier_wip_combo,
+            self.rc_in_transit_combo,
+            self.rc_internal_inv_combo,
+            self.attachment_editor,
+        ]
+        if self._button_box is not None:
+            save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
+            cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if save_btn is not None:
+                order.append(save_btn)
+            if cancel_btn is not None:
+                order.append(cancel_btn)
+
+        valid_widgets = [w for w in order if w is not None]
+        for earlier, later in zip(valid_widgets, valid_widgets[1:], strict=False):
+            self.setTabOrder(earlier, later)
 
     def _update_outsource_row_visibility(self) -> None:
         """委外工單列只在委外階段或已有值時顯示。"""
@@ -770,6 +811,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             "rc_internal_inventory": self.rc_internal_inv_combo.currentText(),
             "is_tech_transfer": self.is_tech_transfer_check.isChecked(),
             "quality_report_required": bool(quality_report_required_id),
+            "source_defect_no": str(self._initial_data.get("source_defect_no") or ""),
         }
         try:
             if self._is_edit:

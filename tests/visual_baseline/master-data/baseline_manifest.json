@@ -2,11 +2,49 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "master-data_master-supplier.png",
-    "master-data_master-product.png"
-  ]
+    "master-data@1.5x_master-supplier.png",
+    "master-data@1.5x_master-product.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "master-data_master-supplier.png",
+        "master-data_master-product.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "master-data@1.25x_master-supplier.png",
+        "master-data@1.25x_master-product.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "master-data@1.5x_master-supplier.png",
+        "master-data@1.5x_master-product.png"
+      ]
+    }
+  }
 }

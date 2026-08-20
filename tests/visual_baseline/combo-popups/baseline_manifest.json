@@ -2,15 +2,65 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "combo-popups_anomaly-editable-popup.png",
-    "combo-popups_anomaly-calendar-popup.png",
-    "combo-popups_anomaly-disabled-selected.png",
-    "combo-popups_master-product-stage-popup.png",
-    "combo-popups_stats-range-popup.png",
-    "combo-popups_warehouse-category-popup.png"
-  ]
+    "combo-popups@1.5x_anomaly-editable-popup.png",
+    "combo-popups@1.5x_anomaly-calendar-popup.png",
+    "combo-popups@1.5x_anomaly-disabled-selected.png",
+    "combo-popups@1.5x_master-product-stage-popup.png",
+    "combo-popups@1.5x_stats-range-popup.png",
+    "combo-popups@1.5x_warehouse-category-popup.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "combo-popups_anomaly-editable-popup.png",
+        "combo-popups_anomaly-calendar-popup.png",
+        "combo-popups_anomaly-disabled-selected.png",
+        "combo-popups_master-product-stage-popup.png",
+        "combo-popups_stats-range-popup.png",
+        "combo-popups_warehouse-category-popup.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "combo-popups@1.25x_anomaly-editable-popup.png",
+        "combo-popups@1.25x_anomaly-calendar-popup.png",
+        "combo-popups@1.25x_anomaly-disabled-selected.png",
+        "combo-popups@1.25x_master-product-stage-popup.png",
+        "combo-popups@1.25x_stats-range-popup.png",
+        "combo-popups@1.25x_warehouse-category-popup.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "combo-popups@1.5x_anomaly-editable-popup.png",
+        "combo-popups@1.5x_anomaly-calendar-popup.png",
+        "combo-popups@1.5x_anomaly-disabled-selected.png",
+        "combo-popups@1.5x_master-product-stage-popup.png",
+        "combo-popups@1.5x_stats-range-popup.png",
+        "combo-popups@1.5x_warehouse-category-popup.png"
+      ]
+    }
+  }
 }

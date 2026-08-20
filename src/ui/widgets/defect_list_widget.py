@@ -8,6 +8,7 @@ from PySide6.QtCore import QDate, Qt
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDateEdit,
@@ -126,6 +127,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._filter_overdue_only = False
         self.event_type_combo: QComboBox | None = None
         self.event_scope_tab_bar: QTabBar | None = None
+        self.scope_chip_buttons: dict[str, QPushButton] = {}
         self.status_combo: QComboBox | None = None
         self.supplier_filter_input: QLineEdit | None = None
         self.month_input: QDateEdit | None = None
@@ -153,15 +155,38 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         control_outer.setContentsMargins(*SUBPANEL_TOOLBAR_MARGINS)
         control_outer.setSpacing(CONTROL_ROW_SPACING)
 
-        # Row 1: filters / helper + new-event actions (consistent across modes)
+        # Row 1: scope chips. Scope is a view of the same event query page, not
+        # a separate navigation route.
+        if self.mode == "query":
+            scope_row = QHBoxLayout()
+            scope_row.setSpacing(INLINE_SPACING)
+            scope_label = QLabel("案件視角")
+            scope_label.setProperty("role", "helperText")
+            scope_row.addWidget(scope_label)
+            scope_group = QButtonGroup(self)
+            scope_group.setExclusive(True)
+            for label, scope, _event_type in EVENT_QUERY_SCOPE_TABS:
+                chip = QPushButton(label)
+                chip.setObjectName("EventScopeChip")
+                chip.setProperty("role", "scopeChip")
+                chip.setCheckable(True)
+                chip.setToolTip(f"顯示{label}資料")
+                chip.clicked.connect(
+                    lambda _checked=False, selected_scope=scope: self.set_event_scope(
+                        selected_scope
+                    )
+                )
+                scope_group.addButton(chip)
+                self.scope_chip_buttons[scope] = chip
+                scope_row.addWidget(chip)
+            scope_row.addStretch(1)
+            control_outer.addLayout(scope_row)
+
+        # Row 2: filters / helper + new-event actions (consistent across modes)
         actions_row = QHBoxLayout()
         actions_row.setSpacing(INLINE_SPACING)
 
         if self.mode == "query":
-            # 事件 scope（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）已升級為側欄一等
-            # 導覽列；此頁不再渲染頁內 scope 分頁列。scope 由側欄 set_event_scope() 或
-            # KPI/統計 apply_quick_filters() 外部設定，目前 scope 由 source_tag_label 呈現。
-            # event_scope_tab_bar 維持 None（filter mixin 已對其缺席做保護）。
             lbl_supplier = QLabel("供應商")
             lbl_supplier.setProperty("role", "helperText")
             self.supplier_filter_input = QLineEdit()

@@ -55,10 +55,10 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 7 SQE DailyWork 頁（首頁, 事件管理, 異常事件統計, 不合格品統計, 基礎資料, 新增訪廠, 新增異常）+ 4 倉庫不合格品工作頁。
-        self.assertEqual(7 + NCR_PAGE_COUNT, self.window.stack.count())
-        # 側欄按鈕 = 11 固定列（首頁 + 2 建立頁 + 4 事件 scope + 異常事件統計 + 不合格品統計 + 基礎資料 + 顯示設定）+ 4 NCR 導覽列。
-        self.assertEqual(11 + NCR_PAGE_COUNT, len(self.window.sidebar._buttons))
+        # 8 SQE DailyWork 頁（另含異常案件管理）+ 4 倉庫不合格品工作頁。
+        self.assertEqual(10 + NCR_PAGE_COUNT, self.window.stack.count())
+        # 側欄按鈕 = 13 固定列；事件 scope 已移入事件管理頁 chips。
+        self.assertEqual(13, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:

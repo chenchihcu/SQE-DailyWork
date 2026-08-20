@@ -51,7 +51,17 @@ shared master-data area.
    `defect_records.processing_line`, not by labels, hidden UI filters,
    `category`, or `return_slip_type`. Runtime values are `原物料`, `委外加工`, and
    migrated/cleanup-only `未分流`. New and edited rows must save as `原物料` or
-    `委外加工`; existing rows default to `未分流` until a user classifies them.
+   `委外加工`; existing rows default to `未分流` until a user classifies them.
+7. `defect_records.supplier_id` is a nullable read-model relationship to the
+   shared `suppliers.id`. It is backfilled only by exact supplier-name matches;
+   unmatched legacy rows remain NULL. This relationship supports supplier 360
+   projections but does not merge warehouse records into supplier-event tables,
+   statistics, or exports.
+8. Supplier 360 is a read-only aggregation over `anomalies`, `visits`, and
+   `defect_records`. Every projected row keeps its source label and source
+   identifier. The NCR-to-anomaly action is an explicit user action and records
+   `anomalies.source_defect_no` for traceability; it does not mutate or delete
+   the originating warehouse record.
 
 ## Supplier Anomaly Quality-Report Requirement
 

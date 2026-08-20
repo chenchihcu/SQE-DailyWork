@@ -126,6 +126,55 @@ def get_controls_qss() -> str:
             border-color: {TOKENS["border_soft"]};
         }}
 
+        QPushButton[role="scopeChip"] {{
+            min-height: 28px;
+            padding: 3px 12px;
+            border-radius: {TOKENS["radius_md"]}px;
+            border: 1px solid {TOKENS["border"]};
+            background: {TOKENS["panel_bg"]};
+            color: {TOKENS["text_secondary"]};
+            font-weight: 400;
+        }}
+
+        QPushButton[role="scopeChip"]:hover {{
+            background: {TOKENS["surface_hover"]};
+            border-color: {TOKENS["focus_ring"]};
+            color: {TOKENS["text_primary"]};
+        }}
+
+        QPushButton[role="scopeChip"]:checked {{
+            background: {TOKENS["primary_faint"]};
+            border-color: {TOKENS["brand_blue"]};
+            color: {TOKENS["brand_primary"]};
+            font-weight: 700;
+        }}
+
+        QFrame#CaseStageStepper {{
+            background: {TOKENS["panel_alt_bg"]};
+            border: 1px solid {TOKENS["border_soft"]};
+            border-radius: {TOKENS["radius_md"]}px;
+        }}
+
+        QLabel[role="stagePending"],
+        QLabel[role="stageComplete"] {{
+            min-height: 28px;
+            border-radius: {TOKENS["radius_sm"]}px;
+            padding: 3px 8px;
+            font-weight: 700;
+        }}
+
+        QLabel[role="stagePending"] {{
+            background: {TOKENS["subtle_bg"]};
+            color: {TOKENS["text_muted"]};
+            border: 1px solid {TOKENS["border_soft"]};
+        }}
+
+        QLabel[role="stageComplete"] {{
+            background: {TOKENS["status_success_bg"]};
+            color: {TOKENS["status_success_fg"]};
+            border: 1px solid {TOKENS["status_success_border"]};
+        }}
+
         QPushButton[variant="primary"],
         QPushButton[variant="toolbarPrimary"],
         QPushButton[buttonRole="primary"] {{

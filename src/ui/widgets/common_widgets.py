@@ -135,7 +135,7 @@ class CreateWorkflowShell(QWidget):
 
     Modal dialogs retain their fixed ``QDialogButtonBox`` footer.  A route that
     opens as a sidebar page instead supplies its form content here, which keeps
-    save/leave actions visible at the top and prevents nested form scroll areas.
+    save/leave actions visible at the bottom and prevents nested form scroll areas.
     """
 
     def __init__(
@@ -150,28 +150,6 @@ class CreateWorkflowShell(QWidget):
         root.setContentsMargins(*outer_margins)
         root.setSpacing(COMPACT_PAGE_SPACING)
 
-        self.command_panel = QFrame()
-        self.command_panel.setObjectName("CreateWorkflowCommandBar")
-        self.command_panel.setProperty("role", "subpanel")
-        command_layout = QVBoxLayout(self.command_panel)
-        command_layout.setContentsMargins(*COMPACT_COMMAND_ROW_MARGINS)
-        command_layout.setSpacing(COMPACT_PAGE_SPACING)
-
-        self.command_row = QHBoxLayout()
-        self.command_row.setContentsMargins(0, 0, 0, 0)
-        self.command_row.setSpacing(COMPACT_PAGE_SPACING)
-        self.command_row.addStretch(1)
-        self._context_count = 0
-        command_layout.addLayout(self.command_row)
-
-        self.feedback_label = QLabel()
-        self.feedback_label.setObjectName("CreateWorkflowFeedback")
-        self.feedback_label.setProperty("role", "messageText")
-        self.feedback_label.setWordWrap(True)
-        self.feedback_label.hide()
-        command_layout.addWidget(self.feedback_label)
-        root.addWidget(self.command_panel)
-
         self.content_scroll = QScrollArea()
         self.content_scroll.setObjectName("CreateWorkflowScroll")
         self.content_scroll.setWidgetResizable(True)
@@ -179,6 +157,28 @@ class CreateWorkflowShell(QWidget):
         self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(self.content_scroll, 1)
+
+        self.command_panel = QFrame()
+        self.command_panel.setObjectName("CreateWorkflowCommandBar")
+        self.command_panel.setProperty("role", "subpanel")
+        command_layout = QVBoxLayout(self.command_panel)
+        command_layout.setContentsMargins(*COMPACT_COMMAND_ROW_MARGINS)
+        command_layout.setSpacing(COMPACT_PAGE_SPACING)
+
+        self.feedback_label = QLabel()
+        self.feedback_label.setObjectName("CreateWorkflowFeedback")
+        self.feedback_label.setProperty("role", "messageText")
+        self.feedback_label.setWordWrap(True)
+        self.feedback_label.hide()
+        command_layout.addWidget(self.feedback_label)
+
+        self.command_row = QHBoxLayout()
+        self.command_row.setContentsMargins(0, 0, 0, 0)
+        self.command_row.setSpacing(COMPACT_PAGE_SPACING)
+        self.command_row.addStretch(1)
+        self._context_count = 0
+        command_layout.addLayout(self.command_row)
+        root.addWidget(self.command_panel)
 
     def add_action(self, button: QPushButton) -> None:
         """Append a command action after the leading stretch."""
@@ -557,6 +557,9 @@ def make_paired_form_row(
     left_field: QWidget,
     right_label: str | QWidget | None,
     right_field: QWidget,
+    *,
+    left_label_min_width: int = 76,
+    right_label_min_width: int = 72,
 ) -> QWidget:
     row = QWidget()
     row.setObjectName(object_name)
@@ -568,9 +571,11 @@ def make_paired_form_row(
     left_label_widget = paired_label(left_label)
     right_label_widget = paired_label(right_label)
     if left_label_widget is not None:
+        left_label_widget.setMinimumWidth(left_label_min_width)
         grid.addWidget(left_label_widget, 0, 0)
     grid.addWidget(left_field, 0, 1)
     if right_label_widget is not None:
+        right_label_widget.setMinimumWidth(right_label_min_width)
         grid.addWidget(right_label_widget, 0, 2)
         grid.addWidget(right_field, 0, 3)
     else:
@@ -664,3 +669,38 @@ class SupplierProductFormMixin:
         combo.addItem(f"{label or item_id}（目前值）", item_id)
         set_combo_current_data(combo, item_id)
         return True
+
+
+class CaseStageStepper(QFrame):
+    """Read-only visual completion for the anomaly handling lifecycle."""
+
+    STAGES = ("開立", "處置", "根因", "對策", "驗證", "結案")
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("CaseStageStepper")
+        self._labels: list[QLabel] = []
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(*COMPACT_COMMAND_ROW_MARGINS)
+        layout.setSpacing(CONTROL_ROW_SPACING)
+        for stage in self.STAGES:
+            label = QLabel(stage)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setProperty("role", "stagePending")
+            self._labels.append(label)
+            layout.addWidget(label, 1)
+
+    def set_case_state(self, detail: Mapping[str, Any], overview: Mapping[str, Any] | None = None) -> None:
+        data: Mapping[str, Any] = overview or detail
+        completed = (
+            True,
+            bool(data.get("current_action") or detail.get("pending_items")),
+            bool(data.get("root_cause_status") or detail.get("root_cause_status")),
+            bool(data.get("corrective_action_status") or detail.get("corrective_action_status")),
+            bool(data.get("verification_result") or detail.get("verification_result")),
+            str(detail.get("status") or "") == "已結案",
+        )
+        for label, is_complete in zip(self._labels, completed, strict=True):
+            label.setProperty("role", "stageComplete" if is_complete else "stagePending")
+            label.style().unpolish(label)
+            label.style().polish(label)

@@ -20,6 +20,7 @@ class BulletListItemRow(QWidget):
 
     valueChanged = Signal()
     removeRequested = Signal(object)
+    returnPressed = Signal(object)
 
     def __init__(self, index: int = 1, text: str = "", parent=None):
         super().__init__(parent)
@@ -38,6 +39,7 @@ class BulletListItemRow(QWidget):
         self.line_edit.setPlaceholderText(f"條目 {index}")
         self.line_edit.setAccessibleName(f"條目 {index}")
         self.line_edit.textChanged.connect(self._on_text_changed)
+        self.line_edit.returnPressed.connect(lambda: self.returnPressed.emit(self))
 
         self.btn_delete = QPushButton("刪除")
         self.btn_delete.setFixedWidth(48)
@@ -71,6 +73,7 @@ class BulletListWidget(QWidget):
     """Widget allowing dynamic addition, deletion, and auto-numbering of items."""
 
     valueChanged = Signal()
+    textChanged = valueChanged
 
     def __init__(self, placeholder: str = "新增條目...", parent=None):
         super().__init__(parent)
@@ -108,6 +111,7 @@ class BulletListWidget(QWidget):
             row.btn_delete.setVisible(False)
         row.valueChanged.connect(self._on_row_value_changed)
         row.removeRequested.connect(self._remove_row)
+        row.returnPressed.connect(self._on_row_return_pressed)
         self._rows.append(row)
         self.items_layout.addWidget(row)
         self._update_indices()
@@ -116,6 +120,14 @@ class BulletListWidget(QWidget):
         self.updateGeometry()
         self.valueChanged.emit()
         return row
+
+    def _on_row_return_pressed(self, row: BulletListItemRow):
+        new_row = self.add_item("")
+        new_row.line_edit.setFocus()
+
+    def clear(self):
+        """Clear all entries and reset to 1 blank row."""
+        self.set_items([])
 
     def _remove_row(self, row: BulletListItemRow):
         if len(self._rows) <= 1:

@@ -93,7 +93,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
 
     def test_command_buttons_follow_save_then_cancel_order(self) -> None:
         page = AnomalyManagementPage(mock.Mock())
-        command_row = page.layout().itemAt(2).layout()
+        command_row = page.layout().itemAt(3).layout()
 
         self.assertIs(command_row.itemAt(1).widget(), page.save_button)
         self.assertIs(command_row.itemAt(2).widget(), page.cancel_button)

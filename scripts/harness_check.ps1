@@ -202,6 +202,38 @@ function Require-VisualTargetBaselines {
                 Add-Failure "Visual target/baseline mapping missing file: $($target.name)/$file"
             }
         }
+        $requiredScales = @($targetManifest.required_scales | ForEach-Object { [string]$_ })
+        $declaredScales = @()
+        if ($null -ne $baseline.PSObject.Properties["scales"]) {
+            $declaredScales = @($baseline.scales.PSObject.Properties.Name | ForEach-Object { [string]$_ })
+        }
+        foreach ($scale in $requiredScales) {
+            if ($declaredScales -notcontains $scale) {
+                Add-Failure "Visual target baseline is missing required scale: $($target.name)@$scale"
+            }
+        }
+    }
+}
+
+function Require-NoStaleVisualPolicyPath {
+    $patterns = @(
+        ".agents\skills",
+        ".claude\skills",
+        ".codex\agents",
+        ".claude\agents"
+    )
+    foreach ($relativeDirectory in $patterns) {
+        $directory = Join-RepoPath $relativeDirectory
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            continue
+        }
+        Get-ChildItem -LiteralPath $directory -File -Recurse |
+            ForEach-Object {
+                $content = Get-Content -LiteralPath $_.FullName -Raw
+                if ($content.Contains(".Codex/rules/visual_evidence_rules.md")) {
+                    Add-Failure "Stale visual policy path in $($_.FullName)"
+                }
+            }
     }
 }
 
@@ -323,6 +355,13 @@ $requiredFiles = @(
     ".claude\skills\sqe-dailywork-data-contract\SKILL.md",
     ".claude\skills\sqe-dailywork-doc-gardening\SKILL.md",
     ".claude\skills\sqe-dailywork-ui-ux-flow-optimizer\SKILL.md",
+    ".agents\skills\sqe-dailywork-change-router\SKILL.md",
+    ".agents\skills\sqe-dailywork-visual-qa\SKILL.md",
+    ".agents\skills\sqe-dailywork-data-contract\SKILL.md",
+    ".agents\skills\sqe-dailywork-doc-gardening\SKILL.md",
+    ".agents\skills\sqe-dailywork-ui-ux-flow-optimizer\SKILL.md",
+    ".agents\skills\sqe-dailywork-visual-qa\references\visual_qa_checklist.md",
+    ".agents\skills\sqe-dailywork-ui-ux-flow-optimizer\references\ui_rules_and_spec.md",
     ".claude\agents\sqe-dailywork-contract-reviewer.md",
     ".claude\agents\sqe-dailywork-qt-visual-reviewer.md",
     ".claude\agents\sqe-dailywork-test-triage.md",
@@ -463,6 +502,7 @@ Require-LiveReleaseMembership "docs\harness\source-baseline-manifest.md"
 Require-DoNotTrackBoundary
 Require-ActivePlanLifecycle
 Require-VisualTargetBaselines
+Require-NoStaleVisualPolicyPath
 Require-Text "docs\harness\quality-score.md" "Knowledge map" "quality score knowledge row"
 Require-Text "docs\harness\doc-gardening.md" "Report only" "report-first automation rule"
 Require-Text "docs\harness\doc-gardening.md" "Do not edit files from automation" "automation mutation boundary"

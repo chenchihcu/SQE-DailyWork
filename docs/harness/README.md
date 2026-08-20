@@ -46,6 +46,8 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 - `scripts\qt_visual_belt.py` must pass every required target at 100% / 125% /
   150%; `scripts\qt_visual_regress.py` fails when a required baseline is absent
   or its file mapping differs.
+- Full `scripts\verify.ps1 -Profile Full` iterates every `required_scales` entry
+  for each target with `baseline_required: true`, including `event-create`.
 - If only offscreen output is available, report it as structural evidence, not as a visual UI finding.
 
 ## Qt UI Removal And Compatibility Widgets

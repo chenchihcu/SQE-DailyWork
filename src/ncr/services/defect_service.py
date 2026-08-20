@@ -170,6 +170,32 @@ def ensure_not_duplicate_business_key(
     raise ValueError(VALIDATION_DUPLICATE_RECORD.format(defect_no))
 
 
+def _sync_and_resolve_supplier_id(
+    conn: sqlite3.Connection,
+    normalized: dict[str, Any],
+) -> str | None:
+    has_shared_suppliers = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'suppliers'"
+    ).fetchone()
+    if has_shared_suppliers is None:
+        return None
+    supplier_service.sync_supplier_from_defect(conn, normalized)
+    if (
+        normalized.get("processing_line") == "委外加工"
+        and str(normalized.get("outsource_supplier_name") or "").strip()
+    ):
+        name = str(normalized["outsource_supplier_name"]).strip()
+    else:
+        name = str(normalized.get("supplier_name") or "").strip()
+    if not name or name.upper() == "N/A":
+        return None
+    row = conn.execute(
+        "SELECT id FROM suppliers WHERE supplier_name = ? LIMIT 1",
+        (name,),
+    ).fetchone()
+    return str(row["id"]) if row is not None else None
+
+
 def generate_defect_no(conn: sqlite3.Connection) -> str:
     prefix = "NCR-"
     cursor = conn.execute(
@@ -192,6 +218,7 @@ def generate_defect_no(conn: sqlite3.Connection) -> str:
 def create_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> str:
     normalized = validate_defect_data(data, require_status_default=True)
     ensure_not_duplicate_business_key(conn, normalized)
+    normalized["supplier_id"] = _sync_and_resolve_supplier_id(conn, normalized)
     normalized["defect_no"] = generate_defect_no(conn)
     normalized["created_at"] = datetime.now().isoformat(timespec="seconds")
     try:
@@ -202,7 +229,6 @@ def create_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> str:
         raise
     
     product_service.sync_product_from_defect(conn, normalized)
-    supplier_service.sync_supplier_from_defect(conn, normalized)
     return str(normalized["defect_no"])
 
 
@@ -211,6 +237,7 @@ def update_defect(
 ) -> None:
     normalized = validate_defect_data(data)
     ensure_not_duplicate_business_key(conn, normalized, exclude_id=defect_id)
+    normalized["supplier_id"] = _sync_and_resolve_supplier_id(conn, normalized)
     try:
         crud.update_defect(conn, defect_id, normalized)
     except sqlite3.IntegrityError as exc:
@@ -219,4 +246,3 @@ def update_defect(
         raise
     
     product_service.sync_product_from_defect(conn, normalized)
-    supplier_service.sync_supplier_from_defect(conn, normalized)

@@ -39,11 +39,11 @@ class LayoutConstantsTests(unittest.TestCase):
 
     def test_ncr_list_column_profile_breakpoint(self) -> None:
         self.assertEqual(1024, lc.NCR_LIST_FULL_COLUMNS_MIN_WIDTH)
-        self.assertEqual(118, lc.NCR_LIST_CORE_DEFECT_NO_WIDTH)
+        self.assertEqual(120, lc.NCR_LIST_CORE_DEFECT_NO_WIDTH)
         self.assertEqual(96, lc.NCR_LIST_CORE_EVENT_DATE_WIDTH)
         self.assertEqual(88, lc.NCR_LIST_CORE_PROCESSING_LINE_WIDTH)
-        self.assertEqual(108, lc.NCR_LIST_CORE_ITEM_NO_WIDTH)
-        self.assertEqual(136, lc.NCR_LIST_CORE_PRODUCT_WIDTH)
+        self.assertEqual(120, lc.NCR_LIST_CORE_ITEM_NO_WIDTH)
+        self.assertEqual(180, lc.NCR_LIST_CORE_PRODUCT_WIDTH)
         self.assertEqual(78, lc.NCR_LIST_CORE_STATUS_WIDTH)
 
     def test_sidebar_compact_create_navigation_rhythm(self) -> None:
@@ -89,6 +89,16 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_master_search_width_constants(self) -> None:
         self.assertEqual(220, lc.MASTER_SEARCH_MIN_WIDTH)
         self.assertEqual(340, lc.MASTER_SEARCH_MAX_WIDTH)
+
+    def test_home_backlog_column_widths(self) -> None:
+        self.assertEqual(120, lc.HOME_BACKLOG_ANOMALY_NO_WIDTH)
+        self.assertEqual(110, lc.HOME_BACKLOG_SUPPLIER_WIDTH)
+        self.assertEqual(130, lc.HOME_BACKLOG_ITEM_NO_WIDTH)
+        self.assertEqual(130, lc.HOME_BACKLOG_PRODUCT_WIDTH)
+        self.assertEqual(150, lc.HOME_BACKLOG_NEXT_ACTION_WIDTH)
+        self.assertEqual(104, lc.HOME_BACKLOG_DUE_DATE_WIDTH)
+        self.assertEqual(115, lc.HOME_BACKLOG_RESPONSIBLE_WIDTH)
+        self.assertEqual(70, lc.HOME_BACKLOG_STATUS_WIDTH)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # AI Rules Compatibility Overview - SQE DailyWork
 
-Last verified: 2026-05-25
+Last verified: 2026-08-20
 
 This file is the repo-local compatibility register for Codex, Claude Code, Cursor, and Google Antigravity. It is a control document for AI-agent operation, not a SQE workflow specification.
 
@@ -68,11 +68,10 @@ This file is the repo-local compatibility register for Codex, Claude Code, Curso
 
 | Finding | Type | Root cause | Extended risk | Control |
 | --- | --- | --- | --- | --- |
-| Git root exists, but tracked count was 0 before this pass. | `local-observed` | Repository was initialized without a committed source baseline. | AI handoff cannot rely on `git diff`, and untracked source changes can be missed. | Keep one writer per worktree until a reviewed source baseline commit exists. |
+| Git root exists, but the working tree contains a large in-progress source and visual-baseline surface. | `local-observed` | UI visual closeout is still being reviewed in the current checkout. | AI handoff can miss untracked source or baseline files if staging is blind. | Keep one writer per worktree while this noisy checkout is being reviewed. |
 | `.gitignore` ignored the whole `.cursor/` directory before this pass. | `local-observed` | Local/editor noise rule was too broad for shared Cursor rules. | Cursor gateway could remain local-only and drift from `AGENTS.md`. | Ignore Cursor local state but unignore `.cursor/rules/**`. |
 | Runtime/generated directories are ignored. | `local-observed` | `data/`, `Outputs/`, `scratch/`, runtime caches, and local Claude state are not shared policy. | Blind add can still capture unexpected generated files outside ignore coverage. | Review `git status --short --ignored` before any baseline commit. |
-| Initial source baseline is not committed. | `local-observed` | This pass did not create a broad baseline commit. | Parallel agents still lack a clean handoff point. | Create a reviewed source baseline commit after generated paths are ignored. |
-| Baseline candidate lists are not yet approved. | `local-observed` | `docs/harness/source-baseline-manifest.md` now classifies files, but no human approval has converted the list into a commit. | Automation or another AI could treat untracked source as disposable or accidentally omit governance files. | Treat the manifest as an audit register, not approval to stage. |
+| Source baseline manifest is current but the checkout remains noisy. | `local-observed` | `docs/harness/source-baseline-manifest.md` records 493 live release members and explicit candidate lists; the current UI wave still has untracked visual assets. | Automation or another AI could treat untracked source as disposable or accidentally omit governance files. | Treat the manifest as an audit register, not approval to stage; keep one writer until the review closes. |
 | Scratch/generated state is excluded from baseline tracking. | `local-observed` | `scratch/`, runtime outputs, and local generated artifacts are ignored. | Blind staging outside the reviewed candidate list can still capture unexpected generated files. | Keep scratch ignored and do not delete without explicit approval. |
 | Native Qt visual evidence is project-critical. | `audit-inference` | SQE DailyWork requires Windows CJK rendering checks for visual UI claims. | A non-native or offscreen-only agent can approve broken typography/layout. | Keep `scripts/qt_visual_probe.py` as the visual-evidence control. |
 | Oversized always-on rules reduce instruction efficiency. | `audit-inference` | Long rules consume context and make high-priority instructions harder to isolate. | Optional workflow details can crowd out SQE DailyWork business rules. | Enforce the Instruction Size Budget in `scripts/harness_check.ps1`. |

@@ -2,17 +2,73 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "dialog-density_dialog-density-add-action.png",
-    "dialog-density_dialog-density-add-note.png",
-    "dialog-density_dialog-density-add-corrective.png",
-    "dialog-density_dialog-density-complete-action.png",
-    "dialog-density_dialog-density-complete-corrective.png",
-    "dialog-density_dialog-density-add-verification.png",
-    "dialog-density_dialog-density-add-eight-d.png",
-    "dialog-density_dialog-density-add-audit.png"
-  ]
+    "dialog-density@1.5x_dialog-density-add-action.png",
+    "dialog-density@1.5x_dialog-density-add-note.png",
+    "dialog-density@1.5x_dialog-density-add-corrective.png",
+    "dialog-density@1.5x_dialog-density-complete-action.png",
+    "dialog-density@1.5x_dialog-density-complete-corrective.png",
+    "dialog-density@1.5x_dialog-density-add-verification.png",
+    "dialog-density@1.5x_dialog-density-add-eight-d.png",
+    "dialog-density@1.5x_dialog-density-add-audit.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "dialog-density_dialog-density-add-action.png",
+        "dialog-density_dialog-density-add-note.png",
+        "dialog-density_dialog-density-add-corrective.png",
+        "dialog-density_dialog-density-complete-action.png",
+        "dialog-density_dialog-density-complete-corrective.png",
+        "dialog-density_dialog-density-add-verification.png",
+        "dialog-density_dialog-density-add-eight-d.png",
+        "dialog-density_dialog-density-add-audit.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "dialog-density@1.25x_dialog-density-add-action.png",
+        "dialog-density@1.25x_dialog-density-add-note.png",
+        "dialog-density@1.25x_dialog-density-add-corrective.png",
+        "dialog-density@1.25x_dialog-density-complete-action.png",
+        "dialog-density@1.25x_dialog-density-complete-corrective.png",
+        "dialog-density@1.25x_dialog-density-add-verification.png",
+        "dialog-density@1.25x_dialog-density-add-eight-d.png",
+        "dialog-density@1.25x_dialog-density-add-audit.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "dialog-density@1.5x_dialog-density-add-action.png",
+        "dialog-density@1.5x_dialog-density-add-note.png",
+        "dialog-density@1.5x_dialog-density-add-corrective.png",
+        "dialog-density@1.5x_dialog-density-complete-action.png",
+        "dialog-density@1.5x_dialog-density-complete-corrective.png",
+        "dialog-density@1.5x_dialog-density-add-verification.png",
+        "dialog-density@1.5x_dialog-density-add-eight-d.png",
+        "dialog-density@1.5x_dialog-density-add-audit.png"
+      ]
+    }
+  }
 }

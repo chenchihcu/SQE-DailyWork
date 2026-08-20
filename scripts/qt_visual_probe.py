@@ -1704,6 +1704,20 @@ def _run_multi_scale(args: argparse.Namespace, scales: list[str]) -> int:
     return worst
 
 
+def _capture_supplier_360(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    from ui.widgets.supplier_360_page import Supplier360Page
+
+    page = Supplier360Page(None)
+    page.load_supplier("probe-supplier")
+    page.resize(*(size or (1360, 860)))
+    page.show()
+    app.processEvents()
+    target = _target_output_path(output, "supplier-360")
+    _capture_widget(page, target, app)
+    page.close()
+    return [str(target)]
+
+
 def main() -> int:
     args = parse_args()
 
@@ -1789,6 +1803,8 @@ def main() -> int:
             screenshots = _capture_workbench(output, app, size)
         elif args.target == "dialog-density":
             screenshots = _capture_dialog_density(output, app)
+        elif args.target == "supplier-360":
+            screenshots = _capture_supplier_360(output, app, size)
         else:
             screenshots = _capture_main_window(output, app, size)
         screenshot_path = screenshots[0] if screenshots else None

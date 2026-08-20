@@ -497,6 +497,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             category TEXT NOT NULL DEFAULT '',
             supplier_name TEXT NOT NULL DEFAULT '',
             outsource_supplier_name TEXT NOT NULL DEFAULT '',
+            supplier_id TEXT,
             defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
             status TEXT NOT NULL DEFAULT '',
             disposition TEXT NOT NULL DEFAULT '',
@@ -698,6 +699,28 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "anomalies", "rc_in_transit", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "rc_internal_inventory", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "is_tech_transfer", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "defect_records", "supplier_id", "TEXT")
+    _ensure_column(conn, "anomalies", "source_defect_no", "TEXT NOT NULL DEFAULT ''")
+    _ensure_index(conn, "idx_defect_records_supplier", "defect_records", "supplier_id")
+    if get_migration_meta(conn, "defect_supplier_id_backfill_v1") != "1":
+        conn.execute(
+            """
+            UPDATE defect_records
+            SET supplier_id = (
+                SELECT s.id
+                FROM suppliers s
+                WHERE s.supplier_name = CASE
+                    WHEN processing_line = '委外加工'
+                         AND TRIM(COALESCE(outsource_supplier_name, '')) <> ''
+                        THEN outsource_supplier_name
+                    ELSE supplier_name
+                END
+                LIMIT 1
+            )
+            WHERE TRIM(COALESCE(supplier_id, '')) = ''
+            """
+        )
+        upsert_migration_meta(conn, "defect_supplier_id_backfill_v1", "1")
     _ensure_anomaly_actions_v1(conn)
     _ensure_anomaly_evidence_tables_v1(conn)
     conn.execute(
@@ -4214,8 +4237,13 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
         return None
+    source_defect_expr = (
+        "a.source_defect_no AS source_defect_no"
+        if _has_column(conn, "anomalies", "source_defect_no")
+        else "'' AS source_defect_no"
+    )
     row = conn.execute(
-        """
+        f"""
         SELECT
             a.id AS id,
             a.anomaly_no AS anomaly_no,
@@ -4246,6 +4274,7 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.rc_internal_inventory AS rc_internal_inventory,
             a.is_tech_transfer AS is_tech_transfer,
             a.quality_report_required AS quality_report_required,
+            {source_defect_expr},
             a.created_at AS created_at,
             a.updated_at AS updated_at
         FROM anomalies a
@@ -4293,6 +4322,7 @@ def update_anomaly(
     is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
+    source_defect_no: str = "",
 ) -> None:
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
@@ -5184,6 +5214,7 @@ def create_anomaly_with_visit_link(
     is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
+    source_defect_no: str = "",
 ) -> dict[str, str | None]:
     inputs = _prepare_anomaly_inputs(
         conn,
@@ -5292,6 +5323,7 @@ def create_anomaly_with_visit_link(
         rc_internal_inventory=rc_internal_inventory,
         is_tech_transfer=is_tech_transfer,
         quality_report_required=quality_report_required,
+        source_defect_no=source_defect_no,
     )
     id_row = conn.execute(
         "SELECT id FROM anomalies WHERE anomaly_no = ?",
@@ -5437,6 +5469,94 @@ def _event_period_filter(date_column: str, yyyymm: str | None) -> tuple[str, lis
 
     month = _normalize_month(period_key)
     return f" AND replace(substr({date_column}, 1, 7), '-', '') = ?", [month]
+
+
+def search_global(
+    conn: sqlite3.Connection,
+    keyword: str,
+    *,
+    limit: int = 30,
+) -> list[dict]:
+    """Search the four business sources without merging their data contracts."""
+    value = str(keyword or "").strip()
+    if not value:
+        return []
+    pattern = f"%{value}%"
+    per_source_limit = max(1, min(int(limit), 100))
+    results: list[dict] = []
+
+    queries = (
+        (
+            "供應商",
+            """
+            SELECT id, supplier_name AS ref_no, supplier_name AS title,
+                   contact_name AS subtitle, updated_at AS event_date
+            FROM suppliers
+            WHERE is_active = 1 AND supplier_name LIKE ?
+            ORDER BY supplier_name
+            LIMIT ?
+            """,
+            (pattern, per_source_limit),
+        ),
+        (
+            "異常",
+            """
+            SELECT a.id, a.anomaly_no AS ref_no, a.problem_desc AS title,
+                   s.supplier_name AS subtitle, a.anomaly_date AS event_date,
+                   a.supplier_id
+            FROM anomalies a
+            JOIN suppliers s ON s.id = a.supplier_id
+            WHERE a.anomaly_no LIKE ?
+               OR a.problem_desc LIKE ?
+               OR a.product_name LIKE ?
+               OR s.supplier_name LIKE ?
+            ORDER BY a.anomaly_date DESC, a.created_at DESC
+            LIMIT ?
+            """,
+            (pattern, pattern, pattern, pattern, per_source_limit),
+        ),
+        (
+            "訪廠",
+            """
+            SELECT v.id, '' AS ref_no, v.summary AS title,
+                   s.supplier_name AS subtitle, v.visit_date AS event_date,
+                   v.supplier_id
+            FROM visits v
+            JOIN suppliers s ON s.id = v.supplier_id
+            WHERE v.summary LIKE ?
+               OR v.product_name LIKE ?
+               OR v.work_order_no LIKE ?
+               OR s.supplier_name LIKE ?
+            ORDER BY v.visit_date DESC, v.created_at DESC
+            LIMIT ?
+            """,
+            (pattern, pattern, pattern, pattern, per_source_limit),
+        ),
+        (
+            "不合格品",
+            """
+            SELECT id, defect_no AS ref_no, defect_desc AS title,
+                   COALESCE(NULLIF(outsource_supplier_name, ''), supplier_name) AS subtitle,
+                   event_date, supplier_name
+            FROM defect_records
+            WHERE defect_no LIKE ?
+               OR defect_desc LIKE ?
+               OR item_no LIKE ?
+               OR product_name LIKE ?
+               OR supplier_name LIKE ?
+               OR outsource_supplier_name LIKE ?
+            ORDER BY event_date DESC, created_at DESC
+            LIMIT ?
+            """,
+            (pattern, pattern, pattern, pattern, pattern, pattern, per_source_limit),
+        ),
+    )
+    for source, sql, params in queries:
+        for row in conn.execute(sql, params).fetchall():
+            item = dict(row)
+            item["source"] = source
+            results.append(item)
+    return results[: max(1, int(limit))]
 
 
 def list_events(
@@ -6213,7 +6333,9 @@ def _insert_anomaly_row(
     rc_internal_inventory: str = "unconfirmed",
     is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
+    source_defect_no: str = "",
 ) -> str:
+    _ensure_column(conn, "anomalies", "source_defect_no", "TEXT NOT NULL DEFAULT ''")
     normalized_date = _normalize_strict_iso_date(
         anomaly_date,
         field_name="Anomaly date",
@@ -6237,8 +6359,8 @@ def _insert_anomaly_row(
                 status, improvement_desc, closed_at, created_at, updated_at,
                 pending_items, responsible_person, due_date,
                 rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
-                is_tech_transfer, quality_report_required
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_tech_transfer, quality_report_required, source_defect_no
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _gen_id(),
@@ -6265,6 +6387,7 @@ def _insert_anomaly_row(
                 (rc_internal_inventory or "unconfirmed").strip(),
                 1 if is_tech_transfer else 0,
                 None if quality_report_required is None else int(quality_report_required),
+                (source_defect_no or "").strip(),
             ),
         )
 

@@ -211,6 +211,13 @@ try {
 
     Write-Host ""
     Write-Host "[4/6] native Qt visual probe belt"
+    # Tests intentionally exercise writes against the disposable database.
+    # Reset it before visual evidence so charts and lists use the same
+    # source snapshot as native baseline generation.
+    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to reset disposable database before visual verification"
+    }
     $previousQtPlatform = $env:QT_QPA_PLATFORM
     try {
         Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
@@ -241,17 +248,19 @@ try {
             if (-not $target.baseline_required) {
                 continue
             }
-            $regressArgs = @(
-                "scripts\qt_visual_regress.py",
-                "--target", [string]$target.name,
-                "--scale", "1.0"
-            )
-            if ($target.min_width) {
-                $regressArgs += "--min-width"
-            }
-            & $resolvedPython @regressArgs
-            if ($LASTEXITCODE -ne 0) {
-                throw "visual regression failed for $($target.name) with exit code $LASTEXITCODE"
+            foreach ($scale in $targetManifest.required_scales) {
+                $regressArgs = @(
+                    "scripts\qt_visual_regress.py",
+                    "--target", [string]$target.name,
+                    "--scale", [string]$scale
+                )
+                if ($target.min_width) {
+                    $regressArgs += "--min-width"
+                }
+                & $resolvedPython @regressArgs
+                if ($LASTEXITCODE -ne 0) {
+                    throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
+                }
             }
         }
     } else {

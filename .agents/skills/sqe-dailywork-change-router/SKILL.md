@@ -25,7 +25,7 @@ Use this skill before implementing SQE DailyWork changes that may touch more tha
 
 ## Guardrails
 
-- Visual-evidence policy (Playwright / offscreen): authority is `.Codex/rules/visual_evidence_rules.md` — do not restate it here.
+- Visual-evidence policy (Playwright / offscreen): authority is `.claude/rules/visual_evidence_rules.md` — do not restate it here.
 - Do not run migration, `--apply`, direct `data/*.db` changes, or destructive cleanup without explicit user approval.
 - Keep findings and delivery in `Changes / Impact / Verification / Residual risk / Next action` (mirrored mechanically by `.Codex/hooks/sqe-dailywork-stop.ps1` — update both together).
 

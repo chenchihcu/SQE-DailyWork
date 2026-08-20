@@ -15,29 +15,26 @@ from ui.main_window import (
     MASTER_PAGE_INDEX,
     MainWindow,
 )
-from ui.sidebar_nav import PAGE_NCR_PENDING, SidebarNav
+from ui.sidebar_nav import PAGE_EVENT_QUERY, PAGE_NCR_PENDING, SidebarNav
 from ui.sidebar_nav import PAGE_NCR_PENDING_MATERIAL, PAGE_NCR_PENDING_OUTSOURCE
 from ui.sidebar_nav import PAGE_EVENT_CREATE_ANOMALY, PAGE_EVENT_CREATE_VISIT
 from ui import layout_constants as lc
 from ui.theme import apply_app_theme
 
 
-# Fourteen sidebar nav labels: the supplier-event group starts with the two
-# full-page create flows, then keeps its four query scopes.
+# Sidebar labels: event scopes are page-local chips rather than nav rows.
 _EXPECTED_NAV_LABELS = [
     "首頁",
     "新增訪廠",
     "新增異常",
-    "單獨異常",
-    "訪廠發現異常",
-    "訪廠紀錄",
-    "已結案",
+    "事件管理",
     "異常事件統計",
     "建立不合格品",
     "待處理委外加工",
     "待處理原物料",
     "歷史紀錄",
     "不合格品統計分析",
+    "供應商總覽",
     "基礎資料",
     "顯示設定",
 ]
@@ -94,7 +91,7 @@ class MainWorkflowTabTests(unittest.TestCase):
             self.assertIn(expected_title, title_labels)
 
     def test_sidebar_has_fourteen_nav_items_and_create_routes(self) -> None:
-        self.assertEqual(15, len(self.window.sidebar._buttons))
+        self.assertEqual(13, len(self.window.sidebar._buttons))
         self.assertIsNotNone(
             self.window.sidebar.button_for_action(("page", PAGE_EVENT_CREATE_VISIT))
         )
@@ -108,12 +105,12 @@ class MainWorkflowTabTests(unittest.TestCase):
         self.assertEqual(4, lc.SIDEBAR_NAV_TOP_SPACING)
 
     def test_sidebar_uses_domain_group_headers(self) -> None:
-        # 側欄以三組領域標題（非按鈕 QLabel）分隔：供應商事件 / 倉庫不合格品 / 系統。
+        # 側欄以四組領域標題（非按鈕 QLabel）分隔。
         headers = [
             label.text()
             for label in self.window.sidebar.findChildren(QLabel, "SidebarGroupHeader")
         ]
-        self.assertEqual(["供應商事件", "倉庫不合格品", "系統"], headers)
+        self.assertEqual(["供應商事件", "倉庫不合格品", "供應商管理", "系統"], headers)
         # 每個導覽項目都帶有一個非空白的圖示，作為視覺辨識。
         for button in self.window.sidebar._buttons:
             icon_label = button.findChild(QLabel, "NavIcon")
@@ -165,10 +162,8 @@ class MainWorkflowTabTests(unittest.TestCase):
         self.window._switch_primary_page(EVENT_PAGE_INDEX)
         self.app.processEvents()
         self.assertEqual(EVENT_PAGE_INDEX, self.window.stack.currentIndex())
-        self.assertIs(self.window.stack.currentWidget(), self.window.events_widget)
-        # 事件頁高亮的是「目前 scope」對應的側欄列（預設 = 單獨異常）。
-        scope = self.window.events_widget._filter_event_scope
-        active_btn = self.window.sidebar.button_for_action(("scope", scope))
+        # 事件頁高亮事件管理列；目前 scope 由頁內 chips 表示。
+        active_btn = self.window.sidebar.button_for_action(("page", PAGE_EVENT_QUERY))
         self.assertIsNotNone(active_btn)
         self.assertEqual("true", active_btn.property("nav_active"))
 

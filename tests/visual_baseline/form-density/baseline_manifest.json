@@ -2,16 +2,65 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "form-density_anomaly-form.png",
-    "form-density_anomaly-calendar.png",
-    "form-density_visit-form.png",
-    "form-density_supplier-form.png",
-    "form-density_product-form.png",
-    "form-density_warehouse-form.png",
-    "form-density_quick-product-form.png"
-  ]
+    "form-density@1.5x_anomaly-form.png",
+    "form-density@1.5x_anomaly-calendar.png",
+    "form-density@1.5x_visit-form.png",
+    "form-density@1.5x_supplier-form.png",
+    "form-density@1.5x_product-form.png",
+    "form-density@1.5x_warehouse-form.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "form-density_anomaly-form.png",
+        "form-density_anomaly-calendar.png",
+        "form-density_visit-form.png",
+        "form-density_supplier-form.png",
+        "form-density_product-form.png",
+        "form-density_warehouse-form.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "form-density@1.25x_anomaly-form.png",
+        "form-density@1.25x_anomaly-calendar.png",
+        "form-density@1.25x_visit-form.png",
+        "form-density@1.25x_supplier-form.png",
+        "form-density@1.25x_product-form.png",
+        "form-density@1.25x_warehouse-form.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "form-density@1.5x_anomaly-form.png",
+        "form-density@1.5x_anomaly-calendar.png",
+        "form-density@1.5x_visit-form.png",
+        "form-density@1.5x_supplier-form.png",
+        "form-density@1.5x_product-form.png",
+        "form-density@1.5x_warehouse-form.png"
+      ]
+    }
+  }
 }

@@ -4,7 +4,7 @@
   "targets": [
     {"name": "home", "baseline_required": true, "min_width": true},
     {"name": "main", "baseline_required": true, "min_width": true},
-    {"name": "event-create", "baseline_required": false, "min_width": true},
+    {"name": "event-create", "baseline_required": true, "min_width": true},
     {"name": "appearance-settings", "baseline_required": true, "min_width": false},
     {"name": "form-density", "baseline_required": true, "min_width": false},
     {"name": "combo-popups", "baseline_required": true, "min_width": false},
@@ -16,6 +16,7 @@
     {"name": "empty-states", "baseline_required": true, "min_width": true},
     {"name": "pdf-export", "baseline_required": false, "min_width": false},
     {"name": "workbench", "baseline_required": true, "min_width": true},
-    {"name": "dialog-density", "baseline_required": true, "min_width": false}
+    {"name": "dialog-density", "baseline_required": true, "min_width": false},
+    {"name": "supplier-360", "baseline_required": true, "min_width": true}
   ]
 }

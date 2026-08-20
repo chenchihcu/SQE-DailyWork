@@ -2,12 +2,53 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "empty-states_empty-event-list.png",
-    "empty-states_empty-master.png",
-    "empty-states_empty-ncr-placeholder.png"
-  ]
+    "empty-states@1.5x_empty-event-list.png",
+    "empty-states@1.5x_empty-master.png",
+    "empty-states@1.5x_empty-ncr-placeholder.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "empty-states_empty-event-list.png",
+        "empty-states_empty-master.png",
+        "empty-states_empty-ncr-placeholder.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "empty-states@1.25x_empty-event-list.png",
+        "empty-states@1.25x_empty-master.png",
+        "empty-states@1.25x_empty-ncr-placeholder.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "empty-states@1.5x_empty-event-list.png",
+        "empty-states@1.5x_empty-master.png",
+        "empty-states@1.5x_empty-ncr-placeholder.png"
+      ]
+    }
+  }
 }

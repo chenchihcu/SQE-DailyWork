@@ -1,6 +1,6 @@
 # Source Baseline Manifest - SQE DailyWork
 
-Last inspected: 2026-08-19
+Last inspected: 2026-08-20
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | --- | --- | --- |
 | Repository path | `local-observed` | `C:\Users\user\Documents\SQE DailyWork` |
 | Git root | `local-observed` | `C:/Users/user/Documents/SQE DailyWork` |
-| Live release membership count | `local-observed` | `441` |
+| Live release membership count | `local-observed` | `587` |
 | Membership definition | `audit-inference` | Existing files returned by `git ls-files --cached --others --exclude-standard`; this stays stable before and after intentional staging of new source files |
 | Ignored runtime/generated entries | `local-observed` | `data/`, `ncr/data/`, `data_backups/`, local runtimes, caches, outputs, `.omo/`, `.playwright-mcp/`, root generated quality workbooks, visual probe artifacts |
 | `source_baseline_status` | `audit-inference` | `verified: live membership and do-not-track boundaries are executable harness gates` |
@@ -46,7 +46,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 
 | List | Type | Items |
 | --- | --- | --- |
-| `recommended-track-list` | `audit-inference` | `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `.gitignore`, `.editorconfig`, `pytest.ini`, `requirements.txt`, `README.md`, `main.py`, `run_app.bat`, `run_mig.py`, `src/database/**/*.py`, `src/services/**/*.py`, `src/services/assets/*.png`, `src/ui/**/*.py`, `src/ui/assets/**/*.svg`, `tests/**/*.py`, `scripts/*.py`, `scripts/*.ps1`, `docs/**/*.md`, `src/ncr/**/*.py`, `src/ncr/**/*.md`, `src/ncr/ui/assets/*.svg`, `.agents/rules/**`, `.cursor/rules/**`, `.codex/rules/**`, `.claude/settings.json`, `.claude/hooks/**`, `.claude/skills/**`, `.claude/agents/**` |
+| `recommended-track-list` | `audit-inference` | `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `.gitignore`, `.editorconfig`, `pytest.ini`, `requirements.txt`, `README.md`, `main.py`, `run_app.bat`, `run_mig.py`, `src/database/**/*.py`, `src/services/**/*.py`, `src/services/assets/*.png`, `src/ui/**/*.py`, `src/ui/assets/**/*.svg`, `tests/**/*.py`, `scripts/*.py`, `scripts/*.ps1`, `docs/**/*.md`, `src/ncr/**/*.py`, `src/ncr/**/*.md`, `src/ncr/ui/assets/*.svg`, `.agents/rules/**`, `.agents/skills/**`, `.cursor/rules/**`, `.codex/rules/**`, `.claude/settings.json`, `.claude/hooks/**`, `.claude/skills/**`, `.claude/agents/**` |
 | `recommended-ignore-list` | `audit-inference` | `.env`, `.venv/`, `.uv-cache/`, `.uv-python/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.omo/`, `data/`, `ncr/data/`, `data_backups/`, `Outputs/`, `scratch/`, `artifacts/visual/`, `artifacts/visual-probes/`, `build/`, `dist/`, `*.log`, `*.tmp`, `import_err.txt`, `.code_diff.txt`, `.docs_diff.txt`, `ORIGINAL_REQUEST.md`, root probe screenshots, root `SQE_Quality_Report_*.xlsx`, `.claude/settings.local.json`, `.claude/worktrees/`, `.playwright-mcp/` |
 | `needs-user-decision-list` | `audit-inference` | Data-mutating scripts before execution: `run_mig.py`, `scripts/migrate_to_v2.py`, `scripts/recode_anomaly_no_all_dbs.py`, `scripts/migrate_ncr_defects_to_main_db.py` |
 | `do-not-track-list` | `audit-inference` | Runtime DBs, generated outputs, root `SQE_Quality_Report_*.xlsx`, `.playwright-mcp/`, visual probe screenshots, build/dist artifacts, caches, scratch folders, import error captures, local-only assistant settings, `.omo/` session state, the dead `package.json` external-integration stub, worktree folders |

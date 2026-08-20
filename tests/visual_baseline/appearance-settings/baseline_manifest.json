@@ -2,15 +2,65 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.0",
-    "device_pixel_ratio": 2.0
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
   },
   "files": [
-    "appearance-settings_appearance-settings-default.png",
-    "appearance-settings_appearance-settings-tables-tab.png",
-    "appearance-settings_appearance-settings-forms-tab.png",
-    "appearance-settings_appearance-settings-exports-tab.png",
-    "appearance-settings_appearance-settings-system-tab.png",
-    "appearance-settings_appearance-settings-comfortable-large.png"
-  ]
+    "appearance-settings@1.5x_appearance-settings-default.png",
+    "appearance-settings@1.5x_appearance-settings-tables-tab.png",
+    "appearance-settings@1.5x_appearance-settings-forms-tab.png",
+    "appearance-settings@1.5x_appearance-settings-exports-tab.png",
+    "appearance-settings@1.5x_appearance-settings-system-tab.png",
+    "appearance-settings@1.5x_appearance-settings-comfortable-large.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "appearance-settings_appearance-settings-default.png",
+        "appearance-settings_appearance-settings-tables-tab.png",
+        "appearance-settings_appearance-settings-forms-tab.png",
+        "appearance-settings_appearance-settings-exports-tab.png",
+        "appearance-settings_appearance-settings-system-tab.png",
+        "appearance-settings_appearance-settings-comfortable-large.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "appearance-settings@1.25x_appearance-settings-default.png",
+        "appearance-settings@1.25x_appearance-settings-tables-tab.png",
+        "appearance-settings@1.25x_appearance-settings-forms-tab.png",
+        "appearance-settings@1.25x_appearance-settings-exports-tab.png",
+        "appearance-settings@1.25x_appearance-settings-system-tab.png",
+        "appearance-settings@1.25x_appearance-settings-comfortable-large.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "appearance-settings@1.5x_appearance-settings-default.png",
+        "appearance-settings@1.5x_appearance-settings-tables-tab.png",
+        "appearance-settings@1.5x_appearance-settings-forms-tab.png",
+        "appearance-settings@1.5x_appearance-settings-exports-tab.png",
+        "appearance-settings@1.5x_appearance-settings-system-tab.png",
+        "appearance-settings@1.5x_appearance-settings-comfortable-large.png"
+      ]
+    }
+  }
 }

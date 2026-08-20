@@ -1186,15 +1186,64 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
         set_button_role(self.save_button, "primary")
         set_button_role(self.cancel_button, "secondary")
 
+        self.convert_anomaly_button = QPushButton("轉開供應商異常")
+        self.convert_anomaly_button.setAccessibleName("轉開供應商異常")
+        self.convert_anomaly_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
+        set_button_role(self.convert_anomaly_button, "secondary")
+        self.convert_anomaly_button.clicked.connect(self.convert_to_supplier_anomaly)
+
         self.save_button.clicked.connect(self.save_changes)
         self.cancel_button.clicked.connect(self.reject)
 
+        button_layout.addWidget(self.convert_anomaly_button)
         button_layout.addStretch(1)
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.cancel_button)
         main_card_layout.addLayout(button_layout)
 
         layout.addWidget(main_card, 1)
+
+    def convert_to_supplier_anomaly(self) -> None:
+        row = crud.get_defect_by_id(self.conn, self.defect_id)
+        if row is None:
+            QMessageBox.warning(self, "無法轉開異常", "找不到目前的不合格品資料。")
+            return
+        data = dict(row)
+        supplier_id = str(data.get("supplier_id") or "").strip()
+        product_id = ""
+        if supplier_id:
+            product = self.conn.execute(
+                """
+                SELECT id, product_name, product_stage
+                FROM products
+                WHERE supplier_id = ? AND product_code = ?
+                LIMIT 1
+                """,
+                (supplier_id, str(data.get("item_no") or "").strip()),
+            ).fetchone()
+            if product is not None:
+                product_id = str(product["id"] or "")
+                data["product_stage"] = product["product_stage"]
+        main_window = self.window()
+        if not hasattr(main_window, "open_new_anomaly_create_page"):
+            QMessageBox.warning(self, "無法轉開異常", "目前視窗不支援供應商異常建立流程。")
+            return
+        main_window.open_new_anomaly_create_page(
+            {
+                "supplier_id": supplier_id,
+                "supplier_name": (
+                    data.get("outsource_supplier_name")
+                    or data.get("supplier_name")
+                    or ""
+                ),
+                "product_id": product_id,
+                "product_name": data.get("product_name") or "",
+                "problem_desc": data.get("defect_desc") or "",
+                "anomaly_date": data.get("event_date") or "",
+                "source_defect_no": data.get("defect_no") or "",
+            }
+        )
+        self.accept()
 
     def _connect_dirty_tracking(self) -> None:
         _connect_dirty_tracking_signals(self.fields_widget, self._mark_dirty)

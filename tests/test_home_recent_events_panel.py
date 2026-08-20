@@ -38,7 +38,8 @@ def _backlog_row(idx: int, *, supplier: str, status: str = "待處理", responsi
         "supplier_name": supplier,
         "product_code": f"P00{idx}",
         "product_name": f"產品名稱{idx}",
-        "quality_report_required": 1 if idx % 2 == 0 else 0,
+        "current_action": f"下一步 {idx}",
+        "due_date": f"2026-06-{idx % 9 + 2:02d}",
         "responsible_person": responsible_person,
         "content": f"待辦摘要 {idx}",
         "status": status,
@@ -219,14 +220,15 @@ class HomeCockpitPanelTests(unittest.TestCase):
         self.app.processEvents()
         try:
             table = widget._backlog_table
-            self.assertEqual(8, table.columnCount())
-            headers = [table.horizontalHeaderItem(c).text() for c in range(8)]
+            self.assertEqual(9, table.columnCount())
+            headers = [table.horizontalHeaderItem(c).text() for c in range(9)]
             expected_headers = [
                 "異常單號",
                 "供應商名稱",
                 "產品料號",
                 "產品品名",
-                "品質異常單要求",
+                "下一步處置",
+                "到期日",
                 "責任人",
                 "問題/摘要",
                 "狀態",
@@ -237,12 +239,11 @@ class HomeCockpitPanelTests(unittest.TestCase):
             self.assertEqual("供應商0", table.item(0, 1).text())
             self.assertEqual("P000", table.item(0, 2).text())
             self.assertEqual("產品名稱0", table.item(0, 3).text())
-            self.assertEqual("是", table.item(0, 4).text())
-            self.assertEqual("工程師0", table.item(0, 5).text())
-            self.assertEqual("待辦摘要 0", table.item(0, 6).text())
-            self.assertEqual("待處理", table.item(0, 7).text())
-
-            self.assertEqual("否", table.item(1, 4).text())
+            self.assertEqual("下一步 0", table.item(0, 4).text())
+            self.assertEqual("2026-06-02", table.item(0, 5).text())
+            self.assertEqual("工程師0", table.item(0, 6).text())
+            self.assertEqual("待辦摘要 0", table.item(0, 7).text())
+            self.assertEqual("待處理", table.item(0, 8).text())
         finally:
             widget.close()
             self.app.processEvents()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QColor
 
 logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (
@@ -31,8 +32,9 @@ from ui.layout_constants import (
     CONTROL_ROW_SPACING,
     HOME_BACKLOG_ANOMALY_NO_WIDTH,
     HOME_BACKLOG_ITEM_NO_WIDTH,
+    HOME_BACKLOG_NEXT_ACTION_WIDTH,
     HOME_BACKLOG_PRODUCT_WIDTH,
-    HOME_BACKLOG_QUALITY_WIDTH,
+    HOME_BACKLOG_DUE_DATE_WIDTH,
     HOME_BACKLOG_RESPONSIBLE_WIDTH,
     HOME_BACKLOG_STATUS_WIDTH,
     HOME_BACKLOG_SUPPLIER_WIDTH,
@@ -49,6 +51,7 @@ from ui.widgets.common_widgets import (
     style_table,
     text_table_item,
 )
+from ui.theme import TOKENS
 
 
 class HomeWidget(QWidget):
@@ -85,14 +88,15 @@ class HomeWidget(QWidget):
 
         self._backlog_table = QTableWidget()
         self._backlog_table.setObjectName("HomeBacklogTable")
-        self._backlog_table.setColumnCount(8)
+        self._backlog_table.setColumnCount(9)
         self._backlog_table.setHorizontalHeaderLabels(
             [
                 "異常單號",
                 "供應商名稱",
                 "產品料號",
                 "產品品名",
-                "品質異常單要求",
+                "下一步處置",
+                "到期日",
                 "責任人",
                 "問題/摘要",
                 "狀態",
@@ -109,7 +113,8 @@ class HomeWidget(QWidget):
             HOME_BACKLOG_SUPPLIER_WIDTH,
             HOME_BACKLOG_ITEM_NO_WIDTH,
             HOME_BACKLOG_PRODUCT_WIDTH,
-            HOME_BACKLOG_QUALITY_WIDTH,
+            HOME_BACKLOG_NEXT_ACTION_WIDTH,
+            HOME_BACKLOG_DUE_DATE_WIDTH,
             HOME_BACKLOG_RESPONSIBLE_WIDTH,
             None,
             HOME_BACKLOG_STATUS_WIDTH,
@@ -283,24 +288,25 @@ class HomeWidget(QWidget):
                 product_name = str(row.get("product_name") or "—")
                 self._backlog_table.setItem(idx, 3, text_table_item(product_name))
 
-                req_val = row.get("quality_report_required")
-                if req_val in (1, True, "1", "True", "yes", "是"):
-                    req_str = "是"
-                elif req_val in (0, False, "0", "False", "no", "否"):
-                    req_str = "否"
-                else:
-                    req_str = "未設定"
-                self._backlog_table.setItem(idx, 4, text_table_item(req_str))
+                action_val = str(row.get("current_action") or row.get("pending_items") or "—").strip() or "—"
+                self._backlog_table.setItem(idx, 4, text_table_item(action_val))
+
+                due_val = str(row.get("due_date") or "—").strip() or "—"
+                due_item = text_table_item(due_val)
+                if row.get("overdue"):
+                    due_item.setForeground(QColor(TOKENS["status_danger_fg"]))
+                    due_item.setToolTip("已逾期，請優先處理")
+                self._backlog_table.setItem(idx, 5, due_item)
 
                 resp_person = str(row.get("responsible_person") or "未指定").strip() or "未指定"
-                self._backlog_table.setItem(idx, 5, text_table_item(resp_person))
+                self._backlog_table.setItem(idx, 6, text_table_item(resp_person))
 
                 content_val = str(row.get("content") or "—")
-                self._backlog_table.setItem(idx, 6, text_table_item(content_val))
+                self._backlog_table.setItem(idx, 7, text_table_item(content_val))
 
                 status_str = str(row.get("status") or "待處理")
                 self._backlog_table.setItem(
-                    idx, 7, create_status_item(status_str, sort_key=status_str)
+                    idx, 8, create_status_item(status_str, sort_key=status_str)
                 )
 
         # Cap supplier column so very long names don't crowd the problem/summary column.

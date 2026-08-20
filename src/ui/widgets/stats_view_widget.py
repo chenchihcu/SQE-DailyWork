@@ -155,7 +155,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；結案件數依使用者選定的結案日期歸月；圖表不包含倉庫不合格品。",
             "協助 SQE 追蹤月度趨勢、責任人負荷與高風險供應商，並將倉庫統計維持在「不合格品統計分析」頁。"
         )
-        scroll_layout.addWidget(self.info_banner)
+        self.info_banner.hide()
 
         chart_panel = QFrame()
         chart_panel.setObjectName("StatsFourPhaseChartPanel")
@@ -166,11 +166,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         self.grid_layout = create_stats_grid_layout(equal_rows=True)
         chart_layout.addLayout(self.grid_layout)
-        scroll_layout.addWidget(chart_panel)
+        scroll_layout.addWidget(chart_panel, 1)
 
         self.insight_label = self._create_insight_label("載入中...")
-        self.insight_label.setMinimumHeight(STATS_INSIGHT_MIN_HEIGHT)
-        scroll_layout.addWidget(self.insight_label)
+        self.insight_label.setMinimumHeight(0)
+        self.insight_label.hide()
 
         root.addWidget(scroll, 1)
 

@@ -107,6 +107,12 @@ class _EventListFilterMixin:
         if self.mode != "query" or self.status_combo is None:
             return
         self._sync_source_tag()
+        for scope, button in getattr(self, "scope_chip_buttons", {}).items():
+            button.blockSignals(True)
+            try:
+                button.setChecked(scope == self._filter_event_scope)
+            finally:
+                button.blockSignals(False)
         if self.event_scope_tab_bar is not None:
 
             index = self._scope_tab_index(self._filter_event_scope)
@@ -153,8 +159,8 @@ class _EventListFilterMixin:
     def set_event_scope(self, event_scope: str | None) -> None:
         """切換事件 scope（取代原頁內 scope 分頁；保留 supplier / 月份篩選）。
 
-        由側欄 scope 導覽列觸發。KPI / 統計下鑽請改用 apply_quick_filters（會一併設定
-        supplier / 月份 / 狀態）。再次選取同一 scope 仍會刷新（導覽語意）。
+        由事件頁 scope chip 或相容的程式化路由觸發。KPI / 統計下鑽請改用
+        apply_quick_filters（會一併設定 supplier / 月份 / 狀態）。
         """
         if self.mode != "query" or self.fixed_scope:
             return

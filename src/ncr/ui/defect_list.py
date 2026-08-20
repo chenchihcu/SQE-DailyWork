@@ -75,6 +75,11 @@ from ui.layout_constants import (
     FILTER_MONTH_INPUT_WIDTH,
     FILTER_STATUS_COMBO_WIDTH,
     INLINE_SPACING,
+    NCR_LIST_CORE_DEFECT_NO_WIDTH,
+    NCR_LIST_CORE_EVENT_DATE_WIDTH,
+    NCR_LIST_CORE_ITEM_NO_WIDTH,
+    NCR_LIST_CORE_PRODUCT_WIDTH,
+    NCR_LIST_CORE_STATUS_WIDTH,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
     ROW_GAP,
@@ -507,11 +512,11 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             header.setSectionResizeMode(DESCRIPTION_COLUMN, QHeaderView.ResizeMode.Stretch)
             if is_compact:
                 compact_widths = {
-                    DEFECT_NO_COLUMN: 120,
-                    EVENT_DATE_COLUMN: 90,
-                    ITEM_NO_COLUMN: 90,
-                    PRODUCT_NAME_COLUMN: 130,
-                    STATUS_COLUMN: 80,
+                    DEFECT_NO_COLUMN: NCR_LIST_CORE_DEFECT_NO_WIDTH,
+                    EVENT_DATE_COLUMN: NCR_LIST_CORE_EVENT_DATE_WIDTH,
+                    ITEM_NO_COLUMN: NCR_LIST_CORE_ITEM_NO_WIDTH,
+                    PRODUCT_NAME_COLUMN: NCR_LIST_CORE_PRODUCT_WIDTH,
+                    STATUS_COLUMN: NCR_LIST_CORE_STATUS_WIDTH,
                 }
                 for col, width in compact_widths.items():
                     table.setColumnWidth(col, width)

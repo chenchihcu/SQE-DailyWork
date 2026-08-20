@@ -14,6 +14,8 @@ environment they were captured under (`qt_platform`, `selected_font`, `scale`,
 .venv\Scripts\python.exe scripts\qt_visual_regress.py --target stats-stress --update
 .venv\Scripts\python.exe scripts\qt_visual_regress.py --target form-density --update
 .venv\Scripts\python.exe scripts\qt_visual_regress.py --target combo-popups --update
+.venv\Scripts\python.exe scripts\qt_visual_regress.py --target event-create --scale 1.25 --min-width --update
+.venv\Scripts\python.exe scripts\qt_visual_regress.py --target event-create --scale 1.5 --min-width --update
 ```
 
 ## Check against baselines

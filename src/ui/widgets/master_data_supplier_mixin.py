@@ -136,7 +136,15 @@ class _MasterDataSupplierMixin:
         _sup_header = self.supplier_table.horizontalHeader()
         _sup_header.setStretchLastSection(False)
         _sup_header.setSectionResizeMode(0, _sup_header.ResizeMode.Stretch)
+        _sup_header.setSectionResizeMode(1, _sup_header.ResizeMode.Interactive)
+        _sup_header.setSectionResizeMode(2, _sup_header.ResizeMode.Interactive)
+        _sup_header.setSectionResizeMode(3, _sup_header.ResizeMode.Interactive)
+        _sup_header.setSectionResizeMode(4, _sup_header.ResizeMode.Interactive)
         _sup_header.setSectionResizeMode(5, _sup_header.ResizeMode.ResizeToContents)
+        self.supplier_table.setColumnWidth(1, 110)
+        self.supplier_table.setColumnWidth(2, 100)
+        self.supplier_table.setColumnWidth(3, 180)
+        self.supplier_table.setColumnWidth(4, 140)
         apply_table_action_affordance(
             self.supplier_table,
             "點擊供應商列開啟管理動作；Ctrl/Shift 可多選後批次刪除",

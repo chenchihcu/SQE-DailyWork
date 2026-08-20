@@ -6,7 +6,7 @@ import sys
 
 
 logger = logging.getLogger(__name__)
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -43,8 +43,10 @@ from ui.page_header_bar import PageHeaderBar
 from ui.sidebar_nav import (
     ACTION_OPEN_APPEARANCE_REDESIGN,
     PAGE_ANOMALY_CREATE,
+    PAGE_EVENT_QUERY,
     PAGE_HOME,
     PAGE_MASTER,
+    PAGE_SUPPLIER_OVERVIEW,
     PAGE_NCR,
     PAGE_NCR_CREATE,
     PAGE_NCR_HISTORY,
@@ -65,6 +67,8 @@ from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.home_widget import HomeWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
+from ui.widgets.supplier_360_page import Supplier360Page
+from ui.widgets.supplier_overview_page import SupplierOverviewPage
 
 HOME_PAGE_INDEX = 0
 EVENT_PAGE_INDEX = 1
@@ -83,6 +87,8 @@ MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
 VISIT_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 1
 ANOMALY_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 2
 ANOMALY_MANAGEMENT_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX + 1
+SUPPLIER_OVERVIEW_PAGE_INDEX = ANOMALY_MANAGEMENT_PAGE_INDEX + 1
+SUPPLIER_360_PAGE_INDEX = SUPPLIER_OVERVIEW_PAGE_INDEX + 1
 EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
 EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
@@ -95,6 +101,8 @@ _PAGE_TITLES = {
     VISIT_CREATE_PAGE_INDEX: ("新增訪廠", "建立供應商訪廠紀錄"),
     ANOMALY_CREATE_PAGE_INDEX: ("新增異常", "建立供應商異常事件單"),
     ANOMALY_MANAGEMENT_PAGE_INDEX: ("異常案件管理", "查看與維護單一供應商異常案件"),
+    SUPPLIER_OVERVIEW_PAGE_INDEX: ("供應商總覽", "依供應商查看異常、訪廠與不合格品品質狀況"),
+    SUPPLIER_360_PAGE_INDEX: ("供應商檔案", "供應商事件、訪廠與不合格品的唯讀聚合視角"),
 }
 
 # Compatibility alias kept for external callers
@@ -106,6 +114,8 @@ for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
 # 側欄 PAGE_KEY ↔ QStackedWidget 索引對應（側欄不耦合堆疊索引，由此處轉換）。
 _PAGE_KEY_TO_INDEX = {
     PAGE_HOME: HOME_PAGE_INDEX,
+    PAGE_EVENT_QUERY: EVENT_PAGE_INDEX,
+    PAGE_SUPPLIER_OVERVIEW: SUPPLIER_OVERVIEW_PAGE_INDEX,
     PAGE_STATS: STATS_PAGE_INDEX,
     PAGE_NCR: NCR_TRACKING_PAGE_INDEX,
     PAGE_NCR_CREATE: NCR_ENTRY_PAGE_INDEX,
@@ -161,6 +171,11 @@ class MainWindow(QMainWindow):
         self._anomaly_management_page: AnomalyManagementPage | None = None
         self._ncr_pages: list[QWidget] = []
         self._setup_ui()
+        self._global_search_shortcut = QShortcut(
+            QKeySequence("Ctrl+K"),
+            self,
+            activated=self.open_global_search,
+        )
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self._refresh_sidebar_badge)
         QTimer.singleShot(100, self._check_startup_unresolved)
@@ -419,6 +434,9 @@ class MainWindow(QMainWindow):
         self._stats_page = LazyPageWidget(_create_stats_widget, object_name="LazyStatsPage")
         self._ncr_stats_page = LazyPageWidget(_create_ncr_stats_widget, object_name="LazyNcrStatsPage")
         self._master_page = LazyPageWidget(_create_master_widget, object_name="LazyMasterPage")
+        self._supplier_overview_page = SupplierOverviewPage(self)
+        self._supplier_overview_page.supplier_selected.connect(self.open_supplier_360)
+        self._supplier_360_page = Supplier360Page(self, self)
 
         self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
         self.stack.insertWidget(EVENT_PAGE_INDEX, self._events_page)
@@ -445,6 +463,8 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self._new_anomaly_page)
         self._anomaly_management_page = AnomalyManagementPage(self, self)
         self.stack.insertWidget(ANOMALY_MANAGEMENT_PAGE_INDEX, self._anomaly_management_page)
+        self.stack.insertWidget(SUPPLIER_OVERVIEW_PAGE_INDEX, self._supplier_overview_page)
+        self.stack.insertWidget(SUPPLIER_360_PAGE_INDEX, self._supplier_360_page)
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -530,17 +550,9 @@ class MainWindow(QMainWindow):
         return _PAGE_KEY_TO_INDEX.get(value, -1)
 
     def _sync_sidebar_active(self, page_index: int) -> None:
-        """依目前頁面（事件頁則依目前 scope）高亮對應的側欄導覽列。"""
-        if page_index == EVENT_PAGE_INDEX:
-            scope = getattr(self.events_widget, "_filter_event_scope", None)
-            self.sidebar.set_active(("scope", scope))
-        elif page_index == ANOMALY_MANAGEMENT_PAGE_INDEX:
-            scope = getattr(
-                self._anomaly_management_page,
-                "_source_scope",
-                repository.EVENT_SCOPE_ANOMALY_ONLY,
-            )
-            self.sidebar.set_active(("scope", scope))
+        """依目前頁面高亮導覽列；事件 scope 由頁內 chips 表示。"""
+        if page_index in (EVENT_PAGE_INDEX, ANOMALY_MANAGEMENT_PAGE_INDEX):
+            self.sidebar.set_active(("page", PAGE_EVENT_QUERY))
         else:
             key = _PAGE_INDEX_TO_KEY.get(page_index)
             if key is not None:
@@ -592,6 +604,12 @@ class MainWindow(QMainWindow):
         dlg = AppearancePreferencesDialog(self)
         dlg.exec()
 
+    def open_global_search(self) -> None:
+        from ui.widgets.global_search_dialog import GlobalSearchDialog
+
+        dialog = GlobalSearchDialog(self, self)
+        dialog.exec()
+
     def findChild(self, arg__1: type, name: str = "", options: Any = None) -> Any:  # noqa: N802
         res = super().findChild(arg__1, name) if options is None else super().findChild(arg__1, name, options)
         if res is not None:
@@ -606,6 +624,17 @@ class MainWindow(QMainWindow):
 
     def _open_master_data(self) -> None:
         self._switch_primary_page(MASTER_PAGE_INDEX)
+
+    def open_master_supplier_search(self, supplier_name: str = "") -> None:
+        self._open_master_data()
+        master = self.master_widget
+        if not supplier_name or not hasattr(master, "query_input"):
+            return
+        if hasattr(master, "tabs"):
+            master.tabs.setCurrentIndex(0)
+        master.query_input.setText(supplier_name)
+        if hasattr(master, "_on_query_submitted"):
+            master._on_query_submitted()
 
     def open_event_query_with_filters(
         self,
@@ -631,7 +660,7 @@ class MainWindow(QMainWindow):
             event_scope=event_scope,
             overdue_only=overdue_only,
         )
-        # apply_quick_filters 更新了 scope，重新同步側欄高亮到對應 scope 列。
+        # apply_quick_filters 更新了 scope；側欄維持事件管理頁高亮。
         self._sync_sidebar_active(EVENT_PAGE_INDEX)
 
     def open_anomaly_management(self, anomaly_id: str, *, edit: bool = False) -> None:
@@ -643,13 +672,19 @@ class MainWindow(QMainWindow):
                 self.events_widget,
                 "_filter_event_scope",
                 repository.EVENT_SCOPE_ANOMALY_ONLY,
-            )
+            ) or repository.EVENT_SCOPE_ANOMALY_ONLY
             self._anomaly_management_page.load_anomaly(anomaly_id, edit=edit)
         except Exception as exc:
             logger.exception("開啟異常管理頁失敗")
             QMessageBox.critical(self, "錯誤", f"開啟異常管理頁失敗：{exc}")
             return
         self._switch_primary_page(ANOMALY_MANAGEMENT_PAGE_INDEX)
+
+    def open_supplier_360(self, supplier_id: str) -> None:
+        if not supplier_id:
+            return
+        self._supplier_360_page.load_supplier(supplier_id)
+        self._switch_primary_page(SUPPLIER_360_PAGE_INDEX)
 
     # ── Dialogs ─────────────────────────────────────────────────────────────
 
@@ -664,11 +699,15 @@ class MainWindow(QMainWindow):
         self._open_master_data()
         return False
 
-    def open_new_anomaly_create_page(self):
+    def open_new_anomaly_create_page(self, initial_data: dict | None = None):
         if not self._ensure_has_active_suppliers():
             return
-        if hasattr(self, "new_anomaly_page") and hasattr(self.new_anomaly_page, "reset_form"):
-            self.new_anomaly_page.reset_form()
+        if hasattr(self, "new_anomaly_page"):
+            page = self.new_anomaly_page
+            if initial_data and hasattr(page, "initial_data"):
+                page.initial_data = dict(initial_data)
+            if hasattr(page, "reset_form"):
+                page.reset_form()
         self._switch_primary_page(ANOMALY_CREATE_PAGE_INDEX)
 
     def open_new_visit_create_page(self):
@@ -738,16 +777,17 @@ class MainWindow(QMainWindow):
         self.stats_widget.refresh_data()
         self.ncr_stats_widget.refresh_data()
         self.master_widget.refresh_data()
+        self._supplier_overview_page.refresh_data()
         self._refresh_sidebar_badge()
 
     def _refresh_sidebar_badge(self) -> None:
         try:
             summary = _query_service.get_dashboard_summary()
-            count = int(summary.get("standalone_open_count", 0))
+            count = int(summary.get("open_count", 0))
         except Exception:
             logger.exception("重新整理事件徽章失敗")
             count = 0
-        self.sidebar.set_badge(("scope", repository.EVENT_SCOPE_ANOMALY_ONLY), count)
+        self.sidebar.set_badge(("page", PAGE_EVENT_QUERY), count)
         try:
             with get_connection() as conn:
                 warehouse_counts = ncr_stats_service.get_pending_counts_by_processing_line(conn)

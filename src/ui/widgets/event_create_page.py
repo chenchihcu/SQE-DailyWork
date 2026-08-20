@@ -35,10 +35,12 @@ class EventCreatePage(QWidget):
         parent: QWidget | None = None,
         *,
         lazy_load: bool = True,
+        initial_data: dict | None = None,
     ) -> None:
         super().__init__(parent)
         self.main_window = main_window
         self.kind = kind
+        self.initial_data = dict(initial_data or {})
         self.target_scope = (
             repository.EVENT_SCOPE_ANOMALY_ONLY
             if kind == "anomaly"
@@ -78,6 +80,10 @@ class EventCreatePage(QWidget):
         # when Qt recalculates the layout at high DPI.
         self.success_panel.hide()
 
+        self.reset_button = QPushButton("重置")
+        self.reset_button.setProperty("variant", "secondary")
+        self.reset_button.setCursor(Qt.PointingHandCursor)
+        self.reset_button.setAccessibleName("重置目前表單")
         self.return_button = QPushButton("返回清單")
         self.return_button.setProperty("variant", "secondary")
         self.return_button.setCursor(Qt.PointingHandCursor)
@@ -86,12 +92,14 @@ class EventCreatePage(QWidget):
         self.save_button.setProperty("variant", "primary")
         self.save_button.setCursor(Qt.PointingHandCursor)
         self.save_button.setAccessibleName("儲存目前供應商事件")
+        self.workflow_shell.add_context(self.reset_button)
         self.workflow_shell.add_action(self.return_button)
         self.workflow_shell.add_action(self.save_button)
 
         self._form = None
         self.view_list_button.clicked.connect(self._open_target_list)
         self.continue_button.clicked.connect(self.reset_form)
+        self.reset_button.clicked.connect(self.reset_form)
         self.return_button.clicked.connect(self.request_cancel)
         self.save_button.clicked.connect(self._submit_form)
 
@@ -118,7 +126,12 @@ class EventCreatePage(QWidget):
 
     def _install_form(self) -> None:
         if self.kind == "anomaly":
-            form = NewAnomalyDialog(self.workflow_shell, embedded=True, page_mode=True)
+            form = NewAnomalyDialog(
+                self.workflow_shell,
+                embedded=True,
+                page_mode=True,
+                initial_data=self.initial_data,
+            )
         else:
             form = NewVisitDialog(self.workflow_shell, embedded=True, page_mode=True)
         form.setObjectName("EventCreateForm")

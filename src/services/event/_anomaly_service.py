@@ -138,6 +138,7 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
             quality_report_required=payload.get("quality_report_required"),
             anomaly_no=payload.get("anomaly_no"),
+            source_defect_no=payload.get("source_defect_no", ""),
         )
         detail = repository.get_anomaly_detail(
             conn, str(result.get("anomaly_id") or "")

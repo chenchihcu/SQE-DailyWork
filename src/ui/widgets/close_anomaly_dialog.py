@@ -185,12 +185,32 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setCursor(Qt.PointingHandCursor)
             self._save_button.setAccessibleName("確認結案")
         buttons.accepted.connect(self._on_submit)
-        buttons.rejected.connect(self.reject)
-
         apply_dialog_layout(self, content, buttons)
+        self._button_box = buttons
 
         self.improvement_input.textChanged.connect(self._update_validation)
         self.closed_at_input.dateChanged.connect(self._update_validation)
+        self._setup_tab_order()
+
+    def _setup_tab_order(self) -> None:
+        """Tab follows visual reading order across improvement input, dates, and buttons."""
+        order = [
+            self.improvement_input,
+            self.closed_at_input,
+            self.closed_by_input,
+            self.attachment_editor,
+        ]
+        if hasattr(self, "_button_box") and self._button_box is not None:
+            save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
+            cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+            if save_btn is not None:
+                order.append(save_btn)
+            if cancel_btn is not None:
+                order.append(cancel_btn)
+
+        valid_widgets = [w for w in order if w is not None]
+        for earlier, later in zip(valid_widgets, valid_widgets[1:], strict=False):
+            self.setTabOrder(earlier, later)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([

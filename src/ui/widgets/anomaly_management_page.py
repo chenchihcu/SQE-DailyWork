@@ -26,6 +26,7 @@ from ui.layout_constants import (
     PANEL_MARGINS,
 )
 from ui.widgets.common_widgets import (
+    CaseStageStepper,
     EmptyStateWidget,
     apply_clickable_affordance,
     create_section_card,
@@ -54,6 +55,7 @@ class AnomalyManagementPage(QWidget):
         self._edit_form: NewAnomalyDialog | None = None
         self._editing = False
         self._source_scope: str | None = None
+        self.stage_stepper: CaseStageStepper | None = None
         self.setObjectName("AnomalyManagementPage")
         self._build_ui()
 
@@ -81,6 +83,9 @@ class AnomalyManagementPage(QWidget):
         self.edit_button.clicked.connect(self.begin_edit)
         header_layout.addWidget(self.edit_button)
         root.addWidget(self.header)
+
+        self.stage_stepper = CaseStageStepper()
+        root.addWidget(self.stage_stepper)
 
         self.tabs = QTabWidget()
         self.tabs.setObjectName("AnomalyManagementTabs")
@@ -114,6 +119,8 @@ class AnomalyManagementPage(QWidget):
         self._editing = False
         self._remove_edit_form()
         self._render_header()
+        if self.stage_stepper is not None:
+            self.stage_stepper.set_case_state(self._detail)
         self._render_tabs()
         if edit:
             self.begin_edit()

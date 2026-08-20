@@ -14,7 +14,7 @@ Use this skill before implementing SQE DailyWork changes that may touch more tha
 - UI or visible copy: read `AGENTS.md`, `README.md`, `.cursor/rules/agents_gateway.mdc`, and the relevant `src/ui/` widget or `src/ui/popup_i18n.py`.
 - Data contract, migration, visit/anomaly behavior, or storage path: read `README.md`, `docs/risk-ledger.md`, `src/database/repository.py`, and focused tests before changing code.
 - Service or export behavior: read the related `src/services/` module plus tests for PDF, Excel, PPTX, or event-service behavior.
-- Harness, Claude automation, or repo guidance: read `docs/harness/README.md`, `docs/harness/doc-gardening.md`, `scripts/harness_check.ps1`, and this repo's `AGENTS.md`.
+- Harness, Codex automation, or repo guidance: read `docs/harness/README.md`, `docs/harness/doc-gardening.md`, `scripts/harness_check.ps1`, and this repo's `AGENTS.md`.
 
 ## Verification Selection
 
@@ -27,7 +27,7 @@ Use this skill before implementing SQE DailyWork changes that may touch more tha
 
 - Visual-evidence policy (Playwright / offscreen): authority is `.claude/rules/visual_evidence_rules.md` — do not restate it here.
 - Do not run migration, `--apply`, direct `data/*.db` changes, or destructive cleanup without explicit user approval.
-- Keep findings and delivery in `Changes / Impact / Verification / Residual risk / Next action` (mirrored mechanically by `.claude/hooks/sqe-dailywork-stop.ps1` — update both together).
+- Keep findings and delivery in `Changes / Impact / Verification / Residual risk / Next action` (mirrored mechanically by `.Codex/hooks/sqe-dailywork-stop.ps1` — update both together).
 
 ## 何時不要觸發
 

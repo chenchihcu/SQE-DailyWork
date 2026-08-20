@@ -15,8 +15,7 @@ SCHEMA_VERSION = 12
 # database.repository.create_schema() — initialize_database() below delegates
 # to it and never applies this SCHEMA. This copy exists so tests can build an
 # in-memory defect_records table via apply_schema(); it intentionally omits
-# runtime-only performance indexes and MUST NOT be treated as the source of
-# truth when changing the defect_records contract (audit finding C3).
+# runtime-only performance indexes but mirrors nullable supplier linkage.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS defect_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +37,7 @@ CREATE TABLE IF NOT EXISTS defect_records (
     category TEXT NOT NULL DEFAULT '',
     supplier_name TEXT NOT NULL DEFAULT '',
     outsource_supplier_name TEXT NOT NULL DEFAULT '',
+    supplier_id TEXT,
     defect_desc TEXT NOT NULL CHECK(TRIM(defect_desc) <> ''),
     status TEXT NOT NULL DEFAULT '',
     disposition TEXT NOT NULL DEFAULT '',

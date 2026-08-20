@@ -246,7 +246,6 @@ class TechTransferCard(QFrame):
         self.na_radio = QRadioButton("不適用")
         for radio in (self.yes_radio, self.no_radio, self.na_radio):
             radio.setCursor(Qt.CursorShape.PointingHandCursor)
-            radio.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
         self.group.addButton(self.yes_radio, 1)

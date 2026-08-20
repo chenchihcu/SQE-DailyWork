@@ -155,7 +155,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             if label.property("role") == "sectionTitle"
         }
         self.assertEqual(
-            {"基本資訊", "問題描述", "風險與參考", "現場照片"},
+            {"📋 基本資訊", "🔍 問題描述", "📊 風險與參考", "📷 現場照片"},
             section_titles,
         )
 
@@ -599,7 +599,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             for label in dialog.form_content.findChildren(QLabel)
             if label.property("role") == "sectionTitle"
         }
-        self.assertEqual({"基本資訊", "技轉"}, section_titles)
+        self.assertEqual({"📋 基本資訊", "⚙️ 技轉查核"}, section_titles)
 
     def test_visit_dialog_submits_without_new_defect_notes(self) -> None:
         captured: dict = {}
@@ -803,15 +803,15 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertEqual([primary_note], captured["product_sections"][0]["defect_notes"])
         self.assertEqual(extra_section, captured["product_sections"][1])
 
-    def test_visit_dialog_tech_transfer_cards_use_right_side_dot_indicator_style(self) -> None:
+    def test_visit_dialog_tech_transfer_cards_use_standard_cjk_indicator_layout(self) -> None:
         dialog = self.NewVisitDialog()
         self.addCleanup(dialog.close)
         self._select_supplier(dialog)
 
         for field_key, _label in self.widget_module.VISIT_TECH_TRANSFER_ITEMS:
             card = dialog._tech_transfer_cards[field_key]
-            self.assertEqual(Qt.LayoutDirection.RightToLeft, card.yes_radio.layoutDirection())
-            self.assertEqual(Qt.LayoutDirection.RightToLeft, card.no_radio.layoutDirection())
+            self.assertEqual(Qt.LayoutDirection.LeftToRight, card.yes_radio.layoutDirection())
+            self.assertEqual(Qt.LayoutDirection.LeftToRight, card.no_radio.layoutDirection())
 
     def test_close_anomaly_dialog_preselects_original_category(self) -> None:
         from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog

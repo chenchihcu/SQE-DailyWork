@@ -332,4 +332,36 @@ Fix: Define centralized constants and `apply_axis_typography`/`apply_chart_surfa
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/ui-layout-theme-contract.md`, `docs/harness/closed-loop-log.md`
 
+## Documentation Drift Remediation Entry
+
+Date: 2026-08-20
+Task: Align the visual harness, UI contract, and cross-tool guidance after the UI baseline wave.
+Changes: Full verify now iterates all required DPI scales; `event-create` is a required baseline target with native 1.0x/1.25x/1.5x manifests; harness checks stale visual-policy paths, mirrored `.agents/skills` files, and declared baseline scales; source documents and skills describe bottom create actions, Zero-Noise statistics, and implemented responsive column profiles.
+Impact: Documentation and verification gates now describe the same visual evidence contract and prevent the previously observed stale policy path and incomplete multi-scale baseline mappings.
+Verification: `scripts/harness_check.ps1` and `tests.test_layout_constants` must pass; native Windows Qt Full verification remains the final gate.
+Residual risk: Full verification is slower because each required target runs at three DPI scales; the current checkout still requires explicit review of untracked baseline assets.
+Next action: Run the full native verification gate and inspect event-create, home, and workbench PNGs at 1.25x and 1.5x.
+Debug/RCA:
+Observed: The manifest declared three DPI scales while `verify.ps1` regressed only 1.0x, and several policy references used a nonexistent `.Codex` path.
+Root cause: Visual target metadata and downstream documentation evolved independently without a harness assertion for scale coverage or stale policy references.
+Fix: Make verification manifest-driven, promote `event-create` to a required baseline target, and add harness checks for the drift patterns.
+Harness update needed: yes
+Destination: `scripts/verify.ps1`, `scripts/harness_check.ps1`, `scripts/qt_probe_targets.json`, `docs/harness/README.md`, and cross-tool skills.
+
+## Supplier-Oriented UI P1–P3 Entry
+
+Date: 2026-08-20
+Task: Implement the supplier-oriented navigation, supplier 360 read model, case stepper, NCR traceability, scorecard, and report flow.
+Changes: Consolidated event scopes into page-local chips; added actionable home backlog columns and Ctrl+K search; added nullable NCR supplier linkage with exact-name backfill, supplier overview/360 pages, `source_defect_no`, read-only case stages, scorecard, and source-separated Excel export.
+Impact: Users can start from an operational supplier view while supplier-event and warehouse data remain separate authoritative sources.
+Verification: Focused contract tests and Python compilation pass; native Windows visual evidence is required for final baseline acceptance.
+Residual risk: Existing live databases and old NCR schemas need the startup migration path exercised against a backup; full verification and all DPI baseline review remain pending.
+Next action: Run full `scripts\verify.ps1`, inspect native `supplier-360` captures, then commit the completed change set only after review.
+Debug/RCA:
+Observed: The first structural UI run exposed stale schema columns and unsupported theme token names.
+Root cause: New read-only projections were added without dynamic fallback for older NCR schemas, and the QSS token vocabulary was assumed instead of verified.
+Fix: Added schema-safe column handling, moved migration index creation after column creation, and aligned new QSS roles with existing tokens.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `scripts/qt_probe_targets.json`, and this log.
+
 
