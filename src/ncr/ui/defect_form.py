@@ -81,6 +81,7 @@ from ncr.models.labels import (
     HEADER_CREATED_AT,
 )
 from ncr.services import defect_service, product_service
+from services import event_service
 from ncr.ui.ui_style import (
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
@@ -99,6 +100,8 @@ from ncr.ui.ui_style import (
     format_datetime,
 )
 from ui.widgets.common_widgets import RequiredFieldLabel
+from ui.widgets.bullet_list_widget import BulletListWidget
+from ui.widgets.product_form_dialog import ProductFormDialog
 
 
 def _connect_dirty_tracking_signals(
@@ -147,101 +150,6 @@ class DirtyTrackingMixin:
 
     def _set_save_busy_state(self, busy: bool) -> None:
         self._is_saving = busy
-
-
-class QuickProductCreateDialog(QDialog):
-    def __init__(
-        self,
-        conn: sqlite3.Connection,
-        item_no: str,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.conn = conn
-        self.created_product_name = ""
-        self.setModal(True)
-        self.setWindowTitle("快速建立產品")
-        fit_window_to_available_screen(self, 420, 220, enable_size_grip=True)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-        layout.setSpacing(NCR_FIELD_SPACING_Y)
-
-        form_grid = create_form_grid(field_count=1)
-        self.item_no_input = QLineEdit(item_no.strip())
-        self.item_no_input.setReadOnly(True)
-        self.item_no_input.setPlaceholderText("料號")
-        self.item_no_input.setAccessibleName("料號")
-        self.product_name_input = QLineEdit()
-        self.product_name_input.setPlaceholderText("輸入產品名稱")
-        self.product_name_input.setAccessibleName("產品名稱")
-        apply_form_inputs([self.item_no_input, self.product_name_input])
-        add_labeled_field(form_grid, 0, LABEL_ITEM_NO, self.item_no_input)
-        add_labeled_field(form_grid, 1, LABEL_PRODUCT_NAME, self.product_name_input)
-        layout.addLayout(form_grid)
-
-        self.feedback_label = make_notice_label("", role="messageText")
-        layout.addWidget(self.feedback_label)
-
-        actions = QHBoxLayout()
-        actions.addStretch(1)
-        self.cancel_button = QPushButton("取消")
-        self.save_button = QPushButton("建立產品")
-        self.cancel_button.setCursor(Qt.PointingHandCursor)
-        self.cancel_button.setAccessibleName("取消建立")
-        self.save_button.setCursor(Qt.PointingHandCursor)
-        self.save_button.setAccessibleName("建立產品")
-        self.cancel_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
-        self.save_button.setMinimumWidth(DIALOG_ACTION_BUTTON_MIN_WIDTH)
-        set_button_role(self.cancel_button, "secondary")
-        set_button_role(self.save_button, "primary")
-        self.cancel_button.clicked.connect(self.reject)
-        self.save_button.clicked.connect(self.create_product)
-        actions.addWidget(self.save_button)
-        actions.addWidget(self.cancel_button)
-        layout.addLayout(actions)
-
-    def _show_error(self, message: str) -> None:
-        self.feedback_label.setText(message)
-        self.feedback_label.setVisible(True)
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        if self.product_name_input.text().strip():
-            reply = QMessageBox.question(
-                self,
-                "放棄輸入",
-                "產品名稱尚未儲存，確定要關閉嗎？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-        super().closeEvent(event)
-
-    def create_product(self) -> bool:
-        item_no = self.item_no_input.text().strip()
-        product_name = self.product_name_input.text().strip()
-        if not item_no:
-            self._show_error("料號不可空白。")
-            return False
-        if not product_name:
-            self._show_error("產品名稱不可空白。")
-            return False
-        try:
-            product_service.create_product(
-                self.conn,
-                {"item_no": item_no, "product_name": product_name},
-            )
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return False
-        except sqlite3.Error as exc:
-            self._show_error(f"資料庫錯誤：{exc}")
-            return False
-        self.created_product_name = product_name
-        self.accept()
-        return True
 
 
 class DefectFieldsWidget(QWidget):
@@ -314,13 +222,14 @@ class DefectFieldsWidget(QWidget):
         self.product_name_input.setAccessibleName("產品名稱")
         self.quick_add_product_btn = QPushButton("+ 建立")
         self.quick_add_product_btn.setObjectName("quickAddProductButton")
-        self.quick_add_product_btn.setToolTip("快速建立目前料號的產品名稱")
-        self.quick_add_product_btn.setAccessibleName("快速建立產品名稱")
+        self.quick_add_product_btn.setText("建立產品主檔…")
+        self.quick_add_product_btn.setToolTip("使用共用產品主檔表單建立目前料號")
+        self.quick_add_product_btn.setAccessibleName("建立產品主檔")
         self.quick_add_product_btn.setCursor(Qt.PointingHandCursor)
         self.quick_add_product_btn.setVisible(False)
         self.quick_add_product_btn.setMinimumWidth(NCR_QUICK_ADD_BUTTON_MIN_WIDTH)
         set_button_role(self.quick_add_product_btn, "secondary")
-        self.quick_add_product_btn.clicked.connect(self.open_quick_product_create_dialog)
+        self.quick_add_product_btn.clicked.connect(self.open_product_master_dialog)
 
         self.qty_spin = QSpinBox()
         self.qty_spin.setRange(1, 1_000_000)
@@ -347,10 +256,8 @@ class DefectFieldsWidget(QWidget):
         )
         self.item_no_input.currentTextChanged.connect(self._on_item_no_changed)
 
-        self.defect_desc_input = QTextEdit()
-        self.defect_desc_input.setPlaceholderText(PLACEHOLDER_DEFECT_DESC)
+        self.defect_desc_input = BulletListWidget(placeholder=PLACEHOLDER_DEFECT_DESC)
         self.defect_desc_input.setAccessibleName("不良描述")
-        self._set_defect_desc_height()
 
         self.status_combo = QComboBox()
         self.status_combo.addItems(STATUS_OPTIONS)
@@ -399,74 +306,75 @@ class DefectFieldsWidget(QWidget):
         layout.setContentsMargins(*NCR_DEFECT_FORM_CONTENT_MARGINS)
         layout.setSpacing(NCR_SECTION_SPACING)
 
-        # 1. 基礎資訊（3 欄佈局：密集排版以省高度，2 欄與 3 欄混排）
-        layout.addWidget(create_section_title("基礎資訊"))
-        form_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
+        # 1. 基礎資訊（2 欄標準對稱佈局：各列左右欄位水平精確對齊）
+        layout.addWidget(create_section_title("📋 基礎資訊"))
+        form_grid = create_form_grid(field_count=2, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
+
+        item_no_container = QWidget()
+        item_no_layout = QHBoxLayout(item_no_container)
+        item_no_layout.setContentsMargins(0, 0, 0, 0)
+        item_no_layout.setSpacing(6)
+        item_no_layout.addWidget(self.item_no_input, 1)
+        item_no_layout.addWidget(self.quick_add_product_btn)
 
         # Row 0: 發生日期 / 責任
         self._add_compact_field(
             form_grid, 0, LABEL_EVENT_DATE, self.event_date_edit,
-            column_offset=0, field_column_span=2
+            column_offset=0
         )
         self._add_compact_field(
             form_grid, 0, LABEL_RESPONSIBILITY, self.responsibility_combo,
-            column_offset=3, field_column_span=2
+            column_offset=2
         )
 
-        # Row 1: 類別 / 處理線 / 數量
+        # Row 1: 類別 / 處理線
         self._add_compact_field(
             form_grid, 1, LABEL_CATEGORY, self.category_combo,
-            column_offset=0, field_column_span=1
+            column_offset=0
         )
         self._add_compact_field(
             form_grid, 1, LABEL_PROCESSING_LINE, self.processing_line_combo,
-            column_offset=2, field_column_span=1, required=True
-        )
-        self._add_compact_field(
-            form_grid, 1, LABEL_QTY, self.qty_spin,
-            column_offset=4, field_column_span=1, required=True
+            column_offset=2, required=True
         )
 
-        # Row 2: 正式供應商 / 委外供應商（先選供應商，再選料號）
+        # Row 2: 正式供應商 / 委外供應商
         self._add_compact_field(
             form_grid, 2, LABEL_SUPPLIER_NAME, self.supplier_combo,
-            column_offset=0, field_column_span=2
+            column_offset=0
         )
         self._add_compact_field(
             form_grid, 2, LABEL_OUTSOURCE_SUPPLIER_NAME, self.outsource_supplier_combo,
-            column_offset=3, field_column_span=2
+            column_offset=2
         )
 
-        # Row 3: 退料單別 / 料號 / 產品名稱
+        # Row 3: 退料單別 / 數量
         self._add_compact_field(
             form_grid, 3, LABEL_RETURN_SLIP_TYPE, self.return_slip_type_combo,
-            column_offset=0, field_column_span=1, required=True
+            column_offset=0, required=True
         )
         self._add_compact_field(
-            form_grid, 3, LABEL_ITEM_NO, self.item_no_input,
-            column_offset=2, field_column_span=1, required=True
-        )
-        self.product_name_input.setToolTip("由系統依料號自動帶出，不可手動輸入")
-        product_name_host = QWidget()
-        product_name_layout = QHBoxLayout(product_name_host)
-        product_name_layout.setContentsMargins(0, 0, 0, 0)
-        product_name_layout.setSpacing(8)
-        product_name_layout.addWidget(self.product_name_input, 1)
-        product_name_layout.addWidget(self.quick_add_product_btn, 0)
-        product_name_host.setMinimumWidth(NCR_FORM_COMPACT_FIELD_MIN_WIDTH + 84)
-        self._add_compact_field(
-            form_grid, 3, LABEL_PRODUCT_NAME, product_name_host,
-            column_offset=4, field_column_span=1
+            form_grid, 3, LABEL_QTY, self.qty_spin,
+            column_offset=2, required=True
         )
 
-        # Row 4: 廠內製令 / 委外製令
+        # Row 4: 料號 / 產品名稱
         self._add_compact_field(
-            form_grid, 4, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input,
-            column_offset=0, field_column_span=2
+            form_grid, 4, LABEL_ITEM_NO, item_no_container,
+            column_offset=0, required=True
         )
         self._add_compact_field(
-            form_grid, 4, LABEL_WORK_ORDER_NO, self.work_order_input,
-            column_offset=3, field_column_span=2
+            form_grid, 4, LABEL_PRODUCT_NAME, self.product_name_input,
+            column_offset=2
+        )
+
+        # Row 5: 廠內製令 / 委外製令
+        self._add_compact_field(
+            form_grid, 5, LABEL_INTERNAL_WORK_ORDER_NO, self.internal_work_order_input,
+            column_offset=0
+        )
+        self._add_compact_field(
+            form_grid, 5, LABEL_WORK_ORDER_NO, self.work_order_input,
+            column_offset=2
         )
 
         layout.addLayout(form_grid)
@@ -477,14 +385,14 @@ class DefectFieldsWidget(QWidget):
         layout.addSpacing(10)
 
         # 2. 不良現象紀錄
-        layout.addWidget(create_section_title(LABEL_DEFECT_DESC, required=True))
+        layout.addWidget(create_section_title(f"🔍 {LABEL_DEFECT_DESC}", required=True))
 
         layout.addWidget(self.defect_desc_input)
 
         layout.addSpacing(10)
 
         # 3. 處理狀態（3 欄單列佈局）
-        layout.addWidget(create_section_title("處理狀態"))
+        layout.addWidget(create_section_title("⚙️ 處理狀態"))
         handle_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(
             handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo,
@@ -515,13 +423,13 @@ class DefectFieldsWidget(QWidget):
             self.responsibility_combo,
             self.category_combo,
             self.processing_line_combo,
-            self.qty_spin,
             self.supplier_combo,
             self.outsource_supplier_combo,
             self.return_slip_type_combo,
+            self.qty_spin,
             self.item_no_input,
-            self.product_name_input,
             self.quick_add_product_btn,
+            self.product_name_input,
             self.internal_work_order_input,
             self.work_order_input,
             self.defect_desc_input,
@@ -638,7 +546,7 @@ class DefectFieldsWidget(QWidget):
         current_item_no = (
             selected_item_no.strip()
             if selected_item_no is not None
-            else self.item_no_input.currentText().strip()
+            else self._current_item_no()
         )
         supplier_name = self._get_current_supplier_name()
         if supplier_name:
@@ -823,7 +731,7 @@ class DefectFieldsWidget(QWidget):
             "internal_work_order_no": self.internal_work_order_input.text(),
             "transfer_slip_no": self.transfer_slip_input.text(),
             "category": self.category_combo.currentText(),
-            "item_no": self.item_no_input.currentText(),
+            "item_no": self._current_item_no(),
             "product_name": self.product_name_input.text(),
             "qty": self.qty_spin.value(),
             "supplier_name": self.supplier_combo.currentText(),
@@ -868,6 +776,14 @@ class DefectFieldsWidget(QWidget):
             is_filled=is_really_filled,
         )
 
+    def _current_item_no(self) -> str:
+        line_edit = self.item_no_input.lineEdit()
+        if line_edit is not None:
+            text = line_edit.text().strip()
+            if text:
+                return text
+        return self.item_no_input.currentText().strip()
+
     def resolve_product_name_by_item_no(self, item_no: str) -> str:
         normalized_item_no = item_no.strip()
         if not normalized_item_no:
@@ -877,7 +793,7 @@ class DefectFieldsWidget(QWidget):
         return product_service.get_product_name_by_item_no(self.conn, normalized_item_no) or ""
 
     def sync_product_name_from_item_no(self) -> str:
-        product_name = self.resolve_product_name_by_item_no(self.item_no_input.currentText())
+        product_name = self.resolve_product_name_by_item_no(self._current_item_no())
         self.product_name_input.setText(product_name)
         self._sync_quick_add_product_visibility(product_name)
         return product_name
@@ -888,7 +804,7 @@ class DefectFieldsWidget(QWidget):
         field carries a required marker and the service layer already
         enforces it, so the UI pre-check must agree instead of deferring
         blank input to the later, generic ValueError path."""
-        item_no = self.item_no_input.currentText().strip()
+        item_no = self._current_item_no()
         if not item_no:
             return VALIDATION_REQUIRED.format(LABEL_ITEM_NO)
         if not self.sync_product_name_from_item_no():
@@ -899,7 +815,7 @@ class DefectFieldsWidget(QWidget):
         self.sync_product_name_from_item_no()
 
     def _sync_quick_add_product_visibility(self, product_name: str = "") -> None:
-        item_no = self.item_no_input.currentText().strip()
+        item_no = self._current_item_no()
         should_show = (
             self.allow_quick_product_create
             and bool(item_no)
@@ -907,21 +823,56 @@ class DefectFieldsWidget(QWidget):
         )
         self.quick_add_product_btn.setVisible(should_show)
 
-    def open_quick_product_create_dialog(self) -> bool:
-        item_no = self.item_no_input.currentText().strip()
+    def open_product_master_dialog(self) -> bool:
+        item_no = self._current_item_no()
         if not item_no:
             self._sync_quick_add_product_visibility("")
             return False
-        dialog = QuickProductCreateDialog(self.conn, item_no, self)
+        suppliers = event_service.list_active_suppliers()
+        if not suppliers:
+            self._show_product_master_error("目前沒有可用供應商，請先到基礎資料建立供應商。")
+            return False
+        supplier_name = self.supplier_combo.currentText().strip()
+        supplier_id = next(
+            (
+                str(row.get("id") or "").strip()
+                for row in suppliers
+                if str(row.get("supplier_name") or "").strip() == supplier_name
+            ),
+            "",
+        )
+        dialog = ProductFormDialog(
+            suppliers,
+            self,
+            initial_data={
+                "product_code": item_no,
+                "supplier_id": supplier_id,
+            },
+            is_edit=False,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self._sync_quick_add_product_visibility(self.product_name_input.text())
             return False
-        product_name = dialog.created_product_name or self.resolve_product_name_by_item_no(item_no)
+        payload = dialog.payload()
+        try:
+            event_service.create_product(payload)
+        except (ValueError, sqlite3.Error) as exc:
+            self._show_product_master_error(str(exc))
+            return False
+        product_name = str(payload.get("product_name") or "").strip()
         self.refresh_product_options(item_no)
         self.product_name_input.setText(product_name)
         self.quick_add_product_btn.hide()
         self.product_created.emit(item_no, product_name)
         return True
+
+    def _show_product_master_error(self, message: str) -> None:
+        self.supplier_hint_label.setText(message)
+        self.supplier_hint_label.setVisible(True)
+        self.product_name_input.setToolTip(message)
+        self.product_name_input.setProperty("validationState", "error")
+        self.product_name_input.style().unpolish(self.product_name_input)
+        self.product_name_input.style().polish(self.product_name_input)
 
     def focus_item_no(self) -> None:
         self.item_no_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
@@ -989,8 +940,8 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
         self.clear_button.clicked.connect(self.clear_form)
         self.reset_button.clicked.connect(self.reset_form)
 
-        self.workflow_shell.add_action(self.reset_button)
-        self.workflow_shell.add_action(self.clear_button)
+        self.workflow_shell.add_context(self.reset_button)
+        self.workflow_shell.add_context(self.clear_button)
         self.workflow_shell.add_action(self.save_button)
 
         self.feedback_label = self.workflow_shell.feedback_label

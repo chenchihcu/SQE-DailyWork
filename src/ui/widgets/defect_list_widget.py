@@ -671,7 +671,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         action = prefs.table_double_click_action
         if action == "preview":
             if row.get("id"):
-                self.open_preview_anomaly_dialog(str(row["id"]))
+                self.open_anomaly_details(str(row["id"]))
                 return
             if row.get("visit_id"):
                 self.open_preview_visit_dialog(str(row["visit_id"]))
@@ -703,8 +703,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             on_edit_visit=self.open_edit_visit_dialog,
             on_delete_visit=self.delete_visit,
             on_open_visit_detail=self.open_visit_detail,
-            on_preview_anomaly=self.open_preview_anomaly_dialog,
-            on_overview_anomaly=self.open_overview_anomaly_dialog,
+            on_view_anomaly_details=self.open_anomaly_details,
             on_preview_visit=self.open_preview_visit_dialog,
             on_reopen_anomaly=self.reopen_anomaly,
             on_update_closed_at=self.open_update_closed_at_dialog,
@@ -732,11 +731,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def open_visit_detail(self, visit_id: str):
         self._event_actions.open_visit_detail(visit_id)
 
-    def open_preview_anomaly_dialog(self, anomaly_id: str):
-        self._event_actions.open_preview_anomaly_dialog(anomaly_id)
-
-    def open_overview_anomaly_dialog(self, anomaly_id: str):
-        self._event_actions.open_overview_dialog(anomaly_id)
+    def open_anomaly_details(self, anomaly_id: str):
+        self._event_actions.open_anomaly_details(anomaly_id)
 
     def open_preview_visit_dialog(self, visit_id: str):
         self._event_actions.open_preview_visit_dialog(visit_id)

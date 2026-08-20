@@ -68,8 +68,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                "工作台概況",
-                "預覽內容",
+                "案件詳情",
                 "編輯異常",
                 "刪除異常",
                 "結案",
@@ -97,8 +96,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                "工作台概況",
-                "預覽內容",
+                "案件詳情",
                 "編輯異常",
                 "刪除異常",
                 "調整結案日期",
@@ -110,27 +108,13 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             actions,
         )
 
-    def test_preview_uses_read_only_form_instead_of_management_route(self) -> None:
+    def test_anomaly_details_uses_management_route(self) -> None:
         controller = EventActionsController(self.main_window, self.main_window)
-        detail = {"anomaly_no": "20260415001", "problem_desc": "內容"}
-        with (
-            patch("ui.widgets.event_actions._anomaly_service.get_anomaly_detail", return_value=detail),
-            patch("ui.widgets.event_actions.NewAnomalyDialog") as dialog_type,
-        ):
-            dialog_type.return_value.exec.return_value = 0
-            controller.open_preview_anomaly_dialog("anomaly-001")
+        controller.open_anomaly_details("anomaly-001")
 
-        self.main_window.open_anomaly_management.assert_not_called()
-        self.assertTrue(dialog_type.call_args.kwargs["read_only"])
-
-    def test_workbench_overview_uses_overview_dialog(self) -> None:
-        controller = EventActionsController(self.main_window, self.main_window)
-        with patch("ui.widgets.anomaly_overview_dialog.AnomalyOverviewDialog") as dialog_type:
-            dialog_type.return_value.exec.return_value = 0
-            controller.open_overview_dialog("anomaly-001")
-
-        self.main_window.open_anomaly_management.assert_not_called()
-        dialog_type.assert_called_once_with("anomaly-001", self.main_window)
+        self.main_window.open_anomaly_management.assert_called_once_with(
+            "anomaly-001", edit=False
+        )
 
 
 if __name__ == "__main__":

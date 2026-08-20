@@ -8,7 +8,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
-from ui.widgets.event_actions import build_event_action_menu, ACTION_PREVIEW_ANOMALY, ACTION_PREVIEW_VISIT
+from ui.widgets.event_actions import (
+    ACTION_PREVIEW_VISIT,
+    ACTION_VIEW_ANOMALY_DETAILS,
+    build_event_action_menu,
+)
 
 class EventPreviewTests(unittest.TestCase):
     @classmethod
@@ -21,13 +25,13 @@ class EventPreviewTests(unittest.TestCase):
         if cls.app is not None:
             pass  # do not terminate shared QApplication singleton in test runner
 
-    def test_anomaly_menu_contains_preview(self):
+    def test_anomaly_menu_contains_case_details(self):
         row = {"event_type": "ANOMALY", "status": "待處理", "linked_visit_id": ""}
         menu, action_map = build_event_action_menu(None, row)
         actions = [a.text() for a in menu.actions()]
-        self.assertIn("預覽內容", actions)
-        preview_action = [a for a in menu.actions() if a.text() == "預覽內容"][0]
-        self.assertEqual(action_map[preview_action], ACTION_PREVIEW_ANOMALY)
+        self.assertIn("案件詳情", actions)
+        details_action = [a for a in menu.actions() if a.text() == "案件詳情"][0]
+        self.assertEqual(action_map[details_action], ACTION_VIEW_ANOMALY_DETAILS)
 
     def test_visit_menu_contains_preview(self):
         row = {"event_type": "VISIT"}

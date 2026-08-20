@@ -27,8 +27,7 @@ ACTION_VIEW_LINKED_VISIT = "view_linked_visit"
 ACTION_EDIT_VISIT = "edit_visit"
 ACTION_DELETE_VISIT = "delete_visit"
 ACTION_VIEW_VISIT_DETAIL = "view_visit_detail"
-ACTION_PREVIEW_ANOMALY = "preview_anomaly"
-ACTION_OVERVIEW_ANOMALY = "overview_anomaly"
+ACTION_VIEW_ANOMALY_DETAILS = "view_anomaly_details"
 ACTION_PREVIEW_VISIT = "preview_visit"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
 ACTION_UPDATE_CLOSED_AT = "update_closed_at"
@@ -47,8 +46,7 @@ def build_event_action_menu(
 
     event_type = str(row.get("event_type") or "").strip().upper()
     if event_type == "ANOMALY":
-        _add_action("工作台概況", ACTION_OVERVIEW_ANOMALY)
-        _add_action("預覽內容", ACTION_PREVIEW_ANOMALY)
+        _add_action("案件詳情", ACTION_VIEW_ANOMALY_DETAILS)
         _add_action("編輯異常", ACTION_EDIT_ANOMALY)
         _add_action("刪除異常", ACTION_DELETE_ANOMALY)
         if str(row.get("status") or "").strip() == "待處理":
@@ -122,8 +120,7 @@ def dispatch_event_action(
     on_edit_visit: Callable[[str], None],
     on_delete_visit: Callable[[str, str], None],
     on_open_visit_detail: Callable[[str], None],
-    on_preview_anomaly: Callable[[str], None] | None = None,
-    on_overview_anomaly: Callable[[str], None] | None = None,
+    on_view_anomaly_details: Callable[[str], None] | None = None,
     on_preview_visit: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
     on_update_closed_at: Callable[[str, str], None] | None = None,
@@ -132,8 +129,8 @@ def dispatch_event_action(
     event_id = str(row.get("event_id") or "").strip()
     if not event_id:
         return
-    if action_key == ACTION_OVERVIEW_ANOMALY and on_overview_anomaly:
-        on_overview_anomaly(event_id)
+    if action_key == ACTION_VIEW_ANOMALY_DETAILS and on_view_anomaly_details:
+        on_view_anomaly_details(event_id)
         return
     if action_key == ACTION_EDIT_ANOMALY:
         on_edit_anomaly(event_id)
@@ -163,9 +160,6 @@ def dispatch_event_action(
         return
     if action_key == ACTION_VIEW_VISIT_DETAIL:
         on_open_visit_detail(event_id)
-        return
-    if action_key == ACTION_PREVIEW_ANOMALY and on_preview_anomaly:
-        on_preview_anomaly(event_id)
         return
     if action_key == ACTION_PREVIEW_VISIT and on_preview_visit:
         on_preview_visit(event_id)
@@ -224,6 +218,18 @@ class EventActionsController:
             error_msg="開啟異常編輯失敗：",
         )
 
+    def open_anomaly_details(self, anomaly_id: str, *, edit: bool = False) -> None:
+        """Open the single anomaly workbench route."""
+        open_management = getattr(self._main_window, "open_anomaly_management", None)
+        if callable(open_management):
+            open_management(anomaly_id, edit=edit)
+            return
+        QMessageBox.warning(
+            self._parent,
+            "無法開啟案件詳情",
+            "目前視窗未提供異常案件管理頁。",
+        )
+
     def delete_anomaly(self, anomaly_id: str, ref_no: str) -> None:
         ref_text = ref_no.strip() or anomaly_id
         _confirm_and_delete(
@@ -268,39 +274,6 @@ class EventActionsController:
             warning_title="查詢失敗",
             logger_msg="讀取訪廠失敗",
             error_msg="讀取訪廠失敗：",
-        )
-
-    def open_preview_anomaly_dialog(self, anomaly_id: str) -> None:
-        """Open the anomaly form in read-only mode."""
-        try:
-            detail = _anomaly_service.get_anomaly_detail(anomaly_id)
-            dialog = NewAnomalyDialog(
-                self._parent,
-                anomaly_id=anomaly_id,
-                initial_data=detail,
-                read_only=True,
-            )
-            dialog.exec()
-        except Exception as exc:
-            logger.exception("開啟異常預覽失敗")
-            QMessageBox.critical(
-                self._parent,
-                "錯誤",
-                localize_popup_message(f"開啟預覽失敗：{localize_exception(exc)}"),
-            )
-
-    def open_overview_dialog(self, anomaly_id: str) -> None:
-        """Open the anomaly case-workbench overview."""
-        def _op() -> None:
-            from ui.widgets.anomaly_overview_dialog import AnomalyOverviewDialog
-            dialog = AnomalyOverviewDialog(anomaly_id, self._parent)
-            dialog.exec()
-        safe_ui_operation(
-            self._parent,
-            _op,
-            warning_title="概況載入失敗",
-            logger_msg="開啟異常工作台概況失敗",
-            error_msg="開啟工作台概況失敗：",
         )
 
     def open_preview_visit_dialog(self, visit_id: str) -> None:

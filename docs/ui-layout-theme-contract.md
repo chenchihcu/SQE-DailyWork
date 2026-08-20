@@ -14,18 +14,18 @@
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
 | Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
 | Event management (consolidated) | Sidebar 供應商事件 scope 列 (單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案) | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row + table pagination; active scope shown via source tag (no in-page scope tab bar) | Shared theme tokens | UI smoke |
-| New anomaly / visit | Sidebar and event toolbar `新增異常` / `新增訪廠` | `src/ui/widgets/event_create_page.py` / `EventCreatePage`, with `NewAnomalyDialog` / `NewVisitDialog` page presentation | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns one scroll body and the top `返回清單` / `儲存` command row; saved page shows `查看清單` / `繼續新增` | Shared theme tokens | Focused page smoke + native `event-create` probe |
+| New anomaly / visit | Sidebar and event toolbar `新增異常` / `新增訪廠` | `src/ui/widgets/event_create_page.py` / `EventCreatePage`, with `NewAnomalyDialog` / `NewVisitDialog` page presentation | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns one scroll body and the bottom `返回清單` / `儲存` command row; saved page shows `查看清單` / `繼續新增` | Shared theme tokens | Focused page smoke + native `event-create` probe |
 | Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns the continuous-entry command row, feedback and one scroll body | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending outsource | Sidebar `待處理委外加工` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="委外加工"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse pending material | Sidebar `待處理原物料` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="tracking"`, `processing_line="原物料"`) | `MainWindow` | Fills content stack | Pending table layout with visible processing-line scope notice | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
 | Warehouse history | Sidebar `歷史紀錄` | `src/ncr/embed.py` + `src/ncr/ui/defect_list.py` (`workflow="trace"`) | `MainWindow` | Fills content stack | Closed/history table layout with functional internal table host | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
-| Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Supplier-event dashboard with one control row, one explanation banner, trend / responsibility / supplier-risk chart panels, and scroll guards; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
+| Statistics | Sidebar `異常事件統計` | `src/ui/widgets/stats_view_widget.py` / `StatsViewWidget` | `MainWindow` | Fills content stack | Zero-noise supplier-event dashboard with date range, refresh, export, and trend / responsibility / supplier-risk chart panels; warehouse stats live only on 不合格品統計分析 | Shared theme tokens | UI smoke plus native dense-chart probe |
 | Shared master lists | Sidebar `基礎資料` | `src/ui/widgets/master_data_widget.py` / `MasterDataWidget` | `MainWindow` | Fills content stack | Tables inside tabs | Shared theme tokens | UI smoke |
 | Edit / preview anomaly | Event action menu | `src/ui/widgets/new_anomaly_dialog.py` / `NewAnomalyDialog` | Event list | Dialog helper clamps to active screen | One resizable scroll body with 基本資訊 / 問題描述 / 風險 / 現場照片 sections and fixed footer; no tab host | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Edit / preview visit | Event action menu | `src/ui/widgets/new_visit_dialog.py` / `NewVisitDialog` | Event list | Dialog helper clamps to active screen | Direct form body without a whole-form `QScrollArea`; fixed footer; no tab host or defect-entry controls | Shared theme tokens | Focused dialog smoke plus native `form-density` probe |
 | Close anomaly | Event action menu | `src/ui/widgets/close_anomaly_dialog.py` / `CloseAnomalyDialog` | Event list | Dialog helper clamps to active screen | Tab body with fixed footer | Shared theme tokens | Focused dialog smoke |
 | Visit detail | Event action menu | `src/ui/widgets/visit_detail_dialog.py` / `VisitDetailDialog` | Event list | Dialog helper clamps to active screen | Scrollable body, fixed header/footer | Shared theme tokens | Focused dialog smoke |
-| Anomaly management page | Event action menu `工作台概況` / `預覽內容` / `編輯異常` | `src/ui/widgets/anomaly_management_page.py` / `AnomalyManagementPage` | MainWindow stack, opened from EventListWidget | Main content page, one scroll owner per tab | Seven existing management areas: 案件概況, 處理歷程, 異常分析, Supplier 8D, 改善措施, 附件, 變更紀錄. Basic anomaly editing embeds `NewAnomalyDialog(embedded=True, page_mode=True)`; focused write actions retain existing dialogs | Shared theme tokens | `tests/test_anomaly_management_page.py`, `scripts/qt_visual_probe.py --target workbench` |
+| Anomaly management page | Event action menu `案件詳情` / `編輯異常` | `src/ui/widgets/anomaly_management_page.py` / `AnomalyManagementPage` | MainWindow stack, opened from EventListWidget | Main content page, one scroll owner per tab; `案件詳情` is the read-only entry and `編輯異常` enters the same page's edit mode | Seven existing management areas: 案件概況, 處理歷程, 異常分析, Supplier 8D, 改善措施, 附件, 變更紀錄. Basic anomaly editing embeds `NewAnomalyDialog(embedded=True, page_mode=True)`; focused write actions retain existing dialogs | Shared theme tokens | `tests/test_anomaly_management_page.py`, `scripts/qt_visual_probe.py --target workbench` |
 | Anomaly workbench write dialogs | Management page action flows | `src/ui/widgets/complete_action_dialog.py` / `complete_corrective_action_dialog.py` / `add_verification_dialog.py` / `add_eight_d_review_dialog.py` / `add_audit_log_dialog.py` | Anomaly management page | Dialog helper clamps to active screen | One scroll body per dialog with required-field validation + dirty guard; status writes bundled with `anomaly_audit_logs` entry | Shared theme tokens | `tests/test_anomaly_workbench_write_dialogs.py` |
 | Anomaly workbench write dialogs | Overview buttons | `src/ui/widgets/complete_action_dialog.py` / `complete_corrective_action_dialog.py` / `add_verification_dialog.py` / `add_eight_d_review_dialog.py` / `add_audit_log_dialog.py` | Anomaly workbench | Dialog helper clamps to active screen | One scroll body per dialog with required-field validation + dirty guard; status writes bundled with `anomaly_audit_logs` entry | Shared theme tokens | `tests/test_anomaly_workbench_write_dialogs.py` |
 | Supplier and product dialogs | Master list actions | `src/ui/widgets/master_data_widget.py` dialogs | Master list | Dialog helper clamps to active screen | Tables/forms inside dialog content | Shared theme tokens | Focused dialog smoke |
@@ -63,14 +63,21 @@
 ## Shared Workflow Shell Rules
 
 - `CreateWorkflowShell` is the only full-page create contract. It owns one
-  command row, one inline feedback region and one vertical scroll body. Full-page
-  actions appear in the command row; do not duplicate save/cancel controls in a
-  page footer.
-- `QueryWorkflowShell` standardizes the flat filter/action surface of supplier
-  event and NCR lists. It carries no filters, query state or data semantics.
-- `AnalyticsWorkflowShell` standardizes the visible control surface for both
-  statistics pages. `重新整理` remains immediately left of `匯出 Excel`; supplier
-  event and warehouse statistics remain separate data sources.
+  vertical scroll body and a bottom command panel (Bottom Action Bar - 方案 A).
+  The bottom command panel places secondary/reset actions on the left (`清除 / 重置`)
+  and primary workflow actions on the right (`返回清單` + `儲存`), matching the
+  top-to-bottom user input journey.
+- `Dynamic Item List (BulletListWidget)`: Structured itemized entries (e.g. defect
+  descriptions, action items, tracking points) must use the dynamic numbered row
+  component (`BulletListWidget`) to support item-by-item review and dynamic addition
+  (`+ 新增條目`), maintaining `\n` line-separated compatibility.
+- `AnalyticsWorkflowShell` & `Zero-Noise Analytics`: Standardizes the visible control
+  surface for both statistics pages. Keeps only `篩選區間`, `重新整理` (variant="secondary"),
+  `匯出 Excel` (variant="primary"), and visual chart panels. Verbose auto-generated
+  text paragraphs and insight banners are removed from the visible layout to eliminate noise.
+- `Form Iconography`: Section titles and key category groups use clean semantic
+  emojis/icons (📋 基本/基礎資訊, 🔍 不良現象/問題描述, ⚙️ 技轉查核/處理狀態, 📝 活動摘要, 📊 風險與統計, 📌 待追蹤事項)
+  to enhance visual recognizability and form scanning efficiency.
 - Modal edit and preview forms do not use `CreateWorkflowShell`: they retain a
   fixed `QDialogButtonBox` footer with 儲存／確認 left and 取消 right.
 
@@ -94,7 +101,7 @@
   an empty photo area does not consume the visible workflow.
 - `NewVisitDialog` also has dialog and full-page presentation modes. Edit/preview
   renders 基本資訊 and 技轉 directly with a fixed footer; full-page create uses
-  `CreateWorkflowShell` as its one scroll owner and top command row. The dialog
+  `CreateWorkflowShell` as its one scroll owner and bottom command row. The dialog
   uses the same 900 x 780 preferred working size and active-screen clamp as
   `NewAnomalyDialog`. The retired defect-note tab, separate
   `登錄訪廠缺失` entry, and nested group containers must not be recreated; editing
@@ -196,7 +203,12 @@
   toolbar and real supplier/product tab host are direct page siblings; do not
   reintroduce an outer card solely to frame that single tool area.
 
-## UI/UX Check - 2026-06-03
+## Historical UI/UX Checkpoints
+
+The following dated checkpoints are retained for audit history. Current
+behavior is defined by the routing table and cross-reference above.
+
+### UI/UX Check - 2026-06-03
 
 - Entrypoint: one daily shell, root `main.py`, with sidebar groups for
   event management, query/history, shared master data, and warehouse physical
@@ -334,19 +346,16 @@
 This contract is the **single source of truth for SQE DailyWork**; the design
 framework document `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md`
 chapter 7 section 7 ("DailyWork 整合映射") lists 15 "borrow from Web" candidate
-advantages. Items 1-9 are already implemented in this project through the shared
-helpers below. Item 10 (responsive 重點/完整 column profile) is intentionally
-**out of scope** for the high-impact UI pass — its current implementation is
-already stable, and extending it risks drift across the supplier-event and NCR
-lists. Items 11-15 are documented for future planning only and do not require
-new work in the current cycle.
+advantages. Items 1-10 are implemented in this project through the shared
+helpers and responsive column profiles below. Items 11-15 are documented for
+future planning only and do not require new work in the current cycle.
 
 | # | Framework advantage | SQE DailyWork authoritative location | Pinned by |
 | - | --- | --- | --- |
 | 1 | Semantic design tokens (no raw hex) | `src/ui/theme_tokens.py` (`TOKENS`, `TYPOGRAPHY`); palette source `src/ui/design_tokens.py` | `tests/test_theme_typography_consistency.py`, `tests/test_theme_minimal_surfaces.py` |
 | 2 | CJK font fallback chain single source of truth | `src/ui/theme_tokens.py` (`PREFERRED_CJK_FONT_FAMILIES`, `CJK_FONT_FAMILY_CSS`); reused by `src/ncr/ui/ui_style.py` | `tests/test_font_source_single_truth.py` |
 | 3 | Three workflow shells (Query / Analytics / Create) | `src/ui/widgets/common_widgets.py` (`QueryWorkflowShell`, `AnalyticsWorkflowShell`, `CreateWorkflowShell`) | Shell usage pinned by `tests/test_ncr_embedding_smoke.py`, `tests/test_event_list_widget_render_stability.py`, manual coverage by `scripts/qt_visual_probe.py --target main` |
-| 4 | CreateWorkflowShell top command row + scroll body, fixed footer absent | `src/ui/widgets/common_widgets.py` (`CreateWorkflowShell`); modal dialogs retain `QDialogButtonBox` footer | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_event_list_widget_render_stability.py` |
+| 4 | CreateWorkflowShell bottom command row + scroll body, fixed footer absent | `src/ui/widgets/common_widgets.py` (`CreateWorkflowShell`); modal dialogs retain `QDialogButtonBox` footer | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_event_list_widget_render_stability.py` |
 | 5 | DirtyTrackingMixin unified unsaved-changes guard | `src/ui/widgets/common_widgets.py` (`DirtyTrackingMixin`); applied to `NewAnomalyDialog` / `NewVisitDialog` / `CloseAnomalyDialog` / `SupplierFormDialog` / `ProductFormDialog` / `SupplierContactManagerDialog` / `AddAnomalyActionDialog` / `AnomalyNoteDialog` / `AddCorrectiveActionDialog` / `CompleteActionDialog` / `CompleteCorrectiveActionDialog` / `AddVerificationDialog` / `AddEightDReviewDialog` / `AddAuditLogDialog` | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_anomaly_workbench_write_dialogs.py` |
 | 6 | Required marker + field-level instant validation | `src/ui/widgets/common_widgets.py` (`RequiredFieldLabel`, `set_field_invalid`, `make_inline_error_label`, `repolish`); QSS `[invalid]` selector in `src/ui/theme.py` | `tests/test_form_inline_validation_and_dirty.py`, `tests/test_form_field_pairing_layout.py` |
 | 7 | EmptyStateWidget four-state ready | `src/ui/widgets/common_widgets.py` (`EmptyStateWidget`); used by home, event list, NCR list, statistics pages | `tests/test_layout_constants.py` (`EMPTY_STATE_MARGINS`), `scripts/qt_visual_probe.py --target empty-states` |

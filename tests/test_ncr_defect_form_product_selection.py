@@ -3,14 +3,15 @@
 import os
 import sqlite3
 import unittest
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QFrame
+from PySide6.QtWidgets import QApplication, QDialog, QFrame
 
 from ncr.db import crud
 from ncr.db.database import apply_schema
-from ncr.ui.defect_form import DefectEditDialog, DefectFieldsWidget, QuickProductCreateDialog
+from ncr.ui.defect_form import DefectEditDialog, DefectFieldsWidget
 
 
 class NcrDefectFormProductSelectionTests(unittest.TestCase):
@@ -94,20 +95,44 @@ class NcrDefectFormProductSelectionTests(unittest.TestCase):
         ]
         self.assertIn(widget.defect_desc_input, direct_widgets)
 
-    def test_quick_product_dialog_is_direct_form_without_section_card(self) -> None:
-        dialog = QuickProductCreateDialog(self.conn, "ITEM-NEW")
-        dialog.show()
-        self.app.processEvents()
-        self.addCleanup(dialog.close)
+    @patch(
+        "ncr.ui.defect_form.event_service.list_active_suppliers",
+        return_value=[
+            {"id": "supplier-1", "supplier_name": "測試供應商", "is_active": True}
+        ],
+    )
+    @patch("ncr.ui.defect_form.event_service.create_product")
+    @patch("ncr.ui.defect_form.ProductFormDialog")
+    def test_product_master_button_uses_shared_product_form(
+        self,
+        dialog_type: Mock,
+        create_product: Mock,
+        _list_suppliers: Mock,
+    ) -> None:
+        fields = DefectFieldsWidget(self.conn)
+        self.addCleanup(fields.deleteLater)
+        fields.supplier_combo.lineEdit().setText("測試供應商")
+        fields.item_no_input.lineEdit().setText("ITEM-NEW")
+        dialog_type.return_value.exec.return_value = QDialog.DialogCode.Accepted
+        dialog_type.return_value.payload.return_value = {
+            "product_code": "ITEM-NEW",
+            "product_name": "新產品",
+            "product_stage": "量產",
+            "supplier_id": "supplier-1",
+            "secondary_supplier_id": "",
+        }
 
-        section_cards = [
-            frame
-            for frame in dialog.findChildren(QFrame)
-            if frame.property("role") == "panel"
-        ]
-        self.assertEqual([], section_cards)
-        self.assertTrue(dialog.save_button.isVisible())
-        self.assertTrue(dialog.cancel_button.isVisible())
+        self.assertTrue(fields.open_product_master_dialog())
+
+        dialog_type.assert_called_once()
+        self.assertEqual(
+            "ITEM-NEW",
+            dialog_type.call_args.kwargs["initial_data"]["product_code"],
+        )
+        create_product.assert_called_once_with(
+            dialog_type.return_value.payload.return_value
+        )
+        self.assertEqual("新產品", fields.product_name_input.text())
 
     def test_defect_edit_dialog_keeps_bottom_actions_visible(self) -> None:
         defect_id = self._insert_defect_record()

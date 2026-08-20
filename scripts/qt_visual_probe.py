@@ -769,7 +769,7 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from database.connection import initialize_database
     from ncr.db.database import apply_schema
     from ncr.embed import NcrWorkflowPage
-    from ncr.ui.defect_form import DefectFormWidget, QuickProductCreateDialog
+    from ncr.ui.defect_form import DefectFormWidget
     from ui.widgets.event_create_page import EventCreatePage
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.supplier_form_dialog import SupplierFormDialog
@@ -835,21 +835,6 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
             )
         )
 
-        # production 中此對話框的 parent 為已套用 NCR stylesheet 的頁面，
-        # role="primary" 才會呈現 Electric Blue；探針給予同樣 styled parent 以反映實際渲染。
-        from PySide6.QtWidgets import QWidget
-        from ncr.ui.ui_style import app_stylesheet as _ncr_app_stylesheet
-
-        _ncr_style_host = QWidget()
-        _ncr_style_host.setStyleSheet(_ncr_app_stylesheet())
-        quick_product_dialog = QuickProductCreateDialog(conn, "ITEM-NEW", _ncr_style_host)
-        screenshots.append(
-            _capture_widget(
-                quick_product_dialog,
-                _target_output_path(output, "quick-product-form"),
-                app,
-            )
-        )
     finally:
         conn.close()
 
@@ -857,7 +842,7 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
 
 
 def _workbench_overview_payload() -> dict:
-    """Return a representative read-model payload for AnomalyOverviewDialog.
+    """Return a representative read-model payload for AnomalyManagementPage.
 
     The probe mocks every read-side service call so the workbench can render
     full CJK content without touching the disposable DB. Each list is sized to
@@ -1036,10 +1021,10 @@ def _workbench_overview_payload() -> dict:
 
 
 def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    """Capture AnomalyOverviewDialog with representative read-model data.
+    """Capture AnomalyManagementPage with representative read-model data.
 
-    Uses ``unittest.mock`` to stub the service-layer read paths so the dialog
-    renders full CJK content with cards, actions, scroll body and footer
+    Uses ``unittest.mock`` to stub the service-layer read paths so the page
+    renders full CJK content with tabs, cards, actions and scroll bodies
     without touching the disposable database.
     """
 
@@ -1047,7 +1032,6 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
 
     from services.event import _anomaly_action_service, _anomaly_service, _anomaly_workbench_service
     from ui.widgets.anomaly_management_page import AnomalyManagementPage
-    from ui.widgets.anomaly_overview_dialog import AnomalyOverviewDialog
 
     payload = _workbench_overview_payload()
 
@@ -1125,29 +1109,6 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
                 )
             )
 
-        dialog = AnomalyOverviewDialog("probe-workbench", parent=None)
-        dialog.resize(*(size or (1024, 720)))
-        _settle_qt_paint(app, delay_ms=150, cycles=2)
-        screenshots.append(
-            _capture_widget(
-                dialog,
-                _target_output_path(output, "workbench-default"),
-                app,
-            )
-        )
-
-        # Capture the top of the dense scroll body at the dialog's narrow
-        # contract width so long CJK and footer visibility are checked.
-        dialog = AnomalyOverviewDialog("probe-workbench", parent=None)
-        dialog.resize(720, 640)
-        _settle_qt_paint(app, delay_ms=150, cycles=2)
-        screenshots.append(
-            _capture_widget(
-                dialog,
-                _target_output_path(output, "workbench-narrow"),
-                app,
-            )
-        )
     finally:
         for patcher in patchers:
             patcher.stop()

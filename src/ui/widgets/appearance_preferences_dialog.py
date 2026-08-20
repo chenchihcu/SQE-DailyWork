@@ -553,7 +553,7 @@ class AppearancePreferencesDialog(QDialog):
         self._double_click_buttons = {}
         for value, label, description in (
             ("menu", "彈出操作選單 (預設)", "雙擊列表項目時彈出功能選單（編輯/結案/刪除/預覽等）。"),
-            ("preview", "檢視預覽詳情", "雙擊列表項目時直接開啟事件詳情或預覽視窗。"),
+            ("preview", "檢視案件詳情", "雙擊異常項目時直接開啟案件管理頁；訪廠項目仍開啟預覽視窗。"),
             ("edit", "直接開啟編輯視窗", "雙擊列表項目時直接開啟編輯表單。"),
         ):
             radio = QRadioButton(label)
