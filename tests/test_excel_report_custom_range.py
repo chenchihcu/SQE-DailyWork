@@ -80,17 +80,27 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
 
+    @patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range")
     @patch("services.event._query_service.get_anomaly_closure_activity_by_range")
     @patch("services.event._query_service.get_anomaly_category_pareto_by_range")
     @patch("services.event._query_service.list_events_by_range")
     def test_events_report_export_success(
-        self, mock_list_events, mock_pareto, mock_closure_activity
+        self, mock_list_events, mock_pareto, mock_closure_activity, mock_keyword_pareto
     ) -> None:
         # 柏拉圖表格與頁面圖表、嵌入 PNG 共用同一 SQL 來源(單一實作)
         mock_pareto.return_value = [
             {
                 "rank": 1,
                 "category": "物料/來料品質異常",
+                "count": 1,
+                "percent": 100.0,
+                "cumulative_percent": 100.0,
+            }
+        ]
+        mock_keyword_pareto.return_value = [
+            {
+                "rank": 1,
+                "keyword": "SPI",
                 "count": 1,
                 "percent": 100.0,
                 "cumulative_percent": 100.0,
@@ -190,6 +200,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
 
             workbook = load_workbook(file_path)
             self.assertIn("異常類別柏拉圖", workbook.sheetnames)
+            self.assertIn("SMT製程關鍵詞柏拉圖", workbook.sheetnames)
             report_sheet = workbook["統計報告"]
             self.assertIn("期間新增異常", report_sheet["A5"].value)
             self.assertIn("其中", report_sheet["E5"].value)
@@ -233,43 +244,69 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 [
                     "異常單號",
                     "日期",
-                    "責任人",
                     "供應商",
-                    "品名",
                     "料號",
+                    "品名",
                     "階段",
+                    "異常來源",
+                    "原物料進貨單號",
+                    "廠內製令單號",
+                    "委外製令單號",
+                    "委外進貨單號",
                     "異常類別",
+                    "SMT 製程關鍵詞",
+                    "責任人",
                     "問題/摘要",
                     "確認事項 / 待追蹤",
-                    "狀態",
                     "品質異常單要求",
                     "改善說明",
+                    "逾期",
+                    "目前處置",
+                    "進行中處置數",
+                    "根本原因狀態",
+                    "改善措施狀態",
+                    "有效性驗證",
+                    "附件數",
+                    "狀態",
                     "結案日期",
                 ],
-                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 15)],
+                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 28)],
             )
             self.assertEqual(4, anomaly_sheet.max_row)
             self.assertEqual(
                 [
                     "AN-2026-001",
                     "2026-06-10",
-                    "王小明",
                     "供應商A",
-                    "控制板",
                     "PCBA-001",
+                    "控制板",
                     "試產",
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
                     "物料/來料品質異常",
+                    None,
+                    "王小明",
                     "進料不合格",
                     "追蹤 8D",
-                    "已結案",
                     "是",
                     "已要求廠商重工",
+                    "否",
+                    None,
+                    0,
+                    "尚未開始",
+                    "—",
+                    "—",
+                    0,
+                    "已結案",
                     "2026-06-12",
                 ],
-                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 15)],
+                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 28)],
             )
-            self.assertEqual("否", anomaly_sheet.cell(row=3, column=12).value)
-            self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=12).value)
+            self.assertEqual("否", anomaly_sheet.cell(row=3, column=17).value)
+            self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=17).value)
             self.assertEqual(
                     len(mock_list_events.return_value),
                     (visit_sheet.max_row - 1) + (anomaly_sheet.max_row - 1),
@@ -329,17 +366,17 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                 wb = load_workbook(file_path)
                 self.assertIn("異常", wb.sheetnames)
                 sheet = wb["異常"]
-                row2 = [sheet.cell(row=2, column=c).value for c in range(1, 15)]
+                row2 = [sheet.cell(row=2, column=c).value for c in range(1, 28)]
                 self.assertEqual(row2[0], anomaly_no)
                 self.assertEqual(row2[1], "2026-06-20")
-                self.assertEqual(row2[2], "陳工程師")
-                self.assertEqual(row2[3], "測試光學廠")
+                self.assertEqual(row2[2], "測試光學廠")
+                self.assertEqual(row2[3], "OPT-9988")
                 self.assertEqual(row2[4], "高階光學鏡頭")
-                self.assertEqual(row2[5], "OPT-9988")
-                self.assertEqual(row2[6], "試產")
-                self.assertEqual(row2[7], "製程控制")
-                self.assertEqual(row2[8], "鍍膜剝落與刮傷")
-                self.assertEqual(row2[9], "追蹤 8D 矯正措施")
+                self.assertEqual(row2[5], "試產")
+                self.assertEqual(row2[11], "製程控制")
+                self.assertEqual(row2[13], "陳工程師")
+                self.assertEqual(row2[14], "鍍膜剝落與刮傷")
+                self.assertEqual(row2[15], "追蹤 8D 矯正措施")
 
         conn.close()
         if db_path.exists():

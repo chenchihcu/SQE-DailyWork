@@ -1,6 +1,6 @@
 # Source Baseline Manifest - SQE DailyWork
 
-Last inspected: 2026-08-20
+Last inspected: 2026-08-22
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | --- | --- | --- |
 | Repository path | `local-observed` | `C:\Users\user\Documents\SQE DailyWork` |
 | Git root | `local-observed` | `C:/Users/user/Documents/SQE DailyWork` |
-| Live release membership count | `local-observed` | `587` |
+| Live release membership count | `local-observed` | `599` |
 | Membership definition | `audit-inference` | Existing files returned by `git ls-files --cached --others --exclude-standard`; this stays stable before and after intentional staging of new source files |
 | Ignored runtime/generated entries | `local-observed` | `data/`, `ncr/data/`, `data_backups/`, local runtimes, caches, outputs, `.omo/`, `.playwright-mcp/`, root generated quality workbooks, visual probe artifacts |
 | `source_baseline_status` | `audit-inference` | `verified: live membership and do-not-track boundaries are executable harness gates` |
@@ -36,7 +36,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 
 | Group | Type | Observed examples | Baseline meaning |
 | --- | --- | --- | --- |
-| Tracked source | `audit-inference` | `main.py`, `CHANGELOG.md`, `src/database/`, `src/services/`, `src/ui/`, `src/ncr/`, `tests/`, `scripts/`, `docs/`, governance rules | Reviewed source surface for the root project layout. |
+| Tracked source | `audit-inference` | `main.py`, `CHANGELOG.md`, `src/database/`, `src/services/` (including `anomaly_trace_*`, `process_keyword_*`), `src/ui/` (including `list_column_contract.py`), `src/ncr/`, `tests/`, `scripts/`, `docs/`, governance rules | Reviewed source surface for the root project layout. |
 | Embedded NCR source | `audit-inference` | `src/ncr/embed.py`, `src/ncr/db/`, `src/ncr/models/`, `src/ncr/services/`, `src/ncr/ui/`, `src/ncr/tests/`, `src/ncr/README.md` | Keep as the embedded warehouse nonconforming-product workflow. |
 | Removed NCR residue | `audit-inference` | `ncr/.github/`, `ncr/.gitignore`, `ncr/.ruff.toml`, one-off logs, probe PNGs, standalone review/skill notes | Standalone project residue; not part of the embedded workflow baseline. |
 | Ignored runtime/generated | `local-observed` | `data/`, `ncr/data/`, `Outputs/`, `scratch/`, `build/`, `dist/`, caches, local runtimes, `import_err.txt`, `artifacts/visual/`, `artifacts/visual-probes/` | Must not be captured by blind staging. |
