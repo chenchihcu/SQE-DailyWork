@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -406,6 +407,12 @@ def set_field_invalid(field: QWidget, invalid: bool = True) -> None:
     repolish(field)
 
 
+def apply_toolbar_label_policy(label: QLabel) -> None:
+    """Keep toolbar helper labels from inflating minimum window width."""
+    label.setWordWrap(True)
+    label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+
 def make_inline_error_label() -> QLabel:
     """Form-level inline error hint (hidden until validation fails).
 
@@ -615,8 +622,8 @@ class SupplierProductFormMixin:
         self._product_stage_by_id = {}
         self._product_code_by_id = {}
         self.product_combo.clear()
-        # placeholder 不帶 *：異常單以紅色「品名 *」標籤標示必填；訪廠單「主要產品」為非必填，
-        # 是否必填於儲存時由 _product_guard_label 欄位層級即時提示，故欄內不再重複放 *。
+        # placeholder 不帶 *：異常單以紅色「品名 *」標籤標示必填；訪廠單「主要產品」同樣必填，
+        # can_submit() 與 _product_guard_label 欄位層級提示一致，故欄內不再重複放 *。
         self.product_combo.addItem("請選擇產品", "")
         for item in products:
             product_id = str(item.get("id") or "").strip()
@@ -692,12 +699,23 @@ class CaseStageStepper(QFrame):
 
     def set_case_state(self, detail: Mapping[str, Any], overview: Mapping[str, Any] | None = None) -> None:
         data: Mapping[str, Any] = overview or detail
+        current_action = data.get("current_action")
+        has_action = bool(current_action) or str(detail.get("pending_items") or "").strip()
+        root_status = str(
+            data.get("root_cause_status") or detail.get("root_cause_status") or ""
+        ).strip()
+        ca_status = str(
+            data.get("corrective_action_status") or detail.get("corrective_action_status") or ""
+        ).strip()
+        verify_result = str(
+            data.get("verification_result") or detail.get("verification_result") or ""
+        ).strip()
         completed = (
             True,
-            bool(data.get("current_action") or detail.get("pending_items")),
-            bool(data.get("root_cause_status") or detail.get("root_cause_status")),
-            bool(data.get("corrective_action_status") or detail.get("corrective_action_status")),
-            bool(data.get("verification_result") or detail.get("verification_result")),
+            has_action,
+            root_status not in ("", "—", "尚未開始", "調查中"),
+            ca_status not in ("", "—", "未建立"),
+            verify_result not in ("", "—", "待驗證"),
             str(detail.get("status") or "") == "已結案",
         )
         for label, is_complete in zip(self._labels, completed, strict=True):

@@ -1,0 +1,28 @@
+[run]
+branch = False
+source =
+    src
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */.venv/*
+    */build/*
+    */dist/*
+    */scratch/*
+data_file = scratch/.coverage
+
+[report]
+precision = 1
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+
+[html]
+directory = scratch/coverage-html
+
+[xml]
+output = scratch/coverage.xml

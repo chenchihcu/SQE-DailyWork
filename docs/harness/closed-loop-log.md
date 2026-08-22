@@ -364,4 +364,174 @@ Fix: Added schema-safe column handling, moved migration index creation after col
 Harness update needed: yes
 Destination: `AGENTS.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `scripts/qt_probe_targets.json`, and this log.
 
+## Supplier Overview Cell Population Regression Entry
+
+Date: 2026-08-20
+Task: Fix supplier overview cells appearing blank while supplier names remained visible.
+Changes: Wrapped `SupplierOverviewPage._render()` row population with the shared `preserve_table_sorting()` helper; added a populated multi-row sorting regression test; made focused and full unittest discovery package-qualified for Qt tests; synchronized the source baseline membership count.
+Impact: Sorting no longer changes the row index between supplier-name insertion and anomaly-column insertion, and the verification gate now initializes the shared QApplication before importing PySide6 widget tests.
+Verification: `tests.test_supplier_oriented_ui` (5 tests), `tests.test_supplier_360_service` (4 tests), package-qualified full unittest discovery (597 tests), `scripts\verify.ps1 -Profile Focused`, Python compilation, and harness check pass.
+Residual risk: Supplier overview is covered by structural cell assertions; it is not yet a dedicated native pixel-baseline target.
+Next action: Keep data-population tests asserting actual cell contents whenever a sortable QTableWidget is introduced.
+Debug/RCA:
+Observed: Screenshot showed supplier names but empty anomaly/count/status cells.
+Root cause: `style_table()` enabled sorting while `_render()` populated rows without pausing sorting; the focused UI test was also initially loaded as a top-level module, bypassing `tests/__init__.py` QApplication initialization.
+Fix: Use `preserve_table_sorting()` during population and run the affected Qt tests as `tests.<module>`; use `-t .` for full package-qualified discovery.
+Harness update needed: yes
+Destination: `src/ui/widgets/supplier_overview_page.py`, `scripts/verify.ps1`, `tests/test_supplier_oriented_ui.py`, `docs/harness/source-baseline-manifest.md`, and this log.
+
+## Global List Column Governance Entry
+
+Date: 2026-08-21
+Task: Align supplier-event, supplier overview, supplier 360, and NCR list reading order.
+Changes: Added the shared display-only list column contract; reordered supplier-event and NCR list fields; added anomaly category to the home backlog and supplier 360 anomaly tab; aligned the event Excel detail sheet; preserved NCR field-name column persistence; and added focused contract/regression coverage.
+Impact: List scanning now follows identity, supplier/product, classification, content, workflow, and status. Category remains visible in compact event/NCR views and is not the final column.
+Verification: Focused list-column, event-list, home-backlog, supplier-oriented, Excel-export, NCR-pagination, micro-interaction, and layout-constant tests are required; native Windows Qt probes remain the visual acceptance gate.
+Residual risk: Existing user-defined NCR column orders remain intentionally unchanged; native screenshots and the complete verification script must still be reviewed after implementation.
+Next action: Run the focused verification profile, harness check, and native `event-list`, `home`, `ncr-tracker`, and `supplier-360` probes.
+Debug/RCA:
+Observed: Each list surface had an independent hard-coded order, while category was absent or hidden on several high-frequency views.
+Root cause: Display headers, row population indexes, export headers, and compact profiles were not derived from one presentation contract.
+Fix: Centralize display order and update all affected headers, row mappings, compact visibility rules, exports, and regression tests.
+Harness update needed: yes
+Destination: `src/ui/list_column_contract.py`, affected list widgets/services, `tests/test_list_column_contract.py`, `docs/ui-layout-theme-contract.md`, and this log.
+
+## Visit Form Vertical Card Layout Entry
+
+Date: 2026-08-21
+Task: Refactor `NewVisitDialog` from left-right split layout to vertical section cards.
+Changes: Replaced the visit form `details_grid` and bottom stretch with two `role="panel"` cards (`VisitBasicInfoCard`, `VisitSummaryCard`) under `📋 基本資訊` and `📝 活動摘要` section titles; added `VISIT_PAGE_SUMMARY_VISIBLE_ROWS`; updated focused layout/routing tests and UI contract docs.
+Impact: Full-page visit create now reads as a compact vertical workflow instead of an empty right column; modal edit/preview keeps compact summary height and fixed footer; legacy defect-note/product-section preservation and single-scroll `CreateWorkflowShell` contract remain unchanged.
+Verification: Focused unittest bundle (77 tests including visit pairing, routing, legacy preservation, and event CRUD); native `form-density` and `event-create` probes (`visual_trustworthy=true`, `qss_unknown_property_warnings=0`); `button_audit_report.py` exit 0.
+Residual risk: `scripts/verify.ps1 -Profile Focused` still fails on unrelated `test_excel_report_custom_range.py`; `scripts/harness_check.ps1` reports pre-existing source-baseline membership drift; visual baselines may need refresh if pixel regression is enforced.
+Next action: Refresh visit-related visual baselines only if `qt_visual_regress.py` reports intentional diffs on the next full visual belt.
+Harness update needed: yes
+Destination: `src/ui/widgets/new_visit_dialog.py`, `src/ui/layout_constants.py`, `tests/test_form_field_pairing_layout.py`, `tests/test_lightweight_visit_entry_routing.py`, `docs/ui-layout-theme-contract.md`, `README.md`, and this log.
+
+## Code-Simplifier Safe-Pass Entry
+
+Date: 2026-08-22
+Task: Behavior-preserving simplification across `src/` (safe-pass depth only).
+Changes: DRY helpers for trend month enumeration, process-keyword normalization, and appearance-preference version fallback; removed confirmed dead code (`_retired_feature_query`, unused status-pill helpers); deleted hidden statistics insight/info-banner widgets and their refresh-time generation paths in supplier-event and NCR stats pages; aligned home backlog rendering to `HOME_BACKLOG_COLUMNS` via a single cell factory loop; updated focused stats tests to assert Zero-Noise surfaces instead of `insight_label` text.
+Impact: Statistics refresh no longer computes hidden management summaries; service-layer duplication is reduced without changing public APIs, workflow boundaries, or compat shims (`event_service.py`, `defect_form_shim.py`, etc.).
+Verification: `py_compile` on changed modules; focused unittest bundle (76 tests including stats, appearance, list-column, and home-backlog cases); repository/trace regression (27 tests); native Windows Qt probes `stats-stress` and `ncr-stats` (`visual_trustworthy=true`, CJK OK).
+Residual risk: Full `scripts/verify.ps1` was still running with buffered output and an early failure marker at completion time; `create_insight_label` and `QLabel[role="insight"]` QSS remain for non-statistics surfaces until a separate rg-backed cleanup pass.
+Next action: Confirm full verify completion; optionally retire unused insight helper/QSS only after repo-wide caller audit.
+Debug/RCA (when applicable):
+Observed: Supplier-event and NCR statistics pages hid insight/info-banner widgets but still assembled insight strings on every refresh, violating Zero-Noise intent and wasting refresh work.
+Root cause: Prior cleanup used `.hide()` for compatibility while leaving `_set_insights`, `_generate_insights`, and insight widget construction in place; tests still asserted hidden label text.
+Fix: Remove insight generation paths and widgets; redirect tests to chart presence, `EmptyStateWidget`, and `errorText` labels; promote the implementation rule into `AGENTS.md`.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `src/services/event/_query_service.py`, `src/services/process_keyword_codec.py`, `src/services/appearance_preferences_service.py`, `src/ui/widgets/stats_view_widget.py`, `src/ui/widgets/ncr_stats_widget.py`, `src/ui/widgets/home_widget.py`, focused stats/list tests, and this log.
+
+## Trace And Keyword Simplification Pass Entry
+
+Date: 2026-08-22
+Task: Behavior-preserving simplification for ERP trace fields and SMT process keywords (code-simplifier safe pass).
+Changes: Extracted `_assert_trace_field_pattern` and removed redundant optional-loop guards in `anomaly_trace_validator`; extracted `_anomaly_write_fields` for anomaly CRUD kwargs; aligned ERP preference read/write loops in `appearance_preferences_dialog` to `TRACE_FIELD_PATTERN_KEYS`; routed NCR handoff hint through `processing_line_source_hint`; deduped visit detail fetch in `anomaly_visit_sync_mixin`; trimmed codec/preset dead code; iterated trace UI/payload off `TRACE_FIELD_LABELS`; merged keyword preset list move helpers.
+Impact: Less copy-paste across validator, service, and preference layers without changing workflow boundaries, error copy, repository signatures, or stats chart pipelines.
+Verification: Focused unittest bundle — service/trace/codec/preset (17 OK), appearance dialog (4 OK), visit routing (7 OK); `test_anomaly_process_keywords_form.test_submit_payload_includes_process_keywords` failed until submit test sets required `anomaly_source`.
+Residual risk: Full `unittest discover` remains slow (MainWindow boot); run service-layer tests first. Duplicate trace-number enforcement (`find_anomaly_trace_duplicate`) still not wired into validator.
+Next action: Keep new create-form submit tests aligned with required `anomaly_source`; confirm full verify when practical.
+Debug/RCA:
+Observed: After trace-field rollout, validator/CRUD/preferences duplicated four-field blocks; a process-keyword submit test returned empty `captured` despite patched create.
+Root cause: Feature add stacked branches without shared helpers; UI create path now rejects blank `anomaly_source` before service mock runs, but the test never set the combo.
+Fix: DRY helpers + contract loops; document simplify exclusions and form-test requirement in `AGENTS.md`; submit test must set `anomaly_source` before `_on_submit()`.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/harness/closed-loop-log.md`, `tests/test_anomaly_process_keywords_form.py`, and trace/keyword focused tests.
+
+## Undirected Health-Check Routing And Excel/Harness Drift Entry
+
+Date: 2026-08-22
+Task: Harvest undirected health-check routing; close Excel export + membership Focused residual from Visit Form Vertical Card Layout Entry.
+Changes: Append this log only (no `AGENTS.md` or global rule edits). Prior commit `8dd2333` synced 27-column Excel export assertions in `tests/test_excel_report_custom_range.py`, updated `docs/harness/source-baseline-manifest.md` membership to `599`, and tracked trace/keyword source modules.
+Impact: Agents facing "debug with no direction" should route through change-router + doc-gardening (report-only) + executable gates before any RCA patch. Visit Form Entry residual (`test_excel_report_custom_range.py` + membership drift blocking Focused) is closed.
+Verification: `scripts/harness_check.ps1` passed; `scripts/verify.ps1 -Profile Focused` passed end-to-end (`scratch/health_check_focused_after_fix.log`).
+Residual risk: Remaining WIP still uncommitted; trace/keyword tests (`test_anomaly_trace_fields.py`, `test_process_keyword_*.py`) remain outside Focused patterns; `-Profile Full` not run; README still lacks trace/keyword user-facing copy.
+Next action: Optional background `-Profile Full`; README trace/keyword documentation is a separate doc task; expand Focused patterns only after a dedicated remediation request.
+Debug/RCA (when applicable):
+Observed: Undirected health check surfaced two independent failures — Excel export tests still asserted 15 columns while `_export_service.py` exported 27, and harness membership drift (`590` vs live `599`) blocked gate [6/6]. First Excel test fix used `""` for empty trace cells but openpyxl read them as `None`.
+Root cause: Export contract tests lagged ERP trace column expansion; manifest count was stale after new source files entered the worktree; agents without a failing stack should not jump to `debug-and-fix-bug`.
+Fix:
+- Undirected debug protocol: `sqe-dailywork-change-router` → `sqe-dailywork-doc-gardening` (report-only) → `harness_check.ps1` → `verify.ps1 -Profile Focused`. Do not start `debug-and-fix-bug` without a failing test or stack trace. In Ask mode, label executable gates as `not verified`; do not claim pass/fail without evidence.
+- Excel export contract tests: treat `src/services/event/_export_service.py` anomaly header list and `_anomaly_detail_row` as single source of truth; expect `None` (not `""`) when reading empty cells back via openpyxl.
+- Harness membership: run live count `(git ls-files --cached --others --exclude-standard | Where-Object { Test-Path $_ }).Count` before updating `docs/harness/source-baseline-manifest.md`; declare whether health check runs against a dirty tree. Focused green does not imply trace/keyword tests are covered.
+Harness update needed: no
+Destination: `docs/harness/closed-loop-log.md`
+
+## Supplier-Oriented UI P1–P3 Completion Entry
+
+Date: 2026-08-22
+Task: Complete supplier-oriented UI P1–P3 residual work (routing, scope chip counts, search routing, stepper read model, 360 contacts/grade/quarter export, docs, focused tests).
+Changes: 360/主檔預選供應商與 visit `initial_data`；事件頁 scope chip 件數與 header 搜尋鈕；`search_global` NCR 分線路由；`CaseStageStepper` overview 判定與來源 NCR 欄；360 聯絡人表格、總覽評級欄、季度報告選擇；契約文件與六組專測；執行計畫移至 `completed/`。
+Impact: 供應商導向動線與契約文件對齊；事件 chip 件數與列表過濾一致；全域搜尋可路由至正確 NCR 分線與歷史頁；供應商總覽/360 唯讀聚合完整度提升。
+Verification: 21 項聚焦 supplier 專測 OK；`scripts/harness_check.ps1` pass（membership `604`）；`scripts/verify.ps1 -Profile Focused` 在既有 `test_ncr_embedding_smoke.py` 失敗處停止（與本次變更無直接關聯）；原生 Qt probe `main`/`supplier-360`/`event-list`/`home` 執行中。
+Residual risk: 完整 verify 與 visual baseline 回歸尚未在本輪確認綠燈；既有庫 migration 僅以記憶體 DB 演練 backfill/meta 閘門。
+Next action: 若 probe/regress 報告像素差異，僅在意圖變更時更新 baseline；排程修復或豁免 `test_ncr_embedding_smoke` 與 full verify。
+Harness update needed: yes
+Destination: `docs/harness/closed-loop-log.md`, `docs/harness/source-baseline-manifest.md`, `docs/exec-plans/completed/supplier-oriented-ui-p1-p3.md`, `AGENTS.md`, README, architecture/UI contracts, and focused tests listed above.
+
+## Agent Rules Harvest Entry (supplier P1–P3)
+
+Date: 2026-08-22
+Task: Harvest reusable agent rules from supplier-oriented UI P1–P3 closeout (not re-implement features).
+Changes: Promoted 10 compact bullets to `AGENTS.md` (chip count SSOT, global-search NCR routing, create prefill, category handoff, `CaseStageStepper` bool guard, PySide6 Escape, dialog test parent, backfill test pattern, harness membership, qt probe multi-target); `CLAUDE.md` probe note; `docs/risk-ledger.md` NCR embedding smoke drift.
+Impact: Future agents get SSOT anchors without re-reading closed-loop RCA narratives.
+Verification: `scripts/harness_check.ps1`; `rg` on `CaseStageStepper`, `get_event_scope_counts`, `Key_Escape` in `AGENTS.md`.
+Residual risk: `test_ncr_embedding_smoke` Focused failure remains tracked in risk ledger—not fixed in this harvest pass.
+Next action: Fix embedding smoke assertion or exempt in Focused profile when green gate is required.
+Harness update needed: yes
+Destination: `AGENTS.md`, `CLAUDE.md`, `docs/risk-ledger.md`, this log.
+
+## Production Release Gate Entry (1.1.0 + Windows onedir)
+
+Date: 2026-08-22
+Task: Operational release gate — fix blocking verify failures, frozen path contract, PyInstaller onedir packaging, version 1.1.0; no writes to `data/sqe_v2.db`.
+Changes: Fixed `test_ncr_embedding_smoke` to assert `NcrCreateFormContent` wrapper subtree; aligned `scripts/smoke_test_v2.py` with strict supplier product scoping and `anomaly_source` trace contract; added `src/app_paths.py` + `tests/test_app_paths.py`; wired connection/exports/anomaly folders; added `scripts/sqe_dailywork.spec`, `scripts/build_windows.ps1`, `main.py --smoke-exit`; bumped `1.1.0` docs/harness.
+Impact: Focused verify green; frozen `SQE_DailyWork.exe --smoke-exit` passes on scratch DB; portable zip at `dist/SQE_DailyWork-win64.zip`; writable roots resolve beside exe in frozen builds.
+Verification: `scripts/backup_data.ps1` → `data_backups/20260822-123601`; `scripts/verify.ps1 -Profile Focused` pass; `scripts/smoke_test_v2.py` pass; frozen smoke (`Start-Process -Wait`, `logs/smoke_exit.ok`, scratch DB); `scripts/harness_check.ps1` pass (membership `614`). First background Full verify failed only on pre-fix NCR smoke (637 tests, ~1006s).
+Residual risk: Full verify re-run may still be in flight; first live DB migration awaits explicit user authorization; accepted VERIFY CSV / Phase 0 hash / chart-label UAT residuals unchanged.
+Next action: Confirm `scripts/verify.ps1 -Profile Full` green after fixes; authorize first production `initialize_database()` only after backup.
+Debug/RCA:
+Observed: Focused verify blocked on NCR create DOM drift; `smoke_test_v2` failed on global products in supplier options and missing `anomaly_source`; frozen exe smoke appeared to pass instantly with no DB/marker when invoked via `& exe` on a windowed build.
+Root cause: NCR create wraps `fields_widget` in `NcrCreateFormContent`; repository strict mode excludes `supplier_id IS NULL` from supplier product lists; trace validator requires `anomaly_source` and ERP patterns when trace fields are present; PyInstaller `console=False` returns immediately from PowerShell call operator without waiting for GUI process completion.
+Fix: Update smoke assertions and workflow smoke payloads; centralize writable roots in `app_paths.runtime_root()`; use `Start-Process -Wait` plus `logs/smoke_exit.ok` marker for frozen smoke; ship onedir via `build_windows.ps1`.
+Harness update needed: yes
+Destination: `AGENTS.md`, `CLAUDE.md`, `docs/harness/closed-loop-log.md`, `docs/architecture-workflow-contract.md`, `.codex/rules/project.rules`
+
+## Agent Rules Harvest Entry (production release gate)
+
+Date: 2026-08-22
+Task: Harvest reusable agent rules from production release gate (not re-implement packaging).
+Changes: Promoted compact bullets to `AGENTS.md` (app_paths frozen roots, windowed exe smoke gate, smoke_test trace/source contract, release backup-before-verify); `CLAUDE.md` build pointer; Codex allowlist for `build_windows.ps1`.
+Impact: Future packaging/release work avoids false-green frozen smoke and rediscovering strict supplier/trace contracts.
+Verification: `scripts/harness_check.ps1`; focused NCR embedding + `test_app_paths` + frozen smoke manual gate.
+Residual risk: Full visual belt/regress still expensive; run backgrounded.
+Next action: Re-run Full verify after any packaging or DOM change.
+Harness update needed: yes
+Destination: `AGENTS.md`, `CLAUDE.md`, `.codex/rules/project.rules`, this log.
+
+## Agent Rules Harvest Entry (QA gap assessment Phase 1–2)
+
+Date: 2026-08-22
+Task: Harvest reusable agent rules from QA gap assessment + Phase 2 release hardening (not re-run assessment).
+Changes: Promoted compact bullets to `AGENTS.md` (verify Full runner coverage, disposable DB path asserts, NCR sync test stubs, export column SSOT, visual baseline refresh with verification DB, build traceability, exec-plan lifecycle, harness membership count command, CI workflow pointer); `CLAUDE.md` Full verify + build-info note; `docs/qa-gap-assessment-phase1.md` Phase 2 results.
+Impact: Future release/verify work avoids rediscovering runner splits, false-green baselines, harness membership drift, and untraceable builds.
+Verification: `scripts/verify.ps1 -Profile Full` pass (`scratch/verify-full-log-final.txt`); `scripts/harness_check.ps1` pass (membership `615`).
+Residual risk: Code signing, coverage metrics, soak tests, and MSI installer remain open per QA assessment; visual baselines are point-in-time for current formal DB snapshot.
+Next action: Phase 3 improvement plan only when user authorizes (signing, coverage gate, portable install checklist).
+Harness update needed: yes
+Destination: `AGENTS.md`, `CLAUDE.md`, `docs/harness/closed-loop-log.md`, `docs/qa-gap-assessment-phase1.md`.
+
+## Agent Rules Harvest Entry (QA improvement Phase 3)
+
+Date: 2026-08-22
+Task: Phase 3 QA gates — coverage, portable smoke, soak, installer spec/POC; signing deferred Phase 4.
+Changes: `.coveragerc`, `verify.ps1` Coverage/Soak profiles, `assert_coverage_baseline.py`, `test_stability_smoke.py`, `portable_install_smoke.ps1`, `docs/release/*`, `installer/sqe_dailywork.iss`, CI `verify-coverage`/`verify-soak`, harness membership `625`.
+Impact: Coverage fail-under gate, zip portable smoke path, multi-cycle stability smoke; unsigned Inno remains experimental.
+Verification: `verify.ps1 -Profile Soak` pass; coverage ~81% with baseline gate pass; portable smoke after build-info PYTHONPATH fix.
+Residual risk: Authenticode Phase 4; Inno POC optional manual; recalibrate `coverage-baseline.json` after large test churn.
+Next action: Phase 4 signing when certificate strategy chosen.
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md`, `docs/qa-gap-assessment-phase1.md`, this log.
 

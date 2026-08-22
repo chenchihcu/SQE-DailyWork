@@ -23,12 +23,7 @@ from ui.widgets.anomaly_attachment_editor import ATTACHMENT_ITEM_SIZE  # noqa: F
 from ui.widgets.defect_form_widgets import (  # noqa: F401
     ANOMALY_CATEGORY_OPTIONS,
     ROOT_CAUSE_PARETO_OPTIONS,
-    TECH_TRANSFER_STATE_NA,
-    TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_YES,
-    VISIT_TECH_TRANSFER_ITEMS,
     ProductSectionEditor,
-    TechTransferCard,
 )
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog  # noqa: F401
 from ui.widgets.new_visit_dialog import NewVisitDialog  # noqa: F401

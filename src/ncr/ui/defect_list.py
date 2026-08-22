@@ -57,6 +57,7 @@ from ui.widgets.common_widgets import (
     QueryWorkflowShell,
     apply_clickable_affordance,
     apply_table_action_affordance,
+    apply_toolbar_label_policy,
     style_table,
 )
 from ncr.ui.ui_style import (
@@ -80,6 +81,16 @@ from ui.layout_constants import (
     NCR_LIST_CORE_ITEM_NO_WIDTH,
     NCR_LIST_CORE_PRODUCT_WIDTH,
     NCR_LIST_CORE_STATUS_WIDTH,
+    NCR_LIST_PREFERRED_DEFECT_NO_WIDTH,
+    NCR_LIST_PREFERRED_DESCRIPTION_WIDTH,
+    NCR_LIST_PREFERRED_EVENT_DATE_WIDTH,
+    NCR_LIST_PREFERRED_INTERNAL_WORK_ORDER_WIDTH,
+    NCR_LIST_PREFERRED_ITEM_NO_WIDTH,
+    NCR_LIST_PREFERRED_PROCESSING_LINE_WIDTH,
+    NCR_LIST_PREFERRED_PRODUCT_NAME_WIDTH,
+    NCR_LIST_PREFERRED_RETURN_SLIP_TYPE_WIDTH,
+    NCR_LIST_PREFERRED_TRANSFER_SLIP_WIDTH,
+    NCR_LIST_PREFERRED_WORK_ORDER_WIDTH,
     PANEL_MARGINS,
     ROOT_SECTION_SPACING,
     ROW_GAP,
@@ -300,21 +311,25 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self.source_tag_label = QLabel(self._source_tag_text())
         self.source_tag_label.setProperty("role", "sourceTag")
         self.source_tag_label.setToolTip("目前列表的資料流程來源")
+        apply_toolbar_label_policy(self.source_tag_label)
         toolbar_row.addWidget(self.source_tag_label)
 
         self.total_count_label = make_hint_label(LABEL_DATA_COUNT.format(0))
         self.open_count_label = make_hint_label(LABEL_OPEN_COUNT.format(0))
         self.closed_count_label = make_hint_label(LABEL_CLOSED_COUNT.format(0))
         for lbl in (self.total_count_label, self.open_count_label, self.closed_count_label):
-            lbl.setWordWrap(False)
+            apply_toolbar_label_policy(lbl)
             toolbar_row.addWidget(lbl)
 
         self.month_scope_notice = make_notice_label("", role="helperText")
         self.filter_notice = make_notice_label("", role="helperText")
         self.processing_line_scope_notice = make_notice_label("", role="helperText")
-        self.month_scope_notice.setWordWrap(False)
-        self.filter_notice.setWordWrap(False)
-        self.processing_line_scope_notice.setWordWrap(False)
+        for notice in (
+            self.month_scope_notice,
+            self.filter_notice,
+            self.processing_line_scope_notice,
+        ):
+            apply_toolbar_label_policy(notice)
         if self.processing_line:
             self.processing_line_scope_notice.setText(
                 f"目前頁面固定處理線：{self.processing_line}（未結案，不限月份）"
@@ -323,10 +338,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         else:
             self.processing_line_scope_notice.hide()
         for _n in (self.month_scope_notice, self.filter_notice, self.processing_line_scope_notice):
-            _n.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        toolbar_row.addWidget(self.month_scope_notice)
-        toolbar_row.addWidget(self.filter_notice)
-        toolbar_row.addWidget(self.processing_line_scope_notice)
+            toolbar_row.addWidget(_n)
 
         self.unclassified_link_button: QPushButton | None = None
         if self.workflow == "tracking" and self.processing_line in (
@@ -384,14 +396,13 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         self.add_button.setToolTip("建立新的不合格品紀錄")
 
         def _on_add_clicked():
+            host = self.window()
+            if hasattr(host, "open_warehouse_nonconforming_create"):
+                host.open_warehouse_nonconforming_create()
+                return
             top = self.window()
-            if hasattr(self, "main_window") and hasattr(self.main_window, "open_defect_form"):
-                self.main_window.open_defect_form()
-            elif hasattr(top, "open_defect_form"):
-                top.open_defect_form()
-            elif hasattr(top, "sidebar") and hasattr(top.sidebar, "set_current_page"):
-                from ui.sidebar_nav import PAGE_NCR_CREATE
-                top.sidebar.set_current_page(PAGE_NCR_CREATE)
+            if hasattr(top, "open_warehouse_nonconforming_create"):
+                top.open_warehouse_nonconforming_create()
 
         self.add_button.clicked.connect(_on_add_clicked)
         toolbar_row.addWidget(self.add_button)
@@ -490,6 +501,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             "event_date",
             "item_no",
             "product_name",
+            "category",
             "defect_desc",
             "status",
         }
@@ -534,16 +546,16 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
             header.setSectionResizeMode(column_index, QHeaderView.ResizeMode.Interactive)
 
         preferred_widths = {
-            DEFECT_NO_COLUMN: 140,
-            EVENT_DATE_COLUMN: 100,
-            PROCESSING_LINE_COLUMN: 110,
-            RETURN_SLIP_TYPE_COLUMN: 120,
-            WORK_ORDER_COLUMN: 140,
-            INTERNAL_WORK_ORDER_COLUMN: 140,
-            TRANSFER_SLIP_COLUMN: 140,
-            ITEM_NO_COLUMN: 120,
-            PRODUCT_NAME_COLUMN: 200,
-            DESCRIPTION_COLUMN: 320,
+            DEFECT_NO_COLUMN: NCR_LIST_PREFERRED_DEFECT_NO_WIDTH,
+            EVENT_DATE_COLUMN: NCR_LIST_PREFERRED_EVENT_DATE_WIDTH,
+            PROCESSING_LINE_COLUMN: NCR_LIST_PREFERRED_PROCESSING_LINE_WIDTH,
+            RETURN_SLIP_TYPE_COLUMN: NCR_LIST_PREFERRED_RETURN_SLIP_TYPE_WIDTH,
+            WORK_ORDER_COLUMN: NCR_LIST_PREFERRED_WORK_ORDER_WIDTH,
+            INTERNAL_WORK_ORDER_COLUMN: NCR_LIST_PREFERRED_INTERNAL_WORK_ORDER_WIDTH,
+            TRANSFER_SLIP_COLUMN: NCR_LIST_PREFERRED_TRANSFER_SLIP_WIDTH,
+            ITEM_NO_COLUMN: NCR_LIST_PREFERRED_ITEM_NO_WIDTH,
+            PRODUCT_NAME_COLUMN: NCR_LIST_PREFERRED_PRODUCT_NAME_WIDTH,
+            DESCRIPTION_COLUMN: NCR_LIST_PREFERRED_DESCRIPTION_WIDTH,
         }
         for column_index, preferred_width in preferred_widths.items():
             table.setColumnWidth(

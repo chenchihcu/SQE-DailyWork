@@ -215,6 +215,9 @@ def export_events_report(
 
         totals, ranking_rows = _query_service.summarize_range_events(events)
         category_pareto_rows = _query_service.get_anomaly_category_pareto_by_range(start_date, end_date)
+        process_keyword_pareto_rows = (
+            _query_service.get_anomaly_process_keyword_pareto_by_range(start_date, end_date)
+        )
         total_anomalies = totals["total_anomalies"]
         total_visits = totals["total_visits"]
         closed_anomalies = totals["closed_anomalies"]
@@ -328,6 +331,7 @@ def export_events_report(
                 ("visit_anomaly", "I7"),
                 ("responsible", "A23"),
                 ("category_pareto", "I23"),
+                ("process_keyword_pareto", "A39"),
             ]
             for key, cell in chart_placements:
                 path = temp_chart_paths.get(key)
@@ -377,6 +381,43 @@ def export_events_report(
             category_sheet.row_dimensions[r_idx].height = 20
         _auto_fit(category_sheet)
 
+        keyword_sheet = workbook.create_sheet("SMT製程關鍵詞柏拉圖")
+        keyword_sheet.views.sheetView[0].showGridLines = True
+        keyword_headers = ["排名", "關鍵詞", "件數", "佔比(%)", "累積佔比(%)"]
+        keyword_sheet.append(keyword_headers)
+        for col_idx in range(1, len(keyword_headers) + 1):
+            cell = keyword_sheet.cell(row=1, column=col_idx)
+            cell.font = STYLE_HEADER_FONT
+            cell.fill = STYLE_FILL_HEADER
+            cell.alignment = ALIGN_CENTER
+            cell.border = STYLE_BORDER_THIN
+        keyword_sheet.row_dimensions[1].height = 24
+
+        for r_idx, row in enumerate(process_keyword_pareto_rows, start=2):
+            data = [
+                row.get("rank", 0),
+                row.get("keyword", ""),
+                row.get("count", 0),
+                row.get("percent", 0.0),
+                row.get("cumulative_percent", 0.0),
+            ]
+            keyword_sheet.append(data)
+            is_even = (r_idx % 2 == 0)
+            for c_idx in range(1, len(keyword_headers) + 1):
+                cell = keyword_sheet.cell(row=r_idx, column=c_idx)
+                cell.font = STYLE_FONT
+                cell.border = STYLE_BORDER_THIN
+                if is_even:
+                    cell.fill = STYLE_FILL_ZEBRA
+                if c_idx == 2:
+                    cell.alignment = ALIGN_LEFT
+                else:
+                    cell.alignment = ALIGN_RIGHT
+                if c_idx in (4, 5):
+                    cell.number_format = "0.0"
+            keyword_sheet.row_dimensions[r_idx].height = 20
+        _auto_fit(keyword_sheet)
+
         # 3. 事件明細依權威 event_type 分成訪廠與異常兩個活頁。
         def _build_event_detail_sheet(name, headers, rows, row_builder, centered_columns):
             sheet = workbook.create_sheet(name)
@@ -421,6 +462,8 @@ def export_events_report(
         )
 
         def _anomaly_detail_row(row):
+            from services.process_keyword_codec import format_process_keywords_display
+
             if row.get("quality_report_required") is None:
                 quality_report_required = "未設定"
             else:
@@ -439,18 +482,22 @@ def export_events_report(
             return [
                 str(row.get("ref_no") or ""),
                 row.get("event_date") or "",
-                str(row.get("responsible_person") or "").strip() or "未指定",
                 row.get("supplier_name") or "",
-                row.get("product_name") or "",
                 row.get("product_code") or "",
+                row.get("product_name") or "",
                 row.get("product_stage") or "",
+                row.get("anomaly_source") or "",
+                row.get("material_receipt_no") or "",
+                row.get("internal_work_order_no") or "",
+                row.get("outsource_work_order") or row.get("work_order_no") or "",
+                row.get("outsource_receipt_no") or "",
                 row.get("category") or "",
+                format_process_keywords_display(row.get("process_keywords")),
+                str(row.get("responsible_person") or "").strip() or "未指定",
                 row.get("content") or "",
                 row.get("pending_items") or "",
-                row.get("status") or "",
                 quality_report_required,
                 row.get("improvement_desc") or "",
-                row.get("closed_at") or "",
                 "是" if row.get("overdue") else "否",
                 current_text,
                 int(row.get("open_action_count") or 0),
@@ -458,6 +505,8 @@ def export_events_report(
                 str(row.get("corrective_action_status") or "—"),
                 str(row.get("verification_result") or "—"),
                 int(row.get("attachment_count") or 0),
+                row.get("status") or "",
+                row.get("closed_at") or "",
             ]
 
         _build_event_detail_sheet(
@@ -465,18 +514,22 @@ def export_events_report(
             [
                 "異常單號",
                 "日期",
-                "責任人",
                 "供應商",
-                "品名",
                 "料號",
+                "品名",
                 "階段",
+                "異常來源",
+                "原物料進貨單號",
+                "廠內製令單號",
+                "委外製令單號",
+                "委外進貨單號",
                 "異常類別",
+                "SMT 製程關鍵詞",
+                "責任人",
                 "問題/摘要",
                 "確認事項 / 待追蹤",
-                "狀態",
                 "品質異常單要求",
                 "改善說明",
-                "結案日期",
                 "逾期",
                 "目前處置",
                 "進行中處置數",
@@ -484,10 +537,12 @@ def export_events_report(
                 "改善措施狀態",
                 "有效性驗證",
                 "附件數",
+                "狀態",
+                "結案日期",
             ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2, 7, 11, 12, 14, 15, 17, 18, 19, 20, 21},
+            {1, 2, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27},
         )
 
         # 4. 責任人排行榜頁

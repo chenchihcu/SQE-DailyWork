@@ -101,7 +101,13 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         shell = form.findChild(CreateWorkflowShell, "NcrCreateWorkflowShell")
         self.assertIsNotNone(shell)
         assert shell is not None
-        self.assertIs(shell.content_scroll.widget(), form.fields_widget)
+        scroll_content = shell.content_scroll.widget()
+        self.assertIsNotNone(scroll_content)
+        assert scroll_content is not None
+        self.assertEqual("NcrCreateFormContent", scroll_content.objectName())
+        self.assertTrue(
+            scroll_content.findChild(type(form.fields_widget)) is form.fields_widget
+        )
         self.assertFalse(form.feedback_label.isWindow())
         self.assertIsNotNone(form.feedback_label.parent())
         self.assertEqual(1, len(form.findChildren(QScrollArea, "CreateWorkflowScroll")))
@@ -150,6 +156,19 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(NCR_ENTRY_PAGE_INDEX, self.window.stack.currentIndex())
         self.assertIs(self.window.stack.currentWidget(), self.window.ncr.create_page)
+
+    def test_ncr_create_page_exposes_return_to_list_action(self) -> None:
+        form = self.window.ncr.form_widget
+        self.assertEqual("返回清單", form.return_button.text())
+        self.assertEqual("secondary", form.return_button.property("variant"))
+
+    def test_pending_list_add_button_opens_create_page(self) -> None:
+        self.window._switch_primary_page(NCR_PAGE_INDEX)
+        self.app.processEvents()
+        widget = self.window.ncr.pending_outsource_widget
+        widget.add_button.click()
+        self.app.processEvents()
+        self.assertEqual(NCR_ENTRY_PAGE_INDEX, self.window.stack.currentIndex())
 
     def test_nav_labels_match_embed_specs(self) -> None:
         # 側欄已不再以堆疊索引對齊按鈕；以標籤存在性驗證 NCR 導覽列。

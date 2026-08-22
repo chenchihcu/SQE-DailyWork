@@ -19,6 +19,7 @@ from services.event import (
     _anomaly_service,
     _anomaly_workbench_service,
 )
+from services.process_keyword_codec import format_process_keywords_display
 from ui.layout_constants import (
     CONTROL_ROW_SPACING,
     FORM_VERTICAL_SPACING,
@@ -120,7 +121,8 @@ class AnomalyManagementPage(QWidget):
         self._remove_edit_form()
         self._render_header()
         if self.stage_stepper is not None:
-            self.stage_stepper.set_case_state(self._detail)
+            overview = _anomaly_workbench_service.get_overview_card(anomaly_key)
+            self.stage_stepper.set_case_state(self._detail, overview)
         self._render_tabs()
         if edit:
             self.begin_edit()
@@ -187,6 +189,11 @@ class AnomalyManagementPage(QWidget):
             ("品名", self._detail.get("product_name")),
             ("料號", self._detail.get("product_code")),
             ("異常類別", self._detail.get("category")),
+            ("來源 NCR 單號", self._detail.get("source_defect_no") or "—"),
+            (
+                "SMT 製程關鍵詞",
+                format_process_keywords_display(self._detail.get("process_keywords")),
+            ),
             ("數量", self._detail.get("batch_qty")),
             ("到期日", self._detail.get("due_date")),
             ("結案日期", self._detail.get("closed_at")),

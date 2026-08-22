@@ -12,6 +12,16 @@ class TestSupplierSync(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         database.apply_schema(self.conn)
+        # Mirror the shared master-data gate used by defect_service supplier sync.
+        self.conn.execute(
+            """
+            CREATE TABLE suppliers (
+                id TEXT PRIMARY KEY,
+                supplier_name TEXT NOT NULL UNIQUE
+            )
+            """
+        )
+        self.conn.commit()
 
     def tearDown(self):
         self.conn.close()
@@ -24,6 +34,7 @@ class TestSupplierSync(unittest.TestCase):
             "item_no": "ITEM-001",
             "product_name": "Test Product",
             "qty": 10,
+            "processing_line": "原物料",
             "supplier_name": "New Supplier A",
             "outsource_supplier_name": "N/A",
             "defect_desc": "Sync Test",
@@ -47,6 +58,7 @@ class TestSupplierSync(unittest.TestCase):
             "item_no": "ITEM-002",
             "product_name": "Test Product B",
             "qty": 5,
+            "processing_line": "原物料",
             "supplier_name": "Initial Supplier",
             "outsource_supplier_name": "N/A",
             "defect_desc": "Update Test",
@@ -147,6 +159,7 @@ class TestSupplierSync(unittest.TestCase):
             "item_no": "ITEM-P",
             "product_name": "Old Product",
             "qty": 1,
+            "processing_line": "原物料",
             "category": "成品",
             "supplier_name": "Supplier P",
             "outsource_supplier_name": "",

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QScrollArea,
     QTextEdit,
     QWidget,
@@ -124,13 +125,47 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.work_order_input,
         )
 
-        qty_transfer_row = self._row(dialog, "VisitQtyTechTransferRow")
-        self._assert_row_contains(
-            qty_transfer_row,
-            dialog.qty_input,
-            dialog.tech_transfer_check,
-        )
         self._assert_compacted_text_edit(dialog.summary_input, 200)
+
+    def test_visit_dialog_uses_vertical_section_cards(self) -> None:
+        dialog = self._show_dialog(NewVisitDialog())
+
+        basic_card = dialog.findChild(QFrame, "VisitBasicInfoCard")
+        summary_card = dialog.findChild(QFrame, "VisitSummaryCard")
+        self.assertIsNotNone(basic_card)
+        self.assertIsNotNone(summary_card)
+        assert basic_card is not None
+        assert summary_card is not None
+        self.assertEqual("panel", basic_card.property("role"))
+        self.assertEqual("panel", summary_card.property("role"))
+        self.assertTrue(basic_card.isAncestorOf(dialog.date_edit))
+        self.assertTrue(summary_card.isAncestorOf(dialog.summary_input))
+
+        content_layout = dialog.form_content.layout()
+        assert content_layout is not None
+        card_indices = [
+            content_layout.indexOf(widget)
+            for widget in (basic_card, summary_card)
+            if widget is not None
+        ]
+        self.assertEqual(sorted(card_indices), card_indices)
+
+    def test_visit_page_mode_uses_taller_summary_block(self) -> None:
+        dialog = NewVisitDialog(embedded=True, page_mode=True)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+
+        modal_dialog = NewVisitDialog()
+        self.addCleanup(modal_dialog.close)
+        modal_dialog.show()
+        self.app.processEvents()
+
+        self.assertGreater(
+            dialog.summary_input.maximumHeight(),
+            modal_dialog.summary_input.maximumHeight(),
+        )
+        self.assertEqual([], dialog.findChildren(QScrollArea))
 
     def test_visit_dialog_matches_anomaly_dialog_working_size(self) -> None:
         anomaly_dialog = self._show_dialog(NewAnomalyDialog())
@@ -194,6 +229,29 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.secondary_supplier_combo,
         )
         self.assertFalse(suppliers_row.isAncestorOf(dialog.product_name_input))
+
+    def test_anomaly_dialog_tab_order_starts_with_supplier_before_date(self) -> None:
+        dialog = NewAnomalyDialog()
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+
+        chain: list = []
+        seen: set = set()
+        current = dialog.supplier_combo
+        while current is not None and current not in seen:
+            seen.add(current)
+            chain.append(current)
+            current = current.nextInFocusChain()
+
+        self.assertIn(dialog.supplier_combo, chain)
+        self.assertIn(dialog.date_edit, chain)
+        self.assertIn(dialog.anomaly_no_preview_input, chain)
+        supplier_idx = chain.index(dialog.supplier_combo)
+        date_idx = chain.index(dialog.date_edit)
+        anomaly_no_idx = chain.index(dialog.anomaly_no_preview_input)
+        self.assertLess(supplier_idx, date_idx)
+        self.assertLess(date_idx, anomaly_no_idx)
 
 
 if __name__ == "__main__":

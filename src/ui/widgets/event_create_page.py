@@ -133,7 +133,12 @@ class EventCreatePage(QWidget):
                 initial_data=self.initial_data,
             )
         else:
-            form = NewVisitDialog(self.workflow_shell, embedded=True, page_mode=True)
+            form = NewVisitDialog(
+                self.workflow_shell,
+                embedded=True,
+                page_mode=True,
+                initial_data=self.initial_data,
+            )
         form.setObjectName("EventCreateForm")
         form.form_saved.connect(self._on_form_saved)
         page_content = getattr(form, "page_content", None)

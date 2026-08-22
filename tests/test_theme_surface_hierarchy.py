@@ -80,24 +80,6 @@ class ThemeSurfaceHierarchyTests(unittest.TestCase):
     def test_kpi_tone_cards_use_status_palette_layers(self) -> None:
         pass
 
-    def test_tech_transfer_tri_state_cards_use_semantic_layers(self) -> None:
-        qss = get_theme_qss()
-        for state, bg_token, border_token in (
-            ("selected", "status_success_bg", "status_success_border"),
-            ("na", "status_na_bg", "status_na_border"),
-        ):
-            match = re.search(
-                rf'QFrame#techTransferCard\[state="{state}"\]\s*\{{(?P<body>.*?)\}}',
-                qss,
-                re.DOTALL,
-            )
-            self.assertIsNotNone(match, f"missing tech transfer state: {state}")
-            assert match is not None
-            body = match.group("body")
-            self.assertIn(f'background: {TOKENS[bg_token]};', body)
-            self.assertIn('border:', body)
-            self.assertIn(TOKENS[border_token], body)
-
     def test_status_badge_tones_and_ref_na_chip_are_styled(self) -> None:
         qss = get_theme_qss()
         for tone, bg_token, border_token in (
@@ -116,15 +98,6 @@ class ThemeSurfaceHierarchyTests(unittest.TestCase):
             body = match.group("body")
             self.assertIn(f'background: {TOKENS[bg_token]};', body)
             self.assertIn(f'border: 1px solid {TOKENS[border_token]};', body)
-
-        match = re.search(
-            r'QLabel\[role="refCardValue"\]\[status="na"\]\s*\{(?P<body>.*?)\}',
-            qss,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(match, 'missing selector: refCardValue status="na"')
-        assert match is not None
-        self.assertIn(f'background: {TOKENS["status_na_bg"]};', match.group("body"))
 
     def test_attachment_list_and_message_surfaces_are_styled(self) -> None:
         qss = get_theme_qss()

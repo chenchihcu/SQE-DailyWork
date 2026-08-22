@@ -21,8 +21,10 @@ from PySide6.QtWidgets import (
 from services.appearance_preferences_service import load_application_preferences
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
+    CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS,
     CLOSE_DIALOG_PROBLEM_MIN_HEIGHT,
     CLOSE_DIALOG_REF_MARGINS,
+    COMPACT_PAGE_SPACING,
     CONTROL_ROW_SPACING,
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -88,17 +90,12 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self._connect_dirty_signals()
 
     def _setup_ui(self):
-        self.problem_view = QTextEdit()
-        self.problem_view.setReadOnly(True)
-        self.problem_view.setPlainText(self.problem_desc)
-        self.problem_view.setPlaceholderText("原始問題描述唯讀區")
-        self.problem_view.setAccessibleName("原始問題描述")
-        self.problem_view.setMinimumHeight(CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
-
         self.improvement_input = QTextEdit()
         self.improvement_input.setPlaceholderText("請輸入改善內容（必填）")
         self.improvement_input.setAccessibleName("改善內容")
-        set_text_edit_visible_rows(self.improvement_input, 6)
+        set_text_edit_visible_rows(
+            self.improvement_input, CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS
+        )
 
         self.improvement_counter = QLabel(f"0 / {IMPROVEMENT_DESC_MAX_LEN}")
         self.improvement_counter.setProperty("role", "counterText")
@@ -152,27 +149,33 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         problem_ref_box.setProperty("role", "infoCard")
         pref_layout = QVBoxLayout(problem_ref_box)
         pref_layout.setContentsMargins(*CLOSE_DIALOG_REF_MARGINS)
-        pref_layout.setSpacing(4)
-        pref_lbl = QLabel("原始問題描述：")
+        pref_layout.setSpacing(COMPACT_PAGE_SPACING)
+        pref_lbl = QLabel("🔍 原始問題描述：")
         pref_lbl.setProperty("role", "meta")
         pref_text = QLabel(self.problem_desc.strip() if self.problem_desc else "（無問題描述）")
         pref_text.setWordWrap(True)
         pref_text.setProperty("role", "summary")
+        pref_text.setMaximumHeight(CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
         pref_layout.addWidget(pref_lbl)
         pref_layout.addWidget(pref_text)
         content_layout.addWidget(problem_ref_box)
 
+        improvement_field = QWidget()
+        improvement_field_layout = QVBoxLayout(improvement_field)
+        improvement_field_layout.setContentsMargins(0, 0, 0, 0)
+        improvement_field_layout.setSpacing(COMPACT_PAGE_SPACING)
+        improvement_field_layout.addWidget(self.improvement_input)
+        improvement_field_layout.addWidget(self.improvement_counter)
+
         form = QFormLayout()
         form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         form.setVerticalSpacing(FORM_VERTICAL_SPACING)
-        form.addRow(RequiredFieldLabel("改善內容"), self.improvement_input)
-        form.addRow("", self.improvement_counter)
+        form.addRow(RequiredFieldLabel("📝 改善內容"), improvement_field)
         form.addRow(RequiredFieldLabel("結案日期"), self.closed_at_input)
         form.addRow("結案驗證人", self.closed_by_input)
         content_layout.addLayout(form)
 
-        # 現場照片附件區
-        attach_label = QLabel("現場照片與改善佐證附件：")
+        attach_label = QLabel("📷 現場照片與改善佐證附件：")
         attach_label.setProperty("role", "meta")
         content_layout.addWidget(attach_label)
         content_layout.addWidget(self.attachment_editor)

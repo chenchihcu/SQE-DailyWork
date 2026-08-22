@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy
 from PySide6.QtCharts import QChartView, QPieSlice
 
+from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.ncr_stats_widget import NcrStatsWidget
 
 
@@ -85,7 +86,7 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         )
         self.assertEqual("倉庫不合格品", source_tag.text())
         self.assertIn("Top 5", source_tag.toolTip())
-        self.assertEqual("insight", widget.insight_label.property("role"))
+        self.assertFalse(hasattr(widget, "insight_label"))
         
         # 網格中必須有 4 個 QChartView 統計圖表
         chart_views = widget.findChildren(QChartView)
@@ -201,41 +202,20 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         self.assertEqual(("2026-02-01", "2026-04-30"), tuple(mock_sup.call_args.args[1:]))
         self.assertEqual(("2026-02-01", "2026-04-30"), tuple(mock_rs.call_args.args[1:]))
 
-    def test_insights_generation_with_empty_and_normal_data(self) -> None:
-        # 1. 測試空數據
+    def test_zero_noise_stats_surface_has_no_insight_widgets(self) -> None:
         widget = self._build_widget()
-        self.assertIn("暫無可用數據以生成管理建議", widget.insight_label.text())
-        
-        # 2. 測試正常數據
-        suppliers = [
-            {"supplier_name": "供應商A", "case_count": 5, "total_qty": 50},
-            {"supplier_name": "供應商B", "case_count": 3, "total_qty": 30},
-        ]
-        products = [
-            {"product_name": "產品X", "case_count": 4, "total_qty": 40},
-        ]
-        scrap_rework = [
-            {"disposition": "報廢", "case_count": 5, "total_qty": 50},
-            {"disposition": "重工", "case_count": 3, "total_qty": 30},
-        ]
-        return_slips = [
-            {"return_slip_type": "廠內退料", "case_count": 6, "total_qty": 60},
-            {"return_slip_type": "未註明", "case_count": 2, "total_qty": 40},
-        ]
-        
+        self.assertFalse(hasattr(widget, "insight_label"))
+        self.assertFalse(hasattr(widget, "info_banner"))
+
         widget_with_data = self._build_widget(
-            suppliers=suppliers,
-            products=products,
-            scrap_rework=scrap_rework,
-            return_slips=return_slips,
+            suppliers=[{"supplier_name": "供應商A", "total_qty": 50}],
+            products=[{"product_name": "產品X", "total_qty": 40}],
+            scrap_rework=[{"disposition": "報廢", "total_qty": 50}],
+            return_slips=[{"return_slip_type": "廠內退料", "total_qty": 60}],
         )
-        insights = widget_with_data.insight_label.text()
-        self.assertIn("供應商A", insights)
-        self.assertIn("產品X", insights)
-        self.assertIn("報廢", insights)
-        self.assertIn("廠內退料", insights)
-        self.assertIn("未註明", insights)
-        self.assertIn("40 件", insights)
+        self.assertFalse(hasattr(widget_with_data, "insight_label"))
+        chart_views = widget_with_data.findChildren(QChartView)
+        self.assertEqual(4, len(chart_views))
 
     def test_empty_ncr_stats_branch_forces_layout_refresh(self) -> None:
         widget = NcrStatsWidget(lazy_load=True)
@@ -254,7 +234,11 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         self.assertGreaterEqual(mock_activate.call_count, 1)
         self.assertGreaterEqual(mock_layout_update.call_count, 1)
         self.assertGreaterEqual(mock_widget_update.call_count, 1)
-        self.assertIn("暫無可用數據以生成管理建議", widget.insight_label.text())
+        empty_titles = {
+            child._title_label.text()
+            for child in widget.findChildren(EmptyStateWidget)
+        }
+        self.assertIn("暫無數據", empty_titles)
 
     def test_error_ncr_stats_branch_forces_layout_refresh(self) -> None:
         widget = NcrStatsWidget(lazy_load=True)

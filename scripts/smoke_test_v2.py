@@ -291,8 +291,9 @@ def main(argv: list[str] | None = None) -> int:
 
     products_for_a = event_service.list_active_products_for_supplier(supplier_a_id)
     products_for_a_ids = {row["id"] for row in products_for_a}
-    if global_product_id not in products_for_a_ids:
-        raise RuntimeError("Expected global product in supplier product options")
+    # Strict supplier scoping: NULL supplier_id (global) products are excluded.
+    if global_product_id in products_for_a_ids:
+        raise RuntimeError("Unexpected global product in supplier-scoped options")
     if supplier_a_product_id not in products_for_a_ids:
         raise RuntimeError("Expected supplier-specific product in supplier options")
     if supplier_b_product_id in products_for_a_ids:
@@ -317,8 +318,8 @@ def main(argv: list[str] | None = None) -> int:
             "product_id": supplier_a_product_id,
             "problem_desc": "Smoke anomaly with product",
             "category": "測試",
+            "anomaly_source": "訪廠／稽核",
             "product_lot_no": "LOT-NEW-001",
-            "outsource_work_order": "WO-NEW-001",
             "batch_qty": 321,
             "sync_visit": True,
             "visit_summary": "Smoke linked visit",
@@ -358,7 +359,6 @@ def main(argv: list[str] | None = None) -> int:
             "summary": "visit with product",
             "work_order_no": "WO-NOPRODUCT",
             "production_qty": 100,
-            "tech_transfer": True,
         }
     )
     visit_with_product_row = _get_visit_row(visit_with_product_id)

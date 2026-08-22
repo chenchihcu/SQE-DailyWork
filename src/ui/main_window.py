@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -397,6 +398,13 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(0)
 
         self._header_bar = PageHeaderBar()
+        self._global_search_button = QPushButton("搜尋")
+        self._global_search_button.setObjectName("GlobalSearchHeaderButton")
+        self._global_search_button.setProperty("variant", "secondary")
+        self._global_search_button.setAccessibleName("全域搜尋")
+        self._global_search_button.setToolTip("開啟全域搜尋（Ctrl+K）")
+        self._global_search_button.clicked.connect(self.open_global_search)
+        self._header_bar.add_action_widget(self._global_search_button)
         content_layout.addWidget(self._header_bar)
 
         self.stack = QStackedWidget()
@@ -524,7 +532,12 @@ class MainWindow(QMainWindow):
             else:
                 real_widget = widget
 
-            if page_index in (STATS_PAGE_INDEX, NCR_STATS_PAGE_INDEX):
+            if page_index in (
+                STATS_PAGE_INDEX,
+                NCR_STATS_PAGE_INDEX,
+                SUPPLIER_OVERVIEW_PAGE_INDEX,
+                SUPPLIER_360_PAGE_INDEX,
+            ):
                 should_refresh = hasattr(real_widget, "refresh_data")
             elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
                 should_refresh = hasattr(real_widget, "refresh_data")
@@ -710,11 +723,15 @@ class MainWindow(QMainWindow):
                 page.reset_form()
         self._switch_primary_page(ANOMALY_CREATE_PAGE_INDEX)
 
-    def open_new_visit_create_page(self):
+    def open_new_visit_create_page(self, initial_data: dict | None = None):
         if not self._ensure_has_active_suppliers():
             return
-        if hasattr(self, "new_visit_page") and hasattr(self.new_visit_page, "reset_form"):
-            self.new_visit_page.reset_form()
+        if hasattr(self, "new_visit_page"):
+            page = self.new_visit_page
+            if initial_data and hasattr(page, "initial_data"):
+                page.initial_data = dict(initial_data)
+            if hasattr(page, "reset_form"):
+                page.reset_form()
         self._switch_primary_page(VISIT_CREATE_PAGE_INDEX)
 
     def open_new_anomaly_dialog(self):
@@ -737,6 +754,10 @@ class MainWindow(QMainWindow):
     def open_warehouse_pending_material(self) -> None:
         """切換至嵌入式倉庫待處理原物料頁（同一視窗內）。"""
         self._switch_primary_page(NCR_PENDING_MATERIAL_PAGE_INDEX)
+
+    def open_warehouse_history(self) -> None:
+        """切換至嵌入式倉庫歷史紀錄頁（同一視窗內）。"""
+        self._switch_primary_page(NCR_TRACE_PAGE_INDEX)
 
     def open_warehouse_unclassified_pending(self) -> None:
         """Open migrated warehouse records that still need a formal processing line."""

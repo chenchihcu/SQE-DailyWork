@@ -82,8 +82,6 @@ class VisitDetailDialog(QDialog):
         lay.setSpacing(CONTROL_ROW_SPACING)
 
         lay.addWidget(self._build_basic_info(v))
-        lay.addWidget(self._build_tech_section(v))
-
         summary = (v.get("summary") or "").strip()
         if summary:
             lay.addWidget(self._build_summary_section(summary))
@@ -120,44 +118,6 @@ class VisitDetailDialog(QDialog):
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(2, 0)
         grid.setColumnStretch(3, 1)
-        return frame
-
-    def _build_tech_section(self, v: dict) -> QFrame:
-        frame = self._card_frame()
-        lay = QVBoxLayout(frame)
-        lay.setContentsMargins(*DIALOG_CARD_MARGINS)
-        lay.setSpacing(CONTROL_ROW_SPACING)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(CONTROL_ROW_SPACING)
-        top_row.addWidget(self._meta_label("技轉狀態"))
-        transferred = bool(v.get("tech_transfer", False))
-        top_row.addWidget(self._status_badge("已技轉" if transferred else "未技轉", transferred))
-        top_row.addStretch()
-        lay.addLayout(top_row)
-
-        rule = QFrame()
-        rule.setProperty("role", "separator")
-        rule.setFixedHeight(1)
-        lay.addWidget(rule)
-
-        items_grid = QGridLayout()
-        items_grid.setHorizontalSpacing(12)
-        items_grid.setVerticalSpacing(4)
-        items = [
-            ("作業標準書",    "tech_transfer_doc"),
-            ("載具要求",      "carrier_requirement"),
-            ("Underfill 要求", "dispensing_process"),
-            ("電訊測試",      "functional_test"),
-            ("包裝規範",      "packaging_requirement"),
-        ]
-        for i, (label, key) in enumerate(items):
-            row, col = divmod(i, 2)
-            has_it = bool(v.get(key, False))
-            items_grid.addWidget(self._item_row(label, has_it), row, col)
-        items_grid.setColumnStretch(0, 1)
-        items_grid.setColumnStretch(1, 1)
-        lay.addLayout(items_grid)
         return frame
 
     def _build_summary_section(self, summary: str) -> QFrame:

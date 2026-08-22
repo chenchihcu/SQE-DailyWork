@@ -316,10 +316,8 @@ def _migrate_visits(
                 """
                 INSERT INTO visits(
                     id, visit_date, supplier_id, product_id, product_name, product_stage, summary, work_order_no,
-                    production_qty, tech_transfer, tech_transfer_doc, carrier_requirement,
-                    dispensing_process, functional_test, packaging_requirement,
-                    status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, '已完成', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    production_qty, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '已完成', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
                 (
                     str(_pick(row, "id", default="")).strip() or _new_id(),
@@ -331,9 +329,6 @@ def _migrate_visits(
                     str(_pick(row, "audit_note", "summary", "note", default="")).strip(),
                     str(_pick(row, "work_order_no", "work_order", default="")).strip(),
                     _as_int(_pick(row, "production_qty", default=0)),
-                    _as_bool_int(
-                        _pick(row, "tech_transfer_completed", "tech_transfer_done", default=0)
-                    ),
                 ),
             )
         except Exception as exc:

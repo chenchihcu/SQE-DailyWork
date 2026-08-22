@@ -332,6 +332,24 @@ class _StatsChartMixin:
 
         return chart_view
 
+    def _build_process_keyword_pareto_chart(self, rows: list[dict]) -> QChartView | None:
+        adapted = [
+            {
+                "category": row.get("keyword") or "-",
+                "count": row.get("count", 0),
+                "percent": row.get("percent", 0.0),
+                "cumulative_percent": row.get("cumulative_percent", 0.0),
+                "rank": row.get("rank", 0),
+            }
+            for row in rows
+        ]
+        chart_view = self._build_category_pareto_chart(adapted)
+        if chart_view is not None and chart_view.chart() is not None:
+            chart_view.chart().setTitle(
+                f"SMT 製程關鍵詞柏拉圖分析 ({self._range_text()})\n依關鍵詞出現次數統計"
+            )
+        return chart_view
+
     def _on_category_pareto_hovered(self, status: bool, index: int, data: list[dict]):
         if not status or index < 0 or index >= len(data):
             QToolTip.hideText()

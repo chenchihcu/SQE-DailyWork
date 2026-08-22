@@ -8,6 +8,14 @@ from datetime import date
 from database import connection as _connection
 from database import repository
 
+from services.appearance_preferences_service import load_application_preferences
+from services.anomaly_trace_contract import normalize_anomaly_source
+from services.anomaly_trace_validator import (
+    build_trace_patterns,
+    validate_anomaly_trace_payload,
+)
+from services.process_keyword_codec import validate_process_keywords
+
 from ._anomaly_folder import relocate_anomaly_folder
 from ._anomaly_markdown import sync_anomaly_markdown_by_id, write_anomaly_markdown
 from ._helpers import (
@@ -17,6 +25,27 @@ from ._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_process_keywords(payload: dict) -> str:
+    if "process_keywords" not in payload:
+        return ""
+    return validate_process_keywords(payload.get("process_keywords", ""))
+
+
+def _resolve_trace_fields(
+    payload: dict,
+    *,
+    allow_legacy_blank_source: bool = False,
+) -> dict[str, str]:
+    patterns = build_trace_patterns(load_application_preferences())
+    return validate_anomaly_trace_payload(
+        anomaly_source=payload.get("anomaly_source", ""),
+        supplier_id=payload.get("supplier_id", ""),
+        payload=payload,
+        patterns=patterns,
+        allow_legacy_blank_source=allow_legacy_blank_source,
+    )
 
 
 class AnomalyNumberResult(str):
@@ -46,6 +75,43 @@ def _write_snapshot_with_warning(detail: dict, *, action: str) -> list[str]:
     return []
 
 
+def _anomaly_write_fields(
+    payload: dict,
+    *,
+    anomaly_date: str,
+    supplier_id: str,
+    problem_desc: str,
+    product_id: str,
+    product_name: str,
+    anomaly_source: str,
+    trace_fields: dict[str, str],
+) -> dict:
+    return {
+        "anomaly_date": anomaly_date,
+        "supplier_id": supplier_id,
+        "problem_desc": problem_desc,
+        "category": payload.get("category", ""),
+        "product_lot_no": payload.get("product_lot_no", ""),
+        "product_id": product_id,
+        "product_name": product_name,
+        "anomaly_source": anomaly_source,
+        "material_receipt_no": trace_fields["material_receipt_no"],
+        "internal_work_order_no": trace_fields["internal_work_order_no"],
+        "outsource_work_order": trace_fields["outsource_work_order"],
+        "outsource_receipt_no": trace_fields["outsource_receipt_no"],
+        "batch_qty": payload.get("batch_qty", 0),
+        "pending_items": payload.get("pending_items", ""),
+        "responsible_person": payload.get("responsible_person", ""),
+        "due_date": payload.get("due_date", ""),
+        "rc_supplier_inventory": payload.get("rc_supplier_inventory", "unconfirmed"),
+        "rc_supplier_wip": payload.get("rc_supplier_wip", "unconfirmed"),
+        "rc_in_transit": payload.get("rc_in_transit", "unconfirmed"),
+        "rc_internal_inventory": payload.get("rc_internal_inventory", "unconfirmed"),
+        "quality_report_required": payload.get("quality_report_required"),
+        "process_keywords": _resolve_process_keywords(payload),
+    }
+
+
 def create_anomaly(payload: dict) -> str:
     problem_desc = (payload.get("problem_desc") or "").strip()
     if not problem_desc:
@@ -63,26 +129,24 @@ def create_anomaly(payload: dict) -> str:
             product_id=product_id,
             require_active=True,
         )
+        trace_fields = _resolve_trace_fields(
+            payload,
+            allow_legacy_blank_source=not normalize_anomaly_source(
+                payload.get("anomaly_source", "")
+            ),
+        )
         anomaly_no = repository.create_anomaly(
             conn,
-            anomaly_date=anomaly_date,
-            supplier_id=supplier_id,
-            problem_desc=problem_desc,
-            category=payload.get("category", ""),
-            product_lot_no=payload.get("product_lot_no", ""),
-            product_id=product_id,
-            product_name=product_name,
-            outsource_work_order=payload.get("outsource_work_order", ""),
-            batch_qty=payload.get("batch_qty", 0),
-            pending_items=payload.get("pending_items", ""),
-            responsible_person=payload.get("responsible_person", ""),
-            due_date=payload.get("due_date", ""),
-            rc_supplier_inventory=payload.get("rc_supplier_inventory", "unconfirmed"),
-            rc_supplier_wip=payload.get("rc_supplier_wip", "unconfirmed"),
-            rc_in_transit=payload.get("rc_in_transit", "unconfirmed"),
-            rc_internal_inventory=payload.get("rc_internal_inventory", "unconfirmed"),
-            is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
-            quality_report_required=payload.get("quality_report_required"),
+            **_anomaly_write_fields(
+                payload,
+                anomaly_date=anomaly_date,
+                supplier_id=supplier_id,
+                problem_desc=problem_desc,
+                product_id=product_id,
+                product_name=product_name,
+                anomaly_source=normalize_anomaly_source(payload.get("anomaly_source", "")),
+                trace_fields=trace_fields,
+            ),
         )
         row = conn.execute(
             "SELECT id FROM anomalies WHERE anomaly_no = ?", (anomaly_no,)
@@ -114,29 +178,27 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             product_id=product_id,
             require_active=True,
         )
+        trace_fields = _resolve_trace_fields(
+            payload,
+            allow_legacy_blank_source=not normalize_anomaly_source(
+                payload.get("anomaly_source", "")
+            ),
+        )
         result = repository.create_anomaly_with_visit_link(
             conn,
-            anomaly_date=anomaly_date,
-            supplier_id=supplier_id,
-            problem_desc=problem_desc,
-            category=payload.get("category", ""),
-            product_lot_no=payload.get("product_lot_no", ""),
-            product_id=product_id,
-            product_name=product_name,
-            outsource_work_order=payload.get("outsource_work_order", ""),
-            batch_qty=payload.get("batch_qty", 0),
+            **_anomaly_write_fields(
+                payload,
+                anomaly_date=anomaly_date,
+                supplier_id=supplier_id,
+                problem_desc=problem_desc,
+                product_id=product_id,
+                product_name=product_name,
+                anomaly_source=normalize_anomaly_source(payload.get("anomaly_source", "")),
+                trace_fields=trace_fields,
+            ),
             visit_id=visit_id,
             sync_visit=sync_visit,
             visit_summary=visit_summary,
-            pending_items=payload.get("pending_items", ""),
-            responsible_person=payload.get("responsible_person", ""),
-            due_date=payload.get("due_date", ""),
-            rc_supplier_inventory=payload.get("rc_supplier_inventory", "unconfirmed"),
-            rc_supplier_wip=payload.get("rc_supplier_wip", "unconfirmed"),
-            rc_in_transit=payload.get("rc_in_transit", "unconfirmed"),
-            rc_internal_inventory=payload.get("rc_internal_inventory", "unconfirmed"),
-            is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
-            quality_report_required=payload.get("quality_report_required"),
             anomaly_no=payload.get("anomaly_no"),
             source_defect_no=payload.get("source_defect_no", ""),
         )
@@ -181,27 +243,26 @@ def update_anomaly(anomaly_id: str, payload: dict) -> dict:
             supplier_id=supplier_id,
             product_id=product_id,
         )
+        existing_source = normalize_anomaly_source(existing.get("anomaly_source", ""))
+        requested_source = normalize_anomaly_source(payload.get("anomaly_source", ""))
+        allow_legacy_blank_source = not requested_source and not existing_source
+        trace_fields = _resolve_trace_fields(
+            payload,
+            allow_legacy_blank_source=allow_legacy_blank_source,
+        )
         repository.update_anomaly(
             conn,
             anomaly_id=anomaly_key,
-            anomaly_date=anomaly_date,
-            supplier_id=supplier_id,
-            problem_desc=problem_desc,
-            category=payload.get("category", ""),
-            product_lot_no=payload.get("product_lot_no", ""),
-            product_id=product_id,
-            product_name=product_name,
-            outsource_work_order=payload.get("outsource_work_order", ""),
-            batch_qty=payload.get("batch_qty", 0),
-            pending_items=payload.get("pending_items", ""),
-            responsible_person=payload.get("responsible_person", ""),
-            due_date=payload.get("due_date", ""),
-            rc_supplier_inventory=payload.get("rc_supplier_inventory", "unconfirmed"),
-            rc_supplier_wip=payload.get("rc_supplier_wip", "unconfirmed"),
-            rc_in_transit=payload.get("rc_in_transit", "unconfirmed"),
-            rc_internal_inventory=payload.get("rc_internal_inventory", "unconfirmed"),
-            is_tech_transfer=bool(payload.get("is_tech_transfer", False)),
-            quality_report_required=payload.get("quality_report_required"),
+            **_anomaly_write_fields(
+                payload,
+                anomaly_date=anomaly_date,
+                supplier_id=supplier_id,
+                problem_desc=problem_desc,
+                product_id=product_id,
+                product_name=product_name,
+                anomaly_source=requested_source or existing_source,
+                trace_fields=trace_fields,
+            ),
             anomaly_no=payload.get("anomaly_no"),
         )
         conn.commit()
@@ -249,16 +310,6 @@ def preview_anomaly_no(anomaly_date: str | None = None) -> str:
     target_date = anomaly_date or date.today().isoformat()
     with _connection.get_connection() as conn:
         return repository.preview_anomaly_no(conn, target_date)
-
-
-def get_latest_tech_transfer_for_supplier(supplier_id: str) -> dict | None:
-    """查詢指定供應商最新一筆含技轉資料的訪廠紀錄，做為新增異常的「參考資料」。
-    若查無技轉紀錄則回傳 None。"""
-    normalized = (supplier_id or "").strip()
-    if not normalized:
-        return None
-    with _connection.get_connection() as conn:
-        return repository.get_latest_tech_transfer_for_supplier(conn, normalized)
 
 
 def get_latest_visit_for_supplier_on_date(

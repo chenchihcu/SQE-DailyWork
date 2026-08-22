@@ -23,6 +23,23 @@ python main.py
 .\run_app.bat
 ```
 
+### Windows packaged build (1.1.0+)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```
+
+The build produces `dist\SQE_DailyWork\SQE_DailyWork.exe` and a portable zip at
+`dist\SQE_DailyWork-win64.zip`. Runtime data (`data\`, `Outputs\`, `logs\`)
+lives beside the executable in the distribution folder. To migrate an existing
+installation, copy your `data\` and `Outputs\` folders into the same directory
+as `SQE_DailyWork.exe`. The installer does not embed a production database.
+
+Requirements: Windows 10/11 x64 with Traditional Chinese fonts installed.
+
+Portable install QA: `scripts\portable_install_smoke.ps1` (unpack zip → scratch DB
+smoke). Manual checklist: `docs\release\portable-install-checklist.md`.
+
 The repository root is the application root. There is no outer launcher layer,
 no separate launcher window, and no standalone NCR main window.
 
@@ -34,11 +51,12 @@ no separate launcher window, and no standalone NCR main window.
   for `待處理委外加工`, `待處理原物料`, and `未分流待整理`; each shortcut only reads
   existing services and routes through existing navigation.
 - Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (新增訪廠 /
-  新增異常 / 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); and 系統 (基礎資料 / 顯示設定). The former
-  異常一覽表 / 訪廠紀錄一覽表 / 異常已結案查詢 entries are first-class sidebar
-  scope rows that drive the single 事件管理 page.
-- Supplier event pending work surfaces as the 單獨異常 sidebar badge. Warehouse
+  新增異常 / 事件管理 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); 供應商管理
+  (供應商總覽 / 基礎資料); 系統 (顯示設定). 事件管理頁內以 scope chips 切換
+  單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案；側欄 `事件管理` badge 為全部待處理異常總數。
+- Supplier event pending work surfaces on the `事件管理` sidebar badge (all open
+  supplier anomalies). Per-scope counts appear on the event page chips. Warehouse
   nonconforming-product pending work surfaces as two separate badges: one for
   `status <> '已結案' AND processing_line = '委外加工'`, and one for
   `status <> '已結案' AND processing_line = '原物料'`. `未分流` is shown as a
@@ -49,7 +67,7 @@ no separate launcher window, and no standalone NCR main window.
   建立用 modal；建立頁以共用 `CreateWorkflowShell` 呈現同一份
   `NewAnomalyDialog`／`NewVisitDialog` 欄位與驗證邏輯，清單中的編輯與預覽仍使用其
   固定 footer 的 modal 呈現。
-- `新增訪廠` / 編輯訪廠使用同一套表單內容，直接呈現基本資訊與進階技轉欄位；
+- `新增訪廠` / 編輯訪廠使用同一套表單內容，以縱向「基本資訊」與「活動摘要」卡片呈現；
   表單不再提供訪廠缺失輸入。編輯舊訪廠時會保留既有缺失與產品區段資料，
   避免只更新一般欄位便清除歷史紀錄。
 - 正式供應商異常由 `新增異常` 流程建立；既有 `visit_defect_notes` 仍保留於資料庫、

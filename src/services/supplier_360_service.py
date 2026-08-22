@@ -3,6 +3,21 @@
 from __future__ import annotations
 
 from database import connection as _connection
+from database import repository
+
+
+SCORECARD_GRADE_A_ON_TIME_RATE = 0.9
+SCORECARD_GRADE_A_NCR_MAX = 2
+SCORECARD_GRADE_B_ON_TIME_RATE = 0.75
+SCORECARD_GRADE_B_NCR_MAX = 5
+
+
+def _grade_from_metrics(on_time_rate: float, ncr_count: int) -> str:
+    if on_time_rate >= SCORECARD_GRADE_A_ON_TIME_RATE and ncr_count <= SCORECARD_GRADE_A_NCR_MAX:
+        return "A"
+    if on_time_rate >= SCORECARD_GRADE_B_ON_TIME_RATE and ncr_count <= SCORECARD_GRADE_B_NCR_MAX:
+        return "B"
+    return "C"
 
 
 def _supplier(conn, supplier_id: str) -> dict | None:
@@ -109,25 +124,103 @@ def list_supplier_timeline(supplier_id: str, *, limit: int = 50) -> list[dict]:
         return rows[: max(1, int(limit))]
 
 
-def list_supplier_rows() -> list[dict]:
+def list_supplier_rows(*, view_scope: str = "open_anomaly") -> list[dict]:
+    """Return active suppliers with one batched quality summary per row.
+
+    ``open_anomaly`` is the operational default because this page is an
+    anomaly-work view.  The other scopes are available for explicit
+    classification in the page filter.
+    """
+    scope_filters = {
+        "open_anomaly": "COALESCE(a.open_anomaly_count, 0) > 0",
+        "any_anomaly": "COALESCE(a.anomaly_count, 0) > 0",
+        "all": "1 = 1",
+    }
+    try:
+        scope_filter = scope_filters[view_scope]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported supplier overview scope: {view_scope}") from exc
+
     with _connection.get_connection() as conn:
-        suppliers = [
-            dict(row)
-            for row in conn.execute(
-                "SELECT * FROM suppliers WHERE is_active = 1 ORDER BY supplier_name"
-            ).fetchall()
-        ]
-    return [
-        {
-            **supplier,
-            **{
-                key: value
-                for key, value in get_supplier_summary(str(supplier["id"])).items()
-                if key != "supplier"
-            },
+        defect_columns = {
+            str(item["name"])
+            for item in conn.execute("PRAGMA table_info(defect_records)").fetchall()
         }
-        for supplier in suppliers
-    ]
+        has_supplier_id = "supplier_id" in defect_columns
+        defect_key = "d.supplier_id" if has_supplier_id else "d.supplier_name"
+        defect_join_key = "s.id" if has_supplier_id else "s.supplier_name"
+        row = conn.execute(
+            f"""
+            WITH latest_open_anomaly AS (
+                SELECT
+                    supplier_id,
+                    anomaly_no AS latest_anomaly_no,
+                    anomaly_date AS latest_anomaly_date,
+                    category AS latest_anomaly_category,
+                    problem_desc AS latest_anomaly_desc,
+                    due_date AS latest_anomaly_due_date,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY supplier_id
+                        ORDER BY anomaly_date DESC, created_at DESC, id DESC
+                    ) AS row_number
+                FROM anomalies
+                WHERE status = '待處理'
+            )
+            SELECT
+                s.*,
+                COALESCE(a.anomaly_count, 0) AS anomaly_count,
+                COALESCE(a.open_anomaly_count, 0) AS open_anomaly_count,
+                COALESCE(a.overdue_anomaly_count, 0) AS overdue_anomaly_count,
+                COALESCE(d.ncr_90d_count, 0) AS ncr_90d_count,
+                v.latest_visit_date,
+                la.latest_anomaly_no,
+                la.latest_anomaly_date,
+                la.latest_anomaly_category,
+                la.latest_anomaly_desc,
+                la.latest_anomaly_due_date
+            FROM suppliers AS s
+            LEFT JOIN (
+                SELECT
+                    supplier_id,
+                    COUNT(*) AS anomaly_count,
+                    SUM(CASE WHEN status = '待處理' THEN 1 ELSE 0 END)
+                        AS open_anomaly_count,
+                    SUM(
+                        CASE
+                            WHEN status = '待處理'
+                                AND due_date <> ''
+                                AND due_date < date('now', 'localtime')
+                            THEN 1 ELSE 0
+                        END
+                    ) AS overdue_anomaly_count
+                FROM anomalies
+                GROUP BY supplier_id
+            ) AS a ON a.supplier_id = s.id
+            LEFT JOIN (
+                SELECT
+                    {defect_key} AS supplier_key,
+                    SUM(
+                        CASE
+                            WHEN event_date >= date('now', 'localtime', '-90 day')
+                            THEN 1 ELSE 0
+                        END
+                    ) AS ncr_90d_count
+                FROM defect_records AS d
+                GROUP BY {defect_key}
+            ) AS d ON d.supplier_key = {defect_join_key}
+            LEFT JOIN (
+                SELECT supplier_id, MAX(visit_date) AS latest_visit_date
+                FROM visits
+                GROUP BY supplier_id
+            ) AS v ON v.supplier_id = s.id
+            LEFT JOIN latest_open_anomaly AS la
+                ON la.supplier_id = s.id AND la.row_number = 1
+            WHERE s.is_active = 1
+              AND {scope_filter}
+            ORDER BY s.supplier_name COLLATE NOCASE
+            """
+        ).fetchall()
+        return [dict(item) for item in row]
 
 
 def list_supplier_anomalies(supplier_id: str) -> list[dict]:
@@ -136,7 +229,7 @@ def list_supplier_anomalies(supplier_id: str) -> list[dict]:
             dict(row)
             for row in conn.execute(
                 f"""
-                SELECT anomaly_no, anomaly_date, problem_desc, status,
+                SELECT anomaly_no, anomaly_date, category, problem_desc, status,
                        responsible_person, due_date, closed_at
                 FROM anomalies
                 WHERE supplier_id = ?
@@ -226,12 +319,7 @@ def get_supplier_scorecard(
     on_time_rate = (int(anomaly["on_time"] or 0) / closed) if closed else 1.0
     anomaly_count = int(anomaly["count"] or 0)
     ncr_count = int(ncr["count"] or 0)
-    if on_time_rate >= 0.9 and ncr_count <= 2:
-        grade = "A"
-    elif on_time_rate >= 0.75 and ncr_count <= 5:
-        grade = "B"
-    else:
-        grade = "C"
+    grade = _grade_from_metrics(on_time_rate, ncr_count)
     return {
         "grade": grade,
         "anomaly_count": anomaly_count,
@@ -242,3 +330,26 @@ def get_supplier_scorecard(
         "start_date": start_date,
         "end_date": end_date,
     }
+
+
+def list_supplier_contacts(supplier_id: str) -> list[dict]:
+    sid = str(supplier_id or "").strip()
+    if not sid:
+        return []
+    with _connection.get_connection() as conn:
+        return repository.list_supplier_contacts(conn, sid)
+
+
+def list_supplier_scorecards(start_date: str, end_date: str) -> dict[str, str]:
+    with _connection.get_connection() as conn:
+        supplier_ids = [
+            str(row["id"])
+            for row in conn.execute(
+                "SELECT id FROM suppliers WHERE is_active = 1"
+            ).fetchall()
+        ]
+    grades: dict[str, str] = {}
+    for supplier_id in supplier_ids:
+        scorecard = get_supplier_scorecard(supplier_id, start_date, end_date)
+        grades[supplier_id] = str(scorecard.get("grade") or "—")
+    return grades

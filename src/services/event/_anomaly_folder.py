@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app_paths import anomaly_folder_root
 
-ANOMALY_FOLDER_ROOT = (
-    Path(__file__).resolve().parents[3] / "Outputs" / "ncr number file"
-)
+
+ANOMALY_FOLDER_ROOT = anomaly_folder_root()
 _INVALID_WINDOWS_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 

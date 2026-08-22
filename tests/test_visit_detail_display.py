@@ -75,12 +75,6 @@ class VisitDetailDisplayTests(unittest.TestCase):
                     "supplier_name": "供應商-A",
                     "work_order_no": "WO-001",
                     "production_qty": 120,
-                    "tech_transfer": True,
-                    "tech_transfer_doc": True,
-                    "carrier_requirement": False,
-                    "dispensing_process": True,
-                    "functional_test": False,
-                    "packaging_requirement": True,
                     "summary": "摘要內容",
                 }
             )
@@ -97,18 +91,12 @@ class VisitDetailDisplayTests(unittest.TestCase):
         ]
         self.assertEqual([], stylesheet_warnings, "\n".join(messages))
 
-    def test_open_visit_detail_shows_all_transfer_items(self) -> None:
+    def test_open_visit_detail_omits_retired_transfer_section(self) -> None:
         visit_detail = {
             "visit_date": "2026-04-18",
             "supplier_name": "供應商-A",
             "work_order_no": "WO-001",
             "production_qty": 120,
-            "tech_transfer": True,
-            "tech_transfer_doc": True,
-            "carrier_requirement": False,
-            "dispensing_process": True,
-            "functional_test": False,
-            "packaging_requirement": True,
             "summary": "摘要內容",
         }
 
@@ -137,17 +125,8 @@ class VisitDetailDisplayTests(unittest.TestCase):
         self.assertEqual(1, len(captured_dialogs))
         dialog = captured_dialogs[0]
         dialog_texts = [label.text().strip() for label in dialog.findChildren(QLabel)]
-        self.assertIn("已技轉", dialog_texts)
-        self.assertEqual(
-            {
-                "作業標準書": "有",
-                "載具要求": "沒有",
-                "Underfill 要求": "有",
-                "電訊測試": "沒有",
-                "包裝規範": "有",
-            },
-            self._visit_detail_item_values(dialog),
-        )
+        self.assertNotIn("已技轉", dialog_texts)
+        self.assertNotIn("技轉狀態", dialog_texts)
 
 
 if __name__ == "__main__":

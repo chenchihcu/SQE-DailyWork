@@ -23,26 +23,6 @@ STAGE_SYNC_SCOPE_ALL_HISTORY = "all_history_and_future"
 _SUPPLIER_SUFFIX_PATTERN = re.compile(r"(?:-\d+|-[0-9a-fA-F]{8}(?:-受保護)?)$")
 _STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# ── Tech-transfer constants ────────────────────────────────────────────────
-VISIT_TECH_TRANSFER_ITEM_COLUMNS = (
-    "tech_transfer_doc",
-    "carrier_requirement",
-    "dispensing_process",
-    "functional_test",
-    "packaging_requirement",
-)
-TECH_TRANSFER_STATE_YES = "yes"
-TECH_TRANSFER_STATE_NO = "no"
-TECH_TRANSFER_STATE_NA = "na"
-TECH_TRANSFER_STATE_VALUES: tuple[str, ...] = (
-    TECH_TRANSFER_STATE_YES,
-    TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_NA,
-)
-VISIT_TECH_TRANSFER_STATE_COLUMNS: tuple[str, ...] = tuple(
-    f"{col}_state" for col in VISIT_TECH_TRANSFER_ITEM_COLUMNS
-)
-
 # ── Event / defect constants ───────────────────────────────────────────────
 EVENT_SCOPE_VISIT_ONLY = "VISIT_ONLY"
 EVENT_SCOPE_VISIT_WITH_ANOMALY = "VISIT_WITH_ANOMALY"
@@ -300,43 +280,6 @@ def _normalize_product_stage_for_read(value: object) -> str:
         )
     except ValueError:
         return PRODUCT_STAGE_MASS_PRODUCTION
-
-
-# ── Tech-transfer helpers ──────────────────────────────────────────────────
-def _normalize_tech_transfer_state(value: object) -> str:
-    text = str(value or "").strip().lower()
-    if text in TECH_TRANSFER_STATE_VALUES:
-        return text
-    return TECH_TRANSFER_STATE_NO
-
-
-def _resolve_tech_transfer_states(
-    *,
-    states: dict | None,
-    booleans: dict[str, bool],
-) -> dict[str, str]:
-    """Compute final state-strings per item.
-
-    `states` (if a dict) is canonical and may carry 'yes' / 'no' / 'na'. Missing
-    keys (or invalid values) fall back to the matching boolean: True → 'yes',
-    False → 'no'. This lets older callers that only pass booleans keep working.
-    """
-    result: dict[str, str] = {}
-    for key in VISIT_TECH_TRANSFER_ITEM_COLUMNS:
-        explicit: str | None = None
-        if isinstance(states, dict) and key in states:
-            candidate = str(states[key] or "").strip().lower()
-            if candidate in TECH_TRANSFER_STATE_VALUES:
-                explicit = candidate
-        if explicit is not None:
-            result[key] = explicit
-        else:
-            result[key] = (
-                TECH_TRANSFER_STATE_YES
-                if booleans.get(key)
-                else TECH_TRANSFER_STATE_NO
-            )
-    return result
 
 
 # ── Migration meta helpers ─────────────────────────────────────────────────

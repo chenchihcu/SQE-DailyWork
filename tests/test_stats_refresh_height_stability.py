@@ -7,7 +7,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEvent, QCoreApplication
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 from PySide6.QtCharts import QChartView
 
 from ui.theme import apply_app_theme
@@ -141,8 +141,12 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
 
         self.assertGreaterEqual(mock_activate.call_count, 1)
         self.assertGreaterEqual(mock_layout_update.call_count, 1)
-        self.assertGreaterEqual(mock_widget_update.call_count, 1)
-        self.assertIn("載入統計資料時發生錯誤", widget.insight_label.text())
+        error_labels = [
+            label.text()
+            for label in widget.findChildren(QLabel)
+            if label.property("role") == "errorText"
+        ]
+        self.assertTrue(any("錯誤" in text for text in error_labels))
 
 
 if __name__ == "__main__":

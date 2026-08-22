@@ -31,10 +31,8 @@ from ui.layout_constants import (
 )
 from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.stats_dashboard_helpers import (
-    StatsInfoBanner,
     build_temp_chart_paths,
     cleanup_temp_files,
-    create_insight_label,
     create_period_label,
     create_stats_grid_layout,
     create_stats_scroll_area,
@@ -120,13 +118,6 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             margins=(0, 0, 0, 0),
         )
 
-        # 管理建議 / 說明橫幅
-        self.info_banner = self._create_info_banner(
-            "基於倉庫不良品登記主檔分析；Top5 依期間不合格數量（qty 加總）排序。",
-            "協助 SQE 與倉管人員追蹤產線不良退料模式、聚焦不良高發廠商與產品，以及退料類型佔比。"
-        )
-        self.info_banner.hide()
-
         # 2x2 網格佈局容器
         chart_panel = QFrame()
         chart_panel.setProperty("role", "panel")
@@ -138,27 +129,8 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         chart_layout.addLayout(self.grid_layout)
 
         self.scroll_layout.addWidget(chart_panel, 1)
-        
-        # 底部建議資訊欄 (Insights)
-        self.insight_label = self._create_insight_label("載入中...")
-        self.insight_label.setMinimumHeight(0)
-        self.insight_label.hide()
 
         root.addWidget(scroll, 1)
-
-    def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
-        return StatsInfoBanner(
-            formula,
-            purpose,
-            formula_prefix="統計說明",
-            purpose_prefix="管理目的",
-            object_name="ncrStatsInfoBanner",
-            margins=(12, 8, 12, 8),
-            spacing=4,
-        )
-
-    def _create_insight_label(self, text: str) -> QLabel:
-        return create_insight_label(text, minimum_height=40)
 
     def _range_keys(self) -> tuple[str, str]:
         return normalize_range_keys(
@@ -211,7 +183,6 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
             err_lbl = QLabel(f"無法載入統計數據：{exc}")
             err_lbl.setProperty("role", "errorText")
             self.grid_layout.addWidget(err_lbl, 0, 0)
-            self.insight_label.setText("載入數據時發生錯誤。")
             self.grid_layout.activate()
             self.grid_layout.update()
             self.update()
@@ -222,7 +193,6 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         if not has_data:
             empty = EmptyStateWidget("暫無數據", f"在所選期間 ({self._range_text()}) 尚無不合格品資料")
             self.grid_layout.addWidget(empty, 0, 0, 1, 2)
-            self.insight_label.setText("暫無可用數據以生成管理建議。")
             self.grid_layout.activate()
             self.grid_layout.update()
             self.update()
@@ -254,108 +224,11 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         )
         self.grid_layout.addWidget(return_slip_view, 1, 1)
 
-        # 產生 Insights 管理建議
-        self._generate_insights(top_suppliers, top_products, scrap_rework, return_slips)
-        
         # 強制 Layout 重新佈局與刷新
         if self.grid_layout is not None:
             self.grid_layout.activate()
             self.grid_layout.update()
         self.update()
-
-    def _generate_insights(
-        self, top_suppliers: list, top_products: list, scrap_rework: list, return_slips: list
-    ):
-        """產生管理建議文字；若發生非預期例外，設定提示訊息而非保留過期文字。"""
-        insights = []
-        try:
-            self._build_insights_text(top_suppliers, top_products, scrap_rework, return_slips, insights)
-        except Exception:
-            logger.exception("產生管理建議文字失敗")
-            insights = ["⚠️ <b>建議產生時發生錯誤，請確認資料格式。</b>"]
-        if insights:
-            self.insight_label.setText("<br>".join(insights))
-        else:
-            self.insight_label.setText("此期間暫無足夠資料生成管理建議。")
-
-    def _build_insights_text(
-        self, top_suppliers: list, top_products: list, scrap_rework: list, return_slips: list,
-        insights: list
-    ) -> None:
-        """在 insights 清單中填入管理建議文字（由 _generate_insights 呼叫）。"""
-
-        
-        # 1. 供應商預警
-        if top_suppliers:
-            top_s = top_suppliers[0]
-            insights.append(
-                f"⚠️ <b>供應商預警：</b>不合格品數最多的供應商為 <b>{top_s['supplier_name']}</b>，"
-                f"期間不合格數量達 <b>{top_s['total_qty']}</b> 件。建議 SQE 加強對該廠品質的進料檢驗與稽核。"
-            )
-        else:
-            # 排名查詢會排除空白/'N/A' 供應商;排名為空不代表期間沒有不合格品,
-            # 不可用綠勾暗示品質健康。
-            insights.append("ℹ️ <b>供應商品質：</b>此期間無可歸戶供應商的不合格紀錄（未填供應商名稱的紀錄不列入排名）。")
-
-        # 2. 產品分析
-        if top_products:
-            top_p = top_products[0]
-            insights.append(
-                f"📦 <b>高發不合格品：</b>品名為 <b>{top_p['product_name']}</b> 的不合格數量最高，"
-                f"達 <b>{top_p['total_qty']}</b> 件。請工程與生產部門配合調查是否為製程或模具變異。"
-            )
-
-        # 3. 處置比例
-        if scrap_rework:
-            scrap_item = next((r for r in scrap_rework if r["disposition"] == "報廢"), None)
-            rework_item = next((r for r in scrap_rework if r["disposition"] == "重工"), None)
-            scrap_qty = int(scrap_item["total_qty"] or 0) if scrap_item else 0
-            rework_qty = int(rework_item["total_qty"] or 0) if rework_item else 0
-            total = scrap_qty + rework_qty
-            
-            if total > 0:
-                scrap_pct = (scrap_qty / total) * 100
-                if scrap_pct > 30:
-                    insights.append(
-                        f"🔴 <b>損失警示：</b>不合格品中<b>報廢率</b>達 <b>{scrap_pct:.1f}%</b>（報廢 {scrap_qty} 件），"
-                        "報廢佔比較高，將直接增加製造成本。應優先推動品質改善以降低報廢損失。"
-                    )
-                else:
-                    insights.append(
-                        f"🟢 <b>損失防護：</b>不合格品報廢佔比較低（{scrap_pct:.1f}%），"
-                        f"多數處置為重工（{rework_qty} 件），有效挽回材料價值。"
-                    )
-
-        # 4. 退料來源
-        if return_slips:
-            in_house = 0
-            outsource = 0
-            unspecified = 0
-            for r in return_slips:
-                qty = int(r["total_qty"] or 0)
-                if r["return_slip_type"] == "廠內退料":
-                    in_house += qty
-                elif r["return_slip_type"] == "託外退料":
-                    outsource += qty
-                else:
-                    unspecified += qty
-            total = in_house + outsource
-            total += unspecified
-            if total > 0:
-                in_house_pct = (in_house / total) * 100
-                outsource_pct = (outsource / total) * 100
-                unspecified_pct = (unspecified / total) * 100
-                note = (
-                    f"，未註明佔 <b>{unspecified_pct:.1f}%</b>（{unspecified} 件），"
-                    "請補齊退料類型以維持來源分析完整。"
-                    if unspecified
-                    else "。"
-                )
-                insights.append(
-                    f"🔄 <b>退料來源：</b>廠內退料佔 <b>{in_house_pct:.1f}%</b>，"
-                    f"託外退料佔 <b>{outsource_pct:.1f}%</b>{note}"
-                    f"廠內退料涉及內部製程不良，託外退料涉及外協加工品質，請按比例調度改善資源。"
-                )
 
     def export_ncr_excel(self):
         # 1. 彈出日期區間對話框

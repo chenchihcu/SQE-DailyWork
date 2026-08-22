@@ -7,6 +7,28 @@ and is shown in the main-window title bar and the startup log (`logs/app.log`).
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses semantic versioning (MAJOR.MINOR.PATCH).
 
+## [1.1.0] - 2026-08-22
+
+Operational release with supplier-oriented UI closeout, frozen path contract, and
+Windows onedir packaging.
+
+### Added
+- Supplier-oriented workbench: scope chips, Ctrl+K global search, supplier 360,
+  case stepper, quarterly supplier report export, and NCR `supplier_id` linkage.
+- `src/app_paths.py` as the single source for writable runtime roots in source
+  and PyInstaller frozen builds.
+- Windows distribution tooling: `scripts/sqe_dailywork.spec` and
+  `scripts/build_windows.ps1` (onedir + portable zip).
+- `main.py --smoke-exit` for automated frozen-bundle smoke checks.
+
+### Fixed
+- NCR create embedding smoke test aligned with `NcrCreateFormContent` wrapper DOM.
+- `scripts/smoke_test_v2.py` aligned with strict supplier product scoping and
+  anomaly trace-source requirements.
+
+### Changed
+- Version marker bumped to `1.1.0` in the window title and startup log.
+
 ## [1.0.0] - 2026-07-04
 
 First production release of the single-user local PySide6 + SQLite Supplier

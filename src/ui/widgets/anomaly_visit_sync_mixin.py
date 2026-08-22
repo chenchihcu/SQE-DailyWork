@@ -41,7 +41,7 @@ class _AnomalyVisitSyncMixin:
     - self.outsource_work_order_input
     - self.batch_qty_input
     - self.supplier_combo
-    - self._update_outsource_row_visibility()
+    - self._update_trace_row_visibility()
     """
 
     # ── 同步建立訪廠提示 ─────────────────────────────────
@@ -134,7 +134,7 @@ class _AnomalyVisitSyncMixin:
             self.outsource_work_order_input.setText(work_order_no)
             self._same_day_visit_autofill["work_order_no"] = work_order_no
             applied.append("工單")
-            self._update_outsource_row_visibility()
+            self._update_trace_row_visibility()
 
         production_qty = int(ref.get("production_qty") or 0)
         current_qty_text = self.batch_qty_input.text().strip()
@@ -205,6 +205,10 @@ class _AnomalyVisitSyncMixin:
                 # 1. Update linkage in DB
                 _anomaly_service.update_anomaly_link(self._anomaly_id, visit_id)
 
+                v_detail = (
+                    _visit_service.get_visit_detail(visit_id) if visit_id else None
+                )
+
                 # 2. Ask to sync date if different
                 current_date = self.date_edit.date().toString("yyyy-MM-dd")
                 if visit_date and visit_date != current_date:
@@ -224,8 +228,7 @@ class _AnomalyVisitSyncMixin:
                     "是否同步沿用該訪廠的產品、工單及批量資訊？",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
-                if ans_sync == QMessageBox.StandardButton.Yes:
-                    v_detail = _visit_service.get_visit_detail(visit_id)
+                if ans_sync == QMessageBox.StandardButton.Yes and v_detail:
                     v_product_id = v_detail.get("product_id")
                     if v_product_id:
                         set_combo_current_data(self.product_combo, v_product_id)
@@ -238,10 +241,9 @@ class _AnomalyVisitSyncMixin:
 
                 # 4. Manually update UI labels
                 self._initial_data["visit_id"] = visit_id
-                if visit_id:
+                if visit_id and v_detail:
                     self.unlink_visit_button.setVisible(True)
                     self._rc_group.setTitle("風險調查（已關聯訪廠）")
-                    v_detail = _visit_service.get_visit_detail(visit_id)
                     v_date = v_detail.get("visit_date") or "?"
                     v_summary = (v_detail.get("summary") or "").strip() or "(無摘要)"
                     self._linked_visit_label.setText(

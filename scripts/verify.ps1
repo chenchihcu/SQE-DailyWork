@@ -1,6 +1,6 @@
 param(
     [string]$PythonExe,
-    [ValidateSet("Focused", "Full")]
+    [ValidateSet("Focused", "Full", "Coverage", "Soak")]
     [string]$Profile = "Full"
 )
 
@@ -109,6 +109,117 @@ function Resolve-PythonExe {
     throw "No valid python executable with required dependencies (PySide6, pandas, openpyxl) found. Use -PythonExe <path>."
 }
 
+function Install-CoverageTool {
+    param([string]$PythonPath)
+
+    & $PythonPath -m pip install --disable-pip-version-check coverage *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip install coverage failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Run-CoverageTestSuite {
+    param([string]$PythonPath, [string]$RepoRoot)
+
+    Install-CoverageTool -PythonPath $PythonPath
+
+    $scratchDir = Join-Path $RepoRoot "scratch"
+    if (-not (Test-Path -LiteralPath $scratchDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $scratchDir -Force | Out-Null
+    }
+
+    $coverageData = Join-Path $scratchDir ".coverage"
+    if (Test-Path -LiteralPath $coverageData -PathType Leaf) {
+        Remove-Item -LiteralPath $coverageData -Force
+    }
+
+    Write-Host "[coverage] erase prior data"
+    & $PythonPath -m coverage erase
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage erase failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "[coverage] unittest discover -s tests"
+    & $PythonPath -m coverage run -m unittest discover -s tests -t .
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage unittest discover failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "[coverage] ncr.tests.test_core ncr.tests.test_supplier_sync"
+    & $PythonPath -m coverage run --append -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage ncr unittest failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "[coverage] pytest module-level regressions"
+    & $PythonPath -m pip install --disable-pip-version-check pytest *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip install pytest failed with exit code $LASTEXITCODE"
+    }
+    $pytestModules = @(
+        "tests/test_anomaly_folder_creation.py",
+        "tests/test_attachment_rename.py",
+        "tests/test_table_sorting.py"
+    )
+    & $PythonPath -m coverage run --append -m pytest @pytestModules -q
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage pytest regressions failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Assert-CoverageBaseline {
+    param([string]$PythonPath, [string]$RepoRoot)
+
+    $baselinePath = Join-Path $RepoRoot "docs\release\coverage-baseline.json"
+    if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) {
+        Write-Host "Coverage baseline file missing; skipping fail-under gate."
+        return
+    }
+
+    $summaryPath = Join-Path $RepoRoot "scratch\coverage-summary.json"
+    if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
+        Remove-Item -LiteralPath $summaryPath -Force
+    }
+    & $PythonPath -m coverage json -o $summaryPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage json failed with exit code $LASTEXITCODE"
+    }
+
+    & $PythonPath (Join-Path $RepoRoot "scripts\assert_coverage_baseline.py")
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage baseline gate failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Export-CoverageReports {
+    param([string]$PythonPath, [string]$RepoRoot)
+
+    $scratchDir = Join-Path $RepoRoot "scratch"
+    if (-not (Test-Path -LiteralPath $scratchDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $scratchDir -Force | Out-Null
+    }
+
+    $xmlPath = Join-Path $scratchDir "coverage.xml"
+  if (Test-Path -LiteralPath $xmlPath -PathType Leaf) {
+        Remove-Item -LiteralPath $xmlPath -Force
+    }
+    & $PythonPath -m coverage xml
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage xml failed with exit code $LASTEXITCODE"
+    }
+
+    $htmlDir = Join-Path $scratchDir "coverage-html"
+    if (Test-Path -LiteralPath $htmlDir -PathType Container) {
+        Remove-Item -LiteralPath $htmlDir -Recurse -Force
+    }
+    & $PythonPath -m coverage html
+    if ($LASTEXITCODE -ne 0) {
+        throw "coverage html failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "Coverage reports: $xmlPath , $htmlDir"
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
 
@@ -155,6 +266,57 @@ try {
     $env:PYTHONPATH = $pythonPathEntries -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
 
+    if ($Profile -eq "Coverage") {
+        Write-Host ""
+        Write-Host "[1/3] python -m compileall main.py src scripts run_mig.py tests"
+        & $resolvedPython -m compileall main.py src scripts run_mig.py tests
+        if ($LASTEXITCODE -ne 0) {
+            throw "compileall failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[2/3] coverage test suite (unittest + ncr + pytest modules)"
+        Run-CoverageTestSuite -PythonPath $resolvedPython -RepoRoot $repoRoot
+        Export-CoverageReports -PythonPath $resolvedPython -RepoRoot $repoRoot
+        Assert-CoverageBaseline -PythonPath $resolvedPython -RepoRoot $repoRoot
+
+        Write-Host ""
+        Write-Host "[3/3] scripts\harness_check.ps1"
+        & (Join-Path $repoRoot "scripts\harness_check.ps1")
+        if ($LASTEXITCODE -ne 0) {
+            throw "harness_check failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "Coverage verification passed."
+        return
+    }
+
+    if ($Profile -eq "Soak") {
+        if (-not (Test-Path Env:SQE_STABILITY_CYCLES)) {
+            $env:SQE_STABILITY_CYCLES = "10"
+        }
+        Write-Host "Stability cycles: $env:SQE_STABILITY_CYCLES"
+
+        Write-Host ""
+        Write-Host "[1/2] stability smoke (tests.test_stability_smoke)"
+        & $resolvedPython -m unittest tests.test_stability_smoke
+        if ($LASTEXITCODE -ne 0) {
+            throw "stability smoke failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[2/2] scripts\harness_check.ps1"
+        & (Join-Path $repoRoot "scripts\harness_check.ps1")
+        if ($LASTEXITCODE -ne 0) {
+            throw "harness_check failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "Soak verification passed."
+        return
+    }
+
     Write-Host ""
     Write-Host "[1/6] python -m compileall main.py src scripts run_mig.py tests"
     & $resolvedPython -m compileall main.py src scripts run_mig.py tests
@@ -178,21 +340,59 @@ try {
             "test_form_field_pairing_layout.py",
             "test_form_inline_validation_and_dirty.py",
             "test_layout_constants.py",
+            "test_list_column_contract.py",
             "test_lightweight_visit_entry_routing.py",
             "test_ncr_embedding_smoke.py",
-            "test_surface_usage_structure.py"
+            "test_surface_usage_structure.py",
+            "test_supplier_360_service.py",
+            "test_supplier_oriented_ui.py"
         )
         foreach ($pattern in $focusedPatterns) {
-            & $resolvedPython -m unittest discover -s tests -p $pattern
+            $testModule = [System.IO.Path]::GetFileNameWithoutExtension($pattern)
+            if ($pattern -in @(
+                    "test_supplier_360_service.py",
+                    "test_supplier_oriented_ui.py"
+                )) {
+                # Import through the tests package so tests/__init__.py can
+                # initialize the shared QApplication before Qt widgets load.
+                & $resolvedPython -m unittest "tests.$testModule"
+            } else {
+                & $resolvedPython -m unittest discover -s tests -p $pattern
+            }
             if ($LASTEXITCODE -ne 0) {
                 throw "focused unittest failed for $pattern with exit code $LASTEXITCODE"
             }
         }
     } else {
         Write-Host "[2/6] python -m unittest discover -s tests"
-        & $resolvedPython -m unittest discover -s tests
+        # Keep tests package-qualified so tests/__init__.py initializes the
+        # shared QApplication before any PySide6 widget test is imported.
+        & $resolvedPython -m unittest discover -s tests -t .
         if ($LASTEXITCODE -ne 0) {
             throw "unittest failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[2b/6] python -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync"
+        & $resolvedPython -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync
+        if ($LASTEXITCODE -ne 0) {
+            throw "ncr unittest failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[2c/6] pytest module-level regressions"
+        & $resolvedPython -m pip install --disable-pip-version-check pytest *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "pip install pytest failed with exit code $LASTEXITCODE"
+        }
+        $pytestModules = @(
+            "tests/test_anomaly_folder_creation.py",
+            "tests/test_attachment_rename.py",
+            "tests/test_table_sorting.py"
+        )
+        & $resolvedPython -m pytest @pytestModules -q
+        if ($LASTEXITCODE -ne 0) {
+            throw "pytest module-level regressions failed with exit code $LASTEXITCODE"
         }
     }
 

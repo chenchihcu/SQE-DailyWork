@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
-from database.connection import DATA_DIR, PROJECT_ROOT
+from app_paths import data_dir
+from database.connection import DATA_DIR
 from services import attachment_manager
 
 
@@ -42,9 +43,9 @@ class AttachmentManagerTests(unittest.TestCase):
         self._created.append(path)
         return path
 
-    def test_attachment_root_is_fixed_under_project_data_dir(self) -> None:
+    def test_attachment_root_is_fixed_under_active_data_dir(self) -> None:
         self.assertTrue(DATA_DIR.is_absolute())
-        self.assertEqual(PROJECT_ROOT / "data", DATA_DIR)
+        self.assertEqual(data_dir().resolve(), DATA_DIR.resolve())
         self.assertEqual(
             DATA_DIR / "attachments" / "anomaly",
             attachment_manager.ANOMALY_ATTACHMENT_ROOT,

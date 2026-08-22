@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from datetime import date
+
 from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QFileDialog,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -16,7 +22,45 @@ from PySide6.QtWidgets import (
 
 from services import supplier_360_service
 from services import supplier_report_service
-from ui.widgets.common_widgets import style_table
+from ui.list_column_contract import SUPPLIER_360_ANOMALY_COLUMNS
+from ui.widgets.common_widgets import EmptyStateWidget, style_table
+
+
+class SupplierQuarterExportDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("選擇報告季度")
+        layout = QFormLayout(self)
+        today = date.today()
+        self.year_spin = QSpinBox()
+        self.year_spin.setRange(2000, 2100)
+        self.year_spin.setValue(today.year)
+        layout.addRow("年度", self.year_spin)
+        self.quarter_combo = QComboBox()
+        for quarter, label in enumerate(
+            ("Q1（1–3 月）", "Q2（4–6 月）", "Q3（7–9 月）", "Q4（10–12 月）"),
+            start=1,
+        ):
+            self.quarter_combo.addItem(label, quarter)
+        current_quarter = (today.month - 1) // 3 + 1
+        self.quarter_combo.setCurrentIndex(current_quarter - 1)
+        layout.addRow("季度", self.quarter_combo)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def selection(self) -> tuple[str, str, str]:
+        year = int(self.year_spin.value())
+        quarter = int(self.quarter_combo.currentData())
+        quarter_end_days = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
+        start_month = (quarter - 1) * 3 + 1
+        end_month, end_day = quarter_end_days[quarter]
+        start_date = date(year, start_month, 1).isoformat()
+        end_date = date(year, end_month, end_day).isoformat()
+        return start_date, end_date, f"{year}Q{quarter}"
 
 
 class Supplier360Page(QWidget):
@@ -52,7 +96,7 @@ class Supplier360Page(QWidget):
             ["日期", "來源", "單號", "內容", "狀態"]
         )
         self.anomaly_table = self._table(
-            ["異常單號", "日期", "問題摘要", "狀態", "責任人", "到期日"]
+            [column.label for column in SUPPLIER_360_ANOMALY_COLUMNS]
         )
         self.visit_table = self._table(
             ["日期", "摘要", "訪廠人員", "狀態", "工單"]
@@ -60,14 +104,27 @@ class Supplier360Page(QWidget):
         self.defect_table = self._table(
             ["不良單號", "日期", "料號", "品名", "不良描述", "狀態"]
         )
-        self.contact_label = QLabel("請至基礎資料維護供應商聯絡人。")
+        self.contact_table = self._table(
+            ["姓名", "部門", "電話", "Email", "主要聯絡人"]
+        )
+        self.contact_empty = EmptyStateWidget(
+            "尚無聯絡人資料",
+            "請至基礎資料維護供應商聯絡人。",
+            parent=self,
+        )
+        self.contact_empty.setVisible(False)
+        contact_tab = QWidget()
+        contact_layout = QVBoxLayout(contact_tab)
+        contact_layout.setContentsMargins(0, 0, 0, 0)
+        contact_layout.addWidget(self.contact_table)
+        contact_layout.addWidget(self.contact_empty)
         self.scorecard_label = QLabel()
         self.scorecard_label.setWordWrap(True)
         self.tabs.addTab(self.timeline_table, "概況")
         self.tabs.addTab(self.anomaly_table, "異常案件")
         self.tabs.addTab(self.visit_table, "訪廠紀錄")
         self.tabs.addTab(self.defect_table, "不合格品")
-        self.tabs.addTab(self.contact_label, "聯絡人")
+        self.tabs.addTab(contact_tab, "聯絡人")
         self.tabs.addTab(self.scorecard_label, "評分")
         root.addWidget(self.tabs, 1)
 
@@ -107,7 +164,7 @@ class Supplier360Page(QWidget):
         self._render_rows(
             self.anomaly_table,
             supplier_360_service.list_supplier_anomalies(self.supplier_id),
-            ("anomaly_no", "anomaly_date", "problem_desc", "status", "responsible_person", "due_date"),
+            tuple(column.field for column in SUPPLIER_360_ANOMALY_COLUMNS),
         )
         self._render_rows(
             self.visit_table,
@@ -119,6 +176,12 @@ class Supplier360Page(QWidget):
             supplier_360_service.list_supplier_defects(self.supplier_id),
             ("defect_no", "event_date", "item_no", "product_name", "defect_desc", "status"),
         )
+        self._render_contacts(supplier_360_service.list_supplier_contacts(self.supplier_id))
+
+    def refresh_data(self) -> None:
+        """Refresh the currently selected supplier from the database."""
+        if self.supplier_id:
+            self.load_supplier(self.supplier_id)
 
     def _render_timeline(self, rows: list[dict]) -> None:
         self.timeline_table.setRowCount(0)
@@ -148,29 +211,61 @@ class Supplier360Page(QWidget):
             for column, key in enumerate(keys):
                 table.setItem(index, column, QTableWidgetItem(str(row.get(key) or "—")))
 
+    def _render_contacts(self, rows: list[dict]) -> None:
+        has_rows = bool(rows)
+        self.contact_table.setVisible(has_rows)
+        self.contact_empty.setVisible(not has_rows)
+        self.contact_table.setRowCount(0)
+        for row in rows:
+            index = self.contact_table.rowCount()
+            self.contact_table.insertRow(index)
+            values = (
+                row.get("contact_name") or "—",
+                row.get("department") or "—",
+                row.get("phone") or "—",
+                row.get("email") or "—",
+                "是" if row.get("is_primary") else "否",
+            )
+            for column, value in enumerate(values):
+                self.contact_table.setItem(
+                    index, column, QTableWidgetItem(str(value))
+                )
+
+    def _supplier_prefill(self) -> dict:
+        summary = supplier_360_service.get_supplier_summary(self.supplier_id)
+        supplier = summary.get("supplier") or {}
+        return {
+            "supplier_id": self.supplier_id,
+            "supplier_name": supplier.get("supplier_name") or "",
+        }
+
     def _open_anomaly(self) -> None:
         if hasattr(self.main_window, "open_new_anomaly_create_page"):
-            self.main_window.open_new_anomaly_create_page()
+            self.main_window.open_new_anomaly_create_page(self._supplier_prefill())
 
     def _open_visit(self) -> None:
         if hasattr(self.main_window, "open_new_visit_create_page"):
-            self.main_window.open_new_visit_create_page()
+            self.main_window.open_new_visit_create_page(self._supplier_prefill())
 
     def _export_report(self) -> None:
+        dialog = SupplierQuarterExportDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        start_date, end_date, quarter_label = dialog.selection()
+        default_name = f"supplier-quality-report-{quarter_label}.xlsx"
         path, _ = QFileDialog.getSaveFileName(
             self,
             "匯出供應商季度報告",
-            "supplier-quality-report.xlsx",
+            default_name,
             "Excel (*.xlsx)",
         )
         if not path:
             return
-        today = date.today()
         ok, message = supplier_report_service.export_supplier_report(
             path,
             self.supplier_id,
-            f"{today.year}-01-01",
-            today.isoformat(),
+            start_date,
+            end_date,
         )
         if ok:
             QMessageBox.information(self, "匯出完成", message)

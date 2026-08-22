@@ -32,9 +32,20 @@ from database import repository
 from services import event_service as event_service
 from services import appearance_preferences_service
 from services.event import _query_service
+from services.process_keyword_codec import format_process_keywords_display
 from ui.popup_i18n import localize_popup_message
+from ui.list_column_contract import (
+    EVENT_LIST_COMPACT_FIELDS,
+    EVENT_LIST_FIELDS,
+    EVENT_LIST_HEADERS,
+)
 from ui.layout_constants import (
     CONTROL_ROW_SPACING,
+    EVENT_LIST_CORE_ANOMALY_NO_WIDTH,
+    EVENT_LIST_CORE_PRODUCT_WIDTH,
+    EVENT_LIST_CORE_QUALITY_REQUIREMENT_WIDTH,
+    EVENT_LIST_CORE_STATUS_WIDTH,
+    EVENT_LIST_CORE_SUPPLIER_WIDTH,
     EVENT_LIST_FULL_COLUMNS_MIN_WIDTH,
     EVENT_LIST_ITEMS_PER_PAGE,
     EVENT_LIST_NAME_COL_MIN_WIDTH,
@@ -54,6 +65,7 @@ from ui.widgets.common_widgets import (
     SortableTableWidgetItem,
     apply_clickable_affordance,
     apply_table_action_affordance,
+    apply_toolbar_label_policy,
     create_status_item,
     preserve_table_sorting,
     style_table,
@@ -77,18 +89,31 @@ EVENT_QUERY_SCOPE_TABS = (
 )
 
 _SORTABLE_COLS: dict[int, str] = {
-    0: "ref_no",
-    1: "category",
-    2: "responsible_person",
-    3: "supplier_name",
-    4: "product_name",
-    6: "product_stage",
-    9: "quality_report_required",
-    10: "status",
-    11: "closed_at",
+    EVENT_LIST_FIELDS.index(field): field
+    for field in (
+        "ref_no",
+        "category",
+        "responsible_person",
+        "supplier_name",
+        "product_name",
+        "product_stage",
+        "quality_report_required",
+        "status",
+        "closed_at",
+    )
 }
 
-_EVENT_LIST_COMPACT_OPTIONAL_COLUMNS = (1, 2, 5, 6, 8, 11)
+_EVENT_LIST_CORE_WIDTHS = {
+    "ref_no": EVENT_LIST_CORE_ANOMALY_NO_WIDTH,
+    "supplier_name": EVENT_LIST_CORE_SUPPLIER_WIDTH,
+    "product_name": EVENT_LIST_CORE_PRODUCT_WIDTH,
+    "quality_report_required": EVENT_LIST_CORE_QUALITY_REQUIREMENT_WIDTH,
+    "status": EVENT_LIST_CORE_STATUS_WIDTH,
+}
+_EVENT_LIST_COMPACT_OPTIONAL_COLUMNS = tuple(
+    index for index, field in enumerate(EVENT_LIST_FIELDS)
+    if field not in EVENT_LIST_COMPACT_FIELDS
+)
 
 
 class EventListWidget(QWidget, _EventListFilterMixin):
@@ -128,6 +153,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.event_type_combo: QComboBox | None = None
         self.event_scope_tab_bar: QTabBar | None = None
         self.scope_chip_buttons: dict[str, QPushButton] = {}
+        self.scope_chip_labels: dict[str, str] = {
+            scope: label for label, scope, _event_type in EVENT_QUERY_SCOPE_TABS
+        }
         self.status_combo: QComboBox | None = None
         self.supplier_filter_input: QLineEdit | None = None
         self.month_input: QDateEdit | None = None
@@ -279,6 +307,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.source_tag_label = QLabel(self._source_tag_text())
             self.source_tag_label.setProperty("role", "sourceTag")
             self.source_tag_label.setToolTip("目前列表的資料流程來源")
+            apply_toolbar_label_policy(self.source_tag_label)
             toolbar_row.addWidget(self.source_tag_label)
 
         self.column_profile_notice = QLabel("")
@@ -335,23 +364,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         result_layout.addWidget(self.empty_state)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(12)
-        self.table.setHorizontalHeaderLabels(
-            [
-                "異常單號",
-                "異常類別",
-                "責任人",
-                "供應商",
-                "品名",
-                "料號",
-                "階段",
-                "問題/摘要",
-                "缺失紀錄",
-                "品質異常單要求",
-                "狀態",
-                "結案日期",
-            ]
-        )
+        self.table.setColumnCount(len(EVENT_LIST_HEADERS))
+        self.table.setHorizontalHeaderLabels(EVENT_LIST_HEADERS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         style_table(self.table)
@@ -361,18 +375,21 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # 異常單號
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 異常類別
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 責任人
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 供應商
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 品名
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 料號
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 階段
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)           # 問題/摘要
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)       # 缺失紀錄
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents) # 品質異常單要求
-        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # 狀態
-        header.setSectionResizeMode(11, QHeaderView.ResizeMode.ResizeToContents) # 結案日期
+        for field in (
+            "ref_no", "supplier_name", "product_code", "product_name",
+            "product_stage", "category", "process_keywords", "responsible_person",
+            "quality_report_required", "status", "closed_at",
+        ):
+            header.setSectionResizeMode(
+                EVENT_LIST_FIELDS.index(field),
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
+        header.setSectionResizeMode(
+            EVENT_LIST_FIELDS.index("content"), QHeaderView.ResizeMode.Stretch
+        )
+        header.setSectionResizeMode(
+            EVENT_LIST_FIELDS.index("defect_notes"), QHeaderView.ResizeMode.Interactive
+        )
         header.setSortIndicatorShown(True)
         header.sectionClicked.connect(self._on_header_clicked)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
@@ -381,7 +398,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         result_layout.addWidget(self.table, 1)
         if self.fixed_status:
-            self.table.setColumnHidden(10, True)
+            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("status"), True)
 
         root.addWidget(result_panel, 1)
 
@@ -420,6 +437,19 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         return btn_new_visit, btn_new_anomaly
 
+    def _sync_scope_chip_labels(self) -> None:
+        if self.mode != "query" or not self.scope_chip_buttons:
+            return
+        try:
+            counts = _query_service.get_event_scope_counts()
+        except Exception:
+            logger.exception("讀取事件 scope 件數失敗")
+            counts = {}
+        for scope, button in self.scope_chip_buttons.items():
+            label = self.scope_chip_labels.get(scope, scope)
+            count = int(counts.get(scope, 0))
+            button.setText(f"{label} ({count})")
+
     def refresh_data(self):
         self._has_loaded = True
         self._sync_category_column_visibility()
@@ -443,6 +473,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self._set_load_failed(True)
         self._apply_sort()
         self._current_page = 1
+        self._sync_scope_chip_labels()
         self._render_current_page()
 
     def _sync_category_column_visibility(self) -> None:
@@ -478,18 +509,27 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.table.setColumnHidden(column, compact)
         is_visit_only_scope = getattr(self, "_filter_event_type", None) == "VISIT"
         if is_visit_only_scope:
-            self.table.setColumnHidden(1, True)
-            self.table.setColumnHidden(11, True)
+            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("category"), True)
+            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("closed_at"), True)
         header = self.table.horizontalHeader()
         if compact:
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-            self.table.setColumnWidth(3, 180)
-            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+            for field_name, width in _EVENT_LIST_CORE_WIDTHS.items():
+                column_index = EVENT_LIST_FIELDS.index(field_name)
+                header.setSectionResizeMode(column_index, QHeaderView.ResizeMode.Interactive)
+                self.table.setColumnWidth(column_index, width)
+            header.setSectionResizeMode(
+                EVENT_LIST_FIELDS.index("content"), QHeaderView.ResizeMode.Stretch
+            )
         else:
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(
+                EVENT_LIST_FIELDS.index("supplier_name"),
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
+            header.setSectionResizeMode(
+                EVENT_LIST_FIELDS.index("content"), QHeaderView.ResizeMode.Stretch
+            )
         if self.fixed_status:
-            self.table.setColumnHidden(10, True)
+            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("status"), True)
 
         if self.column_profile_notice is not None:
             self.column_profile_notice.setVisible(compact)
@@ -559,20 +599,29 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
                 no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
                 no_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                self.table.setItem(idx, 0, no_item)
-                self.table.setItem(idx, 1, self._text_cell(row.get("category")))
-                self.table.setItem(idx, 2, self._text_cell(row.get("responsible_person") or "未指定"))
-                self.table.setItem(idx, 3, self._text_cell(row.get("supplier_name")))
-                self.table.setItem(idx, 4, self._text_cell(row.get("product_name")))
-                self.table.setItem(idx, 5, self._text_cell(row.get("product_code")))
-                self.table.setItem(idx, 6, self._text_cell(row.get("product_stage")))
-                self.table.setItem(idx, 7, self._text_cell(row.get("content")))
                 defect_summary = row.get("defect_note_summary") or row.get("pending_items")
-                self.table.setItem(idx, 8, self._text_cell(defect_summary))
-                self.table.setItem(idx, 9, self._text_cell(self._quality_report_required_text(row)))
                 status_text = str(row.get("status") or "").strip() or "-"
-                self.table.setItem(idx, 10, create_status_item(status_text, sort_key=status_text))
-                self.table.setItem(idx, 11, self._text_cell(_fmt_date(row.get("closed_at"))))
+                values = {
+                    "ref_no": no_item,
+                    "supplier_name": self._text_cell(row.get("supplier_name")),
+                    "product_code": self._text_cell(row.get("product_code")),
+                    "product_name": self._text_cell(row.get("product_name")),
+                    "product_stage": self._text_cell(row.get("product_stage")),
+                    "category": self._text_cell(row.get("category")),
+                    "process_keywords": self._text_cell(
+                        format_process_keywords_display(row.get("process_keywords"))
+                    ),
+                    "responsible_person": self._text_cell(row.get("responsible_person") or "未指定"),
+                    "content": self._text_cell(row.get("content")),
+                    "defect_notes": self._text_cell(defect_summary),
+                    "quality_report_required": self._text_cell(
+                        self._quality_report_required_text(row)
+                    ),
+                    "status": create_status_item(status_text, sort_key=status_text),
+                    "closed_at": self._text_cell(_fmt_date(row.get("closed_at"))),
+                }
+                for column, field in enumerate(EVENT_LIST_FIELDS):
+                    self.table.setItem(idx, column, values[field])
 
         self.table.clearSelection()
         self._sync_export_pdf_state()

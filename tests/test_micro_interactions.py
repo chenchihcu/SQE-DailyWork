@@ -8,6 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication, QPushButton
 
+from ui.layout_constants import EVENT_LIST_CORE_SUPPLIER_WIDTH
+from ui.list_column_contract import EVENT_LIST_COMPACT_FIELDS, EVENT_LIST_FIELDS
 from ui.theme import apply_app_theme
 from ui.widgets import defect_list_widget
 from ui.widgets.defect_list_widget import EventListWidget
@@ -138,17 +140,30 @@ class MicroInteractionTests(unittest.TestCase):
             self._drain_events()
 
             self.assertTrue(widget.column_profile_notice.isVisible())
-            for column in (1, 2, 5, 6, 8, 11):
-                self.assertTrue(widget.table.isColumnHidden(column))
-            for column in (0, 3, 4, 7, 9, 10):
-                self.assertFalse(widget.table.isColumnHidden(column))
+            optional_fields = [
+                field for field in EVENT_LIST_FIELDS if field not in EVENT_LIST_COMPACT_FIELDS
+            ]
+            for field in optional_fields:
+                self.assertTrue(
+                    widget.table.isColumnHidden(EVENT_LIST_FIELDS.index(field))
+                )
+            for field in EVENT_LIST_COMPACT_FIELDS:
+                self.assertFalse(
+                    widget.table.isColumnHidden(EVENT_LIST_FIELDS.index(field))
+                )
+            self.assertEqual(
+                EVENT_LIST_CORE_SUPPLIER_WIDTH,
+                widget.table.columnWidth(EVENT_LIST_FIELDS.index("supplier_name")),
+            )
             self.assertEqual("顯示完整欄位", widget.column_profile_button.text())
 
             widget.column_profile_button.click()
             self._drain_events()
             self.assertFalse(widget.column_profile_notice.isVisible())
-            for column in (1, 2, 5, 6, 8, 11):
-                self.assertFalse(widget.table.isColumnHidden(column))
+            for field in optional_fields:
+                self.assertFalse(
+                    widget.table.isColumnHidden(EVENT_LIST_FIELDS.index(field))
+                )
             self.assertEqual("使用重點欄位", widget.column_profile_button.text())
             widget.close()
         finally:

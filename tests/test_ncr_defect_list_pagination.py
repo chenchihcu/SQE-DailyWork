@@ -120,6 +120,7 @@ class NcrDefectListPaginationTests(unittest.TestCase):
             "event_date",
             "item_no",
             "product_name",
+            "category",
             "defect_desc",
             "status",
         }

@@ -65,6 +65,28 @@ def get_dashboard_summary() -> dict:
         return repository.get_dashboard_summary(conn)
 
 
+def get_event_scope_counts() -> dict[str, int]:
+    """Per-scope event counts aligned with EVENT_QUERY_SCOPE_TABS filters."""
+    scopes = (
+        repository.EVENT_SCOPE_ANOMALY_ONLY,
+        repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
+        repository.EVENT_SCOPE_VISIT_ONLY,
+        repository.EVENT_SCOPE_CLOSED_ONLY,
+    )
+    with _connection.get_connection() as conn:
+        return {
+            scope: len(
+                repository.list_events(
+                    conn,
+                    event_type="ALL",
+                    status="ALL",
+                    event_scope=scope,
+                )
+            )
+            for scope in scopes
+        }
+
+
 def get_monthly_stats(yyyymm: str | None = None) -> dict:
     month = yyyymm or _month_now()
     with _connection.get_connection() as conn:
@@ -97,6 +119,7 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             a.problem_desc AS content,
             a.status AS status,
             a.category AS category,
+            a.process_keywords AS process_keywords,
             a.pending_items AS pending_items,
             a.responsible_person AS responsible_person,
             a.improvement_desc AS improvement_desc,
@@ -258,6 +281,66 @@ def get_anomaly_category_pareto_by_range(start_date: str, end_date: str) -> list
     return _build_category_pareto_rows(dict(category_counts))
 
 
+PROCESS_KEYWORD_PARETO_TOP_N = 15
+
+
+def _build_process_keyword_pareto_rows(keyword_counts: dict[str, int]) -> list[dict]:
+    rows = _build_category_pareto_rows(keyword_counts)
+    for row in rows:
+        row["keyword"] = row.pop("category")
+    return rows
+
+
+def get_anomaly_process_keyword_pareto_by_range(start_date: str, end_date: str) -> list[dict]:
+    """Return SMT process-keyword Pareto rows for anomalies opened in a date range.
+
+    Counts keyword occurrences (multi-tag anomalies contribute to multiple buckets).
+    Page charts and Excel export must use this single implementation.
+    """
+    from collections import defaultdict
+
+    from database.repository import _has_column
+    from services.process_keyword_codec import parse_process_keywords
+
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
+
+    with _connection.get_connection() as conn:
+        if not _has_column(conn, "anomalies", "process_keywords"):
+            return []
+        rows = conn.execute(
+            """
+            SELECT process_keywords
+            FROM anomalies
+            WHERE anomaly_date BETWEEN ? AND ?
+            """,
+            (start_date, end_date),
+        ).fetchall()
+
+    keyword_counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        for keyword in parse_process_keywords(row["process_keywords"]):
+            keyword_counts[keyword] += 1
+    if not keyword_counts:
+        return []
+
+    sorted_items = sorted(
+        keyword_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    if len(sorted_items) > PROCESS_KEYWORD_PARETO_TOP_N:
+        top_items = sorted_items[:PROCESS_KEYWORD_PARETO_TOP_N]
+        other_count = sum(count for _, count in sorted_items[PROCESS_KEYWORD_PARETO_TOP_N:])
+        collapsed = dict(top_items)
+        if other_count:
+            collapsed["其他"] = other_count
+    else:
+        collapsed = dict(sorted_items)
+    return _build_process_keyword_pareto_rows(collapsed)
+
+
 def get_responsible_person_stats_by_range(start_date: str, end_date: str) -> list[dict]:
     """計算指定日期範圍內各責任人的異常件數與平均處理時效。"""
     start_date, end_date = validate_date_range(start_date, end_date)
@@ -321,17 +404,13 @@ def get_anomaly_closure_activity_by_range(start_date: str, end_date: str) -> int
     return int(row["count"] or 0)
 
 
-def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
-    """計算指定日期範圍內各月份的訪廠數與訪廠發現的異常數（最多限制 12 個月）。"""
+def _enumerate_month_keys(start_date: str, end_date: str) -> list[str]:
+    """Return YYYY-MM keys from start through end, capped at the last 12 months."""
     from datetime import datetime
-    try:
-        start_date, end_date = validate_date_range(start_date, end_date)
-    except DateRangeFormatError:
-        return []
+
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
-    months_list = []
+    months_list: list[str] = []
     curr_y, curr_m = start_dt.year, start_dt.month
     end_y, end_m = end_dt.year, end_dt.month
 
@@ -344,6 +423,16 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
 
     if len(months_list) > 12:
         months_list = months_list[-12:]
+    return months_list
+
+
+def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
+    """計算指定日期範圍內各月份的訪廠數與訪廠發現的異常數（最多限制 12 個月）。"""
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
+    months_list = _enumerate_month_keys(start_date, end_date)
 
     with _connection.get_connection() as conn:
         visit_rows = conn.execute(
@@ -381,27 +470,12 @@ def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
 def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
     """計算指定日期範圍內各月份的異常數、結案數、逾期數及累計積壓趨勢（最多限制 12 個月）。"""
     import calendar
-    from datetime import datetime
+
     try:
         start_date, end_date = validate_date_range(start_date, end_date)
     except DateRangeFormatError:
         return []
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
-    months_list = []
-    curr_y, curr_m = start_dt.year, start_dt.month
-    end_y, end_m = end_dt.year, end_dt.month
-
-    while (curr_y < end_y) or (curr_y == end_y and curr_m <= end_m):
-        months_list.append(f"{curr_y:04d}-{curr_m:02d}")
-        curr_m += 1
-        if curr_m > 12:
-            curr_m = 1
-            curr_y += 1
-
-    if len(months_list) > 12:
-        months_list = months_list[-12:]
+    months_list = _enumerate_month_keys(start_date, end_date)
 
     def _month_end_date(yyyymm: str) -> str:
         year, month = int(yyyymm[:4]), int(yyyymm[5:])

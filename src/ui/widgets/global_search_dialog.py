@@ -49,7 +49,7 @@ class GlobalSearchDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        QShortcut(QKeySequence.StandardKey.Escape, self, activated=self.reject)
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.reject)
         self.query_input.setFocus()
 
     def _search(self, text: str) -> None:
@@ -94,5 +94,16 @@ class GlobalSearchDialog(QDialog):
         elif source == "供應商":
             self.main_window.open_master_supplier_search(str(row.get("ref_no") or ""))
         elif source == "不合格品":
-            self.main_window.open_warehouse_pending_outsource()
+            status = str(row.get("status") or "").strip()
+            processing_line = str(row.get("processing_line") or "").strip()
+            if status == "已結案":
+                self.main_window.open_warehouse_history()
+            elif processing_line == "委外加工":
+                self.main_window.open_warehouse_pending_outsource()
+            elif processing_line == "原物料":
+                self.main_window.open_warehouse_pending_material()
+            elif processing_line == "未分流":
+                self.main_window.open_warehouse_unclassified_pending()
+            else:
+                self.main_window.open_warehouse_pending_outsource()
         self.accept()

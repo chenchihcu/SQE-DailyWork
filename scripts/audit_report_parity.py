@@ -413,14 +413,6 @@ def _seed_and_audit(args: argparse.Namespace, output_dir: Path, matrix: Evidence
                     "note": "待供應商補改善",
                 }
             ],
-            "tech_transfer": True,
-            "tech_transfer_states": {
-                "tech_transfer_doc": "yes",
-                "carrier_requirement": "na",
-                "dispensing_process": "yes",
-                "functional_test": "no",
-                "packaging_requirement": "yes",
-            },
         }
     )
     pending_note = next(

@@ -54,13 +54,7 @@ class EventPdfExportTests(unittest.TestCase):
             "work_order_no": "5102-260401002",
             "production_qty": 220,
             "status": "已完成",
-            "tech_transfer": True,
-            "tech_transfer_doc": True,
-            "carrier_requirement": False,
-            "dispensing_process": True,
-            "functional_test": False,
-            "packaging_requirement": True,
-            "summary": "訪廠確認製程條件與技轉項目。",
+            "summary": "訪廠確認製程條件。",
         }
 
     def _anomaly_row(self, *, linked: bool) -> dict:
@@ -115,7 +109,7 @@ class EventPdfExportTests(unittest.TestCase):
         self.assertIn("供應商訪廠紀錄報告", html)
         self.assertIn("Medical Intubation Technology Corporation", html)
         self.assertIn("converter 轉接板 VS80", html)
-        self.assertIn("技轉項目", html)
+        self.assertNotIn("技轉項目", html)
         self.assertIn("2026-05-07 10:30:00", html)
 
     def test_visit_html_lists_lightweight_defect_notes_by_product_section(self) -> None:

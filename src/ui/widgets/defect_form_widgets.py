@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -17,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSizePolicy,
     QTextEdit,
     QVBoxLayout,
@@ -27,12 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from services.event import _visit_service as event_service
+from ui.list_column_contract import VISIT_SELECTION_COLUMNS
 from ui.layout_constants import (
-    COMPACT_PAGE_SPACING,
     DIALOG_MIN_HEIGHT,
     DIALOG_OUTER_MARGINS,
     INLINE_SPACING,
-    TECH_CARD_INNER_MARGINS,
     TEXT_EDIT_FALLBACK_LINE_HEIGHT,
     TEXT_EDIT_FALLBACK_PADDING,
 )
@@ -62,60 +59,7 @@ ROOT_CAUSE_PARETO_OPTIONS = [
 
 ANOMALY_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
 
-VISIT_TECH_TRANSFER_ITEMS = [
-    ("tech_transfer_doc", "作業標準書"),
-    ("carrier_requirement", "載具要求"),
-    ("dispensing_process", "Underfill要求"),
-    ("functional_test", "電訊測試"),
-    ("packaging_requirement", "包裝規範"),
-]
-
-# 異常表單「參考資料（技轉）」卡片列：已技轉 + 技轉要目（與 VISIT_TECH_TRANSFER_ITEMS 對齊）。
-ANOMALY_TECH_REF_CARD_DEFS: tuple[tuple[str, str], ...] = (
-    ("tech_transfer", "已技轉"),
-    *VISIT_TECH_TRANSFER_ITEMS,
-)
-
-TECH_TRANSFER_STATE_YES = "yes"
-TECH_TRANSFER_STATE_NO = "no"
-TECH_TRANSFER_STATE_NA = "na"
-
 VISIT_TIME_SLOT_OPTIONS = ["上午", "下午", "全天"]
-
-
-def create_status_pill(text: str, tone: str = "info") -> QLabel:
-    """Create a styled pill label for status indicator using design tokens."""
-    pill = QLabel(text)
-    pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    pill.setProperty("role", "statusBadge")
-    pill.setProperty("tone", tone)
-    return pill
-
-
-def get_due_date_status_tone(due_date_str: str, is_closed: bool = False) -> tuple[str, str]:
-    """Calculate status text and tone ('success', 'warning', 'danger', 'neutral') based on due date."""
-    if is_closed:
-        return ("已結案", "success")
-    if not due_date_str or not due_date_str.strip():
-        return ("待處理", "info")
-
-    try:
-        from PySide6.QtCore import QDate
-
-        parts = [int(p) for p in due_date_str.strip().replace("-", "/").split("/")]
-        due_qdate = QDate(parts[0], parts[1], parts[2])
-        today = QDate.currentDate()
-        days_left = today.daysTo(due_qdate)
-
-        if days_left < 0:
-            return (f"逾期 {abs(days_left)} 天", "danger")
-        elif days_left <= 3:
-            return (f"即將到期 ({days_left}天)", "warning")
-        else:
-            return (f"進行中 ({days_left}天)", "info")
-    except Exception:
-        return ("進行中", "info")
-
 
 
 # ── Shared Helper Functions ────────────────────────────────────────────────────
@@ -210,96 +154,6 @@ def apply_dialog_layout(
 # ── Shared Widget Classes ──────────────────────────────────────────────────────
 
 
-class TechTransferCard(QFrame):
-    """卡片式技轉項目：標題在上，有/沒有/不適用 radio 在下，選取時顯示高亮邊框。"""
-
-    _STATE_BY_ID = {
-        1: TECH_TRANSFER_STATE_YES,
-        0: TECH_TRANSFER_STATE_NO,
-        2: TECH_TRANSFER_STATE_NA,
-    }
-    _ID_BY_STATE = {state: btn_id for btn_id, state in _STATE_BY_ID.items()}
-
-    def __init__(self, field_key: str, field_label: str, parent=None):
-        super().__init__(parent)
-        self.field_key = field_key
-        self.setObjectName("techTransferCard")
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setMinimumWidth(140)
-        self._state = TECH_TRANSFER_STATE_NO
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*TECH_CARD_INNER_MARGINS)
-        layout.setSpacing(COMPACT_PAGE_SPACING)
-
-        title_label = QLabel(field_label)
-        title_label.setObjectName("techCardTitle")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(title_label)
-
-        radio_row = QHBoxLayout()
-        radio_row.setSpacing(INLINE_SPACING)
-        radio_row.setContentsMargins(0, 0, 0, 0)
-
-        self.yes_radio = QRadioButton("有")
-        self.no_radio = QRadioButton("沒有")
-        self.na_radio = QRadioButton("不適用")
-        for radio in (self.yes_radio, self.no_radio, self.na_radio):
-            radio.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.group = QButtonGroup(self)
-        self.group.setExclusive(True)
-        self.group.addButton(self.yes_radio, 1)
-        self.group.addButton(self.no_radio, 0)
-        self.group.addButton(self.na_radio, 2)
-        self.no_radio.setChecked(True)
-
-        radio_row.addWidget(self.yes_radio)
-        radio_row.addWidget(self.no_radio)
-        radio_row.addWidget(self.na_radio)
-        radio_row.addStretch(1)
-        layout.addLayout(radio_row)
-
-        self._apply_style()
-        self.group.buttonToggled.connect(self._on_toggled)
-
-    def _on_toggled(self, _button, _checked: bool) -> None:
-        new_state = self._STATE_BY_ID.get(
-            self.group.checkedId(), TECH_TRANSFER_STATE_NO
-        )
-        if new_state != self._state:
-            self._state = new_state
-            self._apply_style()
-
-    def _apply_style(self) -> None:
-        if self._state == TECH_TRANSFER_STATE_YES:
-            tag = "selected"
-        elif self._state == TECH_TRANSFER_STATE_NA:
-            tag = "na"
-        else:
-            tag = "normal"
-        self.setProperty("state", tag)
-        style = self.style()
-        style.unpolish(self)
-        style.polish(self)
-
-    def set_state(self, state: str) -> None:
-        normalized = state if state in self._ID_BY_STATE else TECH_TRANSFER_STATE_NO
-        btn_id = self._ID_BY_STATE[normalized]
-        btn = self.group.button(btn_id)
-        if btn is not None:
-            btn.setChecked(True)
-        self._state = normalized
-        self._apply_style()
-
-    def get_state(self) -> str:
-        return self._state
-
-    def set_value(self, has_value: bool) -> None:
-        self.set_state(
-            TECH_TRANSFER_STATE_YES if has_value else TECH_TRANSFER_STATE_NO
-        )
-
-
 class VisitSelectionDialog(QDialog):
     def __init__(self, supplier_id: str, supplier_name: str, parent=None):
         super().__init__(parent)
@@ -315,7 +169,9 @@ class VisitSelectionDialog(QDialog):
         self.table = QTableWidget()
         self.table.setAccessibleName("選擇訪廠紀錄表格")
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["日期", "品名", "工單", "摘要"])
+        self.table.setHorizontalHeaderLabels(
+            [column.label for column in VISIT_SELECTION_COLUMNS]
+        )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -347,9 +203,14 @@ class VisitSelectionDialog(QDialog):
             date_item = QTableWidgetItem(v_date)
             date_item.setData(Qt.ItemDataRole.UserRole, v["id"])
             self.table.setItem(idx, 0, date_item)
-            self.table.setItem(idx, 1, text_table_item(v.get("product_name"), empty="-"))
-            self.table.setItem(idx, 2, QTableWidgetItem(v.get("work_order_no") or "-"))
-            self.table.setItem(idx, 3, text_table_item(v.get("summary"), empty="-"))
+            values = {
+                "visit_date": date_item,
+                "summary": text_table_item(v.get("summary"), empty="-"),
+                "work_order_no": QTableWidgetItem(v.get("work_order_no") or "-"),
+                "product_name": text_table_item(v.get("product_name"), empty="-"),
+            }
+            for column, spec in enumerate(VISIT_SELECTION_COLUMNS):
+                self.table.setItem(idx, column, values[spec.field])
 
     def _on_accept(self):
         selected = self.table.selectedItems()

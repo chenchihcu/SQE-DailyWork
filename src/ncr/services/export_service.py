@@ -12,10 +12,11 @@ from ncr.models.defect import (
     STATS_SECTION_DEFINITIONS,
     build_stats_headers,
 )
+from app_paths import outputs_dir
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parents[3] / "Outputs"
+BASE_DIR = outputs_dir()
 
 
 def _get_export_styles():

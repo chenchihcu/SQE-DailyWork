@@ -374,6 +374,39 @@ class NcrToAnomalyHandoffTests(unittest.TestCase):
         self.assertNotIn("transfer_slip_no", captured)
         self.assertNotIn("outsource_receipt_no", captured)
 
+    @patch("ncr.ui.defect_form.crud.get_defect_by_id")
+    def test_convert_payload_maps_shared_category(self, get_defect) -> None:
+        from ncr.ui.defect_form import DefectEditDialog
+        from ui.widgets.new_anomaly_dialog import ANOMALY_CATEGORY_OPTIONS
+
+        captured: dict = {}
+
+        class _MainWindow:
+            def open_new_anomaly_create_page(self, initial_data=None):
+                captured.update(dict(initial_data or {}))
+
+        category = "其他"
+        self.assertIn(category, ANOMALY_CATEGORY_OPTIONS)
+        get_defect.return_value = {
+            "supplier_id": "sup-1",
+            "supplier_name": "供應商A",
+            "item_no": "PN-001",
+            "product_name": "產品A",
+            "defect_desc": "不良",
+            "event_date": "2026-05-12",
+            "defect_no": "NCR-002",
+            "category": category,
+            "processing_line": "原物料",
+            "qty": 1,
+        }
+        dialog = DefectEditDialog.__new__(DefectEditDialog)
+        dialog.conn = self.conn
+        dialog.defect_id = 2
+        dialog.window = lambda: _MainWindow()
+        dialog.accept = lambda: None
+        DefectEditDialog.convert_to_supplier_anomaly(dialog)
+        self.assertEqual(category, captured.get("category"))
+
 
 class AppearancePreferencesV9Tests(unittest.TestCase):
     def test_v9_mapping_round_trip(self) -> None:

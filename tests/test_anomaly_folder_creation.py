@@ -17,7 +17,6 @@ def _detail(**overrides) -> dict:
             "supplier_name": "供應商甲",
             "anomaly_no": "20260714001",
             "batch_qty": 0,
-            "is_tech_transfer": False,
             "quality_report_required": None,
         }
     )
@@ -47,7 +46,6 @@ def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
     assert '  異常單號: "20260714001"' in text
     assert '  改善說明: ""' in text
     assert '  是否要求品質異常單: ""' in text
-    assert '  是否技術移轉: "否"' in text
     assert "  附件: []" in text
     parsed = yaml.safe_load(text)
     assert parsed["異常事件"]["改善說明"] == ""

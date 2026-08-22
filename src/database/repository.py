@@ -21,10 +21,6 @@ from database.repo_helpers import (
     PRODUCT_STAGE_SYNC_META_KEY,
     DEFAULT_STAGE_CHANGED_BY,
     STAGE_SYNC_SCOPE_ALL_HISTORY,
-    VISIT_TECH_TRANSFER_ITEM_COLUMNS,
-    TECH_TRANSFER_STATE_YES,
-    TECH_TRANSFER_STATE_NO,
-    VISIT_TECH_TRANSFER_STATE_COLUMNS,
     EVENT_SCOPE_VISIT_ONLY,
     EVENT_SCOPE_VISIT_WITH_ANOMALY,
     EVENT_SCOPE_ANOMALY_ONLY,
@@ -90,8 +86,6 @@ from database.repo_helpers import (
     _month_from_date_value,
     _normalize_product_stage,
     _normalize_product_stage_for_read,
-    _normalize_tech_transfer_state,
-    _resolve_tech_transfer_states,
     _normalized_lookup_text,
     _build_product_lookup_by_supplier_and_name,
 )
@@ -169,7 +163,11 @@ def create_schema(conn: sqlite3.Connection) -> None:
             product_lot_no TEXT NOT NULL DEFAULT '',
             product_name TEXT NOT NULL DEFAULT '',
             product_stage TEXT NOT NULL DEFAULT '量產',
+            anomaly_source TEXT NOT NULL DEFAULT '',
+            material_receipt_no TEXT NOT NULL DEFAULT '',
+            internal_work_order_no TEXT NOT NULL DEFAULT '',
             outsource_work_order TEXT NOT NULL DEFAULT '',
+            outsource_receipt_no TEXT NOT NULL DEFAULT '',
             batch_qty INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
             improvement_desc TEXT NOT NULL DEFAULT '',
@@ -200,17 +198,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
             summary TEXT NOT NULL DEFAULT '',
             work_order_no TEXT NOT NULL DEFAULT '',
             production_qty INTEGER NOT NULL DEFAULT 0,
-            tech_transfer INTEGER NOT NULL DEFAULT 0,
-            tech_transfer_doc INTEGER NOT NULL DEFAULT 0,
-            carrier_requirement INTEGER NOT NULL DEFAULT 0,
-            dispensing_process INTEGER NOT NULL DEFAULT 0,
-            functional_test INTEGER NOT NULL DEFAULT 0,
-            packaging_requirement INTEGER NOT NULL DEFAULT 0,
-            tech_transfer_doc_state TEXT NOT NULL DEFAULT 'no',
-            carrier_requirement_state TEXT NOT NULL DEFAULT 'no',
-            dispensing_process_state TEXT NOT NULL DEFAULT 'no',
-            functional_test_state TEXT NOT NULL DEFAULT 'no',
-            packaging_requirement_state TEXT NOT NULL DEFAULT 'no',
             status TEXT NOT NULL DEFAULT '已完成' CHECK (status='已完成'),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -663,29 +650,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "visits", "product_name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "visits", "product_stage", "TEXT NOT NULL DEFAULT '量產'")
     _ensure_column(conn, "visits", "visitor_name", "TEXT NOT NULL DEFAULT ''")
-    _ensure_column(conn, "visits", "tech_transfer_doc", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "visits", "carrier_requirement", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "visits", "dispensing_process", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "visits", "functional_test", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "visits", "packaging_requirement", "INTEGER NOT NULL DEFAULT 0")
-    for state_col in VISIT_TECH_TRANSFER_STATE_COLUMNS:
-        _ensure_column(conn, "visits", state_col, "TEXT NOT NULL DEFAULT 'no'")
-    if get_migration_meta(conn, "tech_transfer_state_backfill_v1") != "1":
-        for legacy_col, state_col in zip(
-            VISIT_TECH_TRANSFER_ITEM_COLUMNS,
-            VISIT_TECH_TRANSFER_STATE_COLUMNS,
-            strict=True,
-        ):
-            conn.execute(
-                f"UPDATE visits SET {state_col} = 'yes' "
-                f"WHERE {legacy_col} = 1 AND {state_col} = 'no'"
-            )
-        upsert_migration_meta(conn, "tech_transfer_state_backfill_v1", "1")
     _ensure_index(conn, "idx_anomalies_visit", "anomalies", "visit_id")
     _ensure_index(conn, "idx_anomalies_product", "anomalies", "product_id")
     _ensure_index(conn, "idx_visits_product", "visits", "product_id")
     _ensure_product_indexes(conn)
     _normalize_event_status_tables(conn)
+    _remove_tech_transfer_columns(conn)
     _normalize_defect_records_optional_work_order(conn)
     _remove_products_spec_desc_column_if_present(conn)
     _ensure_index(conn, "idx_anomalies_date", "anomalies", "anomaly_date")
@@ -698,9 +668,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "anomalies", "rc_supplier_wip", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "rc_in_transit", "TEXT NOT NULL DEFAULT 'unconfirmed'")
     _ensure_column(conn, "anomalies", "rc_internal_inventory", "TEXT NOT NULL DEFAULT 'unconfirmed'")
-    _ensure_column(conn, "anomalies", "is_tech_transfer", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "defect_records", "supplier_id", "TEXT")
     _ensure_column(conn, "anomalies", "source_defect_no", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "anomalies", "process_keywords", "TEXT NOT NULL DEFAULT ''")
+    _ensure_anomaly_trace_fields_v1(conn)
     _ensure_index(conn, "idx_defect_records_supplier", "defect_records", "supplier_id")
     if get_migration_meta(conn, "defect_supplier_id_backfill_v1") != "1":
         conn.execute(
@@ -3479,7 +3450,11 @@ def create_anomaly(
     product_id: str | None = None,
     product_name: str = "",
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
+    anomaly_source: str = "",
+    material_receipt_no: str = "",
+    internal_work_order_no: str = "",
     outsource_work_order: str = "",
+    outsource_receipt_no: str = "",
     batch_qty: int = 0,
     visit_id: str | None = None,
     pending_items: str = "",
@@ -3489,8 +3464,8 @@ def create_anomaly(
     rc_supplier_wip: str = "unconfirmed",
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
-    is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
+    process_keywords: str = "",
 ) -> str:
     inputs = _prepare_anomaly_inputs(
         conn,
@@ -3513,11 +3488,16 @@ def create_anomaly(
         supplier_id=inputs.normalized_supplier_id,
         problem_desc=problem_desc,
         category=category,
+        process_keywords=process_keywords,
         product_lot_no=product_lot_no,
         product_id=inputs.resolved_product_id,
         product_name=inputs.resolved_product_name,
         product_stage=inputs.normalized_product_stage,
+        anomaly_source=anomaly_source,
+        material_receipt_no=material_receipt_no,
+        internal_work_order_no=internal_work_order_no,
         outsource_work_order=outsource_work_order,
+        outsource_receipt_no=outsource_receipt_no,
         batch_qty=inputs.normalized_batch_qty,
         visit_id=visit_id,
         pending_items=pending_items,
@@ -3527,7 +3507,6 @@ def create_anomaly(
         rc_supplier_wip=rc_supplier_wip,
         rc_in_transit=rc_in_transit,
         rc_internal_inventory=rc_internal_inventory,
-        is_tech_transfer=is_tech_transfer,
         quality_report_required=quality_report_required,
     )
     try:
@@ -4242,6 +4221,31 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
         if _has_column(conn, "anomalies", "source_defect_no")
         else "'' AS source_defect_no"
     )
+    process_keywords_expr = (
+        "a.process_keywords AS process_keywords"
+        if _has_column(conn, "anomalies", "process_keywords")
+        else "'' AS process_keywords"
+    )
+    anomaly_source_expr = (
+        "a.anomaly_source AS anomaly_source"
+        if _has_column(conn, "anomalies", "anomaly_source")
+        else "'' AS anomaly_source"
+    )
+    material_receipt_expr = (
+        "a.material_receipt_no AS material_receipt_no"
+        if _has_column(conn, "anomalies", "material_receipt_no")
+        else "'' AS material_receipt_no"
+    )
+    internal_work_order_expr = (
+        "a.internal_work_order_no AS internal_work_order_no"
+        if _has_column(conn, "anomalies", "internal_work_order_no")
+        else "'' AS internal_work_order_no"
+    )
+    outsource_receipt_expr = (
+        "a.outsource_receipt_no AS outsource_receipt_no"
+        if _has_column(conn, "anomalies", "outsource_receipt_no")
+        else "'' AS outsource_receipt_no"
+    )
     row = conn.execute(
         f"""
         SELECT
@@ -4255,11 +4259,15 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             p.product_code AS product_code,
             a.product_name AS product_name,
             a.product_stage AS product_stage,
+            {anomaly_source_expr},
+            {material_receipt_expr},
+            {internal_work_order_expr},
             a.problem_desc AS problem_desc,
             a.category AS category,
             a.category AS category_raw,
             a.product_lot_no AS product_lot_no,
             a.outsource_work_order AS outsource_work_order,
+            {outsource_receipt_expr},
             a.batch_qty AS batch_qty,
             a.status AS status,
             a.improvement_desc AS improvement_desc,
@@ -4272,9 +4280,9 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.rc_supplier_wip AS rc_supplier_wip,
             a.rc_in_transit AS rc_in_transit,
             a.rc_internal_inventory AS rc_internal_inventory,
-            a.is_tech_transfer AS is_tech_transfer,
             a.quality_report_required AS quality_report_required,
             {source_defect_expr},
+            {process_keywords_expr},
             a.created_at AS created_at,
             a.updated_at AS updated_at
         FROM anomalies a
@@ -4290,7 +4298,6 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
     result = dict(row)
     result["batch_qty"] = _as_int(result.get("batch_qty"), 0)
     result["product_stage"] = _normalize_product_stage(result.get("product_stage"))
-    result["is_tech_transfer"] = bool(_as_int(result.get("is_tech_transfer"), 0))
     if result.get("quality_report_required") is not None:
         result["quality_report_required"] = bool(
             _as_int(result.get("quality_report_required"), 0)
@@ -4310,7 +4317,11 @@ def update_anomaly(
     product_id: str | None = None,
     product_name: str = "",
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
+    anomaly_source: str = "",
+    material_receipt_no: str = "",
+    internal_work_order_no: str = "",
     outsource_work_order: str = "",
+    outsource_receipt_no: str = "",
     batch_qty: int = 0,
     pending_items: str = "",
     responsible_person: str = "",
@@ -4319,14 +4330,15 @@ def update_anomaly(
     rc_supplier_wip: str = "unconfirmed",
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
-    is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
     source_defect_no: str = "",
+    process_keywords: str = "",
 ) -> None:
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
         raise ValueError("Anomaly id is required")
+    _ensure_column(conn, "anomalies", "process_keywords", "TEXT NOT NULL DEFAULT ''")
     existing = get_anomaly_detail(conn, anomaly_key)
     if existing is None:
         raise ValueError("Anomaly not found")
@@ -4392,10 +4404,14 @@ def update_anomaly(
                 product_id = ?,
                 product_name = ?,
                 product_stage = ?,
+                anomaly_source = ?,
+                material_receipt_no = ?,
+                internal_work_order_no = ?,
                 problem_desc = ?,
                 category = ?,
                 product_lot_no = ?,
                 outsource_work_order = ?,
+                outsource_receipt_no = ?,
                 batch_qty = ?,
                 pending_items = ?,
                 responsible_person = ?,
@@ -4404,8 +4420,8 @@ def update_anomaly(
                 rc_supplier_wip = ?,
                 rc_in_transit = ?,
                 rc_internal_inventory = ?,
-                is_tech_transfer = ?,
                 quality_report_required = ?,
+                process_keywords = ?,
                 updated_at = ?
             WHERE id = ?
             """,
@@ -4416,10 +4432,14 @@ def update_anomaly(
                 resolved_product_id,
                 resolved_product_name,
                 normalized_product_stage,
+                (anomaly_source or "").strip(),
+                (material_receipt_no or "").strip(),
+                (internal_work_order_no or "").strip(),
                 normalized_problem_desc,
                 (category or "").strip(),
                 (product_lot_no or "").strip(),
                 (outsource_work_order or "").strip(),
+                (outsource_receipt_no or "").strip(),
                 normalized_batch_qty,
                 (pending_items or "").strip(),
                 (responsible_person or "").strip(),
@@ -4428,8 +4448,8 @@ def update_anomaly(
                 (rc_supplier_wip or "unconfirmed").strip(),
                 (rc_in_transit or "unconfirmed").strip(),
                 (rc_internal_inventory or "unconfirmed").strip(),
-                1 if is_tech_transfer else 0,
                 None if quality_report_required is None else int(quality_report_required),
+                (process_keywords or "").strip(),
                 _now_iso(),
                 anomaly_key,
             ),
@@ -4677,13 +4697,6 @@ def create_visit(
     production_qty: int = 0,
     product_sections: list[dict] | None = None,
     defect_notes: list[dict] | None = None,
-    tech_transfer: bool = False,
-    tech_transfer_doc: bool = False,
-    carrier_requirement: bool = False,
-    dispensing_process: bool = False,
-    functional_test: bool = False,
-    packaging_requirement: bool = False,
-    tech_transfer_states: dict[str, str] | None = None,
 ) -> str:
     normalized_date = _normalize_strict_iso_date(
         visit_date,
@@ -4716,13 +4729,6 @@ def create_visit(
         summary=summary,
         work_order_no=str(primary_section.get("work_order_no") or ""),
         production_qty=primary_section.get("production_qty", 0),
-        tech_transfer=tech_transfer,
-        tech_transfer_doc=tech_transfer_doc,
-        carrier_requirement=carrier_requirement,
-        dispensing_process=dispensing_process,
-        functional_test=functional_test,
-        packaging_requirement=packaging_requirement,
-        tech_transfer_states=tech_transfer_states,
     )
     _replace_visit_product_sections_and_defect_notes(
         conn,
@@ -4762,17 +4768,6 @@ def get_visit_detail(conn: sqlite3.Connection, visit_id: str) -> dict | None:
             v.summary AS summary,
             v.work_order_no AS work_order_no,
             v.production_qty AS production_qty,
-            v.tech_transfer AS tech_transfer,
-            v.tech_transfer_doc AS tech_transfer_doc,
-            v.carrier_requirement AS carrier_requirement,
-            v.dispensing_process AS dispensing_process,
-            v.functional_test AS functional_test,
-            v.packaging_requirement AS packaging_requirement,
-            v.tech_transfer_doc_state AS tech_transfer_doc_state,
-            v.carrier_requirement_state AS carrier_requirement_state,
-            v.dispensing_process_state AS dispensing_process_state,
-            v.functional_test_state AS functional_test_state,
-            v.packaging_requirement_state AS packaging_requirement_state,
             v.status AS status,
             v.created_at AS created_at,
             v.updated_at AS updated_at
@@ -4787,11 +4782,6 @@ def get_visit_detail(conn: sqlite3.Connection, visit_id: str) -> dict | None:
     if row is None:
         return None
     result = dict(row)
-    result["tech_transfer"] = bool(_as_int(result.get("tech_transfer"), 0))
-    for key in VISIT_TECH_TRANSFER_ITEM_COLUMNS:
-        result[key] = bool(_as_int(result.get(key), 0))
-    for key in VISIT_TECH_TRANSFER_STATE_COLUMNS:
-        result[key] = _normalize_tech_transfer_state(result.get(key))
     result["production_qty"] = _as_int(result.get("production_qty"), 0)
     result["product_stage"] = _normalize_product_stage(result.get("product_stage"))
     result["product_sections"] = list_visit_product_sections(conn, visit_key)
@@ -5017,13 +5007,6 @@ def update_visit(
     production_qty: int = 0,
     product_sections: list[dict] | None = None,
     defect_notes: list[dict] | None = None,
-    tech_transfer: bool = False,
-    tech_transfer_doc: bool = False,
-    carrier_requirement: bool = False,
-    dispensing_process: bool = False,
-    functional_test: bool = False,
-    packaging_requirement: bool = False,
-    tech_transfer_states: dict[str, str] | None = None,
 ) -> None:
     visit_key = (visit_id or "").strip()
     if not visit_key:
@@ -5071,20 +5054,6 @@ def update_visit(
         production_qty=production_qty,
     )
     primary_section = normalized_sections[0] if normalized_sections else {}
-    booleans = {
-        "tech_transfer_doc": tech_transfer_doc,
-        "carrier_requirement": carrier_requirement,
-        "dispensing_process": dispensing_process,
-        "functional_test": functional_test,
-        "packaging_requirement": packaging_requirement,
-    }
-    states = _resolve_tech_transfer_states(
-        states=tech_transfer_states, booleans=booleans
-    )
-    has_any_yes = any(v == TECH_TRANSFER_STATE_YES for v in states.values())
-    normalized_tech_transfer = bool(tech_transfer) or has_any_yes
-    if not normalized_tech_transfer:
-        states = {key: TECH_TRANSFER_STATE_NO for key in states}
     cur = conn.execute(
         """
         UPDATE visits
@@ -5097,17 +5066,6 @@ def update_visit(
             summary = ?,
             work_order_no = ?,
             production_qty = ?,
-            tech_transfer = ?,
-            tech_transfer_doc = ?,
-            carrier_requirement = ?,
-            dispensing_process = ?,
-            functional_test = ?,
-            packaging_requirement = ?,
-            tech_transfer_doc_state = ?,
-            carrier_requirement_state = ?,
-            dispensing_process_state = ?,
-            functional_test_state = ?,
-            packaging_requirement_state = ?,
             updated_at = ?
         WHERE id = ?
         """,
@@ -5121,17 +5079,6 @@ def update_visit(
             (summary or "").strip(),
             str(primary_section.get("work_order_no") or ""),
             primary_section.get("production_qty", 0),
-            1 if normalized_tech_transfer else 0,
-            1 if states["tech_transfer_doc"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["carrier_requirement"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["dispensing_process"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["functional_test"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["packaging_requirement"] == TECH_TRANSFER_STATE_YES else 0,
-            states["tech_transfer_doc"],
-            states["carrier_requirement"],
-            states["dispensing_process"],
-            states["functional_test"],
-            states["packaging_requirement"],
             _now_iso(),
             visit_key,
         ),
@@ -5199,7 +5146,11 @@ def create_anomaly_with_visit_link(
     product_id: str | None = None,
     product_name: str = "",
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
+    anomaly_source: str = "",
+    material_receipt_no: str = "",
+    internal_work_order_no: str = "",
     outsource_work_order: str = "",
+    outsource_receipt_no: str = "",
     batch_qty: int = 0,
     visit_id: str | None = None,
     sync_visit: bool = True,
@@ -5211,10 +5162,10 @@ def create_anomaly_with_visit_link(
     rc_supplier_wip: str = "unconfirmed",
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
-    is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
     anomaly_no: str | None = None,
     source_defect_no: str = "",
+    process_keywords: str = "",
 ) -> dict[str, str | None]:
     inputs = _prepare_anomaly_inputs(
         conn,
@@ -5271,7 +5222,6 @@ def create_anomaly_with_visit_link(
                 summary=note,
                 work_order_no=outsource_work_order,
                 production_qty=normalized_batch_qty,
-                tech_transfer=is_tech_transfer,
             )
             _replace_visit_product_sections_and_defect_notes(
                 conn,
@@ -5310,7 +5260,11 @@ def create_anomaly_with_visit_link(
         product_id=resolved_product_id,
         product_name=resolved_product_name,
         product_stage=normalized_product_stage,
+        anomaly_source=anomaly_source,
+        material_receipt_no=material_receipt_no,
+        internal_work_order_no=internal_work_order_no,
         outsource_work_order=outsource_work_order,
+        outsource_receipt_no=outsource_receipt_no,
         batch_qty=normalized_batch_qty,
         visit_id=linked_visit_id,
         anomaly_no=resolved_anomaly_no,
@@ -5321,9 +5275,9 @@ def create_anomaly_with_visit_link(
         rc_supplier_wip=rc_supplier_wip,
         rc_in_transit=rc_in_transit,
         rc_internal_inventory=rc_internal_inventory,
-        is_tech_transfer=is_tech_transfer,
         quality_report_required=quality_report_required,
         source_defect_no=source_defect_no,
+        process_keywords=process_keywords,
     )
     id_row = conn.execute(
         "SELECT id FROM anomalies WHERE anomaly_no = ?",
@@ -5350,51 +5304,6 @@ def create_anomaly_with_visit_link(
 
 def preview_anomaly_no(conn: sqlite3.Connection, anomaly_date: str) -> str:
     return _next_anomaly_no(conn, anomaly_date)
-
-
-def get_latest_tech_transfer_for_supplier(
-    conn: sqlite3.Connection, supplier_id: str
-) -> dict | None:
-    """查詢指定供應商最新一筆含技轉資料的訪廠紀錄（tech_transfer=1），
-    作為新增異常表單參考資料使用。若無技轉紀錄則回傳 None。"""
-    normalized_supplier_id = (supplier_id or "").strip()
-    if not normalized_supplier_id:
-        return None
-    row = conn.execute(
-        """
-        SELECT
-            v.id AS id,
-            v.visit_date AS visit_date,
-            v.tech_transfer AS tech_transfer,
-            v.tech_transfer_doc AS tech_transfer_doc,
-            v.carrier_requirement AS carrier_requirement,
-            v.dispensing_process AS dispensing_process,
-            v.functional_test AS functional_test,
-            v.packaging_requirement AS packaging_requirement,
-            v.tech_transfer_doc_state AS tech_transfer_doc_state,
-            v.carrier_requirement_state AS carrier_requirement_state,
-            v.dispensing_process_state AS dispensing_process_state,
-            v.functional_test_state AS functional_test_state,
-            v.packaging_requirement_state AS packaging_requirement_state,
-            v.work_order_no AS work_order_no,
-            v.production_qty AS production_qty
-        FROM visits v
-        WHERE v.supplier_id = ? AND v.tech_transfer = 1
-        ORDER BY v.visit_date DESC, v.created_at DESC
-        LIMIT 1
-        """,
-        (normalized_supplier_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    result = dict(row)
-    result["tech_transfer"] = bool(_as_int(result.get("tech_transfer"), 0))
-    for key in VISIT_TECH_TRANSFER_ITEM_COLUMNS:
-        result[key] = bool(_as_int(result.get(key), 0))
-    for key in VISIT_TECH_TRANSFER_STATE_COLUMNS:
-        result[key] = _normalize_tech_transfer_state(result.get(key))
-    result["production_qty"] = _as_int(result.get("production_qty"), 0)
-    return result
 
 
 def get_latest_visit_for_supplier_on_date(
@@ -5537,7 +5446,7 @@ def search_global(
             """
             SELECT id, defect_no AS ref_no, defect_desc AS title,
                    COALESCE(NULLIF(outsource_supplier_name, ''), supplier_name) AS subtitle,
-                   event_date, supplier_name
+                   event_date, supplier_name, processing_line, status
             FROM defect_records
             WHERE defect_no LIKE ?
                OR defect_desc LIKE ?
@@ -5606,6 +5515,11 @@ def list_events(
             if _has_column(conn, "anomalies", "pending_items")
             else "'' AS pending_items"
         )
+        process_keywords_expr = (
+            "a.process_keywords AS process_keywords"
+            if _has_column(conn, "anomalies", "process_keywords")
+            else "'' AS process_keywords"
+        )
         anomaly_sql = f"""
             SELECT
                 a.id AS event_id,
@@ -5616,6 +5530,7 @@ def list_events(
                 a.problem_desc AS content,
                 a.status AS status,
                 a.category AS category,
+                {process_keywords_expr},
                 a.visit_id AS linked_visit_id,
                 v.visit_date AS linked_visit_date,
                 a.product_id AS product_id,
@@ -5623,9 +5538,13 @@ def list_events(
                 a.product_lot_no AS product_lot_no,
                 a.product_name AS product_name,
                 a.product_stage AS product_stage,
+                a.anomaly_source AS anomaly_source,
+                a.material_receipt_no AS material_receipt_no,
+                a.internal_work_order_no AS internal_work_order_no,
                 a.outsource_work_order AS work_order_no,
                 a.batch_qty AS production_qty,
                 a.outsource_work_order AS outsource_work_order,
+                a.outsource_receipt_no AS outsource_receipt_no,
                 a.batch_qty AS batch_qty,
                 a.improvement_desc AS improvement_desc,
                 {pending_items_expr},
@@ -6241,6 +6160,68 @@ def _resolve_product_selection(
         str(product.get("product_name") or normalized_name),
         _normalize_product_stage_for_read(product.get("product_stage")),
     )
+
+
+ANOMALY_TRACE_FIELDS_MIGRATION_META_KEY = "anomaly_trace_fields_v1"
+ANOMALY_TRACE_UNIQUE_INDEX_REMOVAL_META_KEY = "anomaly_trace_unique_index_removal_v1"
+
+_TRACE_FIELD_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("material_receipt_no", "原物料進貨單號"),
+    ("internal_work_order_no", "廠內製令單號"),
+    ("outsource_work_order", "委外製令單號"),
+    ("outsource_receipt_no", "委外進貨單號"),
+)
+
+
+def _ensure_anomaly_trace_fields_v1(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, ANOMALY_TRACE_FIELDS_MIGRATION_META_KEY) != "1":
+        _ensure_column(conn, "anomalies", "anomaly_source", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "anomalies", "material_receipt_no", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "anomalies", "internal_work_order_no", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "anomalies", "outsource_receipt_no", "TEXT NOT NULL DEFAULT ''")
+        upsert_migration_meta(conn, ANOMALY_TRACE_FIELDS_MIGRATION_META_KEY, "1")
+    _remove_anomaly_trace_supplier_unique_indexes(conn)
+
+
+def _remove_anomaly_trace_supplier_unique_indexes(conn: sqlite3.Connection) -> None:
+    """Drop retired supplier-scoped trace unique indexes from earlier builds."""
+    if get_migration_meta(conn, ANOMALY_TRACE_UNIQUE_INDEX_REMOVAL_META_KEY) == "1":
+        return
+    for column, _label in _TRACE_FIELD_COLUMNS:
+        conn.execute(f"DROP INDEX IF EXISTS uniq_anomalies_{column}_supplier")
+    upsert_migration_meta(conn, ANOMALY_TRACE_UNIQUE_INDEX_REMOVAL_META_KEY, "1")
+
+
+def find_anomaly_trace_duplicate(
+    conn: sqlite3.Connection,
+    *,
+    supplier_id: str,
+    field_name: str,
+    field_value: str,
+    exclude_anomaly_id: str | None = None,
+) -> dict | None:
+    column = str(field_name or "").strip()
+    if column not in {name for name, _label in _TRACE_FIELD_COLUMNS}:
+        raise ValueError(f"Unsupported trace field: {field_name}")
+    normalized_value = str(field_value or "").strip()
+    if not normalized_value:
+        return None
+    params: list[Any] = [str(supplier_id or "").strip(), normalized_value]
+    sql = f"""
+        SELECT id, anomaly_no
+        FROM anomalies
+        WHERE supplier_id = ?
+          AND TRIM({column}) = ?
+    """
+    excluded = str(exclude_anomaly_id or "").strip()
+    if excluded:
+        sql += " AND id <> ?"
+        params.append(excluded)
+    sql += " LIMIT 1"
+    row = conn.execute(sql, params).fetchone()
+    return dict(row) if row is not None else None
+
+
 _STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ANOMALY_NO_PATTERN = re.compile(r"^\d{11}$")
 
@@ -6320,7 +6301,11 @@ def _insert_anomaly_row(
     product_id: str | None = None,
     product_name: str = "",
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
+    anomaly_source: str = "",
+    material_receipt_no: str = "",
+    internal_work_order_no: str = "",
     outsource_work_order: str = "",
+    outsource_receipt_no: str = "",
     batch_qty: int = 0,
     visit_id: str | None = None,
     anomaly_no: str | None = None,
@@ -6331,11 +6316,12 @@ def _insert_anomaly_row(
     rc_supplier_wip: str = "unconfirmed",
     rc_in_transit: str = "unconfirmed",
     rc_internal_inventory: str = "unconfirmed",
-    is_tech_transfer: bool = False,
     quality_report_required: bool | None = None,
     source_defect_no: str = "",
+    process_keywords: str = "",
 ) -> str:
     _ensure_column(conn, "anomalies", "source_defect_no", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "anomalies", "process_keywords", "TEXT NOT NULL DEFAULT ''")
     normalized_date = _normalize_strict_iso_date(
         anomaly_date,
         field_name="Anomaly date",
@@ -6355,12 +6341,14 @@ def _insert_anomaly_row(
             """
             INSERT INTO anomalies(
                 id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
-                category, product_lot_no, product_name, product_stage, outsource_work_order, batch_qty,
+                category, product_lot_no, product_name, product_stage,
+                anomaly_source, material_receipt_no, internal_work_order_no,
+                outsource_work_order, outsource_receipt_no, batch_qty,
                 status, improvement_desc, closed_at, created_at, updated_at,
                 pending_items, responsible_person, due_date,
                 rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
-                is_tech_transfer, quality_report_required, source_defect_no
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                quality_report_required, source_defect_no, process_keywords
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _gen_id(),
@@ -6374,7 +6362,11 @@ def _insert_anomaly_row(
                 (product_lot_no or "").strip(),
                 (product_name or "").strip(),
                 normalized_product_stage,
+                (anomaly_source or "").strip(),
+                (material_receipt_no or "").strip(),
+                (internal_work_order_no or "").strip(),
                 (outsource_work_order or "").strip(),
+                (outsource_receipt_no or "").strip(),
                 normalized_batch_qty,
                 _now_iso(),
                 _now_iso(),
@@ -6385,9 +6377,9 @@ def _insert_anomaly_row(
                 (rc_supplier_wip or "unconfirmed").strip(),
                 (rc_in_transit or "unconfirmed").strip(),
                 (rc_internal_inventory or "unconfirmed").strip(),
-                1 if is_tech_transfer else 0,
                 None if quality_report_required is None else int(quality_report_required),
                 (source_defect_no or "").strip(),
+                (process_keywords or "").strip(),
             ),
         )
 
@@ -6724,31 +6716,6 @@ def _join_unique_texts(values: Any) -> str:
     return "、".join(result)
 
 
-def _prepare_tech_transfer_values(
-    *,
-    tech_transfer: bool = False,
-    tech_transfer_doc: bool = False,
-    carrier_requirement: bool = False,
-    dispensing_process: bool = False,
-    functional_test: bool = False,
-    packaging_requirement: bool = False,
-    tech_transfer_states: dict[str, str] | None = None,
-) -> tuple[bool, dict[str, str]]:
-    booleans = {
-        "tech_transfer_doc": tech_transfer_doc,
-        "carrier_requirement": carrier_requirement,
-        "dispensing_process": dispensing_process,
-        "functional_test": functional_test,
-        "packaging_requirement": packaging_requirement,
-    }
-    states = _resolve_tech_transfer_states(states=tech_transfer_states, booleans=booleans)
-    has_any_yes = any(v == TECH_TRANSFER_STATE_YES for v in states.values())
-    normalized_tech_transfer = bool(tech_transfer) or has_any_yes
-    if not normalized_tech_transfer:
-        states = {key: TECH_TRANSFER_STATE_NO for key in states}
-    return normalized_tech_transfer, states
-
-
 def _insert_visit_row(
     conn: sqlite3.Connection,
     *,
@@ -6761,13 +6728,6 @@ def _insert_visit_row(
     summary: str = "",
     work_order_no: str = "",
     production_qty: int = 0,
-    tech_transfer: bool = False,
-    tech_transfer_doc: bool = False,
-    carrier_requirement: bool = False,
-    dispensing_process: bool = False,
-    functional_test: bool = False,
-    packaging_requirement: bool = False,
-    tech_transfer_states: dict[str, str] | None = None,
 ) -> str:
     visit_id = _gen_id()
     normalized_date = _normalize_strict_iso_date(
@@ -6779,25 +6739,13 @@ def _insert_visit_row(
         production_qty,
         field_name="Production quantity",
     )
-    normalized_tech_transfer, states = _prepare_tech_transfer_values(
-        tech_transfer=tech_transfer,
-        tech_transfer_doc=tech_transfer_doc,
-        carrier_requirement=carrier_requirement,
-        dispensing_process=dispensing_process,
-        functional_test=functional_test,
-        packaging_requirement=packaging_requirement,
-        tech_transfer_states=tech_transfer_states,
-    )
     conn.execute(
         """
         INSERT INTO visits(
             id, visit_date, supplier_id, product_id, product_name, product_stage, visitor_name, summary,
-            work_order_no, production_qty, tech_transfer, tech_transfer_doc,
-            carrier_requirement, dispensing_process, functional_test, packaging_requirement,
-            tech_transfer_doc_state, carrier_requirement_state, dispensing_process_state,
-            functional_test_state, packaging_requirement_state,
+            work_order_no, production_qty,
             status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '已完成', ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '已完成', ?, ?)
         """,
         (
             visit_id,
@@ -6810,17 +6758,6 @@ def _insert_visit_row(
             (summary or "").strip(),
             (work_order_no or "").strip(),
             normalized_production_qty,
-            1 if normalized_tech_transfer else 0,
-            1 if states["tech_transfer_doc"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["carrier_requirement"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["dispensing_process"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["functional_test"] == TECH_TRANSFER_STATE_YES else 0,
-            1 if states["packaging_requirement"] == TECH_TRANSFER_STATE_YES else 0,
-            states["tech_transfer_doc"],
-            states["carrier_requirement"],
-            states["dispensing_process"],
-            states["functional_test"],
-            states["packaging_requirement"],
             _now_iso(),
             _now_iso(),
         ),
@@ -7140,6 +7077,35 @@ def _normalize_event_status_tables(conn: sqlite3.Connection) -> None:
             conn.execute("PRAGMA foreign_keys=ON")
 
 
+def _remove_tech_transfer_columns(conn: sqlite3.Connection) -> None:
+    """Remove the retired technical-transfer fields from legacy databases."""
+    if get_migration_meta(conn, "tech_transfer_removal_v1") == "1":
+        return
+
+    visit_columns = (
+        "tech_transfer",
+        "tech_transfer_doc",
+        "carrier_requirement",
+        "dispensing_process",
+        "functional_test",
+        "packaging_requirement",
+        "tech_transfer_doc_state",
+        "carrier_requirement_state",
+        "dispensing_process_state",
+        "functional_test_state",
+        "packaging_requirement_state",
+    )
+    existing_visit_columns = set(_table_columns(conn, "visits"))
+    for column in visit_columns:
+        if column in existing_visit_columns:
+            conn.execute(f'ALTER TABLE visits DROP COLUMN "{column}"')
+
+    if "is_tech_transfer" in set(_table_columns(conn, "anomalies")):
+        conn.execute('ALTER TABLE anomalies DROP COLUMN "is_tech_transfer"')
+
+    upsert_migration_meta(conn, "tech_transfer_removal_v1", "1")
+
+
 def _rebuild_anomalies_with_zh_status(conn: sqlite3.Connection) -> None:
     """Rebuild anomalies, mapping legacy OPEN/CLOSED status to 待處理/已結案.
 
@@ -7260,17 +7226,6 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
             summary TEXT NOT NULL DEFAULT '',
             work_order_no TEXT NOT NULL DEFAULT '',
             production_qty INTEGER NOT NULL DEFAULT 0,
-            tech_transfer INTEGER NOT NULL DEFAULT 0,
-            tech_transfer_doc INTEGER NOT NULL DEFAULT 0,
-            carrier_requirement INTEGER NOT NULL DEFAULT 0,
-            dispensing_process INTEGER NOT NULL DEFAULT 0,
-            functional_test INTEGER NOT NULL DEFAULT 0,
-            packaging_requirement INTEGER NOT NULL DEFAULT 0,
-            tech_transfer_doc_state TEXT NOT NULL DEFAULT 'no',
-            carrier_requirement_state TEXT NOT NULL DEFAULT 'no',
-            dispensing_process_state TEXT NOT NULL DEFAULT 'no',
-            functional_test_state TEXT NOT NULL DEFAULT 'no',
-            packaging_requirement_state TEXT NOT NULL DEFAULT 'no',
             status TEXT NOT NULL DEFAULT '已完成' CHECK (status='已完成'),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -7283,20 +7238,12 @@ def _rebuild_visits_with_zh_status(conn: sqlite3.Connection) -> None:
         """
         INSERT INTO visits__new(
             id, visit_date, supplier_id, product_id, product_name, product_stage,
-            visitor_name, summary, work_order_no, production_qty, tech_transfer,
-            tech_transfer_doc, carrier_requirement, dispensing_process,
-            functional_test, packaging_requirement, tech_transfer_doc_state,
-            carrier_requirement_state, dispensing_process_state,
-            functional_test_state, packaging_requirement_state, status,
+            visitor_name, summary, work_order_no, production_qty, status,
             created_at, updated_at
         )
         SELECT
             id, visit_date, supplier_id, product_id, product_name, product_stage,
-            visitor_name, summary, work_order_no, production_qty, tech_transfer,
-            tech_transfer_doc, carrier_requirement, dispensing_process,
-            functional_test, packaging_requirement, tech_transfer_doc_state,
-            carrier_requirement_state, dispensing_process_state,
-            functional_test_state, packaging_requirement_state,
+            visitor_name, summary, work_order_no, production_qty,
             '已完成' AS status,
             created_at, updated_at
         FROM visits

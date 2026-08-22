@@ -31,6 +31,7 @@ from ui.layout_constants import (
     BACKLOG_SUPPLIER_MAX_COL_WIDTH,
     CONTROL_ROW_SPACING,
     HOME_BACKLOG_ANOMALY_NO_WIDTH,
+    HOME_BACKLOG_CATEGORY_WIDTH,
     HOME_BACKLOG_ITEM_NO_WIDTH,
     HOME_BACKLOG_NEXT_ACTION_WIDTH,
     HOME_BACKLOG_PRODUCT_WIDTH,
@@ -51,6 +52,7 @@ from ui.widgets.common_widgets import (
     style_table,
     text_table_item,
 )
+from ui.list_column_contract import HOME_BACKLOG_COLUMNS
 from ui.theme import TOKENS
 
 
@@ -88,19 +90,9 @@ class HomeWidget(QWidget):
 
         self._backlog_table = QTableWidget()
         self._backlog_table.setObjectName("HomeBacklogTable")
-        self._backlog_table.setColumnCount(9)
+        self._backlog_table.setColumnCount(len(HOME_BACKLOG_COLUMNS))
         self._backlog_table.setHorizontalHeaderLabels(
-            [
-                "異常單號",
-                "供應商名稱",
-                "產品料號",
-                "產品品名",
-                "下一步處置",
-                "到期日",
-                "責任人",
-                "問題/摘要",
-                "狀態",
-            ]
+            [column.label for column in HOME_BACKLOG_COLUMNS]
         )
         style_table(self._backlog_table)
         apply_table_action_affordance(
@@ -113,10 +105,11 @@ class HomeWidget(QWidget):
             HOME_BACKLOG_SUPPLIER_WIDTH,
             HOME_BACKLOG_ITEM_NO_WIDTH,
             HOME_BACKLOG_PRODUCT_WIDTH,
+            HOME_BACKLOG_CATEGORY_WIDTH,
+            None,
             HOME_BACKLOG_NEXT_ACTION_WIDTH,
             HOME_BACKLOG_DUE_DATE_WIDTH,
             HOME_BACKLOG_RESPONSIBLE_WIDTH,
-            None,
             HOME_BACKLOG_STATUS_WIDTH,
         )
         for index, width in enumerate(fixed_widths):
@@ -254,6 +247,40 @@ class HomeWidget(QWidget):
             f"未分流待整理：{int(pending_counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))} 件　→"
         )
 
+    def _backlog_cell_items(self, row: dict) -> dict[str, QTableWidgetItem]:
+        no_val = row.get("ref_no") or row.get("anomaly_no") or row.get("event_date") or "—"
+        no_item = SortableTableWidgetItem(str(no_val), sort_key=str(no_val))
+        no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
+
+        supplier_name = str(row.get("supplier_name") or "—")
+        supplier_item = text_table_item(supplier_name)
+        supplier_item.setToolTip(supplier_name)
+
+        item_no = str(row.get("item_no") or row.get("product_code") or "—")
+        product_name = str(row.get("product_name") or "—")
+        action_val = str(row.get("current_action") or row.get("pending_items") or "—").strip() or "—"
+        due_val = str(row.get("due_date") or "—").strip() or "—"
+        due_item = text_table_item(due_val)
+        if row.get("overdue"):
+            due_item.setForeground(QColor(TOKENS["status_danger_fg"]))
+            due_item.setToolTip("已逾期，請優先處理")
+        resp_person = str(row.get("responsible_person") or "未指定").strip() or "未指定"
+        content_val = str(row.get("content") or "—")
+        status_str = str(row.get("status") or "待處理")
+
+        return {
+            "ref_no": no_item,
+            "supplier_name": supplier_item,
+            "product_code": text_table_item(item_no),
+            "product_name": text_table_item(product_name),
+            "category": text_table_item(row.get("category") or "—"),
+            "content": text_table_item(content_val),
+            "current_action": text_table_item(action_val),
+            "due_date": due_item,
+            "responsible_person": text_table_item(resp_person),
+            "status": create_status_item(status_str, sort_key=status_str),
+        }
+
     def _render_backlog_rows(self, rows: list[dict], *, error_message: str | None = None) -> None:
         self._backlog_rows = list(rows)
         has_rows = bool(rows)
@@ -272,42 +299,9 @@ class HomeWidget(QWidget):
             self._backlog_table.setRowCount(0)
             for idx, row in enumerate(rows):
                 self._backlog_table.insertRow(idx)
-                no_val = row.get("ref_no") or row.get("anomaly_no") or row.get("event_date") or "—"
-                no_item = SortableTableWidgetItem(str(no_val), sort_key=str(no_val))
-                no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-                self._backlog_table.setItem(idx, 0, no_item)
-
-                supplier_name = str(row.get("supplier_name") or "—")
-                supplier_item = text_table_item(supplier_name)
-                supplier_item.setToolTip(supplier_name)
-                self._backlog_table.setItem(idx, 1, supplier_item)
-
-                item_no = str(row.get("item_no") or row.get("product_code") or "—")
-                self._backlog_table.setItem(idx, 2, text_table_item(item_no))
-
-                product_name = str(row.get("product_name") or "—")
-                self._backlog_table.setItem(idx, 3, text_table_item(product_name))
-
-                action_val = str(row.get("current_action") or row.get("pending_items") or "—").strip() or "—"
-                self._backlog_table.setItem(idx, 4, text_table_item(action_val))
-
-                due_val = str(row.get("due_date") or "—").strip() or "—"
-                due_item = text_table_item(due_val)
-                if row.get("overdue"):
-                    due_item.setForeground(QColor(TOKENS["status_danger_fg"]))
-                    due_item.setToolTip("已逾期，請優先處理")
-                self._backlog_table.setItem(idx, 5, due_item)
-
-                resp_person = str(row.get("responsible_person") or "未指定").strip() or "未指定"
-                self._backlog_table.setItem(idx, 6, text_table_item(resp_person))
-
-                content_val = str(row.get("content") or "—")
-                self._backlog_table.setItem(idx, 7, text_table_item(content_val))
-
-                status_str = str(row.get("status") or "待處理")
-                self._backlog_table.setItem(
-                    idx, 8, create_status_item(status_str, sort_key=status_str)
-                )
+                values = self._backlog_cell_items(row)
+                for column, spec in enumerate(HOME_BACKLOG_COLUMNS):
+                    self._backlog_table.setItem(idx, column, values[spec.field])
 
         # Cap supplier column so very long names don't crowd the problem/summary column.
         actual_w = self._backlog_table.horizontalHeader().sectionSize(1)

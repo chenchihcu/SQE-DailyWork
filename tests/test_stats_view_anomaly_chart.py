@@ -252,9 +252,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         self.assertIn("供應商訪廠與訪廠異常趨勢分析 (2026-04)", titles)
         self.assertIn("異常類別柏拉圖分析 (2026-04)", titles)
         self.assertIn("責任人事件統計 (已結案 vs 未結案)", titles)
-        self.assertIsNotNone(widget.insight_label)
-        assert widget.insight_label is not None
-        self.assertIn("主要異常類別", widget.insight_label.text())
+        self.assertFalse(hasattr(widget, "insight_label"))
 
     def test_stats_command_row_is_flat_and_source_scope_is_in_tooltip(self) -> None:
         widget, _host = self._build_widget({}, month=QDate(2026, 4, 1))
@@ -635,7 +633,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
 
-        self.assertIn("責任人統計暫時無法載入", widget.insight_label.text())
         empty_titles = {
             child._title_label.text()
             for child in widget.findChildren(EmptyStateWidget)

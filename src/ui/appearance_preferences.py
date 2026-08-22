@@ -166,6 +166,15 @@ V8_FIELDS: Final[frozenset[str]] = frozenset(
     }
 )
 
+V9_FIELDS: Final[frozenset[str]] = V8_FIELDS | frozenset(
+    {
+        "erp_material_receipt_no_pattern",
+        "erp_internal_work_order_no_pattern",
+        "erp_outsource_work_order_pattern",
+        "erp_outsource_receipt_no_pattern",
+    }
+)
+
 V7_FIELDS: Final[frozenset[str]] = frozenset(
     {
         # Tab 1: 外觀與風格 (Appearance & Styling)
@@ -368,7 +377,7 @@ V1_FIELDS: Final[frozenset[str]] = frozenset({"density", "text_scale"})
 
 @dataclass(frozen=True)
 class AppearancePreferences:
-    """The complete v8 application-appearance, business and system defaults contract.
+    """The complete v9 application-appearance, business and system defaults contract.
 
     The settings affect presentation, defaults, and user system workflows. No core
     record structures or statistics calculations are altered.
@@ -420,6 +429,10 @@ class AppearancePreferences:
     auto_uppercase_part_no: bool = True
     default_defect_sample_size: int = 0
     require_defect_photos: bool = False
+    erp_material_receipt_no_pattern: str = ""
+    erp_internal_work_order_no_pattern: str = ""
+    erp_outsource_work_order_pattern: str = ""
+    erp_outsource_receipt_no_pattern: str = ""
 
     # Tab 4: 匯出與報表 (Export & Reports)
     default_export_dir: str = ""
@@ -456,11 +469,13 @@ class AppearancePreferences:
 
     @classmethod
     def from_mapping(cls, value: object) -> "AppearancePreferences":
-        """Return validated v8 profile, with graceful in-memory upgrades from v7/v6/v5/v4/v3/v2/v1."""
+        """Return validated v9 profile, with graceful in-memory upgrades from v8/v7/v6/v5/v4/v3/v2/v1."""
         if not isinstance(value, dict):
             return cls.default()
 
-        if set(value) == V8_FIELDS:
+        if set(value) == V9_FIELDS:
+            return cls._from_v9_mapping(value)
+        elif set(value) == V8_FIELDS:
             return cls._from_v8_mapping(value)
         elif set(value) == V7_FIELDS:
             return cls._from_v7_mapping(value)
@@ -478,6 +493,32 @@ class AppearancePreferences:
             return cls.from_v1_mapping(value)
 
         return cls.default()
+
+    @classmethod
+    def _from_v9_mapping(cls, value: dict) -> "AppearancePreferences":
+        from dataclasses import replace
+
+        from services.anomaly_trace_validator import validate_trace_pattern_text
+
+        base = cls._from_v8_mapping({key: value[key] for key in V8_FIELDS})
+        restored_v8 = {key: base.to_mapping()[key] for key in V8_FIELDS}
+        if restored_v8 != {key: value[key] for key in V8_FIELDS}:
+            return cls.default()
+        pattern_values = {
+            "erp_material_receipt_no_pattern": value.get("erp_material_receipt_no_pattern", ""),
+            "erp_internal_work_order_no_pattern": value.get("erp_internal_work_order_no_pattern", ""),
+            "erp_outsource_work_order_pattern": value.get("erp_outsource_work_order_pattern", ""),
+            "erp_outsource_receipt_no_pattern": value.get("erp_outsource_receipt_no_pattern", ""),
+        }
+        for pattern in pattern_values.values():
+            if not isinstance(pattern, str):
+                return cls.default()
+        try:
+            for pattern in pattern_values.values():
+                validate_trace_pattern_text(pattern)
+        except ValueError:
+            return cls.default()
+        return replace(base, **pattern_values)
 
     @classmethod
     def _from_v8_mapping(cls, value: dict) -> "AppearancePreferences":
@@ -1336,6 +1377,10 @@ class AppearancePreferences:
             "auto_uppercase_part_no": self.auto_uppercase_part_no,
             "default_defect_sample_size": self.default_defect_sample_size,
             "require_defect_photos": self.require_defect_photos,
+            "erp_material_receipt_no_pattern": self.erp_material_receipt_no_pattern,
+            "erp_internal_work_order_no_pattern": self.erp_internal_work_order_no_pattern,
+            "erp_outsource_work_order_pattern": self.erp_outsource_work_order_pattern,
+            "erp_outsource_receipt_no_pattern": self.erp_outsource_receipt_no_pattern,
             # Tab 4: 匯出與報表
             "default_export_dir": self.default_export_dir,
             "export_completion_action": self.export_completion_action,

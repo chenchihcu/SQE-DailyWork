@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QPushButton, QScrollArea
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFrame, QPushButton, QScrollArea
 
 from ui.main_window import (
     EVENT_CREATE_ANOMALY_PAGE_INDEX,
@@ -99,6 +99,10 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
         self.assertEqual("儲存", page.save_button.text())
         self.assertTrue(page.success_panel.isHidden())
         self.assertFalse(page.save_button.isEnabled())
+        basic_card = form.findChild(QFrame, "VisitBasicInfoCard")
+        summary_card = form.findChild(QFrame, "VisitSummaryCard")
+        self.assertIsNotNone(basic_card)
+        self.assertIsNotNone(summary_card)
 
     def test_full_page_anomaly_entry_uses_the_same_single_scroll_contract(self) -> None:
         window = MainWindow()
@@ -135,6 +139,35 @@ class LightweightVisitEntryRoutingTests(unittest.TestCase):
 
         self.assertEqual(EVENT_CREATE_VISIT_PAGE_INDEX, window.stack.currentIndex())
         self.assertIs(window.new_visit_page, window.stack.currentWidget())
+
+    def test_visit_page_can_submit_requires_supplier_and_product(self) -> None:
+        with patch("ui.main_window._product_service.has_active_suppliers", return_value=True):
+            window = MainWindow()
+            self.addCleanup(window.close)
+            form = window.new_visit_page.form
+            self.assertFalse(form.can_submit())
+
+            products = [
+                {
+                    "id": "prd-1",
+                    "product_code": "P-001",
+                    "product_name": "產品一號",
+                    "product_stage": "試產",
+                }
+            ]
+            with patch(
+                "services.event_service.list_active_products_for_supplier",
+                return_value=products,
+            ):
+                form.supplier_combo.addItem("供應商A", "sup-1")
+                form.supplier_combo.setCurrentIndex(form.supplier_combo.findData("sup-1"))
+                self.app.processEvents()
+                self.assertFalse(form.can_submit())
+                product_idx = form.product_combo.findData("prd-1")
+                self.assertGreaterEqual(product_idx, 0)
+                form.product_combo.setCurrentIndex(product_idx)
+                self.app.processEvents()
+                self.assertTrue(form.can_submit())
 
 
 if __name__ == "__main__":

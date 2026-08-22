@@ -5,14 +5,11 @@ import logging
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
-    QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -37,10 +34,10 @@ from ui.layout_constants import (
     FORM_HORIZONTAL_SPACING,
     FORM_MAX_WIDTH,
     INLINE_SPACING,
-    REF_GRID_SPACING_H,
-    REF_GRID_SPACING_V,
+    ROW_GAP,
     VISIT_FORM_CONTENT_SPACING,
     VISIT_FORM_VERTICAL_SPACING,
+    VISIT_PAGE_SUMMARY_VISIBLE_ROWS,
     VISIT_SUMMARY_VISIBLE_ROWS,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
@@ -49,27 +46,22 @@ from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
     SupplierProductFormMixin,
+    create_section_card,
     make_paired_form_row,
 )
 from ui.widgets.defect_form_widgets import (
-    TECH_TRANSFER_STATE_NA,
-    TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_YES,
     VISIT_TIME_SLOT_OPTIONS,
-    TechTransferCard,
-    VISIT_TECH_TRANSFER_ITEMS,
     apply_dialog_layout,
     set_combo_current_text,
     set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
 )
-from ui.widgets.visit_tech_transfer_mixin import _VisitTechTransferMixin
 
 logger = logging.getLogger(__name__)
 
 
-class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _VisitTechTransferMixin):
+class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
     """Shared visit form shell for modal edit/preview and embedded create pages."""
 
     form_saved = Signal(str)
@@ -99,9 +91,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self._product_code_by_id: dict[str, str] = {}
         self._preserved_visit_defect_notes: list[dict] = []
         self._preserved_product_sections: list[dict] = []
-        self._tech_transfer_groups: dict[str, QButtonGroup] = {}
-        self._tech_transfer_cards: dict[str, TechTransferCard] = {}
-        self._syncing_tech_transfer = False
         self._fixed_visit_id = str(self._initial_data.get("visit_id") or "").strip()
         self.setModal(True)
         self.setMinimumWidth(760)
@@ -145,7 +134,12 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.summary_input = QTextEdit()
         self.summary_input.setPlaceholderText("活動摘要（選填）")
         self.summary_input.setAccessibleName("活動摘要")
-        set_text_edit_visible_rows(self.summary_input, VISIT_SUMMARY_VISIBLE_ROWS)
+        summary_rows = (
+            VISIT_PAGE_SUMMARY_VISIBLE_ROWS
+            if self._page_mode
+            else VISIT_SUMMARY_VISIBLE_ROWS
+        )
+        set_text_edit_visible_rows(self.summary_input, summary_rows)
 
         self.work_order_input = QLineEdit()
         self.work_order_input.setPlaceholderText("輸入工單號碼")
@@ -162,9 +156,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.qty_input.setPlaceholderText("輸入訪廠抽樣數量")
         self.qty_input.setAccessibleName("抽樣數量")
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
-        self.tech_transfer_check = QCheckBox("已技轉")
-        self.tech_transfer_check.toggled.connect(self._on_tech_transfer_toggled)
-
         # 2. 固定欄位表單直接參與對話框佈局，避免整頁捲軸壓縮可用寬度。
         self.form_content = QWidget()
         self.form_content.setObjectName("VisitFormContent")
@@ -175,9 +166,12 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         basic_title = QLabel("📋 基本資訊")
         basic_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(basic_title)
-        form = QFormLayout()
-        form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-        form.setVerticalSpacing(VISIT_FORM_VERTICAL_SPACING)
+
+        basic_card = create_section_card()
+        basic_card.setObjectName("VisitBasicInfoCard")
+        basic_form = QFormLayout()
+        basic_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+        basic_form.setVerticalSpacing(VISIT_FORM_VERTICAL_SPACING)
 
         product_row = QWidget()
         pr_layout = QHBoxLayout(product_row)
@@ -186,8 +180,18 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         pr_layout.addWidget(self.product_combo, 3)
         pr_layout.addWidget(self.product_stage_combo, 1)
 
+        self._product_guard_label = QLabel("")
+        self._product_guard_label.setProperty("role", "messageText")
+        self._product_guard_label.setVisible(False)
+        product_field = QWidget()
+        product_field_layout = QVBoxLayout(product_field)
+        product_field_layout.setContentsMargins(0, 0, 0, 0)
+        product_field_layout.setSpacing(ROW_GAP)
+        product_field_layout.addWidget(product_row)
+        product_field_layout.addWidget(self._product_guard_label)
+
         self.visitor_input.setVisible(False)
-        form.addRow(
+        basic_form.addRow(
             make_paired_form_row(
                 "VisitBasicDateTimeSlotRow",
                 RequiredFieldLabel("日期"),
@@ -196,9 +200,9 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
                 self.time_slot_input,
             )
         )
-        form.addRow(RequiredFieldLabel("供應商"), self.supplier_combo)
-        form.addRow("主要產品", product_row)
-        form.addRow(
+        basic_form.addRow(RequiredFieldLabel("供應商"), self.supplier_combo)
+        basic_form.addRow("主要產品", product_field)
+        basic_form.addRow(
             make_paired_form_row(
                 "VisitProductCodeWorkOrderRow",
                 "料號",
@@ -207,53 +211,19 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
                 self.work_order_input,
             )
         )
-        form.addRow(
-            make_paired_form_row(
-                "VisitQtyTechTransferRow",
-                "抽樣數量",
-                self.qty_input,
-                None,
-                self.tech_transfer_check,
-            )
-        )
+        basic_form.addRow("抽樣數量", self.qty_input)
 
-        self._product_guard_label = QLabel("")
-        self._product_guard_label.setProperty("role", "messageText")
-        self._product_guard_label.setVisible(False)
-        form.addRow("", self._product_guard_label)
+        basic_card.layout().addLayout(basic_form)
+        content_layout.addWidget(basic_card)
 
-        details_grid = QGridLayout()
-        details_grid.setContentsMargins(0, 0, 0, 0)
-        details_grid.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
-        details_grid.addLayout(form, 0, 0)
+        summary_title = QLabel("📝 活動摘要")
+        summary_title.setProperty("role", "sectionTitle")
+        content_layout.addWidget(summary_title)
 
-        secondary_layout = QVBoxLayout()
-        secondary_layout.setContentsMargins(0, 0, 0, 0)
-        secondary_layout.setSpacing(8)
-        secondary_layout.addWidget(QLabel("📝 活動摘要"))
-        secondary_layout.addWidget(self.summary_input, 1)
-        details_grid.addLayout(secondary_layout, 0, 1)
-        details_grid.setColumnStretch(0, 1)
-        details_grid.setColumnStretch(1, 1)
-        content_layout.addLayout(details_grid)
-
-        cards_container = QWidget()
-        cards_grid = QGridLayout(cards_container)
-        cards_grid.setContentsMargins(0, 4, 0, 4)
-        cards_grid.setHorizontalSpacing(REF_GRID_SPACING_H)
-        cards_grid.setVerticalSpacing(REF_GRID_SPACING_V)
-        for idx, (field_key, field_label) in enumerate(VISIT_TECH_TRANSFER_ITEMS):
-            card = TechTransferCard(field_key, field_label, self)
-            card.yes_radio.toggled.connect(self._on_any_tech_transfer_item_toggled)
-            cards_grid.addWidget(card, idx // 3, idx % 3)
-            self._tech_transfer_cards[field_key] = card
-            self._tech_transfer_groups[field_key] = card.group
-
-        tech_title = QLabel("⚙️ 技轉查核")
-        tech_title.setProperty("role", "sectionTitle")
-        content_layout.addWidget(tech_title)
-        content_layout.addWidget(cards_container)
-        content_layout.addStretch(1)
+        summary_card = create_section_card()
+        summary_card.setObjectName("VisitSummaryCard")
+        summary_card.layout().addWidget(self.summary_input)
+        content_layout.addWidget(summary_card)
         # 3. 對話框保留固定 footer；全頁建立模式把命令列交由
         # EventCreatePage/CreateWorkflowShell 持有，避免重複的儲存動作。
         self.page_content: QWidget | None = None
@@ -316,17 +286,12 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             self.time_slot_input,
             self.supplier_combo,
             self.product_combo,
+            self.product_stage_combo,
+            self.product_code_input,
             self.work_order_input,
             self.qty_input,
-            self.tech_transfer_check,
             self.summary_input,
         ]
-        for card in self._tech_transfer_cards.values():
-            if hasattr(card, "yes_radio"):
-                order.append(card.yes_radio)
-            if hasattr(card, "no_radio"):
-                order.append(card.no_radio)
-
         if self._button_box is not None:
             save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
             cancel_btn = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
@@ -351,13 +316,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self.work_order_input.setReadOnly(True)
         self.time_slot_input.setEnabled(False)
         self.qty_input.setReadOnly(True)
-        self.tech_transfer_check.setEnabled(False)
-        # Tech transfer cards
-        for card in self._tech_transfer_cards.values():
-            card.yes_radio.setEnabled(False)
-            card.no_radio.setEnabled(False)
-            card.na_radio.setEnabled(False)
-
         # Change Save button to Close and hide Cancel (redundant in read-only mode)
         if self.save_button and self._button_box is not None:
             self.save_button.setText("關閉")
@@ -382,7 +340,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             self.work_order_input.textChanged,
             self.time_slot_input.currentTextChanged,
             self.qty_input.textChanged,
-            self.tech_transfer_check.toggled,
         ])
 
     def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
@@ -392,8 +349,10 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         self._refresh_submit_state()
 
     def can_submit(self) -> bool:
-        """Return the established page/dialog eligibility without duplicating it."""
-        return bool((self.supplier_combo.currentData() or "").strip())
+        """Return page/dialog eligibility: supplier and primary product are required."""
+        supplier_id = (self.supplier_combo.currentData() or "").strip()
+        product_id = (self.product_combo.currentData() or "").strip()
+        return bool(supplier_id and product_id)
 
     def _refresh_submit_state(self) -> None:
         supplier_id = (self.supplier_combo.currentData() or "").strip()
@@ -474,25 +433,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
                     if part
                 )
                 self.summary_input.setPlainText(merged)
-        initial_states: dict[str, str] = {}
-        for key, _ in VISIT_TECH_TRANSFER_ITEMS:
-            state_val = str(self._initial_data.get(f"{key}_state") or "").strip().lower()
-            if state_val in (
-                TECH_TRANSFER_STATE_YES,
-                TECH_TRANSFER_STATE_NO,
-                TECH_TRANSFER_STATE_NA,
-            ):
-                initial_states[key] = state_val
-            else:
-                initial_states[key] = (
-                    TECH_TRANSFER_STATE_YES
-                    if bool(self._initial_data.get(key, False))
-                    else TECH_TRANSFER_STATE_NO
-                )
-        self._apply_tech_transfer_payload(
-            tech_transfer=bool(self._initial_data.get("tech_transfer", False)),
-            item_states=initial_states,
-        )
         self._refresh_submit_state()
 
     def _on_submit(self):
@@ -542,13 +482,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
         except ValueError as exc:
             QMessageBox.warning(self, "驗證失敗", str(exc))
             return
-        tech_payload = self._normalized_tech_transfer_payload(
-            tech_transfer=self.tech_transfer_check.isChecked(),
-            item_states={
-                key: self._get_tech_transfer_state(key)
-                for key, _ in VISIT_TECH_TRANSFER_ITEMS
-            },
-        )
         payload = {
             "visit_date": self.date_edit.date().toString("yyyy-MM-dd"),
             "supplier_id": (self.supplier_combo.currentData() or "").strip(),
@@ -560,13 +493,6 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _Vis
             "production_qty": int(self.qty_input.text().strip() or 0),
             "product_sections": product_sections,
             "defect_notes": visit_level_notes,
-            "tech_transfer": tech_payload["tech_transfer"],
-            "tech_transfer_doc": tech_payload["tech_transfer_doc"],
-            "carrier_requirement": tech_payload["carrier_requirement"],
-            "dispensing_process": tech_payload["dispensing_process"],
-            "functional_test": tech_payload["functional_test"],
-            "packaging_requirement": tech_payload["packaging_requirement"],
-            "tech_transfer_states": tech_payload["states"],
         }
         try:
             if self._is_edit:

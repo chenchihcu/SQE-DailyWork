@@ -53,7 +53,15 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Soft Delete**: Use `is_active: bool = True` for Models. Filter by `is_active=True` in all standard queries.
 - **Temporal Standard**: Use ISO-8601 dates in services; UI shows localized Traditional Chinese where applicable.
 - **Badge and List Count Alignment**: Event scope counts displayed inside the event-management page must align exactly with each chip's `event_scope` filter. The sidebar `事件管理` badge is an intentionally unscoped operational total of all open supplier anomalies; chip counts remain scope-specific. Warehouse badges remain constrained to `status <> '已結案' AND processing_line = <formal line>`.
+- **Scope chip count SSOT**: Chip `(N)` labels must consume `_query_service.get_event_scope_counts()` or `repository.list_events(..., event_scope=<scope>)`—never per-scope ad-hoc COUNT SQL.
+- **Global search NCR routing**: Warehouse hits from `search_global` route by `status` + `processing_line` (已結案→歷史、委外加工→待處理委外、原物料→待處理原物料、未分流→`open_warehouse_unclassified_pending`); never default all NCR hits to outsource pending.
+- **Event create prefill symmetry**: `open_new_anomaly_create_page` and `open_new_visit_create_page` both accept `initial_data`; `EventCreatePage` visit branch must pass `initial_data` into `NewVisitDialog`.
+- **Supplier 360 read model**: Supplier overview and supplier 360 pages aggregate `anomalies`, `visits`, and `defect_records` as separate source-labelled read-only projections. They must not merge statistics, exports, or writes across the supplier-event and warehouse lines.
+- **NCR supplier linkage**: `defect_records.supplier_id` is a nullable FK to shared `suppliers.id`, backfilled only by exact supplier-name matches; unmatched legacy rows remain NULL. NCR create/update paths resolve `supplier_id` on save without merging warehouse records into supplier-event tables.
+- **NCR-to-anomaly traceability**: Explicit user action `轉開供應商異常` records `anomalies.source_defect_no` from the originating warehouse defect number. It does not mutate or delete the warehouse record.
+- **NCR→anomaly category handoff**: `convert_to_supplier_anomaly` pre-fills `category` only when NCR `category` is in `ANOMALY_CATEGORY_OPTIONS`; otherwise leave empty.
 - **Statistics Chart and List Category Alignment (including Dialogs)**: When updating statistics charts (e.g. Pareto chart), listings, reports, or management dialogs, ensure category display and category grouping remain strictly consistent across the system. The system uniformly consumes `category` ("異常類別") for all anomalies across dialogs, lists, Excel export detail tables, PDF exports, and Pareto charts. The page Pareto chart, the Excel export Pareto table, and the export-embedded chart PNG must all consume the single `get_anomaly_category_pareto_by_range` implementation.
+- **SMT Process Keyword Statistics Boundary**: Supplier anomalies may store multi-value SMT process keywords in `anomalies.process_keywords` (newline-delimited). The SMT keyword Pareto chart, Excel keyword sheet, and export-embedded keyword PNG must all consume the single `get_anomaly_process_keyword_pareto_by_range` implementation. Do not merge SMT keywords into `category` or warehouse NCR statistics.
 - **Supplier Event List Columns (Anomaly No over Date)**: For all supplier event lists (such as the EventListWidget query tabs and the HomeWidget backlog table), the first column must be named "異常單號" (Anomaly Number) instead of "日期" (Date). The row rendering must show the `ref_no` (anomaly number) if present, and fallback to `event_date` (date) only for visit records that lack an anomaly number. When sorting by this column, if the `ref_no` is empty (e.g., visits), the system must fallback to sorting by `event_date` to ensure stable sorting.
 - **Anomaly Number Format and Editing Constraints**: The anomaly number (`anomaly_no` or `ref_no`) is strictly restricted to exactly 11 digits of pure numbers (format: `YYYYMMDDNNN`). The first 8 digits must align with the selected date (e.g., date 2026/05/12 requires prefix 20260512). When the date edit value changes in the UI, the anomaly number must automatically regenerate to align with the new date. Manual edits to this number are allowed but must be validated on submit for uniqueness, length (11 digits), and date prefix alignment. In tests, mocks for anomaly number previews must conform to this valid 11-digit numeric schema matching the mock date.
 
@@ -77,16 +85,18 @@ Every core design change must be reflected across the entire stack. Never leave 
   Never hardcode ad-hoc `QFont` point sizes in chart builders; always consume `apply_chart_surface(chart)` and `apply_axis_typography(axis)`.
 - **Bottom Action Bar Standard (方案 A 底部操作列)**: All full-page create and entry surfaces (`CreateWorkflowShell` / `DefectFormWidget`) must place primary action buttons at the bottom of the form (never in the top header). Layout order follows Scheme A: secondary/reset actions on the left (`清除 / 重置`), primary workflow actions on the right (`返回清單` + `儲存`).
 - **Itemized Description Standard (條列式逐條審閱動線)**: Descriptions, defect findings, and tracking items must use the dynamic numbered row component `BulletListWidget` (`[序號] [輸入框] [刪除]` + `+ 新增條目`) to facilitate item-by-item review while maintaining newline-delimited text compatibility.
-- **Zero-Noise Analytics Standard (統計看板純淨化)**: Statistics dashboards strictly retain only the Date Range filter, Refresh button, Export Excel button, and visual charts. Textual insight summaries and verbose diagnostic paragraphs must not be displayed on the visible UI.
+- **Zero-Noise Analytics Standard (統計看板純淨化)**: Statistics dashboards strictly retain only the Date Range filter, Refresh button, Export Excel button, and visual charts. Textual insight summaries and verbose diagnostic paragraphs must not be displayed on the visible UI. During `refresh_data()`, do not create, populate, or compute hidden insight, info-banner, or management-summary text; when simplifying statistics pages, remove the generation path and compatibility widgets—do not rely on `.hide()` alone.
 - **CJK Radio Button Guard (單選與核取按鈕 CJK 排版守衛)**: Never invoke `setLayoutDirection(Qt.LayoutDirection.RightToLeft)` on `QRadioButton` or `QCheckBox` containing CJK text. Windows Qt calculates reverse bounding boxes that cause indicator circles to render directly on top of Chinese characters. Keep default `LeftToRight` and structure container layouts with adequate widths.
 - **Table Column Width Single Source of Truth (表格欄位寬度單一真理標準)**: All `QTableWidget` columns must consume layout constants from `src/ui/layout_constants.py` (e.g. `HOME_BACKLOG_*`, `NCR_LIST_CORE_*`, `EVENT_LIST_CORE_*`). Context-specific minimums are: Home backlog Anomaly No `HOME_BACKLOG_ANOMALY_NO_WIDTH = 120px`; event-list compact Anomaly No `EVENT_LIST_CORE_ANOMALY_NO_WIDTH = 106px`; NCR defect No `NCR_LIST_CORE_DEFECT_NO_WIDTH = 120px`. Other core business data remains Part No >= 130px, 7-char CJK headers >= 115px, Email >= 180px, and Phone >= 140px.
 - **Symmetric Grid Layout Standard (雙欄表單網格對稱對齊標準)**: Multi-field forms must use symmetric 2-column grids (`field_count=2`: Col 0/2 for labels, Col 1/3 for fields with 1:1 stretch). Do not mix column offsets in a single grid layout. Accessory actions (such as '+ 建立' product buttons) must be packed inside the field container QHBoxLayout.
 - **Feedback**: `QMessageBox` for confirmations; destructive actions use explicit confirm dialogs.
+- **CaseStageStepper status rules**: Never use `bool()` on `root_cause_status`, `corrective_action_status`, or `verification_result`; defaults like `尚未開始`, `—`, `待驗證` are non-empty and falsely complete stages. Use explicit status checks in `CaseStageStepper.set_case_state`; `load_anomaly` must pass `get_overview_card()` overview.
 
 ## 4. Coding & Refactoring Standards
 - **Desktop QSS**: Prefer QSS roles (`role`, `variant`) and theme tokens over ad-hoc per-widget `setStyleSheet`, except where already established (e.g. tech-transfer cards).
 - **Rename before Delete**: When removing fields, rename them first (e.g., `status` -> `status_DELETING`) to let the compiler highlight all references.
 - **Grep Search**: After changes, verify application directories (`src/database/`, `src/services/`, `src/ui/`) are clean of old terms.
+- **Trace & Keyword Simplification Pass (行為不變精簡)**: When DRY-ing ERP trace / SMT keyword additions, loop `TRACE_FIELD_PATTERN_KEYS` / `TRACE_FIELD_LABELS` instead of hardcoding four field keys; reuse `_assert_trace_field_pattern` (validator), `_anomaly_write_fields` (anomaly CRUD), and `processing_line_source_hint` (NCR→異常 handoff). Do not change locked `ValueError` copy (`ERP 格式規則`, `格式不符合`)—`tests/test_anomaly_trace_fields.py` asserts them. Exclude from simplify passes: `anomaly_trace_contract`, migrations/repository schema, `list_column_contract`, `layout_constants`, paired stats pareto pipelines in `stats_view_widget`, and wiring `find_anomaly_trace_duplicate` unless explicitly requested. Qt create-form submit tests must set `anomaly_source` before `_on_submit()` or mocks never fire.
 - **Startup Performance & Heavy Dependency Lazy Loading**:
   - **Heavy 3rd-party dependencies**: Heavy libraries (e.g. `openpyxl`, `reportlab`, `matplotlib`) must never be imported statically at module level in services or UI classes loaded during startup. Always import them inside the specific function or method where they are invoked.
   - **No module-level style instantiation**: Never instantiate style objects (e.g. `Font()`, `PatternFill()`, `Border()`) at the module root; encapsulate them in cached helper functions (e.g. `_get_export_styles()`).
@@ -100,29 +110,24 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **PySide6 eventFilter Return Contract**: In custom `eventFilter` implementations mounted on `QApplication`, unhandled events MUST `return False` directly; never invoke `return super().eventFilter(watched, event)` to prevent PySide6 C++ trampoline `RecursionError` hangs.
   - **Targeted Widget Refresh over Deep Recursion**: Dynamic theme or preference changes must use `findChildren(TargetClass)` instead of deep-recursive layout activation across thousands of widgets.
   - **CJK Font Resolution Cache**: Wrap OS font registry scans in `@lru_cache(maxsize=1)` to avoid multi-second startup and rendering stalls.
+  - **QShortcut Escape**: Use `QKeySequence(Qt.Key.Key_Escape)`—not `QKeySequence.StandardKey.Escape` (invalid in PySide6).
+  - **GlobalSearchDialog tests**: Dialog `parent` must be `QWidget`; stub routing with `QWidget` + mocked methods, not `MagicMock` as parent.
+- **Migration and harness test patterns**:
+  - **defect_supplier_id backfill tests**: `defect_supplier_id_backfill_v1` runs once at `create_schema` when `migration_meta` ≠ `1`; test backfill success by inserting supplier+defect after first schema, deleting the meta key, then re-running `create_schema`; memory DB `defect_records` inserts need `defect_no, event_date, processing_line, item_no, qty, defect_desc, status, created_at`.
+  - **Harness membership**: After adding tracked source/tests, update `docs/harness/source-baseline-manifest.md` live count (`(git ls-files --cached --others --exclude-standard | Where-Object { Test-Path $_ }).Count`) before `harness_check.ps1` membership drift fails.
+  - **Verify Full runner coverage**: Full `scripts/verify.ps1` runs `unittest discover -s tests`, then `ncr.tests.test_core` + `ncr.tests.test_supplier_sync`, then pytest on `test_anomaly_folder_creation.py`, `test_attachment_rename.py`, `test_table_sorting.py`. Do not assume `unittest discover` alone covers NCR or pytest module-level tests.
+  - **Disposable DB path assertions**: Under `SQE_DB_PATH`, `DATA_DIR` resolves to the override parent—not `PROJECT_ROOT / "data"`. Attachment/export path tests must assert against `app_paths.data_dir()`, not a hard-coded repo `data/` path.
+  - **NCR in-memory supplier-sync tests**: `create_defect` tests need `processing_line` (`原物料` / `委外加工`) and a stub shared `suppliers` table so `_sync_and_resolve_supplier_id` runs; `supplier_records` alone is insufficient without the shared-master gate table.
+  - **NCR export column assertions**: Excel detail asserts must track `DETAIL_EXPORT_COLUMNS` order (e.g. `processing_line` precedes `item_no`); do not keep stale cell letters from pre-export-layout schemas.
+  - **Visual baseline refresh contract**: Regenerate required baselines with the same verified disposable DB as verify (`scripts/sqlite_backup.py` formal→scratch, set `SQE_DB_PATH` + `SQE_REQUIRE_DISPOSABLE_DB=1`). Data-bound targets (`stats-stress`, charts) false-fail if refreshed against a different DB snapshot.
+  - **Build traceability**: Run `scripts/write_build_info.py` before `scripts/build_windows.ps1`; frozen distro ships `build-info.json` beside exe; startup log includes `build_label()` (git SHA + UTC timestamp + dirty flag).
+  - **NCR create embedding smoke**: Assert `CreateWorkflowShell.content_scroll` hosts `NcrCreateFormContent` and that `fields_widget` lives in that subtree—never `content_scroll.widget() is fields_widget`.
+  - **Workflow smoke trace contract**: `scripts/smoke_test_v2.py` must set `anomaly_source` (e.g. `訪廠／稽核` when trace ERP patterns are unset) and must not expect `supplier_id IS NULL` products inside `list_active_products_for_supplier` (strict mode).
+  - **Exec-plan lifecycle**: Completed plans belong in `docs/exec-plans/completed/` only; `harness_check.ps1` fails if `active/` contains `Plan status: completed`.
 
 
-## 4.1 Design Framework Cross-Reference (SQE Incident Management v0.1 §7.7 1-9)
-The design framework document `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md`
-chapter 7 section 7 lists 15 candidate advantages to borrow from the Web app.
-Items 1-9 are already implemented through shared helpers and **must not be
-duplicated**:
-- Semantic tokens → `src/ui/theme_tokens.py` + `src/ui/design_tokens.py`
-- CJK font fallback → `src/ui/theme_tokens.py` (`PREFERRED_CJK_FONT_FAMILIES`)
-- Three workflow shells → `src/ui/widgets/common_widgets.py` (`QueryWorkflowShell` / `AnalyticsWorkflowShell` / `CreateWorkflowShell`)
-- CreateWorkflowShell command bar → `CreateWorkflowShell.command_row`; modal dialogs keep `QDialogButtonBox` footer
-- DirtyTrackingMixin → `src/ui/widgets/common_widgets.py`; applied to event / visit / close / supplier / product / contact dialogs
-- RequiredFieldLabel + field-level validation → `RequiredFieldLabel`, `set_field_invalid`, `make_inline_error_label`, `repolish`
-- EmptyStateWidget → `src/ui/widgets/common_widgets.py` (`EmptyStateWidget`)
-- Layout constants single source → `src/ui/layout_constants.py`; window helpers in `src/ui/window_sizing.py`
-- Workflow-first sidebar + badge symmetry → `src/ui/sidebar_nav.py` (`_NAV_GROUPS`, `nav_activated`) + `src/ui/main_window.py` (`_PAGE_KEY_TO_INDEX`, `_refresh_sidebar_badge`)
-Item 10 (responsive column profile / 重點欄位) is implemented through the
-`EVENT_LIST_CORE_*` and `NCR_LIST_CORE_*` layout constants and is pinned by
-`tests/test_layout_constants.py`; items 11-15 are documented for future
-planning only.
-When introducing a new shared UI helper, ship it together with its focused
-tests and update the cross-reference table in
-`docs/ui-layout-theme-contract.md`.
+## 4.1 Design Framework Cross-Reference
+Items 1-9 of `docs/SQE_Incident_Management_UI_Design_Framework_v0.1.md` §7.7 are implemented—see `docs/ui-layout-theme-contract.md` (do not duplicate helpers). Item 10 via `EVENT_LIST_CORE_*` / `NCR_LIST_CORE_*`; items 11-15 planning only.
 
 
 ## 5. AI Verification Guardrails (Evidence-First Protocol)
@@ -146,6 +151,11 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - Python code edits: use `scripts\verify.ps1` when practical; otherwise run the closest focused unittest or compile check and report the gap.
 - UI behavior changes: use offscreen Qt only for structural smoke checks such as startup, widget existence, and signal wiring.
 - UI visual review, screenshots, typography, and Chinese text rendering checks must use the native Windows Qt platform through `scripts\qt_visual_probe.py` or an equivalent native-platform capture. Do not treat `QT_QPA_PLATFORM=offscreen` screenshots as visual evidence because offscreen can miss Windows CJK fonts and render square glyphs.
+- **qt_visual_probe multi-target**: Run one `--target` per invocation (`main`, `supplier-360`, `event-list`, `home`); do not assume multiple `--target` flags execute all pages.
+- **Windows packaging gate**: Writable runtime roots (`data/`, `Outputs/`, `logs/`) resolve through `src/app_paths.py` (`runtime_root()` beside exe in frozen onedir). Build with `scripts\build_windows.ps1` (runs `write_build_info.py` first); validate frozen bundles with `SQE_DailyWork.exe --smoke-exit` on a scratch `SQE_DB_PATH` using `Start-Process -Wait` and `logs/smoke_exit.ok`—never treat immediate PowerShell return from a windowed exe as success.
+- **CI release gate**: `.github/workflows/verify.yml` runs Full + `Coverage` + `Soak` verify jobs on push/PR; Full evidence `scratch/verify-full-log-final.txt`.
+- **Phase 3 QA gates**: see `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md` (`Coverage` / `Soak` profiles, portable smoke, release docs).
+- **Release DB safety**: Production release validation uses verified backup + disposable snapshots only; do not write `data/sqe_v2.db` during verify unless the user explicitly authorizes live migration.
 - Data migration, destructive data changes, or export/data-contract changes follow the global Hard Trigger rules and require explicit verification evidence.
 
 ## 8. Multi-Assistant Coexistence

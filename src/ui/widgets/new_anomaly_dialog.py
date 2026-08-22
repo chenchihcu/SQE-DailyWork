@@ -32,6 +32,14 @@ from database.product_stage import (
     normalize_product_stage_ui,
 )
 from services.appearance_preferences_service import load_application_preferences
+from services.anomaly_trace_contract import (
+    ANOMALY_SOURCE_OPTIONS,
+    TRACE_FIELD_LABELS,
+    TRACE_FIELD_OUTSOURCE_WORK_ORDER,
+    normalize_anomaly_source,
+    required_trace_fields_for_source,
+    visible_trace_fields_for_source,
+)
 from services.event import _anomaly_service, _visit_service
 from ui.layout_constants import (
     ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
@@ -43,14 +51,12 @@ from ui.layout_constants import (
     GRID_GUTTER,
     GROUPBOX_CONTENT_MARGINS,
     INLINE_SPACING,
-    REF_CELL_MARGINS,
-    REF_GRID_SPACING_H,
-    REF_GRID_SPACING_V,
     ROW_GAP,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.bullet_list_widget import BulletListWidget
+from ui.widgets.tag_input_widget import TagInputWidget
 from ui.widgets.close_anomaly_dialog import AttachmentEditor
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
@@ -60,10 +66,6 @@ from ui.widgets.common_widgets import (
 from ui.widgets.anomaly_visit_sync_mixin import _AnomalyVisitSyncMixin
 from ui.widgets.defect_form_widgets import (
     ANOMALY_CATEGORY_OPTIONS,
-    ANOMALY_TECH_REF_CARD_DEFS,
-    TECH_TRANSFER_STATE_NA,
-    TECH_TRANSFER_STATE_NO,
-    TECH_TRANSFER_STATE_YES,
     apply_dialog_layout,
     set_combo_current_text,
     set_tone,
@@ -100,7 +102,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._fixed_anomaly_no = str(self._initial_data.get("anomaly_no") or "").strip()
         self._product_stage_by_id: dict[str, str] = {}
         self._product_code_by_id: dict[str, str] = {}
-        self._ref_data_labels: dict[str, QLabel] = {}
         self._same_day_visit_autofill: dict[str, object] = {
             "product_id": "",
             "work_order_no": "",
@@ -111,7 +112,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.setMaximumWidth(FORM_MAX_WIDTH)
         self._setup_ui()
         self._load_suppliers()
-        if self._is_edit:
+        if self._is_edit or self._initial_data:
             self._apply_initial_data()
         if self._read_only:
             self._apply_read_only()
@@ -147,11 +148,32 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.product_code_input.setReadOnly(True)
         self.product_code_input.setPlaceholderText("選取產品後自動帶入")
 
-        self.outsource_work_order_input = QLineEdit()
-        if prefs.auto_uppercase_part_no:
-            self.outsource_work_order_input.textChanged.connect(
-                lambda t: self.outsource_work_order_input.setText(t.upper()) if t != t.upper() else None
+        self.anomaly_source_combo = QComboBox()
+        self.anomaly_source_combo.addItem("")
+        self.anomaly_source_combo.addItems(list(ANOMALY_SOURCE_OPTIONS))
+        if not self._is_edit and not self._initial_data and prefs.default_anomaly_source:
+            set_combo_current_text(
+                self.anomaly_source_combo,
+                normalize_anomaly_source(prefs.default_anomaly_source),
             )
+        self.anomaly_source_combo.currentTextChanged.connect(
+            lambda _: self._update_trace_row_visibility()
+        )
+
+        self._trace_labels: dict[str, QLabel] = {}
+        self._trace_inputs: dict[str, QLineEdit] = {}
+        for field in TRACE_FIELD_LABELS:
+            label = QLabel(TRACE_FIELD_LABELS[field])
+            line_edit = QLineEdit()
+            if prefs.auto_uppercase_part_no:
+                line_edit.textChanged.connect(
+                    lambda text, widget=line_edit: widget.setText(text.upper())
+                    if text != text.upper()
+                    else None
+                )
+            self._trace_labels[field] = label
+            self._trace_inputs[field] = line_edit
+        self.outsource_work_order_input = self._trace_inputs[TRACE_FIELD_OUTSOURCE_WORK_ORDER]
         self.batch_qty_input = QLineEdit()
         self.batch_qty_input.setValidator(QIntValidator(0, 10_000_000))
         self.responsible_person_input = QLineEdit()
@@ -176,7 +198,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                 QSizePolicy.Policy.Fixed,
             )
 
-        self.is_tech_transfer_check = QCheckBox("技轉訪廠")
         self.quality_report_required_group = QButtonGroup(self)
         self.quality_report_required_group.setExclusive(True)
         self.quality_report_yes_radio = QRadioButton("是")
@@ -198,6 +219,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
         self.problem_input = BulletListWidget(placeholder="輸入不良現象...")
         self.pending_items_input = BulletListWidget(placeholder="輸入確認事項 / 待追蹤...")
+        self.process_keywords_input = TagInputWidget()
 
         self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
         initial_sync_visit = prefs.default_sync_visit if not self._is_edit and not self._initial_data else True
@@ -228,18 +250,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         grid = QGridLayout()
         grid.setHorizontalSpacing(GRID_GUTTER)
         grid.setVerticalSpacing(ROW_GAP)
-        # Give the long-name column more room while keeping the compact metadata
-        # column bounded inside the scroll viewport.
-        grid.setColumnStretch(1, 3)
-        grid.setColumnStretch(2, 0)
-        grid.setColumnStretch(4, 2)
-        grid.setColumnStretch(5, 0)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
 
         grid.addWidget(RequiredFieldLabel("供應商"), 0, 0)
-        grid.addWidget(self.supplier_combo, 0, 1, 1, 2)
-        grid.addWidget(RequiredFieldLabel("日期"), 0, 3)
-        grid.addWidget(self.date_edit, 0, 4)
-        grid.addWidget(self.is_tech_transfer_check, 0, 5)
+        grid.addWidget(self.supplier_combo, 0, 1)
+        grid.addWidget(RequiredFieldLabel("日期"), 0, 2)
+        grid.addWidget(self.date_edit, 0, 3)
 
         product_row = QWidget()
         pr_layout = QHBoxLayout(product_row)
@@ -249,19 +266,27 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         pr_layout.addWidget(self.product_stage_combo, 1)
 
         grid.addWidget(RequiredFieldLabel("品名"), 1, 0)
-        grid.addWidget(product_row, 1, 1, 1, 2)
-        grid.addWidget(QLabel("料號"), 1, 3)
-        grid.addWidget(self.product_code_input, 1, 4, 1, 2)
+        grid.addWidget(product_row, 1, 1)
+        grid.addWidget(QLabel("料號"), 1, 2)
+        grid.addWidget(self.product_code_input, 1, 3)
 
-        grid.addWidget(QLabel("異常類別"), 2, 0)
-        grid.addWidget(self.category_input, 2, 1, 1, 2)
-        grid.addWidget(QLabel("責任人"), 2, 3)
-        grid.addWidget(self.responsible_person_input, 2, 4, 1, 2)
+        self._product_guard_label = QLabel("")
+        self._product_guard_label.setProperty("role", "messageText")
+        self._product_guard_label.setVisible(False)
+        grid.addWidget(self._product_guard_label, 2, 1, 1, 3)
 
-        grid.addWidget(QLabel("異常單號"), 3, 0)
-        grid.addWidget(self.anomaly_no_preview_input, 3, 1, 1, 2)
-        grid.addWidget(QLabel("數量"), 3, 3)
-        grid.addWidget(self.batch_qty_input, 3, 4, 1, 2)
+        grid.addWidget(RequiredFieldLabel("異常來源"), 3, 0)
+        grid.addWidget(self.anomaly_source_combo, 3, 1)
+
+        grid.addWidget(QLabel("異常類別"), 4, 0)
+        grid.addWidget(self.category_input, 4, 1)
+        grid.addWidget(QLabel("責任人"), 4, 2)
+        grid.addWidget(self.responsible_person_input, 4, 3)
+
+        grid.addWidget(QLabel("異常單號"), 5, 0)
+        grid.addWidget(self.anomaly_no_preview_input, 5, 1)
+        grid.addWidget(QLabel("數量"), 5, 2)
+        grid.addWidget(self.batch_qty_input, 5, 3)
 
         due_row = QWidget()
         dr_layout = QHBoxLayout(due_row)
@@ -278,20 +303,19 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         quality_report_layout.addWidget(self.quality_report_no_radio)
         quality_report_layout.addStretch(1)
 
-        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 4, 0)
-        grid.addWidget(quality_report_row, 4, 1, 1, 2)
-        grid.addWidget(QLabel("預計回覆日"), 4, 3)
-        grid.addWidget(due_row, 4, 4, 1, 2)
+        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 6, 0)
+        grid.addWidget(quality_report_row, 6, 1)
+        grid.addWidget(QLabel("預計回覆日"), 6, 2)
+        grid.addWidget(due_row, 6, 3)
 
-        self._lbl_order = QLabel("委外工單")
-        grid.addWidget(self._lbl_order, 5, 0)
-        grid.addWidget(self.outsource_work_order_input, 5, 1, 1, 2)
+        trace_row = 7
+        for field in TRACE_FIELD_LABELS:
+            grid.addWidget(self._trace_labels[field], trace_row, 0)
+            grid.addWidget(self._trace_inputs[field], trace_row, 1, 1, 3)
+            trace_row += 1
+        self._lbl_order = self._trace_labels[TRACE_FIELD_OUTSOURCE_WORK_ORDER]
 
         content_layout.addLayout(grid)
-        self._product_guard_label = QLabel("")
-        self._product_guard_label.setProperty("role", "messageText")
-        self._product_guard_label.setVisible(False)
-        content_layout.addWidget(self._product_guard_label)
         content_layout.addWidget(self.sync_visit_check)
         content_layout.addWidget(self._sync_visit_hint_label)
 
@@ -305,6 +329,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         desc_title = QLabel("🔍 問題描述")
         desc_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(desc_title)
+        content_layout.addWidget(QLabel("SMT 製程關鍵詞"))
+        content_layout.addWidget(self.process_keywords_input)
         content_layout.addWidget(RequiredFieldLabel("不良現象描述"))
         content_layout.addWidget(self.problem_input)
         content_layout.addWidget(QLabel("📌 確認事項 / 待追蹤"))
@@ -314,8 +340,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         ref_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(ref_title)
 
-        # 技轉參考
-        self._ref_group = QGroupBox("最近技轉訪廠參考")
+        self._ref_group = QGroupBox("⚙️ 訪廠關聯")
         ref_layout = QVBoxLayout(self._ref_group)
         ref_layout.setContentsMargins(*GROUPBOX_CONTENT_MARGINS)
         self._linked_visit_label = QLabel("")
@@ -334,34 +359,14 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         ref_layout.addWidget(self._linked_visit_label)
         ref_layout.addLayout(link_row)
 
-        self._ref_header_label = QLabel("請先選擇供應商以載入技轉參考資料")
-        self._ref_header_label.setProperty("role", "messageText")
-        self._ref_header_label.setWordWrap(True)
-        ref_layout.addWidget(self._ref_header_label)
-
-        ref_cards_widget = QWidget()
-        ref_cards_grid = QGridLayout(ref_cards_widget)
-        ref_cards_grid.setContentsMargins(0, 0, 0, 0)
-        ref_cards_grid.setHorizontalSpacing(REF_GRID_SPACING_H)
-        ref_cards_grid.setVerticalSpacing(REF_GRID_SPACING_V)
-        for idx, (field_key, field_label) in enumerate(ANOMALY_TECH_REF_CARD_DEFS):
-            cell = QFrame()
-            cell.setObjectName("refDataCard")
-            cl = QHBoxLayout(cell)
-            cl.setContentsMargins(*REF_CELL_MARGINS)
-            val_lbl = QLabel("—")
-            val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            cl.addWidget(QLabel(field_label), 1)
-            cl.addWidget(val_lbl)
-            ref_cards_grid.addWidget(cell, idx // 3, idx % 3)
-            self._ref_data_labels[field_key] = val_lbl
-        ref_layout.addWidget(ref_cards_widget)
         content_layout.addWidget(self._ref_group)
 
         # 風險調查
-        self._rc_group = QGroupBox("風險控管調查")
+        self._rc_group = QGroupBox("📊 風險控管調查")
         rc_layout = QGridLayout(self._rc_group)
         rc_layout.setContentsMargins(*GROUPBOX_CONTENT_MARGINS)
+        rc_layout.setHorizontalSpacing(GRID_GUTTER)
+        rc_layout.setVerticalSpacing(ROW_GAP)
         rc_options = ["未確認", "已確認", "不適用"]
         self.rc_supplier_inv_combo = QComboBox()
         self.rc_supplier_inv_combo.addItems(rc_options)
@@ -420,33 +425,35 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         if not self._is_edit:
             self._update_sync_visit_hint()
         self.product_stage_combo.currentTextChanged.connect(
-            lambda _: self._update_outsource_row_visibility()
+            lambda _: self._update_trace_row_visibility()
         )
-        self.is_tech_transfer_check.toggled.connect(self._update_ref_group_visibility)
-        self._update_outsource_row_visibility()
-        self._update_ref_group_visibility()
+        self._update_trace_row_visibility()
         self._setup_tab_order()
 
     def _setup_tab_order(self) -> None:
         """Tab follows visual reading order across fields, lists and actions."""
         order = [
-            self.date_edit,
-            self.anomaly_no_preview_input,
             self.supplier_combo,
+            self.date_edit,
             self.product_combo,
+            self.product_stage_combo,
+            self.product_code_input,
+            self.anomaly_source_combo,
+            self.category_input,
             self.responsible_person_input,
-            self.due_date_check,
-            self.due_date_edit,
-            self.is_tech_transfer_check,
+            self.anomaly_no_preview_input,
+            self.batch_qty_input,
             self.quality_report_yes_radio,
             self.quality_report_no_radio,
-            self.category_input,
-            self.outsource_work_order_input,
-            self.batch_qty_input,
-            self.sync_visit_check,
+            self.due_date_check,
+            self.due_date_edit,
+            *self._trace_inputs.values(),
+            self.process_keywords_input,
             self.problem_input,
             self.pending_items_input,
+            self.sync_visit_check,
             self.link_visit_button,
+            self.unlink_visit_button,
             self.rc_supplier_inv_combo,
             self.rc_supplier_wip_combo,
             self.rc_in_transit_combo,
@@ -465,22 +472,24 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         for earlier, later in zip(valid_widgets, valid_widgets[1:], strict=False):
             self.setTabOrder(earlier, later)
 
-    def _update_outsource_row_visibility(self) -> None:
-        """委外工單列只在委外階段或已有值時顯示。"""
-        stage = self.product_stage_combo.currentText()
-        show = (
-            stage == "委外"
-            or bool(self.outsource_work_order_input.text().strip())
-        )
-        self._lbl_order.setVisible(show)
-        self.outsource_work_order_input.setVisible(show)
-
-    def _update_ref_group_visibility(self) -> None:
-        """技轉參考資料群組只在勾選技轉訪廠時顯示。"""
-        checked = self.is_tech_transfer_check.isChecked()
-        self._ref_group.setVisible(checked)
-        if checked and not self._is_edit:
-            self.sync_visit_check.setChecked(True)
+    def _update_trace_row_visibility(self) -> None:
+        """Show trace-number rows based on anomaly source and legacy compatibility."""
+        source = normalize_anomaly_source(self.anomaly_source_combo.currentText())
+        visible = set(visible_trace_fields_for_source(source))
+        if not source:
+            visible = {
+                field
+                for field, widget in self._trace_inputs.items()
+                if bool(widget.text().strip())
+            }
+        for field, label in self._trace_labels.items():
+            show = field in visible
+            label.setVisible(show)
+            self._trace_inputs[field].setVisible(show)
+            if field in visible and field in required_trace_fields_for_source(source):
+                label.setText(f"{TRACE_FIELD_LABELS[field]} *")
+            else:
+                label.setText(TRACE_FIELD_LABELS[field])
 
     def _apply_read_only(self) -> None:
         """Disable all input widgets to prevent modification."""
@@ -489,16 +498,19 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.product_combo.setEnabled(False)
         self.product_stage_combo.setEnabled(False)
         self.outsource_work_order_input.setReadOnly(True)
+        for line_edit in self._trace_inputs.values():
+            line_edit.setReadOnly(True)
         self.batch_qty_input.setReadOnly(True)
         self.category_input.setEnabled(False)
+        self.anomaly_source_combo.setEnabled(False)
         self.responsible_person_input.setReadOnly(True)
         self.due_date_check.setEnabled(False)
         self.due_date_edit.setEnabled(False)
-        self.is_tech_transfer_check.setEnabled(False)
         self.quality_report_yes_radio.setEnabled(False)
         self.quality_report_no_radio.setEnabled(False)
         self.problem_input.setReadOnly(True)
         self.pending_items_input.setReadOnly(True)
+        self.process_keywords_input.set_read_only(True)
         self.anomaly_no_preview_input.setReadOnly(True)
 
         self.rc_supplier_inv_combo.setEnabled(False)
@@ -529,18 +541,19 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self.date_edit.dateChanged,
             self.supplier_combo.currentIndexChanged,
             self.product_combo.currentIndexChanged,
+            self.anomaly_source_combo.currentTextChanged,
             self.product_stage_combo.currentTextChanged,
-            self.outsource_work_order_input.textChanged,
+            *[widget.textChanged for widget in self._trace_inputs.values()],
             self.batch_qty_input.textChanged,
             self.responsible_person_input.textChanged,
             self.anomaly_no_preview_input.textChanged,
             self.due_date_check.toggled,
             self.due_date_edit.dateChanged,
-            self.is_tech_transfer_check.toggled,
             self.quality_report_required_group.buttonToggled,
             self.category_input.currentTextChanged,
             self.problem_input.valueChanged,
             self.pending_items_input.valueChanged,
+            self.process_keywords_input.valueChanged,
             self.rc_supplier_inv_combo.currentTextChanged,
             self.rc_supplier_wip_combo.currentTextChanged,
             self.rc_in_transit_combo.currentTextChanged,
@@ -570,60 +583,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
     def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
         self._refresh_submit_state()
-        self._load_tech_transfer_ref(supplier_id)
         self._apply_same_day_visit_defaults()
-
-    def _load_tech_transfer_ref(self, supplier_id: str) -> None:
-        """查詢該供應商最新技轉訪廠資料並更新參考資料卡片。"""
-        for lbl in self._ref_data_labels.values():
-            lbl.setText("—")
-            lbl.setProperty("status", "muted")
-            lbl.style().unpolish(lbl)
-            lbl.style().polish(lbl)
-        if not supplier_id:
-            self._ref_header_label.setText("請先選擇供應商以載入技轉參考資料")
-            return
-        try:
-            ref = _anomaly_service.get_latest_tech_transfer_for_supplier(supplier_id)
-        except Exception:
-            logger.exception(
-                "get_latest_tech_transfer_for_supplier failed for supplier_id=%s",
-                supplier_id,
-            )
-            ref = None
-        if ref is None:
-            self._ref_header_label.setText("此供應商目前無技轉訪廠紀錄")
-            return
-        visit_date = str(ref.get("visit_date") or "").strip() or "?"
-        self._ref_header_label.setText(f"資料來源：{visit_date} 訪廠紀錄")
-        for field_key, _label in ANOMALY_TECH_REF_CARD_DEFS:
-            lbl = self._ref_data_labels.get(field_key)
-            if lbl is None:
-                continue
-            if field_key == "tech_transfer":
-                has_val = bool(ref.get(field_key, False))
-                lbl.setText("是" if has_val else "否")
-                lbl.setProperty("status", "success" if has_val else "muted")
-            else:
-                state_val = (
-                    str(ref.get(f"{field_key}_state") or "").strip().lower()
-                    or (
-                        TECH_TRANSFER_STATE_YES
-                        if bool(ref.get(field_key, False))
-                        else TECH_TRANSFER_STATE_NO
-                    )
-                )
-                if state_val == TECH_TRANSFER_STATE_YES:
-                    lbl.setText("有")
-                    lbl.setProperty("status", "success")
-                elif state_val == TECH_TRANSFER_STATE_NA:
-                    lbl.setText("不適用")
-                    lbl.setProperty("status", "na")
-                else:
-                    lbl.setText("沒有")
-                    lbl.setProperty("status", "muted")
-            lbl.style().unpolish(lbl)
-            lbl.style().polish(lbl)
 
     def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
@@ -684,11 +644,24 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             normalize_product_stage_ui(self._initial_data.get("product_stage"))
         )
 
-        self.outsource_work_order_input.setText(
-            str(self._initial_data.get("outsource_work_order") or "")
+        source_value = normalize_anomaly_source(
+            self._initial_data.get("anomaly_source", self._initial_data.get("default_anomaly_source"))
         )
+        if source_value:
+            set_combo_current_text(self.anomaly_source_combo, source_value)
+        elif self._initial_data.get("anomaly_source_hint"):
+            set_combo_current_text(
+                self.anomaly_source_combo,
+                normalize_anomaly_source(self._initial_data.get("anomaly_source_hint")),
+            )
+
+        for field, widget in self._trace_inputs.items():
+            widget.setText(str(self._initial_data.get(field) or ""))
         self.batch_qty_input.setText(str(self._initial_data.get("batch_qty") or ""))
         self.problem_input.set_formatted_text(str(self._initial_data.get("problem_desc") or ""))
+        self.process_keywords_input.set_delimited_text(
+            self._initial_data.get("process_keywords", "")
+        )
         # 載入原始 category
         category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
         set_combo_current_text(self.category_input, str(category_value or ""))
@@ -704,9 +677,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.pending_items_input.set_formatted_text(
             str(self._initial_data.get("pending_items") or "")
         )
-        self.is_tech_transfer_check.setChecked(
-            bool(self._initial_data.get("is_tech_transfer", False))
-        )
         quality_report_required = self._initial_data.get("quality_report_required")
         if quality_report_required is not None:
             button = self.quality_report_required_group.button(
@@ -714,8 +684,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             )
             if button is not None:
                 button.setChecked(True)
-        self._update_ref_group_visibility()
-        self._update_outsource_row_visibility()
+        self._update_trace_row_visibility()
 
         def _get_rc_val(key: str) -> str:
             val = str(self._initial_data.get(key) or "未確認")
@@ -791,6 +760,10 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         if not self.problem_input.get_formatted_text().strip():
             QMessageBox.warning(self, "驗證失敗", "不良現象描述為必填（請至少新增並填寫一條項目）")
             return
+        anomaly_source = normalize_anomaly_source(self.anomaly_source_combo.currentText())
+        if not anomaly_source and not self._is_edit:
+            QMessageBox.warning(self, "驗證失敗", "請選擇異常來源")
+            return
         payload = {
             "anomaly_no": anomaly_no_val,
             "anomaly_date": self.date_edit.date().toString("yyyy-MM-dd"),
@@ -798,7 +771,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             "product_id": product_id,
             "problem_desc": self.problem_input.get_formatted_text(),
             "category": self.category_input.currentText().strip(),
-            "outsource_work_order": self.outsource_work_order_input.text().strip(),
+            "process_keywords": self.process_keywords_input.get_delimited_text(),
+            "anomaly_source": anomaly_source,
+            **{
+                field: self._trace_inputs[field].text().strip()
+                for field in TRACE_FIELD_LABELS
+            },
             "batch_qty": int(self.batch_qty_input.text().strip() or 0),
             "responsible_person": self.responsible_person_input.text().strip(),
             "due_date": due_date_value,
@@ -809,7 +787,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             "rc_supplier_wip": self.rc_supplier_wip_combo.currentText(),
             "rc_in_transit": self.rc_in_transit_combo.currentText(),
             "rc_internal_inventory": self.rc_internal_inv_combo.currentText(),
-            "is_tech_transfer": self.is_tech_transfer_check.isChecked(),
             "quality_report_required": bool(quality_report_required_id),
             "source_defect_no": str(self._initial_data.get("source_defect_no") or ""),
         }

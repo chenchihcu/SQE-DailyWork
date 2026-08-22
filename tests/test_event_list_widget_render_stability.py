@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 
 from services import event_service
 from ui.status_colors import get_status_color_hex, get_status_palette
+from ui.list_column_contract import EVENT_LIST_COMPACT_FIELDS, EVENT_LIST_FIELDS, EVENT_LIST_HEADERS
 from ui.theme import apply_app_theme
 from ui.widgets.common_widgets import EMPTY_DISPLAY
 from ui.widgets.defect_list_widget import EventListWidget
@@ -137,6 +138,14 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             },
         ]
 
+    def _row_for_event_id(self, event_id: str) -> int:
+        for row in range(self.widget.table.rowCount()):
+            item = self.widget.table.item(row, 0)
+            payload = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(payload, dict) and payload.get("event_id") == event_id:
+                return row
+        raise AssertionError(f"missing row for event_id={event_id}")
+
     def _headers(self) -> list[str]:
         return [
             self.widget.table.horizontalHeaderItem(idx).text()
@@ -144,24 +153,8 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         ]
 
     def test_table_headers_match_template_eleven_columns(self) -> None:
-        self.assertEqual(12, self.widget.table.columnCount())
-        self.assertEqual(
-            [
-                "異常單號",
-                "異常類別",
-                "責任人",
-                "供應商",
-                "品名",
-                "料號",
-                "階段",
-                "問題/摘要",
-                "缺失紀錄",
-                "品質異常單要求",
-                "狀態",
-                "結案日期",
-            ],
-            self._headers(),
-        )
+        self.assertEqual(len(EVENT_LIST_FIELDS), self.widget.table.columnCount())
+        self.assertEqual(list(EVENT_LIST_HEADERS), self._headers())
 
     def test_query_scope_tabs_replace_type_filter(self) -> None:
         self.assertIsNone(self.widget.event_type_combo)
@@ -200,7 +193,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _label, scope, _t in EVENT_QUERY_SCOPE_TABS:
             self.widget.set_event_scope(scope)
             self._drain_events()
-            self.assertEqual(12, self.widget.table.columnCount())
+            self.assertEqual(len(EVENT_LIST_FIELDS), self.widget.table.columnCount())
             self.assertIsNotNone(self.widget.export_pdf_button)
             assert self.widget.export_pdf_button is not None
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
@@ -219,19 +212,30 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for scope, should_hide in visit_hidden_by_scope.items():
             self.widget.set_event_scope(scope)
             self._drain_events()
+            category_col = EVENT_LIST_FIELDS.index("category")
+            closed_col = EVENT_LIST_FIELDS.index("closed_at")
+            quality_col = EVENT_LIST_FIELDS.index("quality_report_required")
             with self.subTest(scope=scope):
-                self.assertEqual(12, self.widget.table.columnCount())
+                self.assertEqual(len(EVENT_LIST_FIELDS), self.widget.table.columnCount())
                 self.assertEqual(
-                    should_hide, self.widget.table.isColumnHidden(1)
+                    should_hide, self.widget.table.isColumnHidden(category_col)
                 )
                 self.assertEqual(
-                    should_hide, self.widget.table.isColumnHidden(11)
+                    should_hide, self.widget.table.isColumnHidden(closed_col)
                 )
-                self.assertFalse(self.widget.table.isColumnHidden(9))
-                # 表頭文字保留（未刪欄），僅視覺隱藏
-                self.assertEqual("異常類別", self.widget.table.horizontalHeaderItem(1).text())
-                self.assertEqual("品質異常單要求", self.widget.table.horizontalHeaderItem(9).text())
-                self.assertEqual("結案日期", self.widget.table.horizontalHeaderItem(11).text())
+                self.assertFalse(self.widget.table.isColumnHidden(quality_col))
+                self.assertEqual(
+                    "異常類別",
+                    self.widget.table.horizontalHeaderItem(category_col).text(),
+                )
+                self.assertEqual(
+                    "品質異常單要求",
+                    self.widget.table.horizontalHeaderItem(quality_col).text(),
+                )
+                self.assertEqual(
+                    "結案日期",
+                    self.widget.table.horizontalHeaderItem(closed_col).text(),
+                )
 
     def test_export_pdf_button_enables_only_after_row_selection(self) -> None:
         assert self.widget.export_pdf_button is not None
@@ -276,7 +280,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         for _ in range(5):
             self.widget.refresh_data()
             self._drain_events()
-            self.assertEqual(12, self.widget.table.columnCount())
+            self.assertEqual(len(EVENT_LIST_FIELDS), self.widget.table.columnCount())
             self.assertEqual(expected_rows, self.widget.table.rowCount())
 
         has_cell_widget = any(
@@ -288,47 +292,57 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
     def test_rows_map_expected_fields_and_fill_dash(self) -> None:
         table = self.widget.table
+        col = {field: EVENT_LIST_FIELDS.index(field) for field in EVENT_LIST_FIELDS}
 
-        self.assertEqual("2026-04-18", table.item(0, 0).text())
-        self.assertEqual("尺寸不符", table.item(0, 1).text())
-        self.assertEqual("未指定", table.item(0, 2).text())
-        self.assertEqual("供應商-A", table.item(0, 3).text())
-        self.assertEqual("產品-A", table.item(0, 4).text())
-        self.assertEqual("PN-A001", table.item(0, 5).text())
-        self.assertEqual("試產", table.item(0, 6).text())
-        self.assertEqual("問題-0", table.item(0, 7).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(0, 8).text())
-        self.assertEqual("是", table.item(0, 9).text())
-        self.assertEqual("待處理", table.item(0, 10).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(0, 11).text())
+        row0 = self._row_for_event_id("a0")
+        self.assertEqual("2026-04-18", table.item(row0, col["ref_no"]).text())
+        self.assertEqual("供應商-A", table.item(row0, col["supplier_name"]).text())
+        self.assertEqual("PN-A001", table.item(row0, col["product_code"]).text())
+        self.assertEqual("產品-A", table.item(row0, col["product_name"]).text())
+        self.assertEqual("試產", table.item(row0, col["product_stage"]).text())
+        self.assertEqual("尺寸不符", table.item(row0, col["category"]).text())
+        self.assertEqual("未指定", table.item(row0, col["responsible_person"]).text())
+        self.assertEqual("問題-0", table.item(row0, col["content"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row0, col["defect_notes"]).text())
+        self.assertEqual("是", table.item(row0, col["quality_report_required"]).text())
+        self.assertEqual("待處理", table.item(row0, col["status"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row0, col["closed_at"]).text())
 
-        self.assertEqual("不適用", table.item(1, 9).text())
+        row1 = self._row_for_event_id("v1")
+        self.assertEqual("不適用", table.item(row1, col["quality_report_required"]).text())
 
-        self.assertEqual(EMPTY_DISPLAY, table.item(2, 0).text())
-        self.assertEqual("文件/SOP不足", table.item(2, 1).text())
-        self.assertEqual("未指定", table.item(2, 2).text())
-        self.assertEqual("供應商-C", table.item(2, 3).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(2, 7).text())
-        self.assertEqual("否", table.item(2, 9).text())
-        self.assertEqual("2026-04-20", table.item(2, 11).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 1).text())
-        self.assertEqual("未指定", table.item(3, 2).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 3).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 4).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 5).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 6).text())
-        self.assertEqual("問題-3", table.item(3, 7).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 8).text())
-        self.assertEqual("未設定", table.item(3, 9).text())
-        self.assertEqual("-", table.item(3, 10).text())
-        self.assertEqual(EMPTY_DISPLAY, table.item(3, 11).text())
+        row2 = self._row_for_event_id("a2")
+        self.assertEqual(EMPTY_DISPLAY, table.item(row2, col["ref_no"]).text())
+        self.assertEqual("文件/SOP不足", table.item(row2, col["category"]).text())
+        self.assertEqual("未指定", table.item(row2, col["responsible_person"]).text())
+        self.assertEqual("供應商-C", table.item(row2, col["supplier_name"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row2, col["content"]).text())
+        self.assertEqual("否", table.item(row2, col["quality_report_required"]).text())
+        self.assertEqual("2026-04-20", table.item(row2, col["closed_at"]).text())
+
+        row3 = self._row_for_event_id("a3")
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["category"]).text())
+        self.assertEqual("未指定", table.item(row3, col["responsible_person"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["supplier_name"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["product_name"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["product_code"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["product_stage"]).text())
+        self.assertEqual("問題-3", table.item(row3, col["content"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["defect_notes"]).text())
+        self.assertEqual("未設定", table.item(row3, col["quality_report_required"]).text())
+        self.assertEqual("-", table.item(row3, col["status"]).text())
+        self.assertEqual(EMPTY_DISPLAY, table.item(row3, col["closed_at"]).text())
 
     def test_status_cells_keep_color_mapping(self) -> None:
         table = self.widget.table
-        row0_color = table.item(0, 10).foreground().color().name().lower()
-        row1_color = table.item(1, 10).foreground().color().name().lower()
-        row3_color = table.item(3, 10).foreground().color().name().lower()
-        row0_bg = table.item(0, 10).background().color().name().lower()
+        status_col = EVENT_LIST_FIELDS.index("status")
+        row0 = self._row_for_event_id("a0")
+        row1 = self._row_for_event_id("v1")
+        row3 = self._row_for_event_id("a3")
+        row0_color = table.item(row0, status_col).foreground().color().name().lower()
+        row1_color = table.item(row1, status_col).foreground().color().name().lower()
+        row3_color = table.item(row3, status_col).foreground().color().name().lower()
+        row0_bg = table.item(row0, status_col).background().color().name().lower()
 
         self.assertEqual(
             QColor(get_status_color_hex("待處理")).name().lower(),

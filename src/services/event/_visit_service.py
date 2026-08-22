@@ -122,13 +122,6 @@ def create_visit(payload: dict) -> str:
             production_qty=payload.get("production_qty", 0),
             product_sections=payload.get("product_sections"),
             defect_notes=payload.get("defect_notes"),
-            tech_transfer=bool(payload.get("tech_transfer", False)),
-            tech_transfer_doc=bool(payload.get("tech_transfer_doc", False)),
-            carrier_requirement=bool(payload.get("carrier_requirement", False)),
-            dispensing_process=bool(payload.get("dispensing_process", False)),
-            functional_test=bool(payload.get("functional_test", False)),
-            packaging_requirement=bool(payload.get("packaging_requirement", False)),
-            tech_transfer_states=payload.get("tech_transfer_states"),
         )
 
 
@@ -173,13 +166,6 @@ def update_visit(visit_id: str, payload: dict) -> None:
             production_qty=payload.get("production_qty", 0),
             product_sections=payload.get("product_sections"),
             defect_notes=payload.get("defect_notes"),
-            tech_transfer=bool(payload.get("tech_transfer", False)),
-            tech_transfer_doc=bool(payload.get("tech_transfer_doc", False)),
-            carrier_requirement=bool(payload.get("carrier_requirement", False)),
-            dispensing_process=bool(payload.get("dispensing_process", False)),
-            functional_test=bool(payload.get("functional_test", False)),
-            packaging_requirement=bool(payload.get("packaging_requirement", False)),
-            tech_transfer_states=payload.get("tech_transfer_states"),
         )
 
 

@@ -45,6 +45,7 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(120, lc.NCR_LIST_CORE_ITEM_NO_WIDTH)
         self.assertEqual(180, lc.NCR_LIST_CORE_PRODUCT_WIDTH)
         self.assertEqual(78, lc.NCR_LIST_CORE_STATUS_WIDTH)
+        self.assertEqual(115, lc.HOME_BACKLOG_CATEGORY_WIDTH)
 
     def test_sidebar_compact_create_navigation_rhythm(self) -> None:
         self.assertEqual(38, lc.SIDEBAR_NAV_ITEM_HEIGHT)
@@ -69,6 +70,19 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_close_dialog_constants(self) -> None:
         self.assertEqual((12, 8, 12, 8), lc.CLOSE_DIALOG_REF_MARGINS)
         self.assertEqual(120, lc.CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
+        self.assertEqual(6, lc.CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS)
+
+    def test_ncr_list_preferred_column_widths(self) -> None:
+        self.assertEqual(140, lc.NCR_LIST_PREFERRED_DEFECT_NO_WIDTH)
+        self.assertEqual(100, lc.NCR_LIST_PREFERRED_EVENT_DATE_WIDTH)
+        self.assertEqual(110, lc.NCR_LIST_PREFERRED_PROCESSING_LINE_WIDTH)
+        self.assertEqual(120, lc.NCR_LIST_PREFERRED_RETURN_SLIP_TYPE_WIDTH)
+        self.assertEqual(140, lc.NCR_LIST_PREFERRED_WORK_ORDER_WIDTH)
+        self.assertEqual(140, lc.NCR_LIST_PREFERRED_INTERNAL_WORK_ORDER_WIDTH)
+        self.assertEqual(140, lc.NCR_LIST_PREFERRED_TRANSFER_SLIP_WIDTH)
+        self.assertEqual(120, lc.NCR_LIST_PREFERRED_ITEM_NO_WIDTH)
+        self.assertEqual(200, lc.NCR_LIST_PREFERRED_PRODUCT_NAME_WIDTH)
+        self.assertEqual(320, lc.NCR_LIST_PREFERRED_DESCRIPTION_WIDTH)
 
     def test_empty_state_margins(self) -> None:
         self.assertEqual((24, 32, 24, 32), lc.EMPTY_STATE_MARGINS)
@@ -99,6 +113,12 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(104, lc.HOME_BACKLOG_DUE_DATE_WIDTH)
         self.assertEqual(115, lc.HOME_BACKLOG_RESPONSIBLE_WIDTH)
         self.assertEqual(70, lc.HOME_BACKLOG_STATUS_WIDTH)
+
+    def test_visit_form_layout_constants(self) -> None:
+        self.assertEqual(6, lc.VISIT_FORM_CONTENT_SPACING)
+        self.assertEqual(6, lc.VISIT_FORM_VERTICAL_SPACING)
+        self.assertEqual(1, lc.VISIT_SUMMARY_VISIBLE_ROWS)
+        self.assertEqual(4, lc.VISIT_PAGE_SUMMARY_VISIBLE_ROWS)
 
 
 if __name__ == "__main__":

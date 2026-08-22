@@ -14,9 +14,6 @@ from ui.sidebar_nav import SidebarNav
 from ui.theme import apply_app_theme
 from ui.widgets.defect_form_shim import (
     AttachmentEditor,
-    TECH_TRANSFER_STATE_NA,
-    TECH_TRANSFER_STATE_YES,
-    TechTransferCard,
 )
 from ncr.ui.ui_style import create_status_badge as create_ncr_status_badge
 
@@ -66,16 +63,6 @@ class ColorPolishUiSmokeTests(unittest.TestCase):
             self.assertIsNotNone(preview_list)
         finally:
             editor.deleteLater()
-
-    def test_tech_transfer_card_sets_tri_state_property(self) -> None:
-        card = TechTransferCard("tech_transfer_doc", "作業標準書")
-        try:
-            card.set_state(TECH_TRANSFER_STATE_YES)
-            self.assertEqual(card.property("state"), "selected")
-            card.set_state(TECH_TRANSFER_STATE_NA)
-            self.assertEqual(card.property("state"), "na")
-        finally:
-            card.deleteLater()
 
     def test_ncr_status_badge_uses_shared_role_and_tone(self) -> None:
         badge = create_ncr_status_badge("處理中")

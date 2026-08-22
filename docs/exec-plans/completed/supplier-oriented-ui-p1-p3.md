@@ -1,6 +1,6 @@
 # 供應商導向 UI 改造執行計畫（P1–P3）
 
-Plan status: active
+Plan status: completed
 
 ## 目的
 
@@ -26,6 +26,21 @@ Plan status: active
 - 在異常管理頁加入六階段唯讀完成度 stepper。
 - 由 NCR 編輯對話框以預填資料轉開供應商異常，新增來源 NCR 追溯欄位。
 - 增加供應商評分卡的唯讀計算與季度 Excel 報告，報告內明確分列異常、訪廠及 NCR 來源。
+
+## Progress
+
+- 2026-08-20：P1–P3 骨架進 main（側欄 chips、360 頁、stepper、migration、報告匯出）。
+- 2026-08-22：收尾補齊 scope chip 件數、header 搜尋、360/主檔預選供應商、聯絡人分頁、總覽評級欄、季度報告選擇、NCR 搜尋分線路由、stepper read model、契約文件與專測。
+
+## Verification
+
+- 聚焦 unittest：`test_defect_supplier_id_migration`、`test_event_scope_chips`、`test_global_search`、`test_supplier_scorecard`、`test_supplier_report_export`、`test_supplier_case_flow`、`test_supplier_oriented_ui`、NCR handoff 測試。
+- `scripts/harness_check.ps1` 與 `scripts/verify.ps1 -Profile Focused`（收尾執行）。
+- 原生 Windows Qt：`supplier-360`、`main`、`event-list`、`home` probe（收尾審閱）。
+
+## Remaining work
+
+- 無功能缺口；後續僅需依視覺審閱更新 baseline PNG（若 probe/regress 報告有意圖性差異）。
 
 ## 驗證閘門
 

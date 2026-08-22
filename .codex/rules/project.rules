@@ -33,6 +33,20 @@ VERIFY_SCRIPTS = [
     "./scripts/verify.ps1",
 ]
 
+BUILD_SCRIPTS = [
+    "scripts\\build_windows.ps1",
+    ".\\scripts\\build_windows.ps1",
+    "scripts/build_windows.ps1",
+    "./scripts/build_windows.ps1",
+]
+
+PORTABLE_SMOKE_SCRIPTS = [
+    "scripts\\portable_install_smoke.ps1",
+    ".\\scripts\\portable_install_smoke.ps1",
+    "scripts/portable_install_smoke.ps1",
+    "./scripts/portable_install_smoke.ps1",
+]
+
 prefix_rule(
     pattern = [
         POWERSHELL,
@@ -67,6 +81,45 @@ prefix_rule(
     match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Focused",
         "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify.ps1 -PythonExe C:/Python/python.exe",
+    ],
+    not_match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        BUILD_SCRIPTS,
+    ],
+    decision = "prompt",
+    justification = "Windows packaging runs PyInstaller and writes dist/ artifacts; review before execution.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows.ps1",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows.ps1 -SkipSmoke",
+    ],
+    not_match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PORTABLE_SMOKE_SCRIPTS,
+    ],
+    decision = "prompt",
+    justification = "Portable install smoke unpacks zip and runs frozen exe on scratch DB; review before execution.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/portable_install_smoke.ps1 -UseExistingDist",
     ],
     not_match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",

@@ -261,11 +261,16 @@ class _MasterDataSupplierMixin:
         self._select_single_row(self.supplier_table, row_idx)
 
         menu = QMenu(self)
+        action_profile = menu.addAction("檢視供應商檔案")
         action_edit = menu.addAction("編輯")
         action_toggle = menu.addAction("停用" if row["is_active"] else "啟用")
         action_delete = menu.addAction("刪除")
         selected = menu.exec(self._table_menu_pos(self.supplier_table, row_idx))
-        if selected is action_edit:
+        if selected is action_profile:
+            opener = getattr(self.main_window, "open_supplier_360", None)
+            if callable(opener):
+                opener(supplier_id)
+        elif selected is action_edit:
             self._update_supplier()
         elif selected is action_toggle:
             self._toggle_supplier_active()

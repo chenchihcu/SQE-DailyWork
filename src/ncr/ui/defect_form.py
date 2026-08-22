@@ -6,7 +6,9 @@ from collections.abc import Callable
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from ui.layout_constants import (
+    COMPACT_PAGE_SPACING,
     DIALOG_OUTER_MARGINS,
+    FORM_VERTICAL_SPACING,
     NCR_DATE_FIELD_MIN_WIDTH,
     NCR_DEFECT_FORM_CONTENT_MARGINS,
     NCR_EDIT_DIALOG_CARD_MARGINS,
@@ -82,6 +84,7 @@ from ncr.models.labels import (
 )
 from ncr.services import defect_service, product_service
 from services import event_service
+from services.anomaly_trace_contract import processing_line_source_hint
 from ncr.ui.ui_style import (
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
     FORM_COMPACT_LABEL_WIDTH,
@@ -101,6 +104,7 @@ from ncr.ui.ui_style import (
 )
 from ui.widgets.common_widgets import RequiredFieldLabel
 from ui.widgets.bullet_list_widget import BulletListWidget
+from ui.widgets.new_anomaly_dialog import ANOMALY_CATEGORY_OPTIONS
 from ui.widgets.product_form_dialog import ProductFormDialog
 
 
@@ -313,7 +317,7 @@ class DefectFieldsWidget(QWidget):
         item_no_container = QWidget()
         item_no_layout = QHBoxLayout(item_no_container)
         item_no_layout.setContentsMargins(0, 0, 0, 0)
-        item_no_layout.setSpacing(6)
+        item_no_layout.setSpacing(COMPACT_PAGE_SPACING)
         item_no_layout.addWidget(self.item_no_input, 1)
         item_no_layout.addWidget(self.quick_add_product_btn)
 
@@ -382,29 +386,29 @@ class DefectFieldsWidget(QWidget):
         self.supplier_hint_label = make_notice_label("", role="messageText")
         layout.addWidget(self.supplier_hint_label)
 
-        layout.addSpacing(10)
+        layout.addSpacing(FORM_VERTICAL_SPACING)
 
         # 2. 不良現象紀錄
         layout.addWidget(create_section_title(f"🔍 {LABEL_DEFECT_DESC}", required=True))
 
         layout.addWidget(self.defect_desc_input)
 
-        layout.addSpacing(10)
+        layout.addSpacing(FORM_VERTICAL_SPACING)
 
-        # 3. 處理狀態（3 欄單列佈局）
+        # 3. 處理狀態（2 欄對稱佈局）
         layout.addWidget(create_section_title("⚙️ 處理狀態"))
-        handle_grid = create_form_grid(field_count=3, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
+        handle_grid = create_form_grid(field_count=2, horizontal_spacing=NCR_FORM_TWO_COLUMN_SPACING)
         self._add_compact_field(
             handle_grid, 0, LABEL_DISPOSITION, self.disposition_combo,
-            column_offset=0, field_column_span=1
+            column_offset=0,
         )
         self._add_compact_field(
             handle_grid, 0, LABEL_TRANSFER_SLIP_NO, self.transfer_slip_input,
-            column_offset=2, field_column_span=1
+            column_offset=2,
         )
         self._add_compact_field(
-            handle_grid, 0, LABEL_STATUS, self.status_combo,
-            column_offset=4, field_column_span=1
+            handle_grid, 1, LABEL_STATUS, self.status_combo,
+            column_offset=0,
         )
         layout.addLayout(handle_grid)
 
@@ -885,6 +889,7 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
     saved = Signal()
     data_changed = Signal()
     status_message = Signal(str, int)
+    return_to_list_requested = Signal()
 
     def __init__(
         self,
@@ -919,36 +924,50 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
             "連續登錄：儲存後保留日期/單別/類別/製令/供應商"
         )
         self.batch_mode_checkbox.setChecked(True)
-        self.workflow_shell.add_context(self.batch_mode_checkbox)
 
         self.reset_button = QPushButton("重置")
         self.clear_button = QPushButton("清除")
+        self.return_button = QPushButton("返回清單")
         self.save_button = QPushButton("儲存")
         self.reset_button.setCursor(Qt.PointingHandCursor)
         self.clear_button.setCursor(Qt.PointingHandCursor)
+        self.return_button.setCursor(Qt.PointingHandCursor)
         self.save_button.setCursor(Qt.PointingHandCursor)
         self.reset_button.setAccessibleName("重置表單")
         self.clear_button.setAccessibleName("清空表單")
+        self.return_button.setAccessibleName("返回不合格品清單")
         self.save_button.setAccessibleName("儲存表單")
         self.reset_button.setToolTip("重置所有欄位為預設值")
         self.clear_button.setToolTip("清空所有輸入欄位內容")
+        self.return_button.setToolTip("返回待處理清單")
         self.save_button.setToolTip("儲存目前表單內容（Ctrl+S）")
         set_button_role(self.reset_button, "reset")
         set_button_role(self.clear_button, "secondary")
+        self.return_button.setProperty("variant", "secondary")
+        set_button_role(self.return_button, "secondary")
         set_button_role(self.save_button, "primary")
         self.save_button.clicked.connect(self.save_record)
         self.clear_button.clicked.connect(self.clear_form)
         self.reset_button.clicked.connect(self.reset_form)
+        self.return_button.clicked.connect(self._request_return_to_list)
 
         self.workflow_shell.add_context(self.reset_button)
         self.workflow_shell.add_context(self.clear_button)
+        self.workflow_shell.add_action(self.return_button)
         self.workflow_shell.add_action(self.save_button)
 
         self.feedback_label = self.workflow_shell.feedback_label
 
         self.fields_widget = DefectFieldsWidget(self.conn, lazy_load=lazy_load)
         self.fields_widget.product_created.connect(self._on_quick_product_created)
-        self.workflow_shell.set_content(self.fields_widget)
+        form_content = QWidget()
+        form_content.setObjectName("NcrCreateFormContent")
+        form_content_layout = QVBoxLayout(form_content)
+        form_content_layout.setContentsMargins(0, 0, 0, 0)
+        form_content_layout.setSpacing(COMPACT_PAGE_SPACING)
+        form_content_layout.addWidget(self.batch_mode_checkbox)
+        form_content_layout.addWidget(self.fields_widget, 1)
+        self.workflow_shell.set_content(form_content)
 
         self.save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         self.save_shortcut.activated.connect(self.save_record)
@@ -1113,6 +1132,11 @@ class DefectFormWidget(DirtyTrackingMixin, QWidget):
             return True
         return self.save_record()
 
+    def _request_return_to_list(self) -> None:
+        if not self.confirm_save_if_dirty():
+            return
+        self.return_to_list_requested.emit()
+
 
 class DefectEditDialog(DirtyTrackingMixin, QDialog):
     def __init__(
@@ -1228,8 +1252,8 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
         if not hasattr(main_window, "open_new_anomaly_create_page"):
             QMessageBox.warning(self, "無法轉開異常", "目前視窗不支援供應商異常建立流程。")
             return
-        main_window.open_new_anomaly_create_page(
-            {
+        ncr_category = str(data.get("category") or "").strip()
+        initial_payload = {
                 "supplier_id": supplier_id,
                 "supplier_name": (
                     data.get("outsource_supplier_name")
@@ -1240,9 +1264,17 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
                 "product_name": data.get("product_name") or "",
                 "problem_desc": data.get("defect_desc") or "",
                 "anomaly_date": data.get("event_date") or "",
+                "batch_qty": data.get("qty") or 0,
+                "outsource_work_order": data.get("work_order_no") or "",
+                "internal_work_order_no": data.get("internal_work_order_no") or "",
+                "anomaly_source_hint": processing_line_source_hint(
+                    data.get("processing_line")
+                ),
                 "source_defect_no": data.get("defect_no") or "",
             }
-        )
+        if ncr_category and ncr_category in ANOMALY_CATEGORY_OPTIONS:
+            initial_payload["category"] = ncr_category
+        main_window.open_new_anomaly_create_page(initial_payload)
         self.accept()
 
     def _connect_dirty_tracking(self) -> None:

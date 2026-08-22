@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QComboBox,
     QLineEdit,
     QPushButton,
     QTableWidget,
@@ -13,7 +16,24 @@ from PySide6.QtWidgets import (
 )
 
 from services import supplier_360_service
-from ui.widgets.common_widgets import QueryWorkflowShell, style_table
+from ui.list_column_contract import SUPPLIER_OVERVIEW_COLUMNS
+from ui.layout_constants import (
+    SUPPLIER_OVERVIEW_ANOMALY_NO_WIDTH,
+    SUPPLIER_OVERVIEW_CATEGORY_WIDTH,
+    SUPPLIER_OVERVIEW_COUNT_WIDTH,
+    SUPPLIER_OVERVIEW_DATE_WIDTH,
+    SUPPLIER_OVERVIEW_DUE_DATE_WIDTH,
+    SUPPLIER_OVERVIEW_LATEST_VISIT_WIDTH,
+    SUPPLIER_OVERVIEW_NCR_WIDTH,
+    SUPPLIER_OVERVIEW_STATUS_WIDTH,
+    SUPPLIER_OVERVIEW_SUMMARY_WIDTH,
+    SUPPLIER_OVERVIEW_SUPPLIER_WIDTH,
+)
+from ui.widgets.common_widgets import (
+    QueryWorkflowShell,
+    preserve_table_sorting,
+    style_table,
+)
 
 
 class SupplierOverviewPage(QWidget):
@@ -34,24 +54,56 @@ class SupplierOverviewPage(QWidget):
         self.search.setPlaceholderText("搜尋供應商名稱")
         self.search.textChanged.connect(self._render)
         controls_layout.addWidget(self.search, 1)
+        controls_layout.addWidget(QLabel("檢視範圍"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("有未結異常", "open_anomaly")
+        self.scope_combo.addItem("有異常紀錄（含已結案）", "any_anomaly")
+        self.scope_combo.addItem("全部供應商", "all")
+        self.scope_combo.currentIndexChanged.connect(self.refresh_data)
+        controls_layout.addWidget(self.scope_combo)
         refresh = QPushButton("重新整理")
         refresh.setProperty("variant", "secondary")
         refresh.clicked.connect(self.refresh_data)
         controls_layout.addWidget(refresh)
         root.addWidget(controls)
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, len(SUPPLIER_OVERVIEW_COLUMNS))
         self.table.setHorizontalHeaderLabels(
-            ["供應商", "未結異常", "逾期", "近 90 日 NCR", "最近訪廠", "狀態"]
+            [column.label for column in SUPPLIER_OVERVIEW_COLUMNS]
         )
         self.table.cellDoubleClicked.connect(self._open_row)
         style_table(self.table)
+        for column, width in enumerate(
+            (
+                SUPPLIER_OVERVIEW_SUPPLIER_WIDTH,
+                SUPPLIER_OVERVIEW_COUNT_WIDTH,
+                SUPPLIER_OVERVIEW_COUNT_WIDTH,
+                SUPPLIER_OVERVIEW_ANOMALY_NO_WIDTH,
+                SUPPLIER_OVERVIEW_DATE_WIDTH,
+                SUPPLIER_OVERVIEW_CATEGORY_WIDTH,
+                SUPPLIER_OVERVIEW_SUMMARY_WIDTH,
+                SUPPLIER_OVERVIEW_DUE_DATE_WIDTH,
+                SUPPLIER_OVERVIEW_NCR_WIDTH,
+                SUPPLIER_OVERVIEW_LATEST_VISIT_WIDTH,
+                SUPPLIER_OVERVIEW_COUNT_WIDTH,
+                SUPPLIER_OVERVIEW_STATUS_WIDTH,
+            )
+        ):
+            self.table.setColumnWidth(column, width)
         root.addWidget(self.table, 1)
         self.refresh_data()
 
     def refresh_data(self) -> None:
+        today = date.today()
+        start_date = f"{today.year}-01-01"
+        end_date = today.isoformat()
         try:
-            self._rows = supplier_360_service.list_supplier_rows()
+            self._rows = supplier_360_service.list_supplier_rows(
+                view_scope=str(self.scope_combo.currentData() or "open_anomaly")
+            )
+            grades = supplier_360_service.list_supplier_scorecards(start_date, end_date)
+            for row in self._rows:
+                row["grade"] = grades.get(str(row.get("id") or ""), "—")
         except Exception:
             self._rows = []
         self._render()
@@ -62,23 +114,32 @@ class SupplierOverviewPage(QWidget):
             row for row in self._rows
             if not keyword or keyword in str(row.get("supplier_name") or "").lower()
         ]
-        self.table.setRowCount(0)
-        for row in rows:
-            index = self.table.rowCount()
-            self.table.insertRow(index)
-            values = (
-                row.get("supplier_name") or "—",
-                row.get("open_anomaly_count", 0),
-                row.get("overdue_anomaly_count", 0),
-                row.get("ncr_90d_count", 0),
-                row.get("latest_visit_date") or "—",
-                "啟用" if row.get("is_active") else "停用",
-            )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(str(value))
-                if column == 0:
-                    item.setData(32, str(row.get("id") or ""))
-                self.table.setItem(index, column, item)
+        with preserve_table_sorting(self.table):
+            self.table.setRowCount(0)
+            for row in rows:
+                index = self.table.rowCount()
+                self.table.insertRow(index)
+                values = (
+                    row.get("supplier_name") or "—",
+                    row.get("open_anomaly_count", 0),
+                    row.get("overdue_anomaly_count", 0),
+                    row.get("latest_anomaly_no") or "—",
+                    row.get("latest_anomaly_date") or "—",
+                    row.get("latest_anomaly_category") or "—",
+                    row.get("latest_anomaly_desc") or "—",
+                    row.get("latest_anomaly_due_date") or "—",
+                    row.get("ncr_90d_count", 0),
+                    row.get("latest_visit_date") or "—",
+                    row.get("grade") or "—",
+                    "啟用" if row.get("is_active") else "停用",
+                )
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(str(value))
+                    if column == 0:
+                        item.setData(32, str(row.get("id") or ""))
+                    elif column == 6:
+                        item.setToolTip(str(value))
+                    self.table.setItem(index, column, item)
 
     def _open_row(self, row_index: int, _column: int) -> None:
         item = self.table.item(row_index, 0)

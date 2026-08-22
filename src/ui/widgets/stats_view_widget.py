@@ -32,7 +32,6 @@ from ui.layout_constants import (
     PANEL_MARGINS,
     RANK_PANEL_MARGINS,
     STATS_EXPORT_BUTTON_MIN_WIDTH,
-    STATS_INSIGHT_MIN_HEIGHT,
     STATS_REFRESH_BUTTON_MIN_WIDTH,
     STATS_SOURCE_TAG_MIN_WIDTH,
 )
@@ -43,10 +42,8 @@ from ui.widgets.common_widgets import (
     apply_clickable_affordance,
 )
 from ui.widgets.stats_dashboard_helpers import (
-    StatsInfoBanner,
     build_temp_chart_paths,
     cleanup_temp_files,
-    create_insight_label,
     create_period_label,
     create_stats_grid_layout,
     create_stats_scroll_area,
@@ -73,7 +70,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         super().__init__()
         self.setObjectName("StatsView")
         self.main_window = main_window
-        self.insight_label: QLabel | None = None
         self._chart_content_layout: QVBoxLayout | None = None
         self._trend_content_layout: QVBoxLayout | None = None
         self._resp_content_layout: QVBoxLayout | None = None
@@ -151,12 +147,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             margins=(0, 0, 0, 0),
         )
 
-        self.info_banner = self._create_info_banner(
-            "供應商事件資料來源為單獨異常、訪廠發現異常與已結案紀錄；結案件數依使用者選定的結案日期歸月；圖表不包含倉庫不合格品。",
-            "協助 SQE 追蹤月度趨勢、責任人負荷與高風險供應商，並將倉庫統計維持在「不合格品統計分析」頁。"
-        )
-        self.info_banner.hide()
-
         chart_panel = QFrame()
         chart_panel.setObjectName("StatsFourPhaseChartPanel")
         chart_panel.setProperty("role", "panel")
@@ -168,29 +158,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         chart_layout.addLayout(self.grid_layout)
         scroll_layout.addWidget(chart_panel, 1)
 
-        self.insight_label = self._create_insight_label("載入中...")
-        self.insight_label.setMinimumHeight(0)
-        self.insight_label.hide()
-
         root.addWidget(scroll, 1)
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    def _create_info_banner(self, formula: str, purpose: str) -> QFrame:
-        """建立統一格式的統計說明區塊。"""
-        return StatsInfoBanner(
-            formula,
-            purpose,
-            formula_prefix="統計公式",
-            purpose_prefix="統計目的",
-            object_name="statsInfoBanner",
-            margins=(8, 4, 8, 4),
-            spacing=1,
-        )
-
-    def _create_insight_label(self, text: str) -> QLabel:
-        """建立統一背景的管理建議標籤。"""
-        return create_insight_label(text)
 
     # ── 日期 / 導覽方法 ──────────────────────────────────
 
@@ -264,17 +234,32 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 )
                 category_pareto_data = []
                 partial_failures.add("category")
+            try:
+                process_keyword_pareto_data = (
+                    _query_service.get_anomaly_process_keyword_pareto_by_range(
+                        iso_start, iso_end
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "get_anomaly_process_keyword_pareto_by_range failed for %s ~ %s",
+                    iso_start,
+                    iso_end,
+                )
+                process_keyword_pareto_data = []
+                partial_failures.add("process_keyword")
 
             self._render_charts(
                 trend_data=trend_data,
                 visit_trend_data=visit_trend_data,
                 resp_stats=resp_stats,
                 category_pareto_data=category_pareto_data,
+                process_keyword_pareto_data=process_keyword_pareto_data,
                 partial_failures=partial_failures,
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._render_charts([], [], [], [], error_message=localize_exception(exc))
+            self._render_charts([], [], [], [], [], error_message=localize_exception(exc))
 
     # ── 圖表協調 ──────────────────────────────────────────
 
@@ -296,66 +281,36 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         self._chart_total_values = []
         self._chart_avg_time_values = []
 
-    def _set_insights(self, insights: list[str]) -> None:
-        if self.insight_label is None:
-            return
-        self.insight_label.setText(
-            "\n".join(insights) if insights else "暫無可用數據以生成管理建議。"
-        )
-
     def _render_charts(
         self,
         trend_data: list[dict],
         visit_trend_data: list[dict],
         resp_stats: list[dict],
         category_pareto_data: list[dict],
+        process_keyword_pareto_data: list[dict] | None = None,
         *,
         error_message: str | None = None,
         partial_failures: set[str] | None = None,
     ):
+        process_keyword_pareto_data = process_keyword_pareto_data or []
         self._clear_chart_grid()
 
         if error_message:
             lbl = QLabel(f"錯誤：{error_message}")
             lbl.setProperty("role", "errorText")
             self.grid_layout.addWidget(lbl, 0, 0, 2, 2)
-            self._set_insights([f"載入統計資料時發生錯誤：{error_message}"])
             self.grid_layout.activate()
             self.grid_layout.update()
             self.update()
             return
 
         partial_failures = partial_failures or set()
-        insights: list[str] = []
-        partial_labels = {
-            "responsible": "責任人統計",
-            "category": "異常類別統計",
-        }
-        if partial_failures:
-            failed_names = "、".join(
-                partial_labels[key]
-                for key in ("responsible", "category")
-                if key in partial_failures
-            )
-            insights.append(
-                f"⚠️ {failed_names}暫時無法載入；請按「重新整理」重試。"
-            )
 
         # 1. Trend Chart
         if trend_data:
             trend_view = self._build_trend_chart(trend_data)
             if trend_view:
                 self.grid_layout.addWidget(trend_view, 0, 0)
-
-                last_month = trend_data[-1]
-                if last_month:
-                    backlog_status = "積壓上升" if len(trend_data) > 1 and last_month["backlog_count"] > trend_data[-2]["backlog_count"] else "積壓穩定"
-                    rate = (last_month["closed_count"] / last_month["total_count"] * 100) if last_month["total_count"] > 0 else 0
-                    rate_status = "效率良好" if rate >= 80 else "效率待提升"
-                    insights.append(
-                        f"目前狀態：{backlog_status} | 結案效率：{rate_status}\n"
-                        f"區間末月（{last_month['yyyymm']}）積壓總數：{last_month['backlog_count']} 件；當月結案率：{rate:.1f}%"
-                    )
             else:
                 self.grid_layout.addWidget(EmptyStateWidget("暫無趨勢數據"), 0, 0)
         else:
@@ -366,24 +321,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             visit_view = self._build_visit_trend_chart(visit_trend_data)
             if visit_view:
                 self.grid_layout.addWidget(visit_view, 0, 1)
-
-                last_month_visit = visit_trend_data[-1]
-                if last_month_visit:
-                    total_visits = last_month_visit["visit_count"]
-                    total_anomalies = last_month_visit["visit_anomaly_count"]
-                    if total_visits == 0 and total_anomalies > 0:
-                        # 分母(訪廠月份)與分子(異常月份)可因事後改日期而分屬不同月;
-                        # 此時「平均每場 0.0 件/正常」與圖面矛盾,改輸出事實描述。
-                        insights.append(
-                            f"區間末月（{last_month_visit['yyyymm']}）：無訪廠紀錄，但有 {total_anomalies} 件訪廠連結異常（請確認異常日期與訪廠日期是否同月）。"
-                        )
-                    else:
-                        ratio = total_anomalies / total_visits if total_visits > 0 else 0
-                        ratio_status = "發現異常比例偏高" if ratio >= 1.5 else "發現異常比例正常"
-                        insights.append(
-                            f"區間末月（{last_month_visit['yyyymm']}）：訪廠 {total_visits} 次，發現異常 {total_anomalies} 件 (平均每場 {ratio:.1f} 件)\n"
-                            f"訪廠評估：{ratio_status}，請持續追蹤供應商改善進度。"
-                        )
             else:
                 self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
         else:
@@ -403,15 +340,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             category_view = self._build_category_pareto_chart(category_pareto_data)
             if category_view:
                 self.grid_layout.addWidget(category_view, 1, 0)
-
-                primary_category = category_pareto_data[0]
-                top_three_total = sum(int(row.get("count", 0) or 0) for row in category_pareto_data[:3])
-                total_count = sum(int(row.get("count", 0) or 0) for row in category_pareto_data)
-                top_three_ratio = (top_three_total / total_count * 100) if total_count else 0.0
-                insights.append(
-                    f"主要異常類別：{primary_category['category']} {primary_category['count']} 件，占 {primary_category['percent']:.1f}%。\n"
-                    f"前三大類別累積 {top_three_total} 件，占全部異常 {top_three_ratio:.1f}%，可優先投入改善資源。"
-                )
             else:
                 self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
         else:
@@ -431,32 +359,42 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             resp_view = self._build_responsible_stacked_chart(resp_stats)
             if resp_view:
                 self.grid_layout.addWidget(resp_view, 1, 1)
-
-                open_cases_stats = [r for r in resp_stats if r.get("open_count", 0) > 0]
-                if open_cases_stats:
-                    most_backlogged = max(open_cases_stats, key=lambda x: x["open_count"])
-                    total_open = sum(r.get("open_count", 0) for r in resp_stats)
-
-                    def format_long_m(d):
-                        if not d:
-                            return "無"
-                        digits = d.replace("-", "")
-                        if len(digits) >= 6 and digits[:6].isdigit():
-                            return f"{digits[:4]}/{digits[4:6]}"
-                        return str(d)
-
-                    insights.append(
-                        f"責任人負載分析：區間內未結案共 {total_open} 件。\n"
-                        f"重點關注：{most_backlogged['responsible_person']} 區間內有 {most_backlogged['open_count']} 件未結案，其最早未結案件累計自 {format_long_m(most_backlogged['min_open_date'])}。"
-                    )
-                else:
-                    insights.append("目前所有責任人均無待處理的未結案件，品質事件結案進度良好。")
             else:
                 self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
         else:
             self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
 
-        self._set_insights(insights)
+        if "process_keyword" in partial_failures:
+            self.grid_layout.addWidget(
+                EmptyStateWidget(
+                    "SMT 製程關鍵詞統計暫時無法載入",
+                    "請按「重新整理」重試。",
+                ),
+                2,
+                0,
+                1,
+                2,
+            )
+        elif process_keyword_pareto_data:
+            keyword_view = self._build_process_keyword_pareto_chart(process_keyword_pareto_data)
+            if keyword_view:
+                self.grid_layout.addWidget(keyword_view, 2, 0, 1, 2)
+            else:
+                self.grid_layout.addWidget(
+                    EmptyStateWidget("暫無 SMT 製程關鍵詞數據"),
+                    2,
+                    0,
+                    1,
+                    2,
+                )
+        else:
+            self.grid_layout.addWidget(
+                EmptyStateWidget("暫無 SMT 製程關鍵詞數據"),
+                2,
+                0,
+                1,
+                2,
+            )
 
         # 強制 Layout 重新佈局與刷新
         if self.grid_layout is not None:
@@ -495,7 +433,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         temp_paths = build_temp_chart_paths(
             temp_dir,
             pid,
-            ["trend", "visit_anomaly", "responsible", "category_pareto"],
+            ["trend", "visit_anomaly", "responsible", "category_pareto", "process_keyword_pareto"],
             "temp_evt",
         )
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
@@ -506,6 +444,9 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             visit_trend_data = _query_service.get_visit_trend_by_range(start_date, end_date)
             resp_stats = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
             category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(start_date, end_date)
+            process_keyword_pareto_data = (
+                _query_service.get_anomaly_process_keyword_pareto_by_range(start_date, end_date)
+            )
             events_detail = _query_service.list_events_by_range(start_date, end_date)
 
             has_data = len(events_detail) > 0
@@ -547,6 +488,18 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     ):
                         active_temp_paths["category_pareto"] = temp_paths["category_pareto"]
 
+                if process_keyword_pareto_data:
+                    requested_chart_keys.append("process_keyword_pareto")
+                    if render_chart_to_png(
+                        lambda: self._build_process_keyword_pareto_chart(
+                            process_keyword_pareto_data
+                        ),
+                        temp_paths["process_keyword_pareto"],
+                    ):
+                        active_temp_paths["process_keyword_pareto"] = temp_paths[
+                            "process_keyword_pareto"
+                        ]
+
             # 呼叫匯出服務
             from services.event import _export_service
 
@@ -566,6 +519,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         "visit_anomaly": "訪廠與異常趨勢圖",
                         "responsible": "責任人統計圖",
                         "category_pareto": "異常類別柏拉圖",
+                        "process_keyword_pareto": "SMT 製程關鍵詞柏拉圖",
                     },
                 )
                 if missing_charts:

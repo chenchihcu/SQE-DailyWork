@@ -69,6 +69,7 @@ SUPPLIER_OVERVIEW_COLUMNS = (
     ColumnSpec("latest_anomaly_due_date", "到期日"),
     ColumnSpec("ncr_90d_count", "近 90 日 NCR"),
     ColumnSpec("latest_visit_date", "最近訪廠"),
+    ColumnSpec("grade", "評級"),
     ColumnSpec("is_active", "供應商狀態"),
 )
 

@@ -19,12 +19,15 @@ try:
 except ImportError:
     load_dotenv = None
 
+from app_paths import logs_dir, runtime_root
+
 if load_dotenv is not None:
-    env_path = _repo_root / ".env"
+    env_path = runtime_root() / ".env"
     if env_path.exists():
         load_dotenv(env_path)
 
 from app_version import __version__
+from build_info import build_label
 from database.connection import initialize_database
 from services.appearance_preferences_service import load_application_preferences
 from ui.main_window import MainWindow
@@ -32,7 +35,7 @@ from ui.theme import apply_app_theme
 
 _log_level = os.environ.get("SQE_LOG_LEVEL", "INFO").strip().upper()
 
-_logs_dir = _repo_root / "logs" / "app.log"
+_logs_dir = logs_dir() / "app.log"
 _logs_dir.parent.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=getattr(logging, _log_level, logging.INFO),
@@ -86,15 +89,18 @@ def _global_excepthook(exc_type, exc_value, exc_tb) -> None:
 
 
 def main() -> int:
+    smoke_exit = "--smoke-exit" in sys.argv
     sys.excepthook = _global_excepthook
     qInstallMessageHandler(_qt_message_handler)
-    _logger.info("SQE DailyWork v%s 啟動", __version__)
+    _logger.info("SQE DailyWork v%s 啟動 (build %s)", __version__, build_label())
 
     try:
         initialize_database()
     except Exception as e:
         _logger.critical("資料庫初始化失敗", exc_info=True)
         print(f"資料庫初始化失敗: {e}")
+        if smoke_exit or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return 1
         _db_error_app = QApplication(sys.argv)
         _db_error_app.setStyle("Fusion")
         QMessageBox.critical(
@@ -112,18 +118,30 @@ def main() -> int:
     app.setStyle("Fusion")
     apply_app_theme(app, load_application_preferences())
 
-    # 單一實例保護：禁止同時執行兩個實例
-    _instance_lock = QSharedMemory("SQE_DailyWork_Instance")
-    if not _instance_lock.create(1):
-        QMessageBox.warning(
-            None,
-            "應用程式已執行",
-            "SQE DailyWork 已經在執行中。\n"
-            "每個工作階段只能啟動一個實例。",
-        )
-        return 0
+    if not smoke_exit:
+        # 單一實例保護：禁止同時執行兩個實例
+        _instance_lock = QSharedMemory("SQE_DailyWork_Instance")
+        if not _instance_lock.create(1):
+            if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+                return 0
+            QMessageBox.warning(
+                None,
+                "應用程式已執行",
+                "SQE DailyWork 已經在執行中。\n"
+                "每個工作階段只能啟動一個實例。",
+            )
+            return 0
 
     window = MainWindow()
+    if smoke_exit:
+        marker_path = logs_dir() / "smoke_exit.ok"
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(str(window.stack.count()), encoding="utf-8")
+        print(f"smoke_exit_ok tabs={window.stack.count()}")
+        window.close()
+        app.processEvents()
+        return 0
+
     window.show()
 
     return app.exec()

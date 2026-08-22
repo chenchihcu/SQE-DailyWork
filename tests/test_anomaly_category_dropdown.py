@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 import services.event._anomaly_service as _anomaly_service_mod
 import services.event._visit_service as _visit_service_mod
+from services.anomaly_trace_contract import ANOMALY_SOURCE_VISIT_AUDIT
 
 
 class AnomalyCategoryDropdownTests(unittest.TestCase):
@@ -130,6 +131,11 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         idx = dialog.supplier_combo.findData("sup-1")
         self.assertGreaterEqual(idx, 0)
         dialog.supplier_combo.setCurrentIndex(idx)
+
+    def _select_anomaly_source(self, dialog, source: str = ANOMALY_SOURCE_VISIT_AUDIT) -> None:
+        idx = dialog.anomaly_source_combo.findText(source)
+        self.assertGreaterEqual(idx, 0, msg=f"missing anomaly source option: {source}")
+        dialog.anomaly_source_combo.setCurrentIndex(idx)
 
     def test_category_dropdown_is_editable_and_has_default_options(self) -> None:
         dialog = self.NewAnomalyDialog()
@@ -314,6 +320,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                     dialog.product_combo.setCurrentIndex(product_idx)
                     dialog.problem_input.setPlainText("測試問題描述")
                     dialog.category_input.setCurrentText(expected)
+                    self._select_anomaly_source(dialog)
                     dialog.quality_report_no_radio.setChecked(True)
                     dialog._on_submit()
 
@@ -362,6 +369,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             self.assertEqual("試產", dialog.product_stage_combo.currentText())
             self.assertFalse(dialog.product_stage_combo.isEnabled())
             dialog.problem_input.setPlainText("測試問題描述")
+            self._select_anomaly_source(dialog)
             dialog.quality_report_yes_radio.setChecked(True)
             dialog._on_submit()
 
@@ -579,12 +587,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertNotIn("product_stage", captured)
         self.assertEqual("prd-2", captured["product_sections"][0]["product_id"])
         self.assertEqual("試產", captured["product_sections"][0]["product_stage"])
-        self.assertFalse(captured.get("tech_transfer", True))
-        self.assertFalse(captured.get("tech_transfer_doc", True))
-        self.assertFalse(captured.get("carrier_requirement", True))
-        self.assertFalse(captured.get("dispensing_process", True))
-        self.assertFalse(captured.get("functional_test", True))
-        self.assertFalse(captured.get("packaging_requirement", True))
 
     def test_visit_dialog_is_direct_form_without_scroll_or_defect_controls(self) -> None:
         dialog = self.NewVisitDialog()
@@ -599,7 +601,10 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             for label in dialog.form_content.findChildren(QLabel)
             if label.property("role") == "sectionTitle"
         }
-        self.assertEqual({"📋 基本資訊", "⚙️ 技轉查核"}, section_titles)
+        self.assertEqual(
+            {"📋 基本資訊", "📝 活動摘要"},
+            section_titles,
+        )
 
     def test_visit_dialog_submits_without_new_defect_notes(self) -> None:
         captured: dict = {}
@@ -650,99 +655,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertEqual("prd-1", captured["product_sections"][0]["product_id"])
         self.assertEqual("上午", captured["product_sections"][0]["time_slot"])
         self.assertEqual([], captured["product_sections"][0]["defect_notes"])
-
-    def test_visit_dialog_item_yes_auto_checks_tech_transfer(self) -> None:
-        captured: dict = {}
-        products = [
-            {
-                "id": "prd-2",
-                "product_code": "V-001",
-                "product_name": "訪廠產品",
-                "product_stage": "試產",
-            }
-        ]
-
-        def _fake_create_visit(payload: dict) -> str:
-            captured.update(payload)
-            return "visit-001"
-
-        with patch.object(
-            self.widget_module.event_service,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            _visit_service_mod,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ):
-            dialog = self.NewVisitDialog()
-            self.addCleanup(dialog.close)
-            self._select_supplier(dialog)
-            product_idx = dialog.product_combo.findData("prd-2")
-            self.assertGreaterEqual(product_idx, 0)
-            dialog.product_combo.setCurrentIndex(product_idx)
-            functional_group = dialog._tech_transfer_groups["functional_test"]
-            yes_button = functional_group.button(1)
-            self.assertIsNotNone(yes_button)
-            assert yes_button is not None
-            yes_button.setChecked(True)
-            self.assertTrue(dialog.tech_transfer_check.isChecked())
-            dialog._on_submit()
-
-        self.assertTrue(captured.get("tech_transfer"))
-        self.assertTrue(captured.get("functional_test"))
-
-    def test_uncheck_tech_transfer_resets_all_items_to_no(self) -> None:
-        dialog = self.NewVisitDialog()
-        self.addCleanup(dialog.close)
-        self._select_supplier(dialog)
-
-        for field_key in ("tech_transfer_doc", "carrier_requirement"):
-            group = dialog._tech_transfer_groups[field_key]
-            yes_button = group.button(1)
-            self.assertIsNotNone(yes_button)
-            assert yes_button is not None
-            yes_button.setChecked(True)
-
-        self.assertTrue(dialog.tech_transfer_check.isChecked())
-        dialog.tech_transfer_check.setChecked(False)
-        self.assertFalse(dialog.tech_transfer_check.isChecked())
-        for key, _label in self.widget_module.VISIT_TECH_TRANSFER_ITEMS:
-            self.assertNotEqual(
-                self.widget_module.TECH_TRANSFER_STATE_YES,
-                dialog._get_tech_transfer_state(key),
-            )
-
-    def test_visit_dialog_edit_mode_applies_item_flags(self) -> None:
-        dialog = self.NewVisitDialog(
-            visit_id="visit-1",
-            initial_data={
-                "visit_date": "2026-04-16",
-                "supplier_id": "sup-1",
-                "supplier_name": "供應商A",
-                "tech_transfer": False,
-                "functional_test": True,
-                "carrier_requirement": False,
-                "tech_transfer_doc": False,
-                "dispensing_process": False,
-                "packaging_requirement": False,
-            },
-        )
-        self.addCleanup(dialog.close)
-
-        self.assertTrue(dialog.tech_transfer_check.isChecked())
-        self.assertEqual(
-            self.widget_module.TECH_TRANSFER_STATE_YES,
-            dialog._get_tech_transfer_state("functional_test"),
-        )
-        self.assertNotEqual(
-            self.widget_module.TECH_TRANSFER_STATE_YES,
-            dialog._get_tech_transfer_state("carrier_requirement"),
-        )
 
     def test_visit_dialog_edit_preserves_hidden_legacy_defect_data(self) -> None:
         captured: dict = {}
@@ -802,16 +714,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertEqual([visit_note], captured["defect_notes"])
         self.assertEqual([primary_note], captured["product_sections"][0]["defect_notes"])
         self.assertEqual(extra_section, captured["product_sections"][1])
-
-    def test_visit_dialog_tech_transfer_cards_use_standard_cjk_indicator_layout(self) -> None:
-        dialog = self.NewVisitDialog()
-        self.addCleanup(dialog.close)
-        self._select_supplier(dialog)
-
-        for field_key, _label in self.widget_module.VISIT_TECH_TRANSFER_ITEMS:
-            card = dialog._tech_transfer_cards[field_key]
-            self.assertEqual(Qt.LayoutDirection.LeftToRight, card.yes_radio.layoutDirection())
-            self.assertEqual(Qt.LayoutDirection.LeftToRight, card.no_radio.layoutDirection())
 
     def test_close_anomaly_dialog_preselects_original_category(self) -> None:
         from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog

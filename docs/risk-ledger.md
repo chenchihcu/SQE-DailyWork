@@ -15,4 +15,5 @@
 | Performance/Startup Latency | 模組頂層靜態匯入 heavy 套件 (openpyxl/reportlab/matplotlib) 或重複查詢導致冷啟動延遲 | 1. 禁止頂層靜態匯入，改於業務函式內 lazy import<br>2. `export_helpers.py` 樣式快取<br>3. `LazyPageWidget` 延遲掛載<br>4. MainWindow 啟動去重 | 持續監控冷啟動秒數與匯入鏈 | 啟動性能回歸與單元測試 | 恢復靜態匯入並尋求其他非侵入性優化 | Mitigated |
 | Export/PDF CJK Font | ReportLab 預設字型在中文 PDF 匯出時引發編碼錯誤或方框缺字 | 實作 `_register_cjk_fonts()` 自動掃描並註冊 Windows 微軟正黑體/細明體，樣式指定 CJK 字型 | 驗證各 Windows 環境與無字型環境之 fallback | `test_services_smoke.py` + PDF 匯出驗證 | 回退 PDF 匯出模組變更 | Mitigated |
 | UI/Preferences Schema v5 | 偏好設定擴充至 27 欄位 (v5) 可能使舊版 v1~v4 JSON 解析失敗 | `AppearancePreferences.from_mapping` 提供嚴格型別校驗與記憶體向下相容 fallback，不污染/損壞儲存資料 | 覆蓋 v1~v5 mapping 轉換單元測試 | `test_appearance_preferences.py` | 回復偏好契約版本 | Mitigated |
+| UI/NCR Embedding Smoke | `test_ncr_embedding_smoke` 假設 `content_scroll.widget() is fields_widget`；NCR create 已包 `NcrCreateFormContent` wrapper | 更新測試斷言為 scroll 子樹包含 `fields_widget`，勿在未確認 DOM 時假綠燈 Focused verify | 維持 wrapper DOM 與測試同步 | `test_ncr_embedding_smoke.py` + `scripts\verify.ps1 -Profile Focused` | 回復測試斷言或 NCR create DOM | Mitigated |
 

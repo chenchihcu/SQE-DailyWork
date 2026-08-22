@@ -93,6 +93,7 @@ class NcrController(QObject):
             w.saved.connect(self.refresh_all)
             w.data_changed.connect(self.refresh_all)
             w.status_message.connect(self._on_status_message)
+            w.return_to_list_requested.connect(self._on_return_to_list)
             return w
 
         def _create_pending_outsource():
@@ -218,6 +219,11 @@ class NcrController(QObject):
 
     def open_create_entry(self) -> None:
         self.form_widget.focus_item_no()
+
+    def _on_return_to_list(self) -> None:
+        opener = getattr(self.host, "open_warehouse_nonconforming_tracker", None)
+        if callable(opener):
+            opener()
 
     def _open_unclassified_cleanup(self) -> None:
         """Route the pending-page unclassified link to the host cleanup dialog."""

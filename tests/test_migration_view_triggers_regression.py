@@ -178,6 +178,7 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
                 pending_items TEXT NOT NULL DEFAULT '',
                 responsible_person TEXT NOT NULL DEFAULT '',
                 due_date TEXT NOT NULL DEFAULT '',
+                is_tech_transfer INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
@@ -406,15 +407,23 @@ class MigrationViewTriggerRegressionTests(unittest.TestCase):
         # closed_at is cleared for non-closed rows.
         self.assertIsNone(opened["closed_at"])
 
-        # Visit *_state columns and visitor_name preserved; status normalized.
+        # Visitor name is preserved and status is normalized.
         visit = self.conn.execute(
-            "SELECT status, visitor_name, packaging_requirement, "
-            "packaging_requirement_state FROM visits"
+            "SELECT status, visitor_name FROM visits"
         ).fetchone()
         self.assertEqual(str(visit["status"]), "已完成")
         self.assertEqual(str(visit["visitor_name"]), "訪客甲")
-        self.assertEqual(int(visit["packaging_requirement"]), 1)
-        self.assertEqual(str(visit["packaging_requirement_state"]), "yes")
+        visit_columns = {
+            str(row["name"])
+            for row in self.conn.execute("PRAGMA table_info(visits)").fetchall()
+        }
+        self.assertNotIn("packaging_requirement", visit_columns)
+        self.assertNotIn("packaging_requirement_state", visit_columns)
+        anomaly_columns = {
+            str(row["name"])
+            for row in self.conn.execute("PRAGMA table_info(anomalies)").fetchall()
+        }
+        self.assertNotIn("is_tech_transfer", anomaly_columns)
 
         # The FK from visit_defect_notes to the (rebuilt) anomaly survives.
         note = self.conn.execute(

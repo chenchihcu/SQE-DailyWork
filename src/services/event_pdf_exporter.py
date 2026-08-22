@@ -121,7 +121,6 @@ def build_event_pdf_html(
                 ],
                 status_value=status_value,
             ),
-            _tech_transfer_section(detail),
             _text_section("摘要", detail.get("summary")),
         ]
         defect_note_section = _visit_defect_notes_section(detail)
@@ -138,12 +137,15 @@ def build_event_pdf_html(
 
         anomaly_fields: list[tuple[str, object]] = [
             ("日期", detail.get("anomaly_date") or row.get("event_date")),
+            ("異常來源", detail.get("anomaly_source")),
             ("供應商", detail.get("supplier_name")),
             ("品名", detail.get("product_name")),
             ("階段", detail.get("product_stage")),
-            ("工單", detail.get("outsource_work_order") or row.get("work_order_no")),
+            ("原物料進貨單號", detail.get("material_receipt_no")),
+            ("廠內製令單號", detail.get("internal_work_order_no")),
+            ("委外製令單號", detail.get("outsource_work_order") or row.get("work_order_no")),
+            ("委外進貨單號", detail.get("outsource_receipt_no")),
             ("數量", _positive_number_or_dash(detail.get("batch_qty"))),
-            ("技轉訪廠", "是" if detail.get("is_tech_transfer") else "否"),
             ("分類", detail.get("category")),
             ("批號", detail.get("product_lot_no")),
             ("責任人", detail.get("responsible_person")),
@@ -163,8 +165,6 @@ def build_event_pdf_html(
                 extra_rows=extra_rows,
             ),
         ]
-        if linked_visit:
-            sections.append(_tech_transfer_section(linked_visit))
         sections.append(
             _text_section("問題描述", detail.get("problem_desc") or row.get("content"))
         )
@@ -421,47 +421,6 @@ def _linked_visit_date(row: dict, linked_visit: dict | None) -> object:
     if linked_visit is not None:
         return linked_visit.get("visit_date")
     return row.get("linked_visit_date")
-
-
-def _tech_transfer_section(detail: dict) -> str:
-    def cell(key: str) -> _RawHtml:
-        return _tech_state_marked(
-            detail.get(f"{key}_state"), legacy_value=detail.get(key)
-        )
-
-    return _section(
-        "技轉項目",
-        [
-            ("技轉狀態", _tech_status_badge(detail.get("tech_transfer"))),
-            ("作業標準書", cell("tech_transfer_doc")),
-            ("載具要求", cell("carrier_requirement")),
-            ("Underfill 要求", cell("dispensing_process")),
-            ("電訊測試", cell("functional_test")),
-            ("包裝規範", cell("packaging_requirement")),
-        ],
-    )
-
-
-def _tech_state_marked(state: object, *, legacy_value: object = None) -> _RawHtml:
-    """Render a tech-transfer item respecting tri-state ('yes'/'no'/'na').
-
-    Falls back to the legacy boolean column when no state was stored — keeps
-    older rows looking identical to before the migration.
-    """
-    text = str(state or "").strip().lower()
-    if text not in ("yes", "no", "na"):
-        text = "yes" if bool(legacy_value) else "no"
-    if text == "yes":
-        return _RawHtml('<span class="yes-check">&radic; 有</span>')
-    if text == "na":
-        return _RawHtml('<span class="no-mark">不適用</span>')
-    return _RawHtml('<span class="no-mark">沒有</span>')
-
-
-def _tech_status_badge(value: object) -> _RawHtml:
-    if bool(value):
-        return _RawHtml('<span class="tech-chip tech-chip-yes">已技轉</span>')
-    return _RawHtml('<span class="tech-chip tech-chip-no">未技轉</span>')
 
 
 def build_brief_event_pdf_html(

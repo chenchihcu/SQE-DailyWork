@@ -486,7 +486,6 @@ class EventManageActionsTests(unittest.TestCase):
             summary="after update",
             work_order_no="WO-V-001",
             production_qty=120,
-            tech_transfer=True,
         )
 
         detail = repository.get_visit_detail(self.conn, visit_id)
@@ -498,7 +497,6 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual("after update", detail["summary"])
         self.assertEqual("WO-V-001", detail["work_order_no"])
         self.assertEqual(120, detail["production_qty"])
-        self.assertTrue(detail["tech_transfer"])
         self.assertEqual("已完成", detail["status"])
 
     def test_list_events_includes_product_stage_work_order_and_qty_for_both_types(self) -> None:
@@ -534,7 +532,6 @@ class EventManageActionsTests(unittest.TestCase):
             summary="visit with fields",
             work_order_no="V-WO-001",
             production_qty=120,
-            tech_transfer=False,
         )
 
         events = repository.list_events(self.conn, event_type="ALL")
@@ -884,10 +881,9 @@ class EventManageActionsTests(unittest.TestCase):
             """
             INSERT INTO visits(
                 id, visit_date, supplier_id, product_id, product_name, product_stage, summary,
-                work_order_no, production_qty, tech_transfer, tech_transfer_doc, carrier_requirement,
-                dispensing_process, functional_test, packaging_requirement, status, created_at, updated_at
+                work_order_no, production_qty, status, created_at, updated_at
             ) VALUES (?, '2026-04-16', ?, NULL, 'Backfill Product', '量產', 'manual visit', '',
-                      0, 0, 0, 0, 0, 0, 0, '已完成', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                      0, '已完成', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """,
             (uuid4().hex, supplier_id),
         )

@@ -35,17 +35,18 @@ from ui.layout_constants import PANEL_MARGINS, ROW_GAP
 from ui.theme import apply_app_theme
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import apply_clickable_affordance
+from services.anomaly_trace_contract import (
+    ANOMALY_SOURCE_OPTIONS as TRACE_ANOMALY_SOURCE_OPTIONS,
+    TRACE_FIELD_LABELS,
+    TRACE_FIELD_PATTERN_KEYS,
+    normalize_anomaly_source,
+)
+from services.anomaly_trace_validator import validate_trace_pattern_text
 from ui.widgets.defect_form_widgets import ANOMALY_CATEGORY_OPTIONS
+from ui.widgets.process_keyword_presets_dialog import ProcessKeywordPresetsDialog
 
 
-ANOMALY_SOURCE_OPTIONS = [
-    "",
-    "進料檢驗 (IQC)",
-    "製程檢驗 (IPQC)",
-    "出貨/客戶端 (OQA)",
-    "廠內稽核",
-    "訪廠發現",
-]
+ANOMALY_SOURCE_OPTIONS = [""] + list(TRACE_ANOMALY_SOURCE_OPTIONS)
 
 VISIT_TYPE_OPTIONS = [
     "例行訪廠",
@@ -696,12 +697,40 @@ class AppearancePreferencesDialog(QDialog):
         self._anomaly_category_combo.setToolTip("新建異常事件時預設選取的異常類別。")
         anomaly_default_layout.addWidget(self._anomaly_category_combo)
 
+        self._process_keyword_presets_button = QPushButton("管理 SMT 製程關鍵詞庫…")
+        self._process_keyword_presets_button.setProperty("variant", "secondary")
+        self._process_keyword_presets_button.setAccessibleName("管理 SMT 製程關鍵詞庫")
+        self._process_keyword_presets_button.setToolTip(
+            "維護新增異常表單可選的 SMT 製程關鍵詞清單。"
+        )
+        self._process_keyword_presets_button.clicked.connect(self._open_process_keyword_presets)
+        anomaly_default_layout.addWidget(self._process_keyword_presets_button)
+
         anomaly_default_layout.addWidget(QLabel("預設異常來源"))
         self._anomaly_source_combo = QComboBox()
         self._anomaly_source_combo.addItems(ANOMALY_SOURCE_OPTIONS)
         self._anomaly_source_combo.setAccessibleName("預設異常來源")
         self._anomaly_source_combo.setToolTip("新建異常事件時預設選取的異常發現來源。")
         anomaly_default_layout.addWidget(self._anomaly_source_combo)
+
+        self._erp_pattern_inputs: dict[str, QLineEdit] = {}
+        erp_group = QGroupBox("ERP 追溯單號格式規則")
+        erp_layout = QVBoxLayout(erp_group)
+        erp_layout.setSpacing(ROW_GAP)
+        erp_hint = QLabel(
+            "使用 Python 正規表示式驗證單號格式；留空表示該欄位尚不可儲存。"
+        )
+        erp_hint.setProperty("role", "messageText")
+        erp_hint.setWordWrap(True)
+        erp_layout.addWidget(erp_hint)
+        for field, pattern_key in TRACE_FIELD_PATTERN_KEYS.items():
+            erp_layout.addWidget(QLabel(TRACE_FIELD_LABELS[field]))
+            pattern_input = QLineEdit()
+            pattern_input.setPlaceholderText("例如：^\\d{10}$")
+            pattern_input.setAccessibleName(f"ERP 格式規則：{TRACE_FIELD_LABELS[field]}")
+            self._erp_pattern_inputs[pattern_key] = pattern_input
+            erp_layout.addWidget(pattern_input)
+        anomaly_default_layout.addWidget(erp_group)
 
         anomaly_default_layout.addWidget(QLabel("預設嚴重度等級"))
         self._severity_level_group = QButtonGroup(self)
@@ -1199,6 +1228,10 @@ class AppearancePreferencesDialog(QDialog):
         footer.addWidget(self.cancel_button)
         root.addLayout(footer)
 
+    def _open_process_keyword_presets(self) -> None:
+        dialog = ProcessKeywordPresetsDialog(self)
+        dialog.exec()
+
     def _on_browse_export_dir(self) -> None:
         selected_dir = QFileDialog.getExistingDirectory(
             self,
@@ -1284,7 +1317,9 @@ class AppearancePreferencesDialog(QDialog):
             default_sync_visit=self._sync_visit_checkbox.isChecked(),
             default_due_days=due_days,
             default_visit_time_slot=visit_time_slot,
-            default_anomaly_source=self._anomaly_source_combo.currentText().strip(),
+            default_anomaly_source=normalize_anomaly_source(
+                self._anomaly_source_combo.currentText().strip()
+            ),
             default_severity_level=severity_level,
             default_visit_type=self._visit_type_combo.currentText().strip() or "例行訪廠",
             auto_fill_anomaly_no_on_date_change=self._auto_anomaly_no_checkbox.isChecked(),
@@ -1293,6 +1328,10 @@ class AppearancePreferencesDialog(QDialog):
             auto_uppercase_part_no=self._auto_uppercase_checkbox.isChecked(),
             default_defect_sample_size=sample_size,
             require_defect_photos=self._require_defect_photos_checkbox.isChecked(),
+            **{
+                pattern_key: self._erp_pattern_inputs[pattern_key].text().strip()
+                for pattern_key in TRACE_FIELD_PATTERN_KEYS.values()
+            },
             default_export_dir=self._export_dir_input.text().strip(),
             export_completion_action=export_action,
             report_organization_header=self._report_header_input.text().strip() or "SQE 供應商品質工程部",
@@ -1441,9 +1480,13 @@ class AppearancePreferencesDialog(QDialog):
         cat_idx = self._anomaly_category_combo.findText(preferences.default_anomaly_category)
         if cat_idx >= 0:
             self._anomaly_category_combo.setCurrentIndex(cat_idx)
-        src_idx = self._anomaly_source_combo.findText(preferences.default_anomaly_source)
+        src_idx = self._anomaly_source_combo.findText(
+            normalize_anomaly_source(preferences.default_anomaly_source)
+        )
         if src_idx >= 0:
             self._anomaly_source_combo.setCurrentIndex(src_idx)
+        for pattern_key in TRACE_FIELD_PATTERN_KEYS.values():
+            self._erp_pattern_inputs[pattern_key].setText(getattr(preferences, pattern_key))
         if preferences.default_severity_level in self._severity_level_buttons:
             self._severity_level_buttons[preferences.default_severity_level].setChecked(True)
         self._sync_visit_checkbox.setChecked(preferences.default_sync_visit)
@@ -1520,6 +1563,12 @@ class AppearancePreferencesDialog(QDialog):
         self._set_preferences(AppearancePreferences.default(), preview=True)
 
     def _save_and_accept(self) -> None:
+        try:
+            for widget in self._erp_pattern_inputs.values():
+                validate_trace_pattern_text(widget.text())
+        except ValueError as exc:
+            QMessageBox.warning(self, "無法儲存", str(exc))
+            return
         preferences = self._current_preferences()
         try:
             save_application_preferences(preferences)

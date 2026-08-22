@@ -21,6 +21,10 @@ class Supplier360DataContractTests(unittest.TestCase):
         }
         self.assertIn("supplier_id", defect_columns)
         self.assertIn("source_defect_no", anomaly_columns)
+        self.assertIn("anomaly_source", anomaly_columns)
+        self.assertIn("material_receipt_no", anomaly_columns)
+        self.assertIn("internal_work_order_no", anomaly_columns)
+        self.assertIn("outsource_receipt_no", anomaly_columns)
 
     def test_global_search_returns_source_labels(self) -> None:
         conn = sqlite3.connect(":memory:")

@@ -9,21 +9,24 @@ from datetime import datetime
 from pathlib import Path
 
 from database.backup import backup_sqlite_database
+from app_paths import (
+    PROJECT_ROOT,
+    data_dir,
+    formal_data_dir,
+    formal_db_path,
+    legacy_db_path,
+    ncr_legacy_source_db,
+    resolve_db_path,
+)
 
 logger = logging.getLogger(__name__)
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_DB_PATH = DEFAULT_DATA_DIR / "sqe_v2.db"
-_ENV_DB_PATH = os.environ.get("SQE_DB_PATH", "").strip()
-DB_PATH = (
-    Path(_ENV_DB_PATH).expanduser().resolve()
-    if _ENV_DB_PATH
-    else DEFAULT_DB_PATH
-)
-DATA_DIR = DEFAULT_DATA_DIR
-LEGACY_DB_PATH = DB_PATH.parent / "sqe.db"
+DEFAULT_DATA_DIR = formal_data_dir()
+DEFAULT_DB_PATH = formal_db_path()
+DB_PATH = resolve_db_path()
+DATA_DIR = data_dir()
+LEGACY_DB_PATH = legacy_db_path()
 
 
 def _backup_database_file(path: Path, *, reason: str) -> Path:
@@ -141,7 +144,7 @@ def initialize_database() -> dict:
 
         # NCR (不良品追蹤) 資料庫一次性遷移
         from database.ncr_migration import migrate_ncr_data_once
-        ncr_db = PROJECT_ROOT / "ncr" / "data" / "defect.db"
+        ncr_db = ncr_legacy_source_db()
         ncr_migration_report = migrate_ncr_data_once(conn, ncr_db)
 
     report["anomaly_no_recode"] = anomaly_no_recode

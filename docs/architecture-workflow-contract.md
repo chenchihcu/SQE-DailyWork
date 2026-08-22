@@ -83,6 +83,33 @@ shared master-data area.
   filtering without changing existing charts, summary totals, supplier
   ranking, or warehouse NCR reports.
 
+## Supplier Anomaly SMT Process Keywords
+
+- `anomalies.process_keywords` stores optional multi-value SMT process keywords as
+  newline-delimited text. It is independent from `anomalies.category` and must not
+  be merged into warehouse NCR data or the category Pareto.
+- `NewAnomalyDialog` exposes keyword entry through `TagInputWidget`; users may pick
+  presets from `ui_settings.smt.process_keywords.v1` or enter custom keywords.
+- Keyword statistics use `get_anomaly_process_keyword_pareto_by_range` as the single
+  implementation for the stats page chart and Excel export sheet/chart PNG.
+
+## Supplier Anomaly ERP Trace Numbers
+
+- `anomalies.anomaly_source` is one of six persisted values:
+  `原物料進貨（IQC）`、`廠內製令`、`委外加工`、`委外進貨`、`訪廠／稽核`、`其他`.
+- Trace-number columns on `anomalies` are:
+  `material_receipt_no`、`internal_work_order_no`、`outsource_work_order`,
+  `outsource_receipt_no`. There is no purchase-order column.
+- `NewAnomalyDialog` shows trace fields conditionally by `anomaly_source`.
+  `訪廠／稽核` shows none; `其他` shows all four as optional.
+- ERP format rules live in appearance preferences v9
+  (`erp_*_pattern` fields). Non-empty trace numbers must match the configured
+  regex. Multiple anomalies for the same supplier may share the same trace
+  number; `anomaly_no` remains the unique case identifier.
+- NCR `轉開供應商異常` may copy `work_order_no` and `internal_work_order_no`
+  into the anomaly form plus `source_defect_no`. `transfer_slip_no` is not
+  equivalent to `outsource_receipt_no` and must not be auto-mapped.
+
 ## Supplier Anomaly Working Folders
 
 - Every successfully created `anomalies` row gets a working folder under
@@ -107,14 +134,13 @@ shared master-data area.
 ## UI Entrypoint And Folder Boundaries
 
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
-- The sidebar grouping expresses workflow structure, not data ownership: three
-  domain group headers (text labels) — 供應商事件, 倉庫不合格品, 系統 — organize
-  首頁 (overview) plus the supplier-event scopes (單獨異常 / 訪廠發現異常 /
-  訪廠紀錄 / 已結案) and 異常事件統計; 倉庫不合格品 holds 建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 系統 holds 基礎資料. The four
-  supplier-event scopes are first-class sidebar rows (deep-linking into the single
-  事件管理 page and setting its scope via `EventListWidget.set_event_scope`), not
-  an in-page scope tab bar.
+- The sidebar grouping expresses workflow structure, not data ownership: four
+  domain group headers (text labels) — 供應商事件, 倉庫不合格品, 供應商管理, 系統 — organize
+  首頁 plus supplier-event create/query/statistics pages; 倉庫不合格品 holds 建立不合格品 /
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 供應商管理 holds 供應商總覽 / 基礎資料;
+  系統 holds 顯示設定. The four supplier-event scopes (單獨異常 / 訪廠發現異常 /
+  訪廠紀錄 / 已結案) are page-local scope chips on the single 事件管理 page, not
+  first-class sidebar rows.
 - The sidebar emits `nav_activated(action)` (`("page", PAGE_KEY)` or
   `("scope", EVENT_SCOPE_*)`); `MainWindow._PAGE_KEY_TO_INDEX` maps PAGE_KEY to the
   stack index, so the sidebar stays decoupled from stack indexes.
@@ -135,7 +161,9 @@ shared master-data area.
   merged into either formal badge or treated as a guessed line.
 - Runtime data, generated reports, and visual/debug artifacts stay in `data/`,
   `Outputs/`, `scratch/`, or the ignored root runtime `ncr/data/`; durable
-  project guidance belongs in `docs/`.
+  project guidance belongs in `docs/`. Writable roots resolve through
+  `src/app_paths.py` (repository root in source runs; executable directory in
+  frozen PyInstaller onedir builds).
 - New source folders require a clear owner that is not already covered by
   `src/ui/`, `src/services/`, `src/database/`, `src/ncr/`, `scripts/`, or `tests/`.
 

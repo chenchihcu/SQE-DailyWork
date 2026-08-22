@@ -103,7 +103,7 @@
 | 檔案 | 行數 | 用途 |
 |------|------|------|
 | `src/ui/widgets/defect_form_widget.py` | 33 | 相容性 re-export shim（僅 import/export） |
-| `src/ui/widgets/defect_form_widgets.py` | 322 | 實際 widget（ProductSectionEditor、TechTransferCard 等） |
+| `src/ui/widgets/defect_form_widgets.py` | 322 | 實際 widget（ProductSectionEditor 等） |
 
 **RCA**: 原始檔案 split 後保留 shim，但名稱相差僅一個 's'，容易造成 import 混淆。
 
