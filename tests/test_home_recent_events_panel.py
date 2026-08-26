@@ -49,6 +49,7 @@ def _backlog_row(idx: int, *, supplier: str, status: str = "待處理", responsi
 class _DummyMainWindow:
     def __init__(self) -> None:
         self.quick_filter_calls: list[dict[str, str | None]] = []
+        self.anomaly_management_calls: list[str] = []
         self.warehouse_outsource_calls = 0
         self.warehouse_material_calls = 0
         self.warehouse_unclassified_calls = 0
@@ -97,6 +98,9 @@ class _DummyMainWindow:
                 "overdue_only": overdue_only,
             }
         )
+
+    def open_anomaly_management(self, anomaly_id: str, *, edit: bool = False) -> None:
+        self.anomaly_management_calls.append(str(anomaly_id))
 
 
 class HomeCockpitPanelTests(unittest.TestCase):
@@ -189,12 +193,8 @@ class HomeCockpitPanelTests(unittest.TestCase):
             self.assertEqual(3, table.rowCount())
 
             widget._on_backlog_row_clicked(0, 0)
-            call = self.host.quick_filter_calls[-1]
-            self.assertEqual("待處理", call["status"])
-            self.assertEqual(
-                event_service.EVENT_SCOPE_ANOMALY_ONLY, call["event_scope"]
-            )
-            self.assertEqual("供應商0", call["supplier_keyword"])
+            self.assertEqual(["evt-0"], self.host.anomaly_management_calls)
+            self.assertEqual([], self.host.quick_filter_calls)
         finally:
             widget.close()
             self.app.processEvents()

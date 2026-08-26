@@ -979,6 +979,14 @@ def _workbench_overview_payload() -> dict:
                 "category": "訪廠紀錄",
             },
         ],
+        "audit_logs": [
+            {
+                "created_at": "2026-06-18 10:30",
+                "action": "更新負責人",
+                "actor_name": "品保工程師 王小明",
+                "after_value": "責任人改為製程工程師 李小華",
+            },
+        ],
         "timeline": [
             {
                 "ts": "2026-06-10 09:15",
@@ -1080,6 +1088,11 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
             _anomaly_workbench_service,
             "list_timeline",
             return_value=payload["timeline"],
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_audit_logs",
+            return_value=payload["audit_logs"],
         ),
         mock.patch.object(
             _anomaly_action_service,

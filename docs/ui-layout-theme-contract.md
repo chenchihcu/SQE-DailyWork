@@ -155,6 +155,9 @@
   project-structure explanations. The backlog list is not a generic recent-event
   feed — it is a filtered, actionable to-do list (open / overdue anomalies) that
   only reads existing services and only routes through existing navigation.
+  Clicking a backlog row with `event_id` opens `AnomalyManagementPage` via
+  `open_anomaly_management`; rows without an id fall back to supplier-scoped
+  event-list filters.
 - Home warehouse shortcuts are operational navigation only. Their compact visible
   labels are `委外待處理 · N`, `原物料待處理 · N`, and `未分流 · N`; the full
   target description remains in each button tooltip. The first two route to formal stack pages;
