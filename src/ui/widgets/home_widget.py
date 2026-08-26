@@ -97,7 +97,7 @@ class HomeWidget(QWidget):
         style_table(self._backlog_table)
         apply_table_action_affordance(
             self._backlog_table,
-            "點擊待辦列開啟事件管理頁，並帶入該供應商的待處理異常篩選",
+            "點擊待辦列直接開啟該異常的案件工作台；若無單號則改以供應商篩選開啟事件管理",
         )
         header = self._backlog_table.horizontalHeader()
         fixed_widths = (
@@ -313,9 +313,16 @@ class HomeWidget(QWidget):
         if item is None:
             return
         payload = item.data(Qt.ItemDataRole.UserRole)
-        supplier = (
-            str(payload.get("supplier_name") or "") if isinstance(payload, dict) else ""
-        )
+        if not isinstance(payload, dict):
+            return
+        anomaly_id = str(
+            payload.get("event_id") or payload.get("anomaly_id") or ""
+        ).strip()
+        open_management = getattr(self.main_window, "open_anomaly_management", None)
+        if anomaly_id and callable(open_management):
+            open_management(anomaly_id)
+            return
+        supplier = str(payload.get("supplier_name") or "")
         open_filters = getattr(self.main_window, "open_event_query_with_filters", None)
         if not callable(open_filters):
             return

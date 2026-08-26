@@ -535,3 +535,15 @@ Next action: Phase 4 signing when certificate strategy chosen.
 Harness update needed: yes
 Destination: `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md`, `docs/qa-gap-assessment-phase1.md`, this log.
 
+## Release Closeout Safe-Pass And Home Backlog Routing Entry
+
+Date: 2026-08-26
+Task: 1.2.0 release closeout (safe-pass + home backlog one-click workbench routing).
+Changes: Added `src/services/event/_overview_format_helpers.py` for export current-action and quality-report display; DRY Pareto sheet builder in `_export_service.py`; home backlog row click routes to `open_anomaly_management` with supplier-filter fallback; workbench visual probe mocks `list_audit_logs`; updated `docs/ui-layout-theme-contract.md` and membership manifest.
+Impact: Operators reach the case workbench directly from home backlog; export formatting stays consistent; visual probe history tab no longer depends on disposable DB audit rows.
+Verification: Focused unittest (`test_home_recent_events_panel`, `test_layout_constants`, `test_excel_report_custom_range`); `py_compile` on touched modules; `scripts/harness_check.ps1` when harness files change.
+Residual risk: Manager-view native probe and Phase 7 export gates not in this baseline (1.1.0 tree); Windows native visual belt and Full verify remain the acceptance gate for pixel/CJK evidence.
+Next action: Run `scripts/verify.ps1 -Profile Full` on Windows before tagging release; refresh workbench baselines if probe output shifts.
+Harness update needed: yes
+Destination: `docs/harness/closed-loop-log.md`, `docs/ui-layout-theme-contract.md`, `docs/harness/source-baseline-manifest.md`
+

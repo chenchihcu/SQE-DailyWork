@@ -14,6 +14,10 @@ from services import event_pdf_exporter
 from . import _anomaly_service
 from . import _visit_service
 from ._helpers import _month_now
+from ._overview_format_helpers import (
+    format_current_action_text,
+    format_quality_report_required_for_export,
+)
 from . import _query_service
 
 if TYPE_CHECKING:
@@ -283,6 +287,50 @@ def export_events_report(
                 col_letter = get_column_letter(col[0].column)
                 ws.column_dimensions[col_letter].width = min(max(max_len + 2, 10), 45)
 
+        def _append_pareto_sheet(
+            sheet_name: str,
+            headers: list[str],
+            pareto_rows: list[dict],
+            *,
+            label_key: str,
+            label_col: int = 2,
+        ) -> None:
+            sheet = workbook.create_sheet(sheet_name)
+            sheet.views.sheetView[0].showGridLines = True
+            sheet.append(headers)
+            for col_idx in range(1, len(headers) + 1):
+                cell = sheet.cell(row=1, column=col_idx)
+                cell.font = STYLE_HEADER_FONT
+                cell.fill = STYLE_FILL_HEADER
+                cell.alignment = ALIGN_CENTER
+                cell.border = STYLE_BORDER_THIN
+            sheet.row_dimensions[1].height = 24
+
+            for r_idx, row in enumerate(pareto_rows, start=2):
+                data = [
+                    row.get("rank", 0),
+                    row.get(label_key, ""),
+                    row.get("count", 0),
+                    row.get("percent", 0.0),
+                    row.get("cumulative_percent", 0.0),
+                ]
+                sheet.append(data)
+                is_even = r_idx % 2 == 0
+                for c_idx in range(1, len(headers) + 1):
+                    cell = sheet.cell(row=r_idx, column=c_idx)
+                    cell.font = STYLE_FONT
+                    cell.border = STYLE_BORDER_THIN
+                    if is_even:
+                        cell.fill = STYLE_FILL_ZEBRA
+                    if c_idx == label_col:
+                        cell.alignment = ALIGN_LEFT
+                    else:
+                        cell.alignment = ALIGN_RIGHT
+                    if c_idx in (4, 5):
+                        cell.number_format = "0.0"
+                sheet.row_dimensions[r_idx].height = 20
+            _auto_fit(sheet)
+
         # 1. 視覺總覽報告頁
         report_sheet = workbook.active
         report_sheet.title = "統計報告"
@@ -341,82 +389,19 @@ def export_events_report(
                     img.height = 310
                     report_sheet.add_image(img, cell)
 
-        # 2. 異常類別柏拉圖資料頁
-        category_sheet = workbook.create_sheet("異常類別柏拉圖")
-        category_sheet.views.sheetView[0].showGridLines = True
-
-        category_headers = ["排名", "異常類別", "件數", "佔比(%)", "累積佔比(%)"]
-        category_sheet.append(category_headers)
-        for col_idx in range(1, len(category_headers) + 1):
-            cell = category_sheet.cell(row=1, column=col_idx)
-            cell.font = STYLE_HEADER_FONT
-            cell.fill = STYLE_FILL_HEADER
-            cell.alignment = ALIGN_CENTER
-            cell.border = STYLE_BORDER_THIN
-        category_sheet.row_dimensions[1].height = 24
-
-        for r_idx, row in enumerate(category_pareto_rows, start=2):
-            data = [
-                row.get("rank", 0),
-                row.get("category", ""),
-                row.get("count", 0),
-                row.get("percent", 0.0),
-                row.get("cumulative_percent", 0.0),
-            ]
-            category_sheet.append(data)
-
-            is_even = (r_idx % 2 == 0)
-            for c_idx in range(1, len(category_headers) + 1):
-                cell = category_sheet.cell(row=r_idx, column=c_idx)
-                cell.font = STYLE_FONT
-                cell.border = STYLE_BORDER_THIN
-                if is_even:
-                    cell.fill = STYLE_FILL_ZEBRA
-                if c_idx == 2:
-                    cell.alignment = ALIGN_LEFT
-                else:
-                    cell.alignment = ALIGN_RIGHT
-                if c_idx in (4, 5):
-                    cell.number_format = "0.0"
-            category_sheet.row_dimensions[r_idx].height = 20
-        _auto_fit(category_sheet)
-
-        keyword_sheet = workbook.create_sheet("SMT製程關鍵詞柏拉圖")
-        keyword_sheet.views.sheetView[0].showGridLines = True
-        keyword_headers = ["排名", "關鍵詞", "件數", "佔比(%)", "累積佔比(%)"]
-        keyword_sheet.append(keyword_headers)
-        for col_idx in range(1, len(keyword_headers) + 1):
-            cell = keyword_sheet.cell(row=1, column=col_idx)
-            cell.font = STYLE_HEADER_FONT
-            cell.fill = STYLE_FILL_HEADER
-            cell.alignment = ALIGN_CENTER
-            cell.border = STYLE_BORDER_THIN
-        keyword_sheet.row_dimensions[1].height = 24
-
-        for r_idx, row in enumerate(process_keyword_pareto_rows, start=2):
-            data = [
-                row.get("rank", 0),
-                row.get("keyword", ""),
-                row.get("count", 0),
-                row.get("percent", 0.0),
-                row.get("cumulative_percent", 0.0),
-            ]
-            keyword_sheet.append(data)
-            is_even = (r_idx % 2 == 0)
-            for c_idx in range(1, len(keyword_headers) + 1):
-                cell = keyword_sheet.cell(row=r_idx, column=c_idx)
-                cell.font = STYLE_FONT
-                cell.border = STYLE_BORDER_THIN
-                if is_even:
-                    cell.fill = STYLE_FILL_ZEBRA
-                if c_idx == 2:
-                    cell.alignment = ALIGN_LEFT
-                else:
-                    cell.alignment = ALIGN_RIGHT
-                if c_idx in (4, 5):
-                    cell.number_format = "0.0"
-            keyword_sheet.row_dimensions[r_idx].height = 20
-        _auto_fit(keyword_sheet)
+        pareto_headers = ["排名", "異常類別", "件數", "佔比(%)", "累積佔比(%)"]
+        _append_pareto_sheet(
+            "異常類別柏拉圖",
+            pareto_headers,
+            category_pareto_rows,
+            label_key="category",
+        )
+        _append_pareto_sheet(
+            "SMT製程關鍵詞柏拉圖",
+            ["排名", "關鍵詞", "件數", "佔比(%)", "累積佔比(%)"],
+            process_keyword_pareto_rows,
+            label_key="keyword",
+        )
 
         # 3. 事件明細依權威 event_type 分成訪廠與異常兩個活頁。
         def _build_event_detail_sheet(name, headers, rows, row_builder, centered_columns):
@@ -464,21 +449,10 @@ def export_events_report(
         def _anomaly_detail_row(row):
             from services.process_keyword_codec import format_process_keywords_display
 
-            if row.get("quality_report_required") is None:
-                quality_report_required = "未設定"
-            else:
-                quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
-            current = row.get("current_action") or {}
-            current_desc = str(current.get("description") or "").strip()
-            current_owner = str(current.get("owner") or "").strip()
-            current_due = str(current.get("due_date") or "").strip()
-            if current_desc:
-                if current_due:
-                    current_text = f"{current_desc}（{current_owner or '—'} / {current_due}）"
-                else:
-                    current_text = f"{current_desc}（{current_owner or '—'}）"
-            else:
-                current_text = ""
+            quality_report_required = format_quality_report_required_for_export(
+                row.get("quality_report_required")
+            )
+            current_text = format_current_action_text(row.get("current_action"))
             return [
                 str(row.get("ref_no") or ""),
                 row.get("event_date") or "",
