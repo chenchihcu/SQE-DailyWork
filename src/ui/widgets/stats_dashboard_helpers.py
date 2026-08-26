@@ -247,50 +247,6 @@ def create_stats_grid_layout(*, equal_rows: bool = False) -> QGridLayout:
     return grid
 
 
-class StatsInfoBanner(QFrame):
-    def __init__(
-        self,
-        formula: str,
-        purpose: str,
-        *,
-        formula_prefix: str,
-        purpose_prefix: str,
-        object_name: str,
-        margins: tuple[int, int, int, int],
-        spacing: int,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setObjectName(object_name)
-        self.setProperty("role", "statsInfoBanner")
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*margins)
-        layout.setSpacing(spacing)
-
-        formula_label = QLabel(f"<b>{formula_prefix}：</b>{formula}")
-        purpose_label = QLabel(f"<b>{purpose_prefix}：</b>{purpose}")
-        for label in (formula_label, purpose_label):
-            label.setProperty("role", "statsInfoText")
-            label.setWordWrap(True)
-            label.setMinimumWidth(0)
-            layout.addWidget(label)
-
-
-def create_insight_label(
-    text: str,
-    *,
-    minimum_height: int | None = None,
-) -> QLabel:
-    label = QLabel(text)
-    label.setWordWrap(True)
-    label.setProperty("role", "insight")
-    label.setMinimumWidth(0)
-    if minimum_height is not None:
-        label.setMinimumHeight(minimum_height)
-    return label
-
-
 # ── Chart category-axis label helpers ────────────────────────────────────
 # Shared by ncr_stats_chart_mixin.py and stats_chart_mixin.py, which used to
 # each maintain their own independent label-shortening/dedup implementation

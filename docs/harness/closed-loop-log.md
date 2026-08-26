@@ -535,3 +535,15 @@ Next action: Phase 4 signing when certificate strategy chosen.
 Harness update needed: yes
 Destination: `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md`, `docs/qa-gap-assessment-phase1.md`, this log.
 
+## Code-Simplifier Safe-Pass Entry (residual insight dead code + overview text DRY)
+
+Date: 2026-08-26
+Task: Behavior-preserving safe-pass — clear Zero-Noise statistics residual dead code and DRY `current_action` export formatting.
+Changes: Removed `StatsInfoBanner`, `create_insight_label`, and `QLabel[role="insight"]` QSS; updated `stats_chart_mixin` docstring; added `services/overview_text_codec.format_current_action_text`; routed `event/_export_service` anomaly detail row through the shared helper.
+Impact: Statistics helpers no longer carry unused insight surfaces; Excel export `current_action` text uses one formatter without changing workflow boundaries or manager-view contracts.
+Verification: `py_compile` on touched modules; focused unittest bundle (theme, supplier report export, stats, date-range export); `scripts/harness_check.ps1`.
+Residual risk: `manager_view_repository` (if present in other worktrees) retains a separate simplified `_current_action_text` contract — do not silent-merge; full `unittest discover` not run in this pass.
+Next action: When markdown/supplier-report overview enrichment lands, import `format_current_action_text` instead of re-copying the owner/due block.
+Harness update needed: yes
+Destination: `src/services/overview_text_codec.py`, `src/services/event/_export_service.py`, `src/ui/widgets/stats_dashboard_helpers.py`, `src/ui/_qss_base.py`, `src/ui/widgets/stats_chart_mixin.py`, `docs/harness/closed-loop-log.md`.
+
