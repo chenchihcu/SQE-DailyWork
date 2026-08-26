@@ -129,7 +129,9 @@ def run_audit():
                 pass
             app.processEvents()
             
-    with open("button_audit_report.md", "w", encoding="utf-8") as f:
+    report_path = REPO_ROOT / "scratch" / "button_audit_report.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write("# UI 按鍵功能稽核報告\n\n")
         f.write("此報告記錄了在一次性測試資料庫環境中，模擬點擊所有主要介面與模組中所有按鍵的結果。\n\n")
         

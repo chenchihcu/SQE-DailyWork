@@ -1,6 +1,6 @@
 # Source Baseline Manifest - SQE DailyWork
 
-Last inspected: 2026-08-22
+Last inspected: 2026-08-22 (repo boundary hygiene)
 
 ## Purpose
 
@@ -28,7 +28,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | Git root | `local-observed` | `C:/Users/user/Documents/SQE DailyWork` |
 | Live release membership count | `local-observed` | `625` |
 | Membership definition | `audit-inference` | Existing files returned by `git ls-files --cached --others --exclude-standard`; this stays stable before and after intentional staging of new source files |
-| Ignored runtime/generated entries | `local-observed` | `data/`, `ncr/data/`, `data_backups/`, local runtimes, caches, outputs, `.omo/`, `.playwright-mcp/`, root generated quality workbooks, visual probe artifacts |
+| Ignored runtime/generated entries | `local-observed` | `data/`, `ncr/data/`, `data_backups/`, `logs/`, local runtimes, caches, outputs, `.omo/`, `.playwright-mcp/`, root generated quality workbooks, visual probe artifacts |
 | `source_baseline_status` | `audit-inference` | `verified: live membership and do-not-track boundaries are executable harness gates` |
 | Current writer mode | `audit-inference` | `single writer per worktree for the current High-Risk closeout` |
 
@@ -39,17 +39,17 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | Tracked source | `audit-inference` | `main.py`, `CHANGELOG.md`, `src/database/`, `src/services/` (including `anomaly_trace_*`, `process_keyword_*`), `src/ui/` (including `list_column_contract.py`), `src/ncr/`, `tests/`, `scripts/`, `docs/`, governance rules | Reviewed source surface for the root project layout. |
 | Embedded NCR source | `audit-inference` | `src/ncr/embed.py`, `src/ncr/db/`, `src/ncr/models/`, `src/ncr/services/`, `src/ncr/ui/`, `src/ncr/tests/`, `src/ncr/README.md` | Keep as the embedded warehouse nonconforming-product workflow. |
 | Removed NCR residue | `audit-inference` | `ncr/.github/`, `ncr/.gitignore`, `ncr/.ruff.toml`, one-off logs, probe PNGs, standalone review/skill notes | Standalone project residue; not part of the embedded workflow baseline. |
-| Ignored runtime/generated | `local-observed` | `data/`, `ncr/data/`, `Outputs/`, `scratch/`, `build/`, `dist/`, caches, local runtimes, `import_err.txt`, `artifacts/visual/`, `artifacts/visual-probes/` | Must not be captured by blind staging. |
-| Local-only tool state | `local-observed` | `.omo/`, `.claude/settings.local.json`, `.claude/worktrees/`, `.playwright-mcp/`, root generated quality workbooks, root visual/probe screenshots, `.code_diff.txt`, `.docs_diff.txt`, `ORIGINAL_REQUEST.md` | Keep local-only; do not use as shared policy. |
+| Ignored runtime/generated | `local-observed` | `data/`, `ncr/data/`, `Outputs/`, `logs/`, `scratch/`, `build/`, `dist/`, caches, local runtimes, `import_err.txt`, `artifacts/visual/`, `artifacts/visual-probes/` | Must not be captured by blind staging. |
+| Local-only tool state | `local-observed` | `.omo/`, `brain/`, `.opencode/`, `button_audit_report.md`, `.claude/settings.local.json`, `.claude/worktrees/`, `.playwright-mcp/`, root generated quality workbooks, root visual/probe screenshots, `.code_diff.txt`, `.docs_diff.txt`, `ORIGINAL_REQUEST.md` | Keep local-only; do not use as shared policy. |
 
 ## File Classification
 
 | List | Type | Items |
 | --- | --- | --- |
 | `recommended-track-list` | `audit-inference` | `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, `.gitignore`, `.editorconfig`, `.coveragerc`, `pytest.ini`, `requirements.txt`, `README.md`, `main.py`, `run_app.bat`, `run_mig.py`, `src/database/**/*.py`, `src/services/**/*.py`, `src/services/assets/*.png`, `src/ui/**/*.py`, `src/ui/assets/**/*.svg`, `tests/**/*.py`, `scripts/*.py`, `scripts/*.ps1`, `installer/**/*.iss`, `docs/**/*.md`, `src/ncr/**/*.py`, `src/ncr/**/*.md`, `src/ncr/ui/assets/*.svg`, `.agents/rules/**`, `.agents/skills/**`, `.cursor/rules/**`, `.codex/rules/**`, `.claude/settings.json`, `.claude/hooks/**`, `.claude/skills/**`, `.claude/agents/**` |
-| `recommended-ignore-list` | `audit-inference` | `.env`, `.venv/`, `.uv-cache/`, `.uv-python/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.omo/`, `data/`, `ncr/data/`, `data_backups/`, `Outputs/`, `scratch/`, `artifacts/visual/`, `artifacts/visual-probes/`, `build/`, `dist/`, `*.log`, `*.tmp`, `import_err.txt`, `.code_diff.txt`, `.docs_diff.txt`, `ORIGINAL_REQUEST.md`, root probe screenshots, root `SQE_Quality_Report_*.xlsx`, `.claude/settings.local.json`, `.claude/worktrees/`, `.playwright-mcp/` |
+| `recommended-ignore-list` | `audit-inference` | `.env`, `.venv/`, `.uv-cache/`, `.uv-python/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.omo/`, `brain/`, `.opencode/`, `data/`, `ncr/data/`, `data_backups/`, `Outputs/`, `logs/`, `scratch/`, `artifacts/visual/`, `artifacts/visual-probes/`, `build/`, `dist/`, `*.log`, `*.tmp`, `import_err.txt`, `.code_diff.txt`, `.docs_diff.txt`, `ORIGINAL_REQUEST.md`, `button_audit_report.md`, root probe screenshots, root `SQE_Quality_Report_*.xlsx`, `.claude/settings.local.json`, `.claude/worktrees/`, `.playwright-mcp/` |
 | `needs-user-decision-list` | `audit-inference` | Data-mutating scripts before execution: `run_mig.py`, `scripts/migrate_to_v2.py`, `scripts/recode_anomaly_no_all_dbs.py`, `scripts/migrate_ncr_defects_to_main_db.py` |
-| `do-not-track-list` | `audit-inference` | Runtime DBs, generated outputs, root `SQE_Quality_Report_*.xlsx`, `.playwright-mcp/`, visual probe screenshots, build/dist artifacts, caches, scratch folders, import error captures, local-only assistant settings, `.omo/` session state, the dead `package.json` external-integration stub, worktree folders |
+| `do-not-track-list` | `audit-inference` | Runtime DBs, generated outputs, `logs/`, `brain/`, `.opencode/`, root `button_audit_report.md`, root `SQE_Quality_Report_*.xlsx`, `.playwright-mcp/`, visual probe screenshots, build/dist artifacts, caches, scratch folders, import error captures, local-only assistant settings, `.omo/` session state, the dead `package.json` external-integration stub, worktree folders |
 
 ## Suspicious Items
 
@@ -59,6 +59,7 @@ Claim types used here: `local-observed`, `audit-inference`, `assumption`, `not v
 | Scratch/generated state | `local-observed` | `scratch/`, `Outputs/`, runtime DBs, caches, and local runtimes remain ignored as generated local state. | Keep ignored; do not stage blindly. |
 | Data-mutating scripts | `audit-inference` | Migration/recode scripts are source, but execution can mutate local data. | Track source after review; run only through approved verification or migration plans. |
 | Previously tracked generated state | `local-observed` | One root quality workbook and two `.playwright-mcp/page-*.yml` files were tracked despite the declared boundary. | Removed from the index only; local files remain and precise ignore rules prevent recurrence. |
+| Previously tracked agent scaffolding | `local-observed` | `brain/` (2), `button_audit_report.md`, and `.opencode/` (25) were tracked outside `recommended-track-list`. | Removed from index 2026-08-22; `.gitignore` plus harness gates prevent recurrence. |
 
 ## Baseline Commit Readiness
 

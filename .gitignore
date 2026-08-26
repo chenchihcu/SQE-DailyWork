@@ -19,6 +19,7 @@ dist/
 data/
 data_backups/
 Outputs/
+logs/
 scratch/
 import_err.txt
 /SQE_Quality_Report_*.xlsx
@@ -35,6 +36,9 @@ import_err.txt
 
 # Development / session / agent-scaffolding artifacts (not part of the shipped app)
 .omo/
+brain/
+.opencode/
+/button_audit_report.md
 .agents/*
 !.agents/rules/
 !.agents/rules/**
