@@ -9,8 +9,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from services.event import (
-    _anomaly_action_service,
     _anomaly_workbench_service,
+    _case_action_service,
 )
 from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
 from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
@@ -32,7 +32,7 @@ class CompleteActionDialogTests(unittest.TestCase):
         emitted = []
         dialog.action_updated.connect(lambda v: emitted.append(v))
         with mock.patch.object(
-            _anomaly_action_service, "complete_action"
+            _case_action_service, "complete_case_action"
         ) as mk:
             dialog._on_submit()
         self.assertEqual(mk.call_args.args[0], "a-1")
@@ -44,7 +44,7 @@ class CompleteActionDialogTests(unittest.TestCase):
         dialog.outcome_combo.setCurrentIndex(1)
         dialog.note_input.setPlainText("duplicate of #3")
         with mock.patch.object(
-            _anomaly_action_service, "cancel_action"
+            _case_action_service, "cancel_case_action"
         ) as mk:
             dialog._on_submit()
         self.assertEqual(mk.call_args.args[0], "a-2")
@@ -60,11 +60,11 @@ class CompleteCorrectiveActionDialogTests(unittest.TestCase):
         dialog = CompleteCorrectiveActionDialog("ca-1", description="更換治具")
         dialog.evidence_input.setPlainText("更換完成照片")
         with mock.patch.object(
-            _anomaly_workbench_service, "record_ca_completion_with_audit"
+            _case_action_service, "complete_case_action"
         ) as mk:
             dialog._on_submit()
         self.assertEqual(
-            mk.call_args.kwargs["corrective_action_id"], "ca-1"
+            mk.call_args.args[0], "ca-1"
         )
         self.assertEqual(
             mk.call_args.kwargs["implementation_evidence"], "更換完成照片"
@@ -94,13 +94,13 @@ class AddVerificationDialogTests(unittest.TestCase):
         emitted = []
         dialog.verification_created.connect(lambda v: emitted.append(v))
         with mock.patch.object(
-            _anomaly_workbench_service,
-            "record_verification_with_audit",
-            return_value=("v-1", "audit-1"),
+            _case_action_service,
+            "record_action_verification",
+            return_value="v-1",
         ) as mk:
             dialog._on_submit()
         kwargs = mk.call_args.kwargs
-        self.assertEqual(kwargs["corrective_action_id"], "ca-2")
+        self.assertEqual(kwargs["action_id"], "ca-2")
         self.assertEqual(kwargs["method"], "30 天監控")
         self.assertEqual(kwargs["result"], "有效")
         self.assertEqual(kwargs["verified_by"], "王五")

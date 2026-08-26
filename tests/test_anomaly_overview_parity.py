@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from database import connection as _connection
 from database import repository
-from services.event import _anomaly_action_service, _anomaly_workbench_service
+from services.event import _case_action_service
 from services.event import _query_service
 
 
@@ -86,10 +86,12 @@ class OverviewParityTests(unittest.TestCase):
                 pass
 
     def test_list_events_enriches_anomaly_with_overview(self) -> None:
-        _anomaly_action_service.create_action(
+        _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="下一步",
             due_date="2020-01-01",
+            execution_status="執行中",
         )
         rows = _query_service.list_events({})
         # Both anomalies (one standalone, one with visit_id) must surface overview fields
@@ -110,9 +112,8 @@ class OverviewParityTests(unittest.TestCase):
 
     def test_list_events_visits_have_no_overview_fields(self) -> None:
         # Create a standalone visit so the list has at least one VISIT row.
-        visit_id = None
         with _connection.get_connection() as conn:
-            visit_id = repository.create_visit(
+            repository.create_visit(
                 conn,
                 visit_date="2026-06-03",
                 supplier_id=self.supplier,
@@ -127,16 +128,19 @@ class OverviewParityTests(unittest.TestCase):
             self.assertNotIn("current_action", row)
 
     def test_list_events_by_range_enriches_anomaly_with_overview(self) -> None:
-        ca_id = _anomaly_workbench_service.create_corrective_action(
+        action_id = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="對策",
-            effectiveness_verification_required=True,
+            execution_status="執行中",
+            verification_required=True,
         )
-        _anomaly_workbench_service.complete_corrective_action(
-            corrective_action_id=ca_id, implementation_evidence="完成"
+        _case_action_service.complete_case_action(
+            action_id,
+            implementation_evidence="完成",
         )
-        _anomaly_workbench_service.record_verification_with_audit(
-            corrective_action_id=ca_id,
+        _case_action_service.record_action_verification(
+            action_id=action_id,
             method="監控",
             result="有效",
             verified_by="QA",
@@ -146,7 +150,7 @@ class OverviewParityTests(unittest.TestCase):
             r for r in rows
             if r.get("event_type") == "ANOMALY" and r["event_id"] == self.anomaly_id
         )
-        self.assertEqual(target["corrective_action_status"], "有效")
+        self.assertEqual(target["corrective_action_status"], "已完成")
         self.assertEqual(target["verification_result"], "有效")
         self.assertEqual(target["open_action_count"], 0)
 

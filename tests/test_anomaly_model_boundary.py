@@ -39,14 +39,20 @@ class AnomalySubTableBoundaryTests(unittest.TestCase):
     def test_no_cross_write_into_defect_records(self) -> None:
         """Supplier-event writes must never touch defect_records."""
         # Populate the anomaly waste of sub-tables entirely on the supplier side.
-        repository.create_anomaly_action(
-            self.conn, anomaly_id=self.anomaly_id, description="action"
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
+            description="action",
         )
         repository.create_anomaly_analysis_note(
             self.conn, anomaly_id=self.anomaly_id, content="note"
         )
-        repository.create_corrective_action(
-            self.conn, anomaly_id=self.anomaly_id, description="CA"
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
+            description="CA",
         )
         count = self.conn.execute(
             "SELECT COUNT(*) FROM defect_records"
@@ -66,7 +72,7 @@ class AnomalySubTableBoundaryTests(unittest.TestCase):
         )
         self.conn.commit()
         self.assertEqual(
-            self.conn.execute("SELECT COUNT(*) FROM anomaly_actions").fetchone()[0],
+            self.conn.execute("SELECT COUNT(*) FROM case_actions").fetchone()[0],
             0,
         )
         self.assertEqual(
@@ -77,7 +83,7 @@ class AnomalySubTableBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(
             self.conn.execute(
-                "SELECT COUNT(*) FROM corrective_actions"
+                "SELECT COUNT(*) FROM case_actions"
             ).fetchone()[0],
             0,
         )
@@ -87,12 +93,12 @@ class AnomalySubTableBoundaryTests(unittest.TestCase):
         repository.create_anomaly_analysis_note(
             self.conn, anomaly_id=self.anomaly_id, content="note"
         )
-        repository.create_corrective_action(
-            self.conn, anomaly_id=self.anomaly_id, description="CA"
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
+            description="CA",
         )
-        # Warehouse list is empty because no defect_records were written.
-        from services.event import _query_service  # local import not needed here
-
         # Direct SQL assertion: warehouse count unnaffected by anomaly sub-tables.
         count = self.conn.execute(
             "SELECT COUNT(*) FROM defect_records"
@@ -127,8 +133,11 @@ class AnomalyMigrationIdempotencyTests(unittest.TestCase):
             problem_desc="p",
             sync_visit=False,
         )["anomaly_id"]
-        repository.create_anomaly_action(
-            self.conn, anomaly_id=anomaly_id, description="a"
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=anomaly_id,
+            action_type="NEXT_ACTION",
+            description="a",
         )
         # Force re-entry to the helper; it must be idempotent.
         repository._ensure_anomaly_evidence_tables_v1(self.conn)
@@ -136,12 +145,12 @@ class AnomalyMigrationIdempotencyTests(unittest.TestCase):
         # Tables exist exactly once and the seeded action remains.
         self.assertIsNotNone(
             self.conn.execute(
-                "SELECT 1 FROM anomaly_actions WHERE anomaly_id = ?",
+                "SELECT 1 FROM case_actions WHERE anomaly_id = ?",
                 (anomaly_id,),
             ).fetchone()
         )
         self.assertEqual(
-            self.conn.execute("SELECT COUNT(*) FROM anomaly_actions").fetchone()[0],
+            self.conn.execute("SELECT COUNT(*) FROM case_actions").fetchone()[0],
             1,
         )
 

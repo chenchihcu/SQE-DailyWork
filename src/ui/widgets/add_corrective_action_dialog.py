@@ -1,9 +1,4 @@
-"""Minimal corrective-action create dialog for the anomaly case-workbench.
-
-Creates one corrective action with the shared status + effectiveness flag.
-Separate completion / verification entry points remain future work; the data
-model already distinguishes implemented vs effective.
-"""
+"""Focused canonical Action dialog for the 矯正措施 type."""
 
 from __future__ import annotations
 
@@ -22,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from ui.layout_constants import WORKBENCH_DIALOG_WIDE_MIN_WIDTH
 
-from services.event import _anomaly_workbench_service
+from services.event import _case_action_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -65,6 +60,7 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         self.target_date_edit.setDate(QDate.currentDate().addDays(14))
         self.target_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.verify_check = QCheckBox("需進行有效性驗證")
+        self.verify_check.setChecked(True)
 
         self._setup_ui()
         self._update_validation()
@@ -129,12 +125,14 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
             self._update_validation()
             return
         try:
-            ca_id = _anomaly_workbench_service.create_corrective_action(
+            ca_id = _case_action_service.create_case_action(
                 anomaly_id=self._anomaly_id,
+                action_type="CORRECTIVE_ACTION",
                 description=description,
-                responsible_party=self.responsible_input.text().strip(),
-                target_date=self.target_date_edit.date().toString("yyyy-MM-dd"),
-                effectiveness_verification_required=self.verify_check.isChecked(),
+                owner=self.responsible_input.text().strip(),
+                due_date=self.target_date_edit.date().toString("yyyy-MM-dd"),
+                execution_status="已規劃",
+                verification_required=self.verify_check.isChecked(),
             )
         except ValueError as exc:
             set_field_invalid(self.description_input, True)

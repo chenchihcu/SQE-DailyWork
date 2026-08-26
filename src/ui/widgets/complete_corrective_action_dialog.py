@@ -1,8 +1,4 @@
-"""Complete an existing corrective action and append a matching audit entry.
-
-Repository decides the next status (待有效性驗證 vs 已實施) based on whether
-effectiveness verification is required.
-"""
+"""Complete a canonical improvement Action and record implementation details."""
 
 from __future__ import annotations
 
@@ -19,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 from ui.layout_constants import WORKBENCH_DIALOG_MIN_WIDTH
 
-from services.event import _anomaly_workbench_service
+from services.event import _case_action_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -45,7 +41,7 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
 
     def __init__(
         self,
-        corrective_action_id: str,
+        action_id: str,
         description: str = "",
         *,
         verification_required: bool = False,
@@ -53,9 +49,9 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         actor_name: str = "",
     ) -> None:
         super().__init__(parent)
-        self._ca_id = (corrective_action_id or "").strip()
-        if not self._ca_id:
-            raise ValueError("Corrective action id is required")
+        self._action_id = (action_id or "").strip()
+        if not self._action_id:
+            raise ValueError("Action id is required")
         self._verification_required = bool(verification_required)
         self._actor_name = (actor_name or "").strip()
         self.setWindowTitle("完成改善措施")
@@ -68,6 +64,9 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
             "填寫實施證據（照片說明、文件連結、實測數據等）"
         )
         self.evidence_input.setAcceptRichText(False)
+        self.note_input = QTextEdit()
+        self.note_input.setPlaceholderText("完成說明（選填）")
+        self.note_input.setAcceptRichText(False)
 
         self._description = description
 
@@ -88,7 +87,7 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
             lay.addWidget(ref)
 
         hint = QLabel(
-            "送出後，狀態會自動推進為「待有效性驗證」；若措施未要求驗證，則直接轉為「已實施」。"
+            "送出後執行狀態固定為「已完成」；有效性狀態會依是否需要驗證另行推導。"
         )
         hint.setProperty("role", "helperText")
         hint.setWordWrap(True)
@@ -98,6 +97,7 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         form.setVerticalSpacing(FORM_VERTICAL_SPACING)
         form.addRow("實施證據", self.evidence_input)
+        form.addRow("完成說明", self.note_input)
         self._error_label = make_inline_error_label()
         form.addRow("", self._error_label)
         lay.addLayout(form)
@@ -120,6 +120,7 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.evidence_input.textChanged,
+            self.note_input.textChanged,
         ])
 
     def _update_validation(self) -> None:
@@ -131,9 +132,10 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
     def _on_submit(self) -> None:
         evidence = self.evidence_input.toPlainText().strip()
         try:
-            _anomaly_workbench_service.record_ca_completion_with_audit(
-                corrective_action_id=self._ca_id,
+            _case_action_service.complete_case_action(
+                self._action_id,
                 implementation_evidence=evidence,
+                completion_note=self.note_input.toPlainText().strip(),
                 actor_name=self._actor_name,
             )
         except ValueError as exc:
@@ -151,5 +153,5 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
                 )
             return
         self._dirty = False
-        self.ca_completed.emit(self._ca_id)
+        self.ca_completed.emit(self._action_id)
         self.accept()

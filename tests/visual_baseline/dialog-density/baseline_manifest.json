@@ -8,6 +8,7 @@
   "files": [
     "dialog-density@1.5x_dialog-density-add-action.png",
     "dialog-density@1.5x_dialog-density-add-note.png",
+    "dialog-density@1.5x_dialog-density-edit-root-cause.png",
     "dialog-density@1.5x_dialog-density-add-corrective.png",
     "dialog-density@1.5x_dialog-density-complete-action.png",
     "dialog-density@1.5x_dialog-density-complete-corrective.png",
@@ -26,6 +27,7 @@
       "files": [
         "dialog-density_dialog-density-add-action.png",
         "dialog-density_dialog-density-add-note.png",
+        "dialog-density_dialog-density-edit-root-cause.png",
         "dialog-density_dialog-density-add-corrective.png",
         "dialog-density_dialog-density-complete-action.png",
         "dialog-density_dialog-density-complete-corrective.png",
@@ -44,6 +46,7 @@
       "files": [
         "dialog-density@1.25x_dialog-density-add-action.png",
         "dialog-density@1.25x_dialog-density-add-note.png",
+        "dialog-density@1.25x_dialog-density-edit-root-cause.png",
         "dialog-density@1.25x_dialog-density-add-corrective.png",
         "dialog-density@1.25x_dialog-density-complete-action.png",
         "dialog-density@1.25x_dialog-density-complete-corrective.png",
@@ -62,6 +65,7 @@
       "files": [
         "dialog-density@1.5x_dialog-density-add-action.png",
         "dialog-density@1.5x_dialog-density-add-note.png",
+        "dialog-density@1.5x_dialog-density-edit-root-cause.png",
         "dialog-density@1.5x_dialog-density-add-corrective.png",
         "dialog-density@1.5x_dialog-density-complete-action.png",
         "dialog-density@1.5x_dialog-density-complete-corrective.png",

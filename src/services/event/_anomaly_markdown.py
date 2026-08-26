@@ -64,7 +64,10 @@ def render_anomaly_markdown(detail: dict) -> str:
     """Render a deterministic YAML document using the canonical field order."""
     anomaly_id = str(detail.get("id") or "")
     captions = attachment_manager.get_anomaly_captions(anomaly_id)
-    attachments = attachment_manager.list_anomaly_attachments(anomaly_id)
+    # The legacy helper is image-only.  Markdown snapshots must retain the
+    # filename/caption contract for every supported evidence file, including
+    # PDF and office documents introduced by the Phase 2 storage foundation.
+    attachments = attachment_manager.list_stored_attachment_files(anomaly_id)
 
     lines = ["---", "異常事件:"]
     for field, label in ANOMALY_FIELDS:

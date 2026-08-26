@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 from ui.layout_constants import WORKBENCH_DIALOG_WIDE_MIN_WIDTH
 
-from services.event import _anomaly_workbench_service
+from services.event import _case_action_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -53,16 +53,16 @@ class AddVerificationDialog(DirtyTrackingMixin, QDialog):
 
     def __init__(
         self,
-        corrective_action_id: str,
+        action_id: str,
         description: str = "",
         parent=None,
         *,
         actor_name: str = "",
     ) -> None:
         super().__init__(parent)
-        self._ca_id = (corrective_action_id or "").strip()
-        if not self._ca_id:
-            raise ValueError("Corrective action id is required")
+        self._action_id = (action_id or "").strip()
+        if not self._action_id:
+            raise ValueError("Action id is required")
         self._actor_name = (actor_name or "").strip()
         self.setWindowTitle("新增有效性驗證")
         self.setModal(True)
@@ -181,8 +181,8 @@ class AddVerificationDialog(DirtyTrackingMixin, QDialog):
             self._update_validation()
             return
         try:
-            verification_id, _audit_id = _anomaly_workbench_service.record_verification_with_audit(
-                corrective_action_id=self._ca_id,
+            verification_id = _case_action_service.record_action_verification(
+                action_id=self._action_id,
                 method=method,
                 acceptance_criteria=self.criteria_input.text().strip(),
                 period_sample=self.sample_input.text().strip(),

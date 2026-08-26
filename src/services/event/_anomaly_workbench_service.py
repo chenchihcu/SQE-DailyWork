@@ -1,18 +1,23 @@
 """Anomaly case-workbench service (Phase 2–5).
 
-Single read/write boundary for analysis notes, root cause, corrective
-actions, effectiveness verifications, attachments, Supplier 8D reviews,
-audit log, and timeline/overview projections. UI, exporters, and the Markdown
-snapshot consume only these functions — never raw per-table queries across
-modules.
+Single read/write boundary for analysis notes, root cause, attachments,
+Supplier 8D reviews, audit log, and timeline/overview projections. Canonical
+Action and verification writes live exclusively in ``_case_action_service``.
 """
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+from uuid import uuid4
 from typing import Any
 
 from database import connection as _connection
 from database import repository
+from services import attachment_manager
+
+
+logger = logging.getLogger(__name__)
 
 
 def _open_conn():
@@ -71,92 +76,6 @@ def save_root_cause(
         )
 
 
-# ---- Corrective actions -------------------------------------------------
-def create_corrective_action(
-    *,
-    anomaly_id: str,
-    description: str,
-    responsible_party: str = "",
-    target_date: str = "",
-    effectiveness_verification_required: bool = False,
-    notes: str = "",
-) -> str:
-    with _open_conn() as conn:
-        return repository.create_corrective_action(
-            conn,
-            anomaly_id=anomaly_id,
-            description=description,
-            responsible_party=responsible_party,
-            target_date=target_date,
-            effectiveness_verification_required=effectiveness_verification_required,
-            notes=notes,
-        )
-
-
-def list_corrective_actions(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_corrective_actions(conn, anomaly_id)
-
-
-def complete_corrective_action(
-    *,
-    corrective_action_id: str,
-    implementation_evidence: str = "",
-) -> None:
-    with _open_conn() as conn:
-        repository.complete_corrective_action(
-            conn,
-            corrective_action_id,
-            implementation_evidence=implementation_evidence,
-        )
-
-
-def change_corrective_action_status(
-    corrective_action_id: str, status: str
-) -> None:
-    with _open_conn() as conn:
-        repository.change_corrective_action_status(
-            conn, corrective_action_id, status
-        )
-
-
-# ---- Effectiveness verifications ---------------------------------------
-def create_effectiveness_verification(
-    *,
-    corrective_action_id: str,
-    method: str = "",
-    acceptance_criteria: str = "",
-    period_sample: str = "",
-    result: str = "待驗證",
-    evidence: str = "",
-    conclusion: str = "",
-    verified_by: str = "",
-    verified_date: str | None = None,
-) -> str:
-    with _open_conn() as conn:
-        return repository.create_effectiveness_verification(
-            conn,
-            corrective_action_id=corrective_action_id,
-            method=method,
-            acceptance_criteria=acceptance_criteria,
-            period_sample=period_sample,
-            result=result,
-            evidence=evidence,
-            conclusion=conclusion,
-            verified_by=verified_by,
-            verified_date=verified_date,
-        )
-
-
-def list_effectiveness_verifications(
-    corrective_action_id: str,
-) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_effectiveness_verifications(
-            conn, corrective_action_id
-        )
-
-
 # ---- Attachments --------------------------------------------------------
 def create_attachment(
     *,
@@ -166,11 +85,14 @@ def create_attachment(
     category: str = "其他",
     description: str = "",
     file_size: int = 0,
+    file_type: str = "",
     revision: str = "",
-    related_ca_id: str | None = None,
+    uploaded_by: str = "",
+    related_note_id: str | None = None,
+    related_action_id: str | None = None,
 ) -> str:
     with _open_conn() as conn:
-        return repository.create_anomaly_attachment(
+        attachment_id = repository.create_anomaly_attachment(
             conn,
             anomaly_id=anomaly_id,
             file_name=file_name,
@@ -178,14 +100,272 @@ def create_attachment(
             category=category,
             description=description,
             file_size=file_size,
+            file_type=file_type,
             revision=revision,
-            related_ca_id=related_ca_id,
+            uploaded_by=uploaded_by,
+            related_note_id=related_note_id,
+            related_action_id=related_action_id,
+            _commit=False,
         )
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action="ATTACHMENT_CREATED",
+            after_value=file_name,
+            actor_name=uploaded_by,
+            _commit=False,
+        )
+        conn.commit()
+    _sync_markdown(anomaly_id)
+    return attachment_id
+
+
+def import_attachment_from_file(
+    *,
+    anomaly_id: str,
+    source_path: Path | str,
+    category: str = "其他",
+    description: str = "",
+    revision: str = "",
+    uploaded_by: str = "",
+    related_note_id: str | None = None,
+    related_action_id: str | None = None,
+    target_name: str | None = None,
+) -> str:
+    """Copy one evidence file and register its metadata with compensation.
+
+    Filesystem and SQLite cannot share one atomic transaction. The file is
+    therefore removed again when metadata insertion fails, so callers never
+    receive a failed write with a newly orphaned file.
+    """
+    stored_path = attachment_manager.import_single_attachment(
+        anomaly_id, source_path, target_name
+    )
+    if stored_path is None:
+        raise ValueError("Attachment file type or name is not allowed")
+    try:
+        file_size = stored_path.stat().st_size
+        attachment_id = create_attachment(
+            anomaly_id=anomaly_id,
+            file_name=stored_path.name,
+            stored_name=stored_path.name,
+            category=category,
+            description=description,
+            file_size=file_size,
+            file_type=attachment_manager.attachment_file_type(stored_path),
+            revision=revision,
+            uploaded_by=uploaded_by,
+            related_note_id=related_note_id,
+            related_action_id=related_action_id,
+        )
+        return attachment_id
+    except Exception:
+        attachment_manager.delete_anomaly_attachment(
+            anomaly_id, stored_path.name
+        )
+        raise
+
+
+def update_attachment(
+    *,
+    anomaly_id: str,
+    attachment_id: str,
+    category: str,
+    description: str = "",
+    revision: str = "",
+    related_note_id: str | None = None,
+    related_action_id: str | None = None,
+    actor_name: str = "",
+) -> dict[str, Any]:
+    """Update metadata and links transactionally, without renaming bytes."""
+    with _open_conn() as conn:
+        before = next(
+            (
+                row
+                for row in repository.list_anomaly_attachments(conn, anomaly_id)
+                if str(row.get("id") or "") == str(attachment_id or "").strip()
+            ),
+            None,
+        )
+        if before is None:
+            raise ValueError("Attachment not found")
+        updated = repository.update_anomaly_attachment(
+            conn,
+            attachment_id=attachment_id,
+            anomaly_id=anomaly_id,
+            category=category,
+            description=description,
+            revision=revision,
+            related_note_id=related_note_id,
+            related_action_id=related_action_id,
+            _commit=False,
+        )
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action="ATTACHMENT_UPDATED",
+            before_value=str(before.get("file_name") or ""),
+            after_value=str(updated.get("file_name") or ""),
+            actor_name=actor_name,
+            _commit=False,
+        )
+        conn.commit()
+    _sync_markdown(anomaly_id)
+    return updated
+
+
+def delete_attachment(
+    *,
+    anomaly_id: str,
+    attachment_id: str,
+    actor_name: str = "",
+) -> dict[str, Any]:
+    """Delete a registered attachment with same-folder filesystem staging."""
+    staged_path: Path | None = None
+    original_path: Path | None = None
+    with _open_conn() as conn:
+        row = next(
+            (
+                item
+                for item in repository.list_anomaly_attachments(conn, anomaly_id)
+                if str(item.get("id") or "") == str(attachment_id or "").strip()
+            ),
+            None,
+        )
+        if row is None:
+            raise ValueError("Attachment not found")
+        filename = str(row.get("stored_name") or row.get("file_name") or "").strip()
+        if not filename:
+            raise ValueError("Attachment has no storage identity")
+        original_path = attachment_manager.stored_attachment_path(anomaly_id, filename)
+        if original_path.is_file():
+            staged_path = original_path.with_name(
+                f".{original_path.name}.{uuid4().hex}.phase2r-delete"
+            )
+            original_path.replace(staged_path)
+        try:
+            deleted = repository.delete_anomaly_attachment_metadata(
+                conn,
+                attachment_id=attachment_id,
+                anomaly_id=anomaly_id,
+                _commit=False,
+            )
+            repository.append_anomaly_audit_log(
+                conn,
+                anomaly_id=anomaly_id,
+                action="ATTACHMENT_DELETED",
+                before_value=filename,
+                after_value="",
+                actor_name=actor_name,
+                _commit=False,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            if staged_path is not None and staged_path.exists() and original_path is not None:
+                staged_path.replace(original_path)
+            raise
+
+    warnings: list[str] = []
+    if staged_path is not None:
+        try:
+            staged_path.unlink()
+        except OSError as exc:
+            warnings.append(f"無法清理暫存附件：{exc}")
+            logger.error("Attachment delete staging cleanup failed: %s", staged_path)
+    _sync_markdown(anomaly_id)
+    return {
+        "attachment_id": str(deleted.get("id") or attachment_id),
+        "file_name": filename,
+        "physical_deleted": staged_path is not None,
+        "warnings": warnings,
+    }
 
 
 def list_attachments(anomaly_id: str) -> list[dict[str, Any]]:
     with _open_conn() as conn:
-        return repository.list_anomaly_attachments(conn, anomaly_id)
+        metadata = repository.list_anomaly_attachments(conn, anomaly_id)
+
+    # The database row is the canonical metadata record.  Existing versions
+    # stored images plus captions.json without a row, so expose those files as
+    # explicit legacy projections until the approved reconciliation migration
+    # registers them.  This keeps the workbench read path compatible without
+    # guessing category/link/author values.
+    physical_files = attachment_manager.list_stored_attachment_files(anomaly_id)
+    physical_names = {path.name for path in physical_files}
+    by_stored_name = {
+        str(row.get("stored_name") or row.get("file_name") or "").strip(): row
+        for row in metadata
+        if str(row.get("stored_name") or row.get("file_name") or "").strip()
+    }
+    captions = attachment_manager.get_anomaly_captions(anomaly_id)
+    result: list[dict[str, Any]] = []
+    for row in metadata:
+        item = dict(row)
+        stored_name = str(item.get("stored_name") or item.get("file_name") or "")
+        item["storage_state"] = (
+            "present"
+            if stored_name and stored_name in physical_names
+            else "missing"
+        )
+        item["legacy_physical"] = False
+        result.append(item)
+
+    for path in physical_files:
+        if path.name in by_stored_name:
+            continue
+        try:
+            file_size = path.stat().st_size
+        except OSError:
+            file_size = 0
+        result.append(
+            {
+                "id": "",
+                "anomaly_id": anomaly_id,
+                "file_name": path.name,
+                "stored_name": path.name,
+                "category": "Other",
+                "category_label": "其他",
+                "description": captions.get(path.name, ""),
+                "file_size": file_size,
+                "file_type": attachment_manager.attachment_file_type(path),
+                "revision": "",
+                "uploaded_by": "",
+                "related_ca_id": None,
+                "related_note_id": None,
+                "related_action_id": None,
+                "uploaded_at": "",
+                "storage_state": "present",
+                "legacy_physical": True,
+            }
+        )
+    result.sort(
+        key=lambda row: (
+            str(row.get("uploaded_at") or "9999-12-31 23:59:59"),
+            str(row.get("file_name") or "").casefold(),
+        )
+    )
+    return result
+
+
+def list_attachment_notes(anomaly_id: str) -> list[dict[str, Any]]:
+    return list_analysis_notes(anomaly_id)
+
+
+def list_attachment_actions(anomaly_id: str) -> list[dict[str, Any]]:
+    with _open_conn() as conn:
+        return repository.list_case_actions(conn, anomaly_id)
+
+
+def _sync_markdown(anomaly_id: str) -> None:
+    try:
+        # Keep the existing adapter hook as the single patch/test boundary;
+        # it also preserves the non-blocking derived-output contract.
+        attachment_manager._sync_anomaly_markdown(anomaly_id)
+    except Exception as exc:
+        # Attachment mutation is authoritative; snapshot sync remains a
+        # recoverable derived-output warning, matching existing contract.
+        logger.warning("Attachment Markdown sync warning: %s", exc)
 
 
 # ---- Supplier 8D --------------------------------------------------------
@@ -303,106 +483,6 @@ def append_manual_audit(
             after_value=after_value,
             actor_name=actor_name,
         )
-
-
-def record_verification_with_audit(
-    *,
-    corrective_action_id: str,
-    method: str = "",
-    acceptance_criteria: str = "",
-    period_sample: str = "",
-    result: str = "待驗證",
-    evidence: str = "",
-    conclusion: str = "",
-    verified_by: str = "",
-    verified_date: str | None = None,
-    actor_name: str = "",
-) -> tuple[str, str]:
-    """Create an effectiveness verification and append a matching audit entry.
-
-    Returns ``(verification_id, audit_log_id)``.
-    """
-    with _open_conn() as conn:
-        ca = repository.get_corrective_action(conn, corrective_action_id)
-        if ca is None:
-            raise ValueError("Corrective action not found")
-        verification_id = repository.create_effectiveness_verification(
-            conn,
-            corrective_action_id=corrective_action_id,
-            method=method,
-            acceptance_criteria=acceptance_criteria,
-            period_sample=period_sample,
-            result=result,
-            evidence=evidence,
-            conclusion=conclusion,
-            verified_by=verified_by,
-            verified_date=verified_date,
-        )
-        summary = f"驗證結果：{result}"
-        if conclusion:
-            summary = f"{summary}（{conclusion}）"
-        audit_id = repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=str(ca.get("anomaly_id") or ""),
-            action="EFFECTIVENESS_VERIFIED",
-            before_value="",
-            after_value=summary,
-            actor_name=actor_name or verified_by,
-        )
-    return verification_id, audit_id
-
-
-def record_ca_completion_with_audit(
-    *,
-    corrective_action_id: str,
-    implementation_evidence: str = "",
-    actor_name: str = "",
-) -> str:
-    """Mark a corrective action as completed and append a matching audit entry."""
-    with _open_conn() as conn:
-        ca = repository.get_corrective_action(conn, corrective_action_id)
-        if ca is None:
-            raise ValueError("Corrective action not found")
-        repository.complete_corrective_action(
-            conn,
-            corrective_action_id,
-            implementation_evidence=implementation_evidence,
-        )
-        next_ca = repository.get_corrective_action(conn, corrective_action_id)
-        audit_id = repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=str(ca.get("anomaly_id") or ""),
-            action="CA_COMPLETED",
-            before_value=str(ca.get("status") or ""),
-            after_value=str((next_ca or {}).get("status") or ""),
-            actor_name=actor_name,
-        )
-    return audit_id
-
-
-def record_ca_status_change_with_audit(
-    *,
-    corrective_action_id: str,
-    status: str,
-    actor_name: str = "",
-) -> str:
-    """Change a corrective action's status and append a matching audit entry."""
-    with _open_conn() as conn:
-        ca = repository.get_corrective_action(conn, corrective_action_id)
-        if ca is None:
-            raise ValueError("Corrective action not found")
-        repository.change_corrective_action_status(
-            conn, corrective_action_id, status
-        )
-        audit_id = repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=str(ca.get("anomaly_id") or ""),
-            action="CA_STATUS_CHANGED",
-            before_value=str(ca.get("status") or ""),
-            after_value=status,
-            actor_name=actor_name,
-        )
-    return audit_id
 
 
 def list_timeline(anomaly_id: str) -> list[dict[str, Any]]:

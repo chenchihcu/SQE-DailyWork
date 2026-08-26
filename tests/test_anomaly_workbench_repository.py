@@ -105,73 +105,95 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
                 status="已驗證",
             )
 
+    def test_root_cause_requires_not_established_reason(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Not established reason is required"):
+            repository.upsert_anomaly_root_cause(
+                self.conn,
+                anomaly_id=self.anomaly_id,
+                statement="治具磨損",
+                status="無法確認",
+                not_established_reason="",
+            )
+
     # ---- corrective actions --------------------------------------------
     def test_ca_requires_implementation_for_verification_flow(self) -> None:
-        ca_id = repository.create_corrective_action(
+        action_id = repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="更換治具",
-            responsible_party="製程組",
-            target_date="2026/07/30",
-            effectiveness_verification_required=True,
+            owner="製程組",
+            due_date="2026/07/30",
+            verification_required=True,
         )
-        ca = repository.get_corrective_action(self.conn, ca_id)
-        assert ca is not None
-        self.assertEqual(ca["status"], "已規劃")
-        self.assertEqual(ca["target_date"], "2026-07-30")
-        self.assertTrue(ca["effectiveness_verification_required"])
+        action = repository.get_case_action(self.conn, action_id)
+        assert action is not None
+        self.assertEqual(action["execution_status"], "已規劃")
+        self.assertEqual(action["due_date"], "2026-07-30")
+        self.assertTrue(action["verification_required"])
 
-        repository.complete_corrective_action(
-            self.conn, ca_id, implementation_evidence="更換完成照片"
+        repository.update_case_action(
+            self.conn, action_id, execution_status="執行中"
         )
-        ca2 = repository.get_corrective_action(self.conn, ca_id)
-        assert ca2 is not None
-        self.assertEqual(ca2["status"], "待有效性驗證")
-        self.assertEqual(ca2["implementation_evidence"], "更換完成照片")
+        repository.complete_case_action(
+            self.conn, action_id, implementation_evidence="更換完成照片"
+        )
+        action2 = repository.get_case_action(self.conn, action_id)
+        assert action2 is not None
+        self.assertEqual(action2["execution_status"], "已完成")
+        self.assertEqual(action2["verification_status"], "待驗證")
+        self.assertEqual(action2["implementation_evidence"], "更換完成照片")
 
     def test_ca_without_verification_goes_straight_to_implemented(self) -> None:
-        ca_id = repository.create_corrective_action(
+        action_id = repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="補文件",
-            effectiveness_verification_required=False,
+            execution_status="執行中",
+            verification_required=False,
         )
-        repository.complete_corrective_action(self.conn, ca_id)
-        ca = repository.get_corrective_action(self.conn, ca_id)
-        assert ca is not None
-        self.assertEqual(ca["status"], "已實施")
+        repository.complete_case_action(self.conn, action_id)
+        action = repository.get_case_action(self.conn, action_id)
+        assert action is not None
+        self.assertEqual(action["execution_status"], "已完成")
+        self.assertEqual(action["verification_status"], "不需要")
 
     def test_verification_result_updates_ca_status(self) -> None:
-        ca_id = repository.create_corrective_action(
+        action_id = repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="製程改善",
-            effectiveness_verification_required=True,
+            execution_status="執行中",
+            verification_required=True,
         )
-        repository.complete_corrective_action(self.conn, ca_id)
-        repository.create_effectiveness_verification(
+        repository.complete_case_action(self.conn, action_id)
+        repository.record_action_verification(
             self.conn,
-            corrective_action_id=ca_id,
+            action_id=action_id,
             method="30天監控",
             acceptance_criteria="NG率<0.5%",
             period_sample="3批",
             result="有效",
             verified_by="王五",
         )
-        ca = repository.get_corrective_action(self.conn, ca_id)
-        assert ca is not None
-        self.assertEqual(ca["status"], "有效")
-        verifications = repository.list_effectiveness_verifications(
-            self.conn, ca_id
+        action = repository.get_case_action(self.conn, action_id)
+        assert action is not None
+        self.assertEqual(action["execution_status"], "已完成")
+        self.assertEqual(action["verification_status"], "有效")
+        verifications = repository.list_action_verifications(
+            self.conn, action_id
         )
         self.assertEqual(len(verifications), 1)
         self.assertEqual(verifications[0]["result"], "有效")
 
     # ---- attachments / 8D / audit / timeline ---------------------------
     def test_attachment_linked_to_ca(self) -> None:
-        ca_id = repository.create_corrective_action(
+        action_id = repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="對策",
         )
         att_id = repository.create_anomaly_attachment(
@@ -179,11 +201,11 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
             anomaly_id=self.anomaly_id,
             file_name="evidence.png",
             category="矯正措施證據",
-            related_ca_id=ca_id,
+            related_action_id=action_id,
         )
         atts = repository.list_anomaly_attachments(self.conn, self.anomaly_id)
         self.assertEqual(len(atts), 1)
-        self.assertEqual(atts[0]["related_ca_id"], ca_id)
+        self.assertEqual(atts[0]["related_action_id"], action_id)
         self.assertEqual(atts[0]["id"], att_id)
 
     def test_8d_review_append_only(self) -> None:
@@ -247,11 +269,13 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
         self.assertEqual(kinds.count("ROOT_CAUSE_UPDATED"), 1)
 
     def test_overview_card_aggregates(self) -> None:
-        repository.create_anomaly_action(
+        repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="下一步",
             due_date="2026-01-01",
+            execution_status="執行中",
         )
         repository.create_anomaly_analysis_note(
             self.conn,
@@ -259,16 +283,19 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
             content="分析一",
             evidence_type="INFERENCE",
         )
-        ca_id = repository.create_corrective_action(
+        action_id = repository.create_case_action(
             self.conn,
             anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
             description="對策",
-            effectiveness_verification_required=True,
+            execution_status="執行中",
+            verification_required=True,
         )
-        repository.complete_corrective_action(self.conn, ca_id)
-        repository.create_effectiveness_verification(
+        repository.complete_case_action(self.conn, action_id)
+        repository.record_action_verification(
             self.conn,
-            corrective_action_id=ca_id,
+            action_id=action_id,
+            method="監控",
             result="無效",
         )
         card = repository.get_anomaly_overview_card(self.conn, self.anomaly_id)
@@ -276,7 +303,7 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
         self.assertTrue(card["overdue"])
         self.assertEqual(card["open_action_count"], 1)
         self.assertEqual(card["root_cause_status"], "尚未開始")
-        self.assertEqual(card["corrective_action_status"], "無效")
+        self.assertEqual(card["corrective_action_status"], "已完成")
         self.assertEqual(card["verification_result"], "無效")
         self.assertTrue(card["has_analysis_notes"])
 
@@ -306,6 +333,9 @@ class AnomalyEvidenceTablesMigrationTests(unittest.TestCase):
             "anomaly_attachments",
             "anomaly_eight_d_reviews",
             "anomaly_audit_logs",
+            "case_actions",
+            "action_verifications",
+            "case_action_legacy_map",
         ):
             self.assertIn(expected, tables)
 

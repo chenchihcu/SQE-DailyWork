@@ -8,9 +8,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEvent, QCoreApplication
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
-from PySide6.QtCharts import QChartView
+from PySide6.QtCharts import QChart, QChartView
 
-from ui.theme import apply_app_theme
+from ui.theme import apply_app_theme, get_active_theme_tokens
 from ui.widgets.stats_view_widget import StatsViewWidget
 from ui.widgets.chart_style import StableChartView
 
@@ -41,6 +41,14 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
         for w in self.widgets:
             w.close()
         self.app.processEvents()
+
+    def test_stable_chart_view_uses_explicit_panel_scene_background(self) -> None:
+        view = StableChartView(QChart())
+        self.widgets.append(view)
+
+        expected = str(get_active_theme_tokens()["panel_bg"]).upper()
+        actual = view.backgroundBrush().color().name().upper()
+        self.assertEqual(expected, actual)
 
     def test_stats_view_widget_height_stability_on_multiple_refreshes(self) -> None:
         # Mock 必要的 Service 資料，避免空的 state 或 None 異常
@@ -141,6 +149,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
 
         self.assertGreaterEqual(mock_activate.call_count, 1)
         self.assertGreaterEqual(mock_layout_update.call_count, 1)
+        self.assertGreaterEqual(mock_widget_update.call_count, 1)
         error_labels = [
             label.text()
             for label in widget.findChildren(QLabel)

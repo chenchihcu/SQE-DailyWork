@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from database.backup import backup_sqlite_database
 from app_paths import (
-    PROJECT_ROOT,
     data_dir,
     formal_data_dir,
     formal_db_path,
@@ -49,6 +49,50 @@ def _require_disposable_target(path: Path) -> None:
         )
 
 
+def _disposable_runtime_enabled() -> bool:
+    return os.environ.get("SQE_REQUIRE_DISPOSABLE_DB", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _fail_closed_for_unpromoted_formal_database(
+    *,
+    schema_ready: Callable[[sqlite3.Connection], bool],
+    attachment_schema_ready: Callable[[sqlite3.Connection], bool],
+) -> None:
+    """Inspect the existing formal DB read-only before any writable bootstrap."""
+    target = DB_PATH.expanduser().resolve()
+    if target != DEFAULT_DB_PATH.resolve() or not target.is_file():
+        return
+    if _disposable_runtime_enabled():
+        return
+    uri = f"file:{target.as_posix()}?mode=ro"
+    connection = sqlite3.connect(uri, uri=True)
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        has_existing_schema = connection.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'anomalies'"
+        ).fetchone() is not None
+        if has_existing_schema:
+            if not schema_ready(connection):
+                raise RuntimeError(
+                    "需要完成資料升級：case_actions_v1。"
+                    "請先關閉應用程式並執行經核准的資料庫 Promotion Gate。"
+                )
+            if not attachment_schema_ready(connection):
+                raise RuntimeError(
+                    "需要完成附件資料升級：anomaly_attachments_contract_v1。"
+                    "請先關閉應用程式並執行經核准的附件 Promotion Gate。"
+                )
+    finally:
+        connection.close()
+
+
 class ClosingConnection(sqlite3.Connection):
     """A sqlite3.Connection subclass that guarantees close() is called upon exiting context."""
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -85,6 +129,9 @@ def initialize_database() -> dict:
         consolidate_suppliers,
         create_schema,
         get_migration_meta,
+        case_actions_schema_ready,
+        anomaly_attachments_contract_ready,
+        migrate_case_actions_v1,
         recode_anomaly_numbers,
         seed_products_from_anomalies,
         sync_all_product_stages_to_events_once,
@@ -92,9 +139,22 @@ def initialize_database() -> dict:
     )
 
     _require_disposable_target(DB_PATH)
+    _fail_closed_for_unpromoted_formal_database(
+        schema_ready=case_actions_schema_ready,
+        attachment_schema_ready=anomaly_attachments_contract_ready,
+    )
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection(DB_PATH) as conn:
         create_schema(conn)
+        if case_actions_schema_ready(conn):
+            case_actions_migration = migrate_case_actions_v1(conn, apply=False)
+        elif _disposable_runtime_enabled():
+            case_actions_migration = migrate_case_actions_v1(conn, apply=True)
+        else:
+            raise RuntimeError(
+                "需要完成資料升級：case_actions_v1。"
+                "請先關閉應用程式並執行經核准的資料庫 Promotion Gate。"
+            )
 
     report = migrate_legacy_data_if_needed(DB_PATH, LEGACY_DB_PATH)
     with get_connection(DB_PATH) as conn:
@@ -156,6 +216,7 @@ def initialize_database() -> dict:
     report["product_stage_sync"] = product_stage_sync
     report["align_legacy_categories"] = aligned_count
     report["ncr_migration"] = ncr_migration_report
+    report["case_actions_migration"] = case_actions_migration
     if report.get("migrated"):
         logger.info("已將 Legacy 資料從 %s 遷移至 %s", LEGACY_DB_PATH, DB_PATH)
     return report

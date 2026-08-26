@@ -1,9 +1,4 @@
-"""Complete / cancel an existing next-action row from the anomaly workbench.
-
-Single dialog with a completion-or-cancel toggle so the workbench can expose
-both state transitions without two dialogs. Repository validation stays the
-authority (open → 已完成 / 已取消 only).
-"""
+"""Complete or cancel one canonical case Action."""
 
 from __future__ import annotations
 
@@ -21,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 from ui.layout_constants import WORKBENCH_DIALOG_MIN_WIDTH
 
-from services.event import _anomaly_action_service
+from services.event import _case_action_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
     FORM_HORIZONTAL_SPACING,
@@ -75,6 +70,12 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
             self.outcome_combo.addItem(label, value)
         self.outcome_combo.setCurrentIndex(0)
 
+        self.evidence_input = QTextEdit()
+        self.evidence_input.setPlaceholderText(
+            "完成證據（照片說明、文件或實測數據；取消時不適用）"
+        )
+        self.evidence_input.setAcceptRichText(False)
+
         self.note_input = QTextEdit()
         self.note_input.setPlaceholderText(
             "完成說明／取消原因（選填；儲存後將寫入處理歷程）"
@@ -103,6 +104,7 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
         form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         form.setVerticalSpacing(FORM_VERTICAL_SPACING)
         form.addRow("狀態結果", self.outcome_combo)
+        form.addRow("完成證據", self.evidence_input)
         form.addRow("說明", self.note_input)
         self._error_label = make_inline_error_label()
         form.addRow("", self._error_label)
@@ -122,32 +124,48 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
+        self.outcome_combo.currentIndexChanged.connect(self._update_validation)
+        self.note_input.textChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.outcome_combo.currentIndexChanged,
+            self.evidence_input.textChanged,
             self.note_input.textChanged,
         ])
 
     def _update_validation(self) -> None:
+        cancelling = (
+            str(self.outcome_combo.currentData() or OUTCOME_COMPLETED)
+            == OUTCOME_CANCELLED
+        )
+        self.evidence_input.setEnabled(not cancelling)
+        valid = not cancelling or bool(self.note_input.toPlainText().strip())
+        set_field_invalid(self.note_input, not valid)
         if self._save_button is not None:
-            self._save_button.setEnabled(True)
+            self._save_button.setEnabled(valid)
         if self._error_label is not None:
-            self._error_label.setText("")
+            self._error_label.setText(
+                "" if valid else "取消 Action 時必須填寫取消原因"
+            )
 
     def _on_submit(self) -> None:
         outcome = str(self.outcome_combo.currentData() or OUTCOME_COMPLETED)
         note = self.note_input.toPlainText().strip()
+        if outcome == OUTCOME_CANCELLED and not note:
+            self._update_validation()
+            return
         try:
             if outcome == OUTCOME_CANCELLED:
-                _anomaly_action_service.cancel_action(
+                _case_action_service.cancel_case_action(
                     self._action_id,
                     cancel_note=note,
                     actor_name=self._actor_name,
                 )
             else:
-                _anomaly_action_service.complete_action(
+                _case_action_service.complete_case_action(
                     self._action_id,
+                    implementation_evidence=self.evidence_input.toPlainText().strip(),
                     completion_note=note,
                     actor_name=self._actor_name,
                 )

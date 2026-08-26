@@ -33,6 +33,83 @@ VERIFY_SCRIPTS = [
     "./scripts/verify.ps1",
 ]
 
+PHASE1_CASE_ACTIONS_CHECK = [
+    "scripts\\verify_case_actions_phase1.ps1",
+    ".\\scripts\\verify_case_actions_phase1.ps1",
+    "scripts/verify_case_actions_phase1.ps1",
+    "./scripts/verify_case_actions_phase1.ps1",
+]
+
+PHASE1_CASE_ACTIONS_FULL = [
+    "scripts\\verify_case_actions_phase1_full.ps1",
+    ".\\scripts\\verify_case_actions_phase1_full.ps1",
+    "scripts/verify_case_actions_phase1_full.ps1",
+    "./scripts/verify_case_actions_phase1_full.ps1",
+]
+
+PHASE1_STATS_BASELINE_REFRESH = [
+    "scripts\\refresh_case_actions_phase1_stats_baseline.ps1",
+    ".\\scripts\\refresh_case_actions_phase1_stats_baseline.ps1",
+    "scripts/refresh_case_actions_phase1_stats_baseline.ps1",
+    "./scripts/refresh_case_actions_phase1_stats_baseline.ps1",
+]
+
+PHASE1_CASE_ACTIONS_VISUAL = [
+    "scripts\\verify_case_actions_phase1_visual.ps1",
+    ".\\scripts\\verify_case_actions_phase1_visual.ps1",
+    "scripts/verify_case_actions_phase1_visual.ps1",
+    "./scripts/verify_case_actions_phase1_visual.ps1",
+]
+
+PHASE1_VISUAL_BASELINE_REFRESH = [
+    "scripts\\refresh_case_actions_phase1_visual_baselines.ps1",
+    ".\\scripts\\refresh_case_actions_phase1_visual_baselines.ps1",
+    "scripts/refresh_case_actions_phase1_visual_baselines.ps1",
+    "./scripts/refresh_case_actions_phase1_visual_baselines.ps1",
+]
+
+PHASE1_FORMAL_DB_AUDIT = [
+    "scripts\\audit_case_actions_phase1_databases.ps1",
+    ".\\scripts\\audit_case_actions_phase1_databases.ps1",
+    "scripts/audit_case_actions_phase1_databases.ps1",
+    "./scripts/audit_case_actions_phase1_databases.ps1",
+]
+
+PHASE1_INCIDENT_ROLLBACK = [
+    "scripts\\rollback_case_actions_phase1_incident.ps1",
+    ".\\scripts\\rollback_case_actions_phase1_incident.ps1",
+    "scripts/rollback_case_actions_phase1_incident.ps1",
+    "./scripts/rollback_case_actions_phase1_incident.ps1",
+]
+
+PHASE2_ATTACHMENTS_CHECK = [
+    "scripts\\verify_attachments_phase2.ps1",
+    ".\\scripts\\verify_attachments_phase2.ps1",
+    "scripts/verify_attachments_phase2.ps1",
+    "./scripts/verify_attachments_phase2.ps1",
+]
+
+PHASE2_ATTACHMENTS_FULL = [
+    "scripts\\verify_attachments_phase2_full.ps1",
+    ".\\scripts\\verify_attachments_phase2_full.ps1",
+    "scripts/verify_attachments_phase2_full.ps1",
+    "./scripts/verify_attachments_phase2_full.ps1",
+]
+
+PHASE2_ATTACHMENTS_VISUAL = [
+    "scripts\\verify_attachments_phase2_visual.ps1",
+    ".\\scripts\\verify_attachments_phase2_visual.ps1",
+    "scripts/verify_attachments_phase2_visual.ps1",
+    "./scripts/verify_attachments_phase2_visual.ps1",
+]
+
+PHASE2_ATTACHMENTS_PROMOTION = [
+    "scripts\\apply_anomaly_attachments_promotion.ps1",
+    ".\\scripts\\apply_anomaly_attachments_promotion.ps1",
+    "scripts/apply_anomaly_attachments_promotion.ps1",
+    "./scripts/apply_anomaly_attachments_promotion.ps1",
+]
+
 BUILD_SCRIPTS = [
     "scripts\\build_windows.ps1",
     ".\\scripts\\build_windows.ps1",
@@ -46,6 +123,232 @@ PORTABLE_SMOKE_SCRIPTS = [
     "scripts/portable_install_smoke.ps1",
     "./scripts/portable_install_smoke.ps1",
 ]
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        VERIFY_SCRIPTS,
+        "-Profile",
+        "Full",
+    ],
+    decision = "allow",
+    justification = "Run the exact Full verification profile with disposable migration preflight and formal logical-fingerprint invariance; interpreter overrides remain excluded.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Full",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Full -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_INCIDENT_ROLLBACK,
+    ],
+    decision = "allow",
+    justification = "Run the fixed incident rollback only after read-only parity proves the pre-migration backup is exact and no SQE/Python process is active.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/rollback_case_actions_phase1_incident.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/rollback_case_actions_phase1_incident.ps1 -Database data/sqe_v2.db",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_FORMAL_DB_AUDIT,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless, read-only Phase 1 formal database forensic audit.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/audit_case_actions_phase1_databases.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/audit_case_actions_phase1_databases.ps1 -Database data/sqe_v2.db",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_CASE_ACTIONS_CHECK,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 1 canonical Action regression gate.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_CASE_ACTIONS_VISUAL,
+    ],
+    decision = "allow",
+    justification = "Run fixed native Windows multi-DPI workbench and dialog-density verification on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1_visual.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1_visual.ps1 -Update",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_STATS_BASELINE_REFRESH,
+    ],
+    decision = "allow",
+    justification = "Refresh only the inspected stats-stress baselines from a verified disposable database and read them back.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_case_actions_phase1_stats_baseline.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_case_actions_phase1_stats_baseline.ps1 -Target main",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_VISUAL_BASELINE_REFRESH,
+    ],
+    decision = "allow",
+    justification = "Refresh only the inspected Phase 1 workbench and dialog-density baselines from a verified disposable database and read them back.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_case_actions_phase1_visual_baselines.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_case_actions_phase1_visual_baselines.ps1 -Target main",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE1_CASE_ACTIONS_FULL,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 1 Full verification gate.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1_full.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_case_actions_phase1_full.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE2_ATTACHMENTS_CHECK,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 2 attachment contract regression gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_attachments_phase2.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_attachments_phase2.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE2_ATTACHMENTS_VISUAL,
+    ],
+    decision = "allow",
+    justification = "Run fixed native Windows multi-DPI workbench and dialog-density verification for Phase 2 attachments on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_attachments_phase2_visual.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE2_ATTACHMENTS_FULL,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 2 Full verification gate.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_attachments_phase2_full.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_attachments_phase2_full.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE2_ATTACHMENTS_PROMOTION,
+    ],
+    decision = "allow",
+    justification = "Run read-only attachment Promotion dry-run or explicit -Apply after verified backup and dual markers.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/apply_anomaly_attachments_promotion.ps1",
+    ],
+    not_match = [],
+)
 
 prefix_rule(
     pattern = [

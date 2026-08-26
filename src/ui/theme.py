@@ -271,6 +271,9 @@ def _refresh_chart_visuals(widget: QWidget) -> None:
     if chart is None:
         return
     tokens = get_active_theme_tokens()
+    set_background_brush = getattr(widget, "setBackgroundBrush", None)
+    if callable(set_background_brush):
+        set_background_brush(QBrush(QColor(tokens["panel_bg"])))
     chart.setPlotAreaBackgroundBrush(QBrush(QColor(tokens["chart_plot_bg"])))
     chart.setPlotAreaBackgroundVisible(True)
     chart.legend().setLabelColor(QColor(tokens["chart_axis_text"]))

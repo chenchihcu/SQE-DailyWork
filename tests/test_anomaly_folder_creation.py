@@ -29,7 +29,7 @@ def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
         patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
         patch.object(
             _anomaly_markdown.attachment_manager,
-            "list_anomaly_attachments",
+            "list_stored_attachment_files",
             return_value=[],
         ),
         patch.object(
@@ -57,7 +57,7 @@ def test_markdown_sanitizes_invalid_supplier_filename_chars(tmp_path: Path) -> N
         patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
         patch.object(
             _anomaly_markdown.attachment_manager,
-            "list_anomaly_attachments",
+            "list_stored_attachment_files",
             return_value=[],
         ),
         patch.object(
@@ -80,7 +80,7 @@ def test_markdown_lists_attachments_and_captions(tmp_path: Path) -> None:
         patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
         patch.object(
             _anomaly_markdown.attachment_manager,
-            "list_anomaly_attachments",
+            "list_stored_attachment_files",
             return_value=[image],
         ),
         patch.object(
@@ -101,7 +101,7 @@ def test_write_anomaly_markdown_overwrites_changed_values(tmp_path: Path) -> Non
         patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
         patch.object(
             _anomaly_markdown.attachment_manager,
-            "list_anomaly_attachments",
+            "list_stored_attachment_files",
             return_value=[],
         ),
         patch.object(

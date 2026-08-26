@@ -8,7 +8,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QScrollArea, QTabWidget, QWidget
 
-from services.event import _anomaly_service, _anomaly_workbench_service
+from services.event import (
+    _anomaly_service,
+    _anomaly_workbench_service,
+    _case_action_service,
+)
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
 
 
@@ -40,7 +44,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             mock.patch.object(_anomaly_workbench_service, "list_analysis_notes", return_value=[]),
             mock.patch.object(_anomaly_workbench_service, "get_root_cause", return_value=None),
             mock.patch.object(_anomaly_workbench_service, "list_eight_d_reviews", return_value=[]),
-            mock.patch.object(_anomaly_workbench_service, "list_corrective_actions", return_value=[]),
+            mock.patch.object(_case_action_service, "list_case_actions", return_value=[]),
             mock.patch.object(_anomaly_workbench_service, "list_attachments", return_value=[]),
             mock.patch.object(_anomaly_workbench_service, "list_audit_logs", return_value=[]),
         ]

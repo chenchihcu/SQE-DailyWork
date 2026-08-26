@@ -6,10 +6,12 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QCheckBox
 
-from services.event import _anomaly_workbench_service
+from scripts.qt_visual_probe import _set_probe_widget_value
+from services.event import _anomaly_workbench_service, _case_action_service
 from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
+from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
 from ui.widgets.add_corrective_action_dialog import AddCorrectiveActionDialog
 
 
@@ -39,6 +41,46 @@ class AnomalyNoteDialogTests(unittest.TestCase):
         self.assertEqual(emitted, ["n-1"])
 
 
+class AnomalyRootCauseDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_requires_statement_for_verified_status(self) -> None:
+        dialog = AnomalyRootCauseDialog("a-1")
+        verified_index = dialog.status_combo.findData("已驗證")
+        dialog.status_combo.setCurrentIndex(verified_index)
+        self.assertFalse(dialog._save_button.isEnabled())
+        dialog.statement_input.setPlainText("治具磨損")
+        self.assertTrue(dialog._save_button.isEnabled())
+
+    def test_requires_not_established_reason(self) -> None:
+        dialog = AnomalyRootCauseDialog("a-1")
+        not_established_index = dialog.status_combo.findData("無法確認")
+        dialog.status_combo.setCurrentIndex(not_established_index)
+        dialog.statement_input.setPlainText("尚無足夠證據")
+        self.assertFalse(dialog._save_button.isEnabled())
+        dialog.not_established_input.setPlainText("樣本不足")
+        self.assertTrue(dialog._save_button.isEnabled())
+
+    def test_submit_calls_save_root_cause(self) -> None:
+        dialog = AnomalyRootCauseDialog("a-1")
+        dialog.statement_input.setPlainText("治具磨損")
+        verified_index = dialog.status_combo.findData("已驗證")
+        dialog.status_combo.setCurrentIndex(verified_index)
+        dialog.validation_method_input.setPlainText("5-Why")
+        emitted = []
+        dialog.root_cause_saved.connect(lambda rid: emitted.append(rid))
+        with mock.patch.object(
+            _anomaly_workbench_service, "save_root_cause", return_value="rc-1"
+        ) as mk:
+            dialog._on_submit()
+        self.assertEqual(mk.call_args.kwargs["statement"], "治具磨損")
+        self.assertEqual(mk.call_args.kwargs["status"], "已驗證")
+        self.assertEqual(mk.call_args.kwargs["validation_method"], "5-Why")
+        self.assertEqual(emitted, ["rc-1"])
+
+
 class AddCorrectiveActionDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -55,11 +97,20 @@ class AddCorrectiveActionDialogTests(unittest.TestCase):
         dialog.description_input.setPlainText("更換治具")
         dialog.verify_check.setChecked(True)
         with mock.patch.object(
-            _anomaly_workbench_service, "create_corrective_action", return_value="ca-1"
+            _case_action_service, "create_case_action", return_value="ca-1"
         ) as mk:
             dialog._on_submit()
-        self.assertTrue(mk.call_args.kwargs["effectiveness_verification_required"])
+        self.assertEqual(mk.call_args.kwargs["action_type"], "CORRECTIVE_ACTION")
+        self.assertTrue(mk.call_args.kwargs["verification_required"])
         self.assertEqual(mk.call_args.kwargs["description"], "更換治具")
+
+    def test_visual_probe_checks_checkbox_without_replacing_its_label(self) -> None:
+        checkbox = QCheckBox("需進行有效性驗證")
+
+        _set_probe_widget_value(checkbox, True)
+
+        self.assertTrue(checkbox.isChecked())
+        self.assertEqual(checkbox.text(), "需進行有效性驗證")
 
 
 if __name__ == "__main__":

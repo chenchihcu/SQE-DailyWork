@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -12,6 +15,112 @@ logger = logging.getLogger(__name__)
 
 class DatabaseBackupError(RuntimeError):
     """Raised when a SQLite backup cannot be proven complete."""
+
+
+def _fingerprint_value(value: object) -> object:
+    if isinstance(value, bytes):
+        return {"bytes_base64": base64.b64encode(value).decode("ascii")}
+    return value
+
+
+def sqlite_state_fingerprint(source_path: str | Path) -> dict[str, Any]:
+    """Return a stable logical fingerprint without opening SQLite writable.
+
+    The digest covers every user-defined schema object and every table row.
+    It is suitable for proving that a verification command did not mutate the
+    formal database even when WAL checkpoints change the physical file bytes.
+    """
+    source = Path(source_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"SQLite source does not exist: {source}")
+
+    connection = sqlite3.connect(_readonly_uri(source), uri=True)
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        integrity = str(
+            connection.execute("PRAGMA integrity_check").fetchone()[0]
+        )
+        foreign_keys = [
+            tuple(row)
+            for row in connection.execute("PRAGMA foreign_key_check").fetchall()
+        ]
+        schema_rows = connection.execute(
+            """
+            SELECT type, name, tbl_name, coalesce(sql, '')
+            FROM sqlite_master
+            WHERE name NOT LIKE 'sqlite_%'
+            ORDER BY type, name
+            """
+        ).fetchall()
+        schema_payload = json.dumps(
+            [tuple(row) for row in schema_rows],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        schema_digest = hashlib.sha256(schema_payload.encode("utf-8")).hexdigest()
+
+        tables = [
+            str(row[0])
+            for row in connection.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                ORDER BY name
+                """
+            ).fetchall()
+        ]
+        data_digest = hashlib.sha256()
+        row_count = 0
+        table_counts: dict[str, int] = {}
+        for table in tables:
+            quoted_table = '"' + table.replace('"', '""') + '"'
+            columns = [
+                str(row[1])
+                for row in connection.execute(
+                    f"PRAGMA table_info({quoted_table})"
+                ).fetchall()
+            ]
+            quoted_columns = ", ".join(
+                '"' + column.replace('"', '""') + '"'
+                for column in columns
+            )
+            rows = connection.execute(
+                f"SELECT {quoted_columns} FROM {quoted_table}"
+            ).fetchall()
+            encoded_rows = [
+                json.dumps(
+                    [_fingerprint_value(value) for value in tuple(row)],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                for row in rows
+            ]
+            encoded_rows.sort()
+            table_counts[table] = len(encoded_rows)
+            row_count += len(encoded_rows)
+            data_digest.update(table.encode("utf-8"))
+            data_digest.update(json.dumps(columns).encode("utf-8"))
+            for encoded in encoded_rows:
+                data_digest.update(encoded.encode("utf-8"))
+                data_digest.update(b"\n")
+    finally:
+        connection.close()
+
+    combined = hashlib.sha256(
+        f"{schema_digest}:{data_digest.hexdigest()}".encode("ascii")
+    ).hexdigest()
+    return {
+        "source": str(source),
+        "integrity_check": integrity,
+        "foreign_key_check": foreign_keys,
+        "schema_sha256": schema_digest,
+        "data_sha256": data_digest.hexdigest(),
+        "state_sha256": combined,
+        "table_count": len(tables),
+        "row_count": row_count,
+        "table_counts": table_counts,
+    }
 
 
 def _readonly_uri(path: Path) -> str:
@@ -138,4 +247,3 @@ def prune_backups(
             except Exception:
                 logger.exception("刪除舊備份失敗: %s", old_file)
     return removed
-

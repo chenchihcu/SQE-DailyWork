@@ -75,6 +75,12 @@ no separate launcher window, and no standalone NCR main window.
 - Supplier anomaly closure uses the user-selected `closed_at` date from the
   close dialog; closed anomalies can adjust that date without reopening, and
   supplier-event trend charts group closures by the same date.
+- 案件工作台的「下一步處置」與「改善措施」共用 canonical `case_actions`。
+  Action 類型為 `NEXT_ACTION / CONTAINMENT / CORRECTION / CORRECTIVE_ACTION /
+  SYSTEMIC_IMPROVEMENT`，執行狀態只使用 `已規劃 / 執行中 / 已完成 / 已取消`；
+  有效性狀態由 Action 類型、`verification_required` 與最新一筆 append-only
+  `action_verifications` 推導。完成執行不等於有效性通過，`無效` 也不會把
+  Action 自動改回執行中。
 - `建立不合格品`, `待處理委外加工`, `待處理原物料`, and `歷史紀錄` open the embedded warehouse
   nonconforming-product workflow pages inside the same main window.
 - `不合格品統計分析` opens warehouse nonconforming-product statistics charts
@@ -141,11 +147,27 @@ Shared master data:
 Supplier event workflow data:
 
 - `anomalies`
+- `case_actions`（案件下一步、圍堵、立即矯正、矯正及系統改善的唯一新寫入真理）
+- `action_verifications`（已完成且需要驗證之 Action 的 append-only 驗證紀錄）
+- `case_action_legacy_map`（舊 Action ID 到 canonical ID 的 deterministic lineage）
+- `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_attachments`,
+  `anomaly_eight_d_reviews`, `anomaly_audit_logs`
+- `anomaly_attachments` metadata uses canonical `related_action_id` and
+  optional `related_note_id`; `related_ca_id` remains a legacy migration
+  lineage field. `file_type` and `uploaded_by` are system metadata. Existing
+  Traditional-Chinese category values remain readable while new callers use
+  the nine attachment categories defined by the incident-management contract.
+- legacy `anomaly_actions`, `corrective_actions`, `effectiveness_verifications`
+  只保留為 migration／rollback snapshot；升級後的新版本不得再寫入
 - `visits`
 - `visit_product_sections`
 - `visit_defect_notes`
 - `monthly_stats_cache`
-- anomaly attachments under `data/attachments/anomaly/{anomaly_id}/`
+- anomaly attachments under `data/attachments/anomaly/{anomaly_id}/`; SQLite
+  owns attachment metadata while the filesystem adapter owns bytes. Existing
+  `captions.json` and image-only APIs remain compatible. Legacy physical-only
+  files are exposed as read-only projections until an approved reconciliation
+  migration registers them; they are never assigned guessed links or authors.
 
 Warehouse physical nonconforming-product data:
 
@@ -185,6 +207,21 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
   that must use the normal product-stage change flow.
 - Warehouse compatibility import services under `src/ncr/services/` are retained
   for warehouse-module support data and must be labeled as warehouse-scoped.
+- `case_actions_v1` 是明確升級，不會在既有正式資料庫的一般啟動流程中偷偷套用。
+  未完成升級的新版本會 fail closed 並提示「需要完成資料升級」。正式套用必須先
+  關閉應用程式、建立並驗證 SQLite online backup，在單一 transaction 執行
+  idempotent migration，完成 `integrity_check`、`foreign_key_check`、lineage／筆數
+  reconciliation 及 focused smoke；失敗時以完整備份與前一版本回復。Repository
+  會從 SQLite connection 的實際 main path 辨識正式 DB，disposable flag 不能繞過；
+  Promotion CLI 同時要求 promotion 與 apply-confirmation marker。Focused、Full 與
+  Phase 1 native/baseline wrappers 會比對正式 DB 的 schema + 全表資料邏輯指紋，
+  任一正式資料變化都使 gate 失敗。
+- `anomaly_attachments_contract_v1` 同樣為明確升級：未完成時新版本 fail closed
+  並提示「需要完成附件資料升級」。正式套用使用
+  `scripts/apply_anomaly_attachments_promotion.ps1`（dry-run 預設；`-Apply` 需
+  `SQE_ANOMALY_ATTACHMENTS_PROMOTION_APPROVED=1` 與 `SQE_DAILYWORK_CONFIRM_APPLY=1`
+  及使用者核准）。Focused gate：
+  `scripts/verify_attachments_phase2.ps1`。
 
 Bulk ERP imports, schema migrations, and destructive cleanup require backup,
 dry run, reconciliation, and focused verification.

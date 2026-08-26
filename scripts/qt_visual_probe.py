@@ -125,6 +125,18 @@ def _install_qss_warning_collector() -> None:
     qInstallMessageHandler(_handler)
 
 
+def _set_probe_widget_value(widget, value: object) -> None:
+    """Populate a probe input without replacing checkable-widget copy."""
+    if hasattr(widget, "setChecked"):
+        widget.setChecked(bool(value))
+    elif hasattr(widget, "setPlainText"):
+        widget.setPlainText(str(value))
+    elif hasattr(widget, "setText"):
+        widget.setText(str(value))
+    elif hasattr(widget, "setCurrentIndex"):
+        widget.setCurrentIndex(int(value))
+
+
 def parse_args() -> argparse.Namespace:
     manifest = json.loads(TARGET_MANIFEST_PATH.read_text(encoding="utf-8"))
     target_names = tuple(item["name"] for item in manifest["targets"])
@@ -216,7 +228,7 @@ def _capture_widget(widget, output_path: Path, app: "QApplication") -> str:
 
 def _save_widget_capture(widget, output_path: Path) -> None:
     """Save an opaque capture using the real application page background."""
-    from PySide6.QtGui import QColor, QPainter, QPixmap
+    from PySide6.QtGui import QPainter, QPixmap
 
     from ui.theme_tokens import TOKENS
 
@@ -261,6 +273,25 @@ def _settle_qt_paint(app: "QApplication", *, delay_ms: int = 120, cycles: int = 
     app.processEvents()
 
 
+def _wait_for_popup_visible(
+    popup,
+    app: "QApplication",
+    *,
+    attempts: int = 8,
+    delay_ms: int = 50,
+) -> bool:
+    """Bound native popup activation without treating one fixed delay as proof."""
+    from PySide6.QtTest import QTest
+
+    for _ in range(max(1, attempts)):
+        app.processEvents()
+        if popup.isVisible():
+            return True
+        QTest.qWait(max(0, delay_ms))
+    app.processEvents()
+    return bool(popup.isVisible())
+
+
 def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication") -> str:
     """Capture the real native calendar popup, including Windows palette/QSS."""
     from PySide6.QtCore import QDate, QPoint, Qt
@@ -272,17 +303,17 @@ def _capture_date_popup(dialog, date_edit, output_path: Path, app: "QApplication
     date_edit.calendarWidget().setSelectedDate(probe_date)
     date_edit.calendarWidget().setCurrentPage(probe_date.year(), probe_date.month())
     dialog.show()
-    app.processEvents()
+    dialog.raise_()
+    dialog.activateWindow()
+    _settle_qt_paint(app, delay_ms=60, cycles=2)
     QTest.mouseClick(
         date_edit,
         Qt.MouseButton.LeftButton,
         pos=QPoint(date_edit.width() - 10, date_edit.height() // 2),
     )
-    QTest.qWait(150)
-    app.processEvents()
     calendar = date_edit.calendarWidget()
     popup = calendar.window()
-    if not popup.isVisible():
+    if not _wait_for_popup_visible(popup, app):
         raise RuntimeError(f"Calendar popup did not become visible: {date_edit.objectName()}")
     pixmap = app.primaryScreen().grabWindow(int(popup.winId()))
     if not pixmap.save(str(output_path)):
@@ -862,9 +893,12 @@ def _workbench_overview_payload() -> dict:
             "status": "待處理",
             "overdue": True,
             "current_action": {
+                "action_type_label": "下一步處置",
                 "description": "追蹤供應商 8D 報告並回填改善措施進度",
                 "owner": "品保工程師 王小明",
                 "due_date": "2026-07-15",
+                "execution_status": "執行中",
+                "verification_status": "不適用",
             },
             "open_action_count": 2,
             "root_cause_status": "已建立",
@@ -908,42 +942,58 @@ def _workbench_overview_payload() -> dict:
         "actions": [
             {
                 "id": "act-1",
+                "action_type": "NEXT_ACTION",
+                "action_type_label": "下一步處置",
                 "description": "要求供應商於 2026/06/25 前提交 8D Rev A 報告",
-                "status": "進行中",
+                "execution_status": "執行中",
+                "verification_required": False,
+                "verification_status": "不適用",
                 "owner": "品保工程師 王小明",
                 "due_date": "2026-06-25",
             },
             {
                 "id": "act-2",
+                "action_type": "CONTAINMENT",
+                "action_type_label": "圍堵措施",
                 "description": "安排現場稽核並更新標準作業書",
-                "status": "進行中",
+                "execution_status": "已規劃",
+                "verification_required": False,
+                "verification_status": "不適用",
                 "owner": "製程工程師 李小華",
                 "due_date": "2026-07-05",
             },
             {
                 "id": "act-3",
+                "action_type": "CORRECTION",
+                "action_type_label": "立即矯正",
                 "description": "向客戶回覆初判結果",
-                "status": "已完成",
+                "execution_status": "已完成",
+                "verification_required": False,
+                "verification_status": "不適用",
                 "owner": "業務窗口 張大成",
                 "due_date": "2026-06-12",
             },
-        ],
-        "corrective_actions": [
             {
                 "id": "ca-1",
+                "action_type": "CORRECTIVE_ACTION",
+                "action_type_label": "矯正措施",
                 "description": "更新模具溫度標準作業書並重新培訓操作員",
-                "status": "執行中",
-                "responsible_party": "供應商製造部",
-                "target_date": "2026-07-05",
-                "effectiveness_verification_required": True,
+                "execution_status": "執行中",
+                "owner": "供應商製造部",
+                "due_date": "2026-07-05",
+                "verification_required": True,
+                "verification_status": "待驗證",
             },
             {
                 "id": "ca-2",
+                "action_type": "SYSTEMIC_IMPROVEMENT",
+                "action_type_label": "預防／系統改善",
                 "description": "導入 SPC 監控並設置自動警報",
-                "status": "待有效性驗證",
-                "responsible_party": "品保工程師 王小明",
-                "target_date": "2026-07-20",
-                "effectiveness_verification_required": True,
+                "execution_status": "已完成",
+                "owner": "品保工程師 王小明",
+                "due_date": "2026-07-20",
+                "verification_required": True,
+                "verification_status": "待驗證",
             },
         ],
         "verifications": [
@@ -1030,7 +1080,7 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
 
     from unittest import mock
 
-    from services.event import _anomaly_action_service, _anomaly_service, _anomaly_workbench_service
+    from services.event import _anomaly_service, _anomaly_workbench_service, _case_action_service
     from ui.widgets.anomaly_management_page import AnomalyManagementPage
 
     payload = _workbench_overview_payload()
@@ -1058,16 +1108,6 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
         ),
         mock.patch.object(
             _anomaly_workbench_service,
-            "list_corrective_actions",
-            return_value=payload["corrective_actions"],
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_effectiveness_verifications",
-            side_effect=lambda ca_id: payload["verifications"] if ca_id == "ca-2" else [],
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
             "list_eight_d_reviews",
             return_value=payload["eight_d_reviews"],
         ),
@@ -1082,8 +1122,8 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
             return_value=payload["timeline"],
         ),
         mock.patch.object(
-            _anomaly_action_service,
-            "list_actions",
+            _case_action_service,
+            "list_case_actions",
             return_value=payload["actions"],
         ),
     ]
@@ -1163,14 +1203,7 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
             widget = getattr(dialog, name, None)
             if widget is None:
                 continue
-            if hasattr(widget, "setPlainText"):
-                widget.setPlainText(str(value))
-            elif hasattr(widget, "setText"):
-                widget.setText(str(value))
-            elif hasattr(widget, "setChecked"):
-                widget.setChecked(bool(value))
-            elif hasattr(widget, "setCurrentIndex"):
-                widget.setCurrentIndex(int(value))
+            _set_probe_widget_value(widget, value)
         if hasattr(dialog, "_dirty"):
             dialog._dirty = False
 
@@ -1194,6 +1227,20 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         ),
     )
     _capture_dialog(note_dialog, "dialog-density-add-note")
+
+    from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
+
+    root_cause_dialog = AnomalyRootCauseDialog("probe-density", parent=None)
+    _fill(
+        root_cause_dialog,
+        statement_input="治具定位銷磨損導致尺寸偏移，需更換定位銷並重作首件確認。",
+        validation_method_input="5-Why",
+        validation_evidence_input="現場拆解與量測紀錄",
+    )
+    verified_index = root_cause_dialog.status_combo.findData("已驗證")
+    if verified_index >= 0:
+        root_cause_dialog.status_combo.setCurrentIndex(verified_index)
+    _capture_dialog(root_cause_dialog, "dialog-density-edit-root-cause")
 
     ca_dialog = AddCorrectiveActionDialog("probe-density", parent=None)
     _fill(

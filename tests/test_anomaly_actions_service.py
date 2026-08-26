@@ -9,8 +9,7 @@ from unittest import mock
 from database import connection as _connection
 from database import repository
 from services import event_service
-from services.event import _anomaly_action_service
-from services.event import _anomaly_service
+from services.event import _case_action_service, _anomaly_workbench_service
 
 
 def _bootstrap_db():
@@ -75,81 +74,94 @@ class AnomalyActionServiceTests(unittest.TestCase):
     # --- CRUD wrappers -------------------------------------------------
 
     def test_create_list_and_complete(self) -> None:
-        action_id = _anomaly_action_service.create_action(
+        action_id = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="Send 8D",
             owner="Alice",
             due_date="2026-07-15",
+            execution_status="執行中",
         )
-        actions = _anomaly_action_service.list_actions(self.anomaly_id)
+        actions = _case_action_service.list_case_actions(self.anomaly_id)
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0]["description"], "Send 8D")
-        self.assertEqual(actions[0]["status"], "進行中")
+        self.assertEqual(actions[0]["execution_status"], "執行中")
 
-        _anomaly_action_service.complete_action(
+        _case_action_service.complete_case_action(
             action_id, completion_note="8D submitted"
         )
-        actions = _anomaly_action_service.list_actions(self.anomaly_id)
-        self.assertEqual(actions[0]["status"], "已完成")
-        self.assertEqual(actions[0]["completed_note"], "8D submitted")
+        actions = _case_action_service.list_case_actions(self.anomaly_id)
+        self.assertEqual(actions[0]["execution_status"], "已完成")
+        self.assertEqual(actions[0]["completion_note"], "8D submitted")
 
     def test_update_only_open_actions(self) -> None:
-        action_id = _anomaly_action_service.create_action(
+        action_id = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="original",
+            execution_status="執行中",
         )
-        _anomaly_action_service.complete_action(action_id)
-        with self.assertRaisesRegex(ValueError, "Only 進行中"):
-            _anomaly_action_service.update_action(action_id, description="new")
+        _case_action_service.complete_case_action(action_id)
+        with self.assertRaisesRegex(ValueError, "planned or in-progress"):
+            _case_action_service.update_case_action(action_id, description="new")
 
     def test_cancel_marks_action(self) -> None:
-        action_id = _anomaly_action_service.create_action(
+        action_id = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="reschedule",
             due_date="2026-08-01",
+            execution_status="執行中",
         )
-        _anomaly_action_service.cancel_action(action_id, cancel_note="x")
-        actions = _anomaly_action_service.list_actions(self.anomaly_id)
-        self.assertEqual(actions[0]["status"], "已取消")
+        _case_action_service.cancel_case_action(action_id, cancel_note="x")
+        actions = _case_action_service.list_case_actions(self.anomaly_id)
+        self.assertEqual(actions[0]["execution_status"], "已取消")
 
     def test_is_overdue_uses_action_due_date(self) -> None:
-        _anomaly_action_service.create_action(
+        _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="late",
             due_date="2020-01-01",
         )
-        self.assertTrue(_anomaly_action_service.is_overdue(self.anomaly_id))
+        self.assertTrue(_case_action_service.is_anomaly_overdue(self.anomaly_id))
 
     def test_build_lifecycle_card_returns_safe_defaults_for_missing(self) -> None:
-        card = _anomaly_action_service.build_anomaly_lifecycle_card("nope")
-        self.assertEqual(card["status"], "待處理")
-        self.assertIsNone(card["current_action"])
-        self.assertFalse(card["overdue"])
-        self.assertEqual(card["completed_actions"], 0)
+        self.assertEqual(_case_action_service.list_case_actions("nope"), [])
+        self.assertIsNone(_case_action_service.get_current_case_action("nope"))
 
     def test_build_lifecycle_card_aggregates_counts(self) -> None:
-        a1 = _anomaly_action_service.create_action(
+        a1 = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="done",
             due_date="2026-06-01",
+            execution_status="執行中",
         )
-        _anomaly_action_service.complete_action(a1)
-        a2 = _anomaly_action_service.create_action(
+        _case_action_service.complete_case_action(a1)
+        a2 = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="cancelled",
             due_date="2026-06-01",
         )
-        _anomaly_action_service.cancel_action(a2)
-        active = _anomaly_action_service.create_action(
+        _case_action_service.cancel_case_action(a2, cancel_note="duplicate")
+        active = _case_action_service.create_case_action(
             anomaly_id=self.anomaly_id,
+            action_type="NEXT_ACTION",
             description="now",
             due_date="2026-07-01",
         )
-        card = _anomaly_action_service.build_anomaly_lifecycle_card(
-            self.anomaly_id
+        actions = _case_action_service.list_case_actions(self.anomaly_id)
+        card = _anomaly_workbench_service.get_overview_card(self.anomaly_id)
+        self.assertEqual(
+            sum(1 for row in actions if row["execution_status"] == "已完成"),
+            1,
         )
-        self.assertEqual(card["completed_actions"], 1)
-        self.assertEqual(card["cancelled_actions"], 1)
+        self.assertEqual(
+            sum(1 for row in actions if row["execution_status"] == "已取消"),
+            1,
+        )
         self.assertIsNotNone(card["current_action"])
         self.assertEqual(card["current_action"]["id"], active)
 

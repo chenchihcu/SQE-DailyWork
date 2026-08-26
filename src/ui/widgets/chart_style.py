@@ -133,5 +133,13 @@ class StableChartView(QChartView):
     (每次 relayout 高度遞增)。固定回報 minimumHeight 作為 preferred 高度,
     高度分配交由 QGridLayout 的 row stretch 決定。
     """
+
+    def __init__(self, chart=None, parent=None) -> None:
+        super().__init__(chart, parent)
+        # QChart 的 figure surface 刻意透明；明確指定 scene 底色，避免
+        # Windows/Qt 在不同 child process 以不一致的 palette brush 填底。
+        tokens = get_active_theme_tokens()
+        self.setBackgroundBrush(QBrush(QColor(tokens["panel_bg"])))
+
     def sizeHint(self) -> QSize:
         return QSize(600, max(self.minimumHeight(), CHART_MIN_HEIGHT))

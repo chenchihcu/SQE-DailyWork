@@ -11,30 +11,63 @@ shared master-data area.
 | Area | Tables | Source | Writes Allowed From | Must Not Write |
 | --- | --- | --- | --- | --- |
 | Shared master data | `suppliers`, `products` | Company product and supplier master data | Manual master-data dialogs; ERP/Excel master import | Supplier events, visit/audit defect notes, warehouse defect records |
-| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `anomaly_actions`, `anomaly_analysis_notes`, `anomaly_root_causes`, `corrective_actions`, `effectiveness_verifications`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; anomaly workbench CRUD through `_anomaly_action_service` / `_anomaly_workbench_service` | `defect_records` |
+| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `case_actions`, `action_verifications`, `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs`; legacy rollback snapshots: `anomaly_actions`, `corrective_actions`, `effectiveness_verifications` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; Action writes through `_case_action_service`; remaining workbench CRUD through `_anomaly_workbench_service` | `defect_records`; post-migration writes to legacy Action tables |
 | Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` (and all anomaly sub-tables) |
 | Import audit | `import_batches`, `import_batch_rows` | ERP/Excel import runs | Import services | Workflow data rows |
 
 ## Flow Boundaries
 
 0. **Anomaly case-workbench sub-tables** belong exclusively to the supplier-event
-   management line. `anomaly_actions`, `anomaly_analysis_notes`,
-   `anomaly_root_causes`, `corrective_actions`, `effectiveness_verifications`,
+   management line. `case_actions`, `action_verifications`,
+   `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`,
    `anomaly_attachments`, `anomaly_eight_d_reviews`, and `anomaly_audit_logs`
    are read/written only through the service adapters in
-   `src/services/event/_anomaly_action_service.py` and
+   `src/services/event/_case_action_service.py` and
    `src/services/event/_anomaly_workbench_service.py`. They must never be
    written from the warehouse tracker and must never be read for warehouse
    statistics. Timeline is a projection over the authoritative audit log plus
    sub-table rows and must not double count an event that already has an audit
    entry.
-   - Status-changing service helpers (`complete_action`, `cancel_action`,
-     `record_ca_completion_with_audit`, `record_ca_status_change_with_audit`,
-     `record_verification_with_audit`, `create_eight_d_review_with_audit`,
-     `append_manual_audit`) bundle the sub-table write with an
+   - `case_actions.action_type` is one of `NEXT_ACTION`, `CONTAINMENT`,
+     `CORRECTION`, `CORRECTIVE_ACTION`, or `SYSTEMIC_IMPROVEMENT`; execution
+     status is one of `已規劃`, `執行中`, `已完成`, or `已取消`.
+   - Verification status is derived, not stored on `case_actions`. Only completed
+     `CORRECTIVE_ACTION` and `SYSTEMIC_IMPROVEMENT` rows with
+     `verification_required = 1` accept append-only `action_verifications`.
+     The latest verification produces `待驗證 / 有效 / 無效 / 無法判定`;
+     non-improvement types are `不適用`, and explicitly waived improvement
+     actions are `不需要`.
+   - Status-changing Action helpers (`create_case_action`, `update_case_action`,
+     `start_case_action`, `complete_case_action`, `cancel_case_action`, and
+     `record_action_verification`) bundle the sub-table write with an
      `anomaly_audit_logs` row so the timeline reflects every transition
      without callers re-implementing audit logic. UI dialogs must call these
      helpers instead of the repository directly.
+   - `get_anomaly_overview_card()` is the read-model SSOT for current Action,
+     due date, overdue, execution status, and verification status. Overdue means
+     an open anomaly has at least one `已規劃 / 執行中` Action whose non-empty
+     due date is earlier than today; completed and cancelled rows never count.
+   - Legacy `anomaly_actions`, `corrective_actions`, and
+     `effectiveness_verifications` remain rollback snapshots. The deterministic
+   `case_actions_v1` migration records lineage in `case_action_legacy_map`,
+   remaps colliding corrective IDs with a fixed UUIDv5 namespace, and installs
+   guards that reject new-version `INSERT` and `UPDATE` statements on the old
+   Action tables. They are not dropped by this rollout.
+  - `anomaly_attachments` is the SQLite metadata SSOT for the Phase 2
+    attachment foundation. `related_ca_id` is retained only for legacy
+    lineage; new links use `related_action_id` and optional `related_note_id`.
+    `file_type` and `uploaded_by` are system metadata, and category values are
+    the nine design-framework categories with legacy Traditional-Chinese
+    labels preserved on read.
+  - Physical bytes remain under
+    `data/attachments/anomaly/{anomaly_id}/`, resolved from the active
+    `SQE_DB_PATH` data directory. `captions.json` and image-only attachment
+    APIs remain a legacy compatibility surface. The workbench read projection
+    marks DB rows as `storage_state=present/missing` and exposes unregistered
+    physical files as `legacy_physical=true` without guessing their category,
+    note, Action, or uploader. Item-level Phase 2 traceability (14–19) is
+    documented in `docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md`
+    (design-derived).
 
 1. `visit_defect_notes` remains a compatible supplier-event store for existing
    visit or audit notes. The current `NewVisitDialog` preserves those notes on
@@ -231,6 +264,25 @@ After each change, verify:
   they must never make the UI imply that the authoritative row was not saved.
 - Legacy migration is all-or-nothing. A row error rolls back imported business
   rows, leaves completion metadata absent, and emits reconciliation evidence.
+- `case_actions_v1` is an explicit high-risk promotion, not an implicit startup
+  migration for an existing formal database. Before writable bootstrap,
+  `initialize_database()` opens an existing formal DB read-only and fails closed
+  with 「需要完成資料升級」 when the required version is missing. Fresh DBs may
+  receive the current schema; existing disposable DBs may migrate only when
+  `SQE_REQUIRE_DISPOSABLE_DB=1`. The repository also resolves
+  `PRAGMA database_list` and refuses a formal main path, so the disposable flag
+  alone cannot bypass the boundary. Formal migration requires both explicit
+  promotion markers.
+- Formal promotion requires the application to be closed, a verified SQLite
+  online backup, pre-migration schema/count/relation evidence, one transactional
+  idempotent migration, `PRAGMA integrity_check`, `PRAGMA foreign_key_check`,
+  lineage/count/status reconciliation, and a focused smoke. Failure restores the
+  entire pre-migration backup with the preceding application version; partial
+  reverse SQL is not a rollback strategy.
+- Focused, Full, Phase 1 native visual, and baseline-refresh wrappers fingerprint
+  the formal DB's complete logical schema and rows before and after execution.
+  Physical WAL/checkpoint byte changes are ignored, but any logical field or
+  schema change fails the gate.
 - Repository validation owns anomaly-number format/date-prefix/uniqueness and
   anomaly/visit supplier consistency. UI validation is feedback, not the data
   integrity boundary.

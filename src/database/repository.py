@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import re
 import uuid
-
-logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -34,6 +33,8 @@ from database.repo_helpers import (
     ANOMALY_ACTION_STATUSES,
     ANOMALY_ACTIONS_MIGRATION_META_KEY,
     ANOMALY_ACTIONS_BACKFILL_META_KEY,
+    CASE_ACTION_VERIFICATION_ELIGIBLE_TYPES,
+    CASE_ACTION_OPEN_STATUSES,
     ANOMALY_EVIDENCE_TYPES,
     ANOMALY_EVIDENCE_LABELS,
     ANOMALY_EVIDENCE_UNKNOWN,
@@ -43,12 +44,8 @@ from database.repo_helpers import (
     ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
     CORRECTIVE_ACTION_STATUSES,
     CORRECTIVE_ACTION_STATUS_PLANNED,
-    CORRECTIVE_ACTION_STATUS_IN_PROGRESS,
     CORRECTIVE_ACTION_STATUS_IMPLEMENTED,
-    CORRECTIVE_ACTION_STATUS_CANCELLED,
     CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING,
-    CORRECTIVE_ACTION_STATUS_EFFECTIVE,
-    CORRECTIVE_ACTION_STATUS_INEFFECTIVE,
     EFFECTIVENESS_VERIFICATION_RESULTS,
     EFFECTIVENESS_VERIFICATION_RESULT_PENDING,
     EFFECTIVENESS_VERIFICATION_RESULT_EFFECTIVE,
@@ -58,6 +55,11 @@ from database.repo_helpers import (
     CORRECTIVE_ACTIONS_MIGRATION_META_KEY,
     EFFECTIVENESS_VERIFICATIONS_MIGRATION_META_KEY,
     ANOMALY_ATTACHMENTS_MIGRATION_META_KEY,
+    ANOMALY_ATTACHMENTS_CONTRACT_META_KEY,
+    ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION,
+    ANOMALY_ATTACHMENT_CATEGORIES,
+    ANOMALY_ATTACHMENT_CATEGORY_LABELS,
+    ANOMALY_ATTACHMENT_CATEGORY_OTHER,
     ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY,
     ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY,
     # ── TypedDicts ──
@@ -96,9 +98,30 @@ from database.repository_schema_helpers import (
     has_column as _has_column,
     table_sql as _table_sql,
 )
+from database.case_action_repository import (
+    aggregate_execution_status as _aggregate_case_action_execution_status,
+    aggregate_verification_status as _aggregate_action_verification_status,
+    cancel_case_action as cancel_case_action,
+    case_actions_schema_ready as case_actions_schema_ready,
+    complete_case_action as complete_case_action,
+    create_case_action as create_case_action,
+    get_case_action as get_case_action,
+    get_current_case_action,
+    is_anomaly_overdue as is_case_action_overdue,
+    list_action_verifications as list_action_verifications,
+    list_case_actions,
+    migrate_case_actions_v1,
+    preview_case_actions_v1_migration as preview_case_actions_v1_migration,
+    record_action_verification as record_action_verification,
+    require_case_actions_schema as require_case_actions_schema,
+    update_case_action as update_case_action,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
+    fresh_install = not _table_exists(conn, "anomalies")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS suppliers (
@@ -365,11 +388,17 @@ def create_schema(conn: sqlite3.Connection) -> None:
             category TEXT NOT NULL DEFAULT '其他',
             description TEXT NOT NULL DEFAULT '',
             file_size INTEGER NOT NULL DEFAULT 0,
+            file_type TEXT NOT NULL DEFAULT '',
             revision TEXT NOT NULL DEFAULT '',
+            uploaded_by TEXT NOT NULL DEFAULT '',
             related_ca_id TEXT,
+            related_note_id TEXT,
+            related_action_id TEXT,
             uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
-            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id)
+            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id),
+            FOREIGN KEY (related_note_id) REFERENCES anomaly_analysis_notes(id),
+            FOREIGN KEY (related_action_id) REFERENCES case_actions(id)
         );
         CREATE INDEX IF NOT EXISTS idx_anomaly_attachments_anomaly
             ON anomaly_attachments(anomaly_id);
@@ -716,6 +745,23 @@ def create_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+    # The canonical Action migration is intentionally not an automatic upgrade
+    # for an existing production database. Fresh databases receive the current
+    # schema from their first row. Existing databases may auto-upgrade only
+    # while the verified disposable-runtime guard is explicitly enabled; the
+    # formal database still has to pass the separately approved Promotion Gate.
+    disposable_upgrade = os.environ.get("SQE_REQUIRE_DISPOSABLE_DB", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if fresh_install or disposable_upgrade:
+        _ensure_anomaly_attachment_contract_v1(conn)
+        migrate_case_actions_v1(
+            conn,
+            apply=True,
+            fresh_install=fresh_install,
+        )
 
 
 def _insert_product_stage_change_log(
@@ -1033,6 +1079,11 @@ def _ensure_anomaly_actions_v1(conn: sqlite3.Connection) -> None:
     responsible person, or due date so that the new read model has data to
     surface for historical rows.
     """
+    # Once canonical Actions are promoted, legacy tables are immutable rollback
+    # snapshots. Even if an old migration marker is manually removed, never
+    # repopulate the retired table or bypass its installed write guard.
+    if case_actions_schema_ready(conn):
+        return
     if not _table_exists(conn, "anomaly_actions"):
         conn.executescript(
             """
@@ -1227,11 +1278,17 @@ def _ensure_anomaly_evidence_tables_v1(conn: sqlite3.Connection) -> None:
             category TEXT NOT NULL DEFAULT '其他',
             description TEXT NOT NULL DEFAULT '',
             file_size INTEGER NOT NULL DEFAULT 0,
+            file_type TEXT NOT NULL DEFAULT '',
             revision TEXT NOT NULL DEFAULT '',
+            uploaded_by TEXT NOT NULL DEFAULT '',
             related_ca_id TEXT,
+            related_note_id TEXT,
+            related_action_id TEXT,
             uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
-            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id)
+            FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id),
+            FOREIGN KEY (related_note_id) REFERENCES anomaly_analysis_notes(id),
+            FOREIGN KEY (related_action_id) REFERENCES case_actions(id)
         );
         CREATE INDEX IF NOT EXISTS idx_anomaly_attachments_anomaly
             ON anomaly_attachments(anomaly_id);
@@ -1298,6 +1355,138 @@ def _create_if_missing(
     conn.executescript(ddl)
     conn.commit()
     upsert_migration_meta(conn, meta_key, "1")
+
+
+_ATTACHMENT_CONTRACT_REQUIRED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("file_type", "TEXT NOT NULL DEFAULT ''"),
+    ("uploaded_by", "TEXT NOT NULL DEFAULT ''"),
+    ("related_note_id", "TEXT REFERENCES anomaly_analysis_notes(id)"),
+    ("related_action_id", "TEXT REFERENCES case_actions(id)"),
+)
+
+
+def preview_anomaly_attachments_contract_v1(
+    conn: sqlite3.Connection,
+) -> dict[str, Any]:
+    """Return a read-only summary for the Phase 2 attachment contract.
+
+    The preview deliberately reports missing columns instead of silently
+    altering an existing database. The formal Promotion Gate can consume
+    this result before deciding whether an apply is authorized.
+    """
+    columns = _table_columns(conn, "anomaly_attachments")
+    missing = [
+        name
+        for name, _ddl in _ATTACHMENT_CONTRACT_REQUIRED_COLUMNS
+        if name not in columns
+    ]
+    ready = (
+        _table_exists(conn, "anomaly_attachments")
+        and not missing
+        and get_migration_meta(
+            conn, ANOMALY_ATTACHMENTS_CONTRACT_META_KEY
+        ) == ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION
+    )
+    row_count = 0
+    if _table_exists(conn, "anomaly_attachments"):
+        row_count = int(
+            conn.execute("SELECT COUNT(*) FROM anomaly_attachments").fetchone()[0]
+        )
+    return {
+        "migration_key": ANOMALY_ATTACHMENTS_CONTRACT_META_KEY,
+        "schema_version": ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION,
+        "ready": ready,
+        "table_exists": _table_exists(conn, "anomaly_attachments"),
+        "columns": sorted(columns),
+        "missing_columns": missing,
+        "attachment_rows": row_count,
+    }
+
+
+def anomaly_attachments_contract_ready(conn: sqlite3.Connection) -> bool:
+    """Return whether the attachment metadata contract is fully promoted.
+
+    This is intentionally a read-only predicate so startup can inspect an
+    existing formal database before opening it for writable bootstrap.
+    """
+    return bool(preview_anomaly_attachments_contract_v1(conn)["ready"])
+
+
+def _ensure_anomaly_attachment_contract_v1(
+    conn: sqlite3.Connection,
+    *,
+    commit_meta: bool = True,
+) -> dict[str, Any]:
+    """Install the Phase 2 columns on a fresh/disposable database only."""
+    if not _table_exists(conn, "anomaly_attachments"):
+        return preview_anomaly_attachments_contract_v1(conn)
+    for column_name, column_ddl in _ATTACHMENT_CONTRACT_REQUIRED_COLUMNS:
+        _ensure_column(conn, "anomaly_attachments", column_name, column_ddl)
+    _ensure_index(
+        conn,
+        "idx_anomaly_attachments_note",
+        "anomaly_attachments",
+        "related_note_id",
+    )
+    _ensure_index(
+        conn,
+        "idx_anomaly_attachments_action",
+        "anomaly_attachments",
+        "related_action_id",
+    )
+    if commit_meta:
+        upsert_migration_meta(
+            conn,
+            ANOMALY_ATTACHMENTS_CONTRACT_META_KEY,
+            ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION,
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO migration_meta(key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (
+                ANOMALY_ATTACHMENTS_CONTRACT_META_KEY,
+                ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION,
+            ),
+        )
+    return preview_anomaly_attachments_contract_v1(conn)
+
+
+def migrate_anomaly_attachments_contract_v1(
+    conn: sqlite3.Connection,
+    *,
+    apply: bool = False,
+) -> dict[str, Any]:
+    """Preview or atomically apply the attachment metadata contract.
+
+    Callers must provide the same approved disposable/formal-gate boundary as
+    the Phase 1 migration. This function itself never selects a database path
+    and never treats a preview as an apply.
+    """
+    preview = preview_anomaly_attachments_contract_v1(conn)
+    if not apply:
+        return {**preview, "applied": False, "skipped": preview["ready"]}
+    if preview["ready"]:
+        return {**preview, "applied": False, "skipped": True}
+    conn.execute("SAVEPOINT anomaly_attachments_contract_v1")
+    try:
+        report = _ensure_anomaly_attachment_contract_v1(conn, commit_meta=False)
+        if report["missing_columns"]:
+            raise RuntimeError(
+                "Attachment contract migration did not install all columns: "
+                + ", ".join(report["missing_columns"])
+            )
+        conn.execute("RELEASE SAVEPOINT anomaly_attachments_contract_v1")
+        return {**report, "applied": True, "skipped": False}
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT anomaly_attachments_contract_v1")
+        conn.execute("RELEASE SAVEPOINT anomaly_attachments_contract_v1")
+        raise
 
 
 def create_anomaly_action(
@@ -2294,7 +2483,7 @@ def add_supplier_contact(
                 (contact_name or "").strip(),
                 (department or "").strip(),
                 (phone or "").strip(),
-                (contact_email or "").strip(),
+                (email or "").strip(),
                 _now_iso(),
                 supplier_key,
             ),
@@ -3628,6 +3817,11 @@ def upsert_anomaly_root_cause(
     if status in (ANOMALY_ROOT_CAUSE_VERIFIED, ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED):
         if not (statement or "").strip():
             raise ValueError("Root cause statement is required for this status")
+    if status == ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED:
+        if not (not_established_reason or "").strip():
+            raise ValueError(
+                "Not established reason is required when root cause status is 無法確認"
+            )
     existing = get_anomaly_root_cause(conn, anomaly_id)
     if existing is None:
         rc_id = _gen_id()
@@ -3952,53 +4146,284 @@ def create_anomaly_attachment(
     category: str = "其他",
     description: str = "",
     file_size: int = 0,
+    file_type: str = "",
     revision: str = "",
-    related_ca_id: str | None = None,
+    uploaded_by: str = "",
+    related_note_id: str | None = None,
+    related_action_id: str | None = None,
+    _commit: bool = True,
 ) -> str:
     require_anomaly(conn, anomaly_id)
+    anomaly_key = str(anomaly_id or "").strip()
+    require_case_actions_schema(conn)
     fname = (file_name or "").strip()
     if not fname:
         raise ValueError("Attachment file name is required")
-    if related_ca_id and get_corrective_action(conn, related_ca_id) is None:
-        raise ValueError("Related corrective action not found")
+    fname = _normalize_attachment_file_name(fname, field_name="Attachment file name")
+    stored = (stored_name or "").strip()
+    if stored:
+        stored = _normalize_attachment_file_name(
+            stored, field_name="Attachment stored name"
+        )
+    normalized_action_id = (related_action_id or "").strip() or None
+    if normalized_action_id:
+        action = get_case_action(conn, normalized_action_id)
+        if action is None or str(action.get("anomaly_id") or "") != anomaly_key:
+            raise ValueError("Related Action not found")
+    normalized_note_id = (related_note_id or "").strip() or None
+    if normalized_note_id:
+        if "related_note_id" not in _table_columns(conn, "anomaly_attachments"):
+            raise RuntimeError(
+                "需要完成附件資料升級：anomaly_attachments_contract_v1。"
+            )
+        note = conn.execute(
+            "SELECT anomaly_id FROM anomaly_analysis_notes WHERE id = ?",
+            (normalized_note_id,),
+        ).fetchone()
+        if note is None or str(note[0] or "") != anomaly_key:
+            raise ValueError("Related analysis note not found")
+
+    available = _table_columns(conn, "anomaly_attachments")
+    if normalized_action_id and "related_action_id" not in available:
+        raise RuntimeError(
+            "需要完成附件資料升級：anomaly_attachments_contract_v1。"
+        )
+    normalized_category = (category or "").strip()
+    if not normalized_category:
+        normalized_category = ANOMALY_ATTACHMENT_CATEGORY_OTHER
+    if normalized_category not in ANOMALY_ATTACHMENT_CATEGORIES:
+        # Preserve legacy Traditional-Chinese values while making the new
+        # contract's nine English values canonical for new callers.
+        legacy_label_to_key = {
+            label: key for key, label in ANOMALY_ATTACHMENT_CATEGORY_LABELS.items()
+        }
+        normalized_category = legacy_label_to_key.get(
+            normalized_category, normalized_category
+        )
     aid = _gen_id()
+    values: dict[str, object] = {
+        "id": aid,
+        "anomaly_id": anomaly_key,
+        "file_name": fname,
+        "stored_name": stored,
+        "category": normalized_category,
+        "description": (description or "").strip(),
+        "file_size": _normalize_non_negative_int(file_size, field_name="File size"),
+    }
+    optional_values: dict[str, object] = {
+        "file_type": (file_type or "").strip(),
+        "revision": (revision or "").strip(),
+        "uploaded_by": (uploaded_by or "").strip(),
+        "related_note_id": normalized_note_id,
+        "related_action_id": normalized_action_id,
+    }
+    for column_name, value in optional_values.items():
+        if column_name in available:
+            values[column_name] = value
+    columns = list(values)
+    placeholders = ", ".join("?" for _ in columns)
     conn.execute(
-        """
-        INSERT INTO anomaly_attachments(
-            id, anomaly_id, file_name, stored_name, category, description,
-            file_size, revision, related_ca_id, uploaded_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """,
-        (
-            aid,
-            anomaly_id.strip(),
-            fname,
-            (stored_name or "").strip(),
-            (category or "其他").strip(),
-            (description or "").strip(),
-            _normalize_non_negative_int(file_size, field_name="File size"),
-            (revision or "").strip(),
-            (related_ca_id or "").strip() or None,
-        ),
+        f"INSERT INTO anomaly_attachments({', '.join(columns)}) "
+        f"VALUES ({placeholders})",
+        tuple(values[column] for column in columns),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
     return aid
+
+
+def update_anomaly_attachment(
+    conn: sqlite3.Connection,
+    *,
+    attachment_id: str,
+    anomaly_id: str,
+    category: str,
+    description: str = "",
+    revision: str = "",
+    related_note_id: str | None = None,
+    related_action_id: str | None = None,
+    _commit: bool = True,
+) -> dict:
+    """Update editable Evidence metadata while preserving storage identity."""
+    require_anomaly(conn, anomaly_id)
+    attachment_key = str(attachment_id or "").strip()
+    anomaly_key = str(anomaly_id or "").strip()
+    if not attachment_key:
+        raise ValueError("Attachment id is required")
+    row = conn.execute(
+        "SELECT * FROM anomaly_attachments WHERE id = ? AND anomaly_id = ?",
+        (attachment_key, anomaly_key),
+    ).fetchone()
+    if row is None:
+        raise ValueError("Attachment not found")
+
+    normalized_category = (category or "").strip() or ANOMALY_ATTACHMENT_CATEGORY_OTHER
+    if normalized_category not in ANOMALY_ATTACHMENT_CATEGORIES:
+        legacy_label_to_key = {
+            label: key for key, label in ANOMALY_ATTACHMENT_CATEGORY_LABELS.items()
+        }
+        normalized_category = legacy_label_to_key.get(
+            normalized_category, normalized_category
+        )
+    if normalized_category not in ANOMALY_ATTACHMENT_CATEGORIES:
+        raise ValueError("Invalid attachment category")
+
+    normalized_note_id = (related_note_id or "").strip() or None
+    if normalized_note_id:
+        note = conn.execute(
+            "SELECT anomaly_id FROM anomaly_analysis_notes WHERE id = ?",
+            (normalized_note_id,),
+        ).fetchone()
+        if note is None or str(note[0] or "") != anomaly_key:
+            raise ValueError("Related analysis note not found")
+
+    normalized_action_id = (related_action_id or "").strip() or None
+    if normalized_action_id:
+        action = get_case_action(conn, normalized_action_id)
+        if action is None or str(action.get("anomaly_id") or "") != anomaly_key:
+            raise ValueError("Related Action not found")
+
+    available = _table_columns(conn, "anomaly_attachments")
+    fields = ["category = ?", "description = ?", "revision = ?"]
+    values: list[object] = [
+        normalized_category,
+        (description or "").strip(),
+        (revision or "").strip(),
+    ]
+    if "related_note_id" in available:
+        fields.append("related_note_id = ?")
+        values.append(normalized_note_id)
+    if "related_action_id" in available:
+        fields.append("related_action_id = ?")
+        values.append(normalized_action_id)
+    values.extend([attachment_key, anomaly_key])
+    conn.execute(
+        f"UPDATE anomaly_attachments SET {', '.join(fields)} "
+        "WHERE id = ? AND anomaly_id = ?",
+        tuple(values),
+    )
+    updated = conn.execute(
+        "SELECT * FROM anomaly_attachments WHERE id = ? AND anomaly_id = ?",
+        (attachment_key, anomaly_key),
+    ).fetchone()
+    if _commit:
+        conn.commit()
+    return dict(updated) if updated is not None else dict(row)
+
+
+def delete_anomaly_attachment_metadata(
+    conn: sqlite3.Connection,
+    *,
+    attachment_id: str,
+    anomaly_id: str,
+    _commit: bool = True,
+) -> dict:
+    """Delete one registered metadata row; physical bytes are service-owned."""
+    anomaly_key = str(anomaly_id or "").strip()
+    attachment_key = str(attachment_id or "").strip()
+    require_anomaly(conn, anomaly_key)
+    if not attachment_key:
+        raise ValueError("Attachment id is required")
+    row = conn.execute(
+        "SELECT * FROM anomaly_attachments WHERE id = ? AND anomaly_id = ?",
+        (attachment_key, anomaly_key),
+    ).fetchone()
+    if row is None:
+        raise ValueError("Attachment not found")
+    conn.execute(
+        "DELETE FROM anomaly_attachments WHERE id = ? AND anomaly_id = ?",
+        (attachment_key, anomaly_key),
+    )
+    if _commit:
+        conn.commit()
+    return dict(row)
+
+
+def _normalize_attachment_file_name(value: str, *, field_name: str) -> str:
+    """Keep attachment metadata names to one safe filesystem component."""
+    name = str(value or "").strip()
+    if not name or name in {".", ".."}:
+        raise ValueError(f"{field_name} is required")
+    if any(char in name for char in '\x00<>:"/\\|?*'):
+        raise ValueError(f"{field_name} must be a file name")
+    if len(name) >= 2 and name[1] == ":":
+        raise ValueError(f"{field_name} must be a file name")
+    return name
 
 
 def list_anomaly_attachments(
     conn: sqlite3.Connection, anomaly_id: str
 ) -> list[dict]:
+    available = _table_columns(conn, "anomaly_attachments")
+    columns = [
+        "id",
+        "anomaly_id",
+        "file_name",
+        "stored_name",
+        "category",
+        "description",
+        "file_size",
+    ]
+    for optional in (
+        "file_type",
+        "revision",
+        "uploaded_by",
+        "related_ca_id",
+        "related_note_id",
+        "related_action_id",
+        "uploaded_at",
+    ):
+        if optional in available:
+            columns.append(optional)
+        else:
+            columns.append(f"NULL AS {optional}")
     rows = conn.execute(
-        """
-        SELECT id, anomaly_id, file_name, stored_name, category, description,
-               file_size, revision, related_ca_id, uploaded_at
-        FROM anomaly_attachments
-        WHERE anomaly_id = ?
-        ORDER BY uploaded_at ASC, rowid ASC
-        """,
+        f"SELECT {', '.join(columns)} FROM anomaly_attachments "
+        "WHERE anomaly_id = ? ORDER BY uploaded_at ASC, rowid ASC",
         (anomaly_id or "",),
     ).fetchall()
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+    for item in result:
+        item["category_label"] = ANOMALY_ATTACHMENT_CATEGORY_LABELS.get(
+            str(item.get("category") or ""), str(item.get("category") or "")
+        )
+    return result
+
+
+def _count_anomaly_attachment_manifest(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+) -> int:
+    """Count metadata rows plus unregistered legacy physical files.
+
+    The storage adapter is imported lazily so database bootstrap remains free
+    of a service-layer import.  If a legacy store cannot be read, the DB
+    metadata count remains a truthful lower bound rather than failing an
+    otherwise valid anomaly overview query.
+    """
+    metadata = list_anomaly_attachments(conn, anomaly_id)
+    metadata_names: set[str] = set()
+    unnamed_metadata_rows = 0
+    for row in metadata:
+        name = str(row.get("stored_name") or row.get("file_name") or "").strip()
+        if name:
+            metadata_names.add(name)
+        else:
+            unnamed_metadata_rows += 1
+    try:
+        from services import attachment_manager
+
+        physical_names = {
+            path.name
+            for path in attachment_manager.list_stored_attachment_files(anomaly_id)
+        }
+    except (OSError, ValueError):
+        physical_names = set()
+    return (
+        len(metadata_names)
+        + unnamed_metadata_rows
+        + len(physical_names - metadata_names)
+    )
 
 
 def create_anomaly_eight_d_review(
@@ -4075,6 +4500,7 @@ def append_anomaly_audit_log(
     before_value: str = "",
     after_value: str = "",
     actor_name: str = "",
+    _commit: bool = True,
 ) -> str:
     require_anomaly(conn, anomaly_id)
     act = (action or "").strip()
@@ -4097,7 +4523,8 @@ def append_anomaly_audit_log(
             (actor_name or "").strip(),
         ),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
     return lid
 
 
@@ -4140,7 +4567,8 @@ def list_anomaly_timeline(conn: sqlite3.Connection, anomaly_id: str) -> list[dic
                 "source": "audit",
             }
         )
-    # The audit log is authoritative; avoid duplicating CA/root-cause events.
+    # The audit log is authoritative; canonical rows only supply legacy events
+    # that predate transactional Action audit entries.
     seen_kinds = {e["kind"] for e in events}
     rc = get_anomaly_root_cause(conn, anomaly_id)
     if rc and rc.get("status") != ANOMALY_ROOT_CAUSE_NOT_STARTED and "ROOT_CAUSE_UPDATED" not in seen_kinds:
@@ -4153,15 +4581,18 @@ def list_anomaly_timeline(conn: sqlite3.Connection, anomaly_id: str) -> list[dic
                 "source": "root_cause",
             }
         )
-    for ca in list_corrective_actions(conn, anomaly_id):
-        if "CA_CREATED" not in seen_kinds:
+    for action in list_case_actions(conn, anomaly_id):
+        if (
+            "CASE_ACTION_CREATED" not in seen_kinds
+            and str(action.get("legacy_source") or "")
+        ):
             events.append(
                 {
-                    "ts": ca.get("created_at") or "",
-                    "kind": "CA_CREATED",
-                    "summary": ca.get("description") or "",
+                    "ts": action.get("created_at") or "",
+                    "kind": "LEGACY_ACTION_IMPORTED",
+                    "summary": action.get("description") or "",
                     "actor": "",
-                    "source": "corrective_action",
+                    "source": "case_action",
                 }
             )
     events.sort(key=lambda e: e["ts"] or "", reverse=True)
@@ -4171,44 +4602,34 @@ def list_anomaly_timeline(conn: sqlite3.Connection, anomaly_id: str) -> list[dic
 def get_anomaly_overview_card(conn: sqlite3.Connection, anomaly_id: str) -> dict:
     """Aggregate the case-overview summary used by UI / export / snapshot."""
     detail = require_anomaly(conn, anomaly_id)
-    actions = list_anomaly_actions(conn, anomaly_id)
-    current = get_current_anomaly_action(conn, anomaly_id)
-    overdue = is_anomaly_overdue(conn, anomaly_id)
+    actions = list_case_actions(conn, anomaly_id)
+    current = get_current_case_action(conn, anomaly_id)
+    overdue = is_case_action_overdue(conn, anomaly_id)
     rc = get_anomaly_root_cause(conn, anomaly_id)
-    cas = list_corrective_actions(conn, anomaly_id)
-    ca_status = ""
-    if cas:
-        worst_order = {
-            CORRECTIVE_ACTION_STATUS_INEFFECTIVE: 0,
-            CORRECTIVE_ACTION_STATUS_EFFECTIVE: 1,
-            CORRECTIVE_ACTION_STATUS_VERIFICATION_PENDING: 2,
-            CORRECTIVE_ACTION_STATUS_IMPLEMENTED: 3,
-            CORRECTIVE_ACTION_STATUS_IN_PROGRESS: 4,
-            CORRECTIVE_ACTION_STATUS_PLANNED: 5,
-            CORRECTIVE_ACTION_STATUS_CANCELLED: 6,
-        }
-        ca_status = min(
-            cas, key=lambda c: worst_order.get(c.get("status"), 9)
-        ).get("status", "")
-    verify_result = ""
-    for ca in cas:
-        verifications = list_effectiveness_verifications(conn, ca["id"])
-        if verifications and verifications[0].get("result") not in ("", "待驗證"):
-            verify_result = verifications[0].get("result", "")
-            break
+    improvement_actions = [
+        action
+        for action in actions
+        if action.get("action_type") in CASE_ACTION_VERIFICATION_ELIGIBLE_TYPES
+    ]
+    action_status = _aggregate_case_action_execution_status(actions)
+    improvement_status = _aggregate_case_action_execution_status(improvement_actions)
+    verify_result = _aggregate_action_verification_status(improvement_actions)
     return {
         "anomaly_id": anomaly_id,
         "status": detail.get("status") or "待處理",
         "overdue": overdue if detail.get("status") == "待處理" else False,
         "current_action": current,
         "open_action_count": sum(
-            1 for a in actions if a.get("status") == ANOMALY_ACTION_STATUS_OPEN
+            1 for action in actions
+            if action.get("execution_status") in CASE_ACTION_OPEN_STATUSES
         ),
+        "action_count": len(actions),
+        "action_status": action_status,
         "root_cause_status": (rc or {}).get("status", ANOMALY_ROOT_CAUSE_NOT_STARTED),
-        "corrective_action_status": ca_status or "—",
+        "corrective_action_status": improvement_status or "—",
         "verification_result": verify_result or "—",
         "has_analysis_notes": bool(list_anomaly_analysis_notes(conn, anomaly_id)),
-        "attachment_count": len(list_anomaly_attachments(conn, anomaly_id)),
+        "attachment_count": _count_anomaly_attachment_manifest(conn, anomaly_id),
     }
 
 

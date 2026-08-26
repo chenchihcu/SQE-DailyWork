@@ -535,3 +535,27 @@ Next action: Phase 4 signing when certificate strategy chosen.
 Harness update needed: yes
 Destination: `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md`, `docs/qa-gap-assessment-phase1.md`, this log.
 
+## Phase 2 Attachment Promotion Gate
+
+Date: 2026-08-26
+Task: Close Phase 2 attachment contract Promotion gate for the 48-item workbench rollout.
+Changes: Ran focused/native/full verification ladder; executed `scripts/apply_anomaly_attachments_promotion.ps1 -Apply` (idempotent skip because formal DB already `ready: true`); updated exec plan Phase 2 status, risk ledger, harness membership count (`625`).
+Impact: Formal `data/sqe_v2.db` attachment contract verified with audited backup; logical fingerprint unchanged (`c44e5c20…57aa3`).
+Verification: `verify_attachments_phase2.ps1` PASS (53 tests); `verify_attachments_phase2_visual.ps1` PASS; `verify.ps1 -Profile Full` PASS (`scratch/verify-full-log-final.txt`); post-apply focused PASS; backup `sqe_v2_backup_anomaly_attachments_v1_20260826_155811.db`.
+Residual risk: Original Phase 2 items 14–19 original titles remain outside repo; design-derived mapping documented; Phase 3a Root Cause write UI is partial and not Phase 2 scope.
+Next action: User chooses Phase 4 workbench UI closure or Phase 3b hypothesis schema spec session.
+Harness update needed: yes
+Destination: `docs/exec-plans/active/2026-08-24-case-workbench-48-item-rollout.md`, `docs/risk-ledger.md`, this log.
+
+## Phase 2 Items 14–19 Design-Derived Mapping
+
+Date: 2026-08-26
+Task: Document design-derived traceability for Phase 2 items 14–19 (48-item rollout).
+Changes: Added `docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md`; updated exec plan, risk ledger, architecture contract; `audit_phase2r_attachments.py` now emits structured `phase2_items_14_19`.
+Impact: Phase 2 traceability no longer marked UNKNOWN; item 19 partial-accepted documents legacy `CloseAnomalyDialog` attachment path.
+Verification: `tests/test_attachments_phase2.py` mapping-doc test; `verify_attachments_phase2.ps1`; `harness_check.ps1`.
+Residual risk: Original 48-item titles 14–19 still not in repo; bulk physical-file registration migration remains deferred.
+Next action: Delta audit only if user supplies original list; optional closure-dialog attachment unification.
+Harness update needed: yes
+Destination: mapping doc, exec plan, risk ledger, audit script, this log.
+

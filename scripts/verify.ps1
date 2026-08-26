@@ -222,6 +222,16 @@ function Export-CoverageReports {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
+$formalDbPath = Join-Path $repoRoot "data\sqe_v2.db"
+$fingerprintScript = Join-Path $repoRoot "scripts\sqlite_readonly_fingerprint.py"
+$formalFingerprintBefore = "ABSENT"
+if (Test-Path -LiteralPath $formalDbPath -PathType Leaf) {
+    $formalFingerprintBefore = & $resolvedPython $fingerprintScript `
+        --digest-only $formalDbPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to fingerprint the formal database before verification."
+    }
+}
 
 $hadDbPath = Test-Path Env:SQE_DB_PATH
 $previousDbPath = $env:SQE_DB_PATH
@@ -265,6 +275,12 @@ try {
     }
     $env:PYTHONPATH = $pythonPathEntries -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
+
+    Write-Host "[preflight] initialize disposable case_actions_v1"
+    & $resolvedPython -c "from database.connection import initialize_database; report=initialize_database(); migration=report['case_actions_migration']; assert migration['ready']; print('case_actions_ready', migration['canonical_case_actions'])"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Disposable case_actions_v1 preflight failed with exit code $LASTEXITCODE"
+    }
 
     if ($Profile -eq "Coverage") {
         Write-Host ""
@@ -457,6 +473,17 @@ try {
                 if ($target.min_width) {
                     $regressArgs += "--min-width"
                 }
+
+                # Each native probe is allowed to initialize or otherwise touch
+                # the disposable database.  Keep every pixel-regression child
+                # on the same fresh source snapshot used for baseline capture;
+                # otherwise an earlier target/scale can change later geometry
+                # without changing the visual contract under test.
+                Write-Host "[preflight] reset disposable database before visual regression: $($target.name)@$scale"
+                & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Unable to reset disposable database before visual regression for $($target.name) at scale $scale"
+                }
                 & $resolvedPython @regressArgs
                 if ($LASTEXITCODE -ne 0) {
                     throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
@@ -498,5 +525,20 @@ try {
             throw "Refusing to clean verification path outside scratch/verify: $resolvedVerificationDir"
         }
         Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+    }
+    $formalFingerprintAfter = "ABSENT"
+    if (Test-Path -LiteralPath $formalDbPath -PathType Leaf) {
+        $formalFingerprintAfter = & $resolvedPython $fingerprintScript `
+            --digest-only $formalDbPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to fingerprint the formal database after verification."
+        }
+    }
+    if ($formalFingerprintAfter -ne $formalFingerprintBefore) {
+        throw (
+            "Formal database mutation detected during verification: before={0}; after={1}" -f `
+                $formalFingerprintBefore,
+                $formalFingerprintAfter
+        )
     }
 }
