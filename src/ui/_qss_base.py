@@ -82,16 +82,6 @@ def get_base_qss() -> str:
             padding: 3px 8px;
         }}
 
-        QLabel[role="insight"] {{
-            background: {TOKENS["panel_alt_bg"]};
-            border-left: 4px solid {TOKENS["info"]};
-            border-top-right-radius: {TOKENS["radius_sm"]}px;
-            border-bottom-right-radius: {TOKENS["radius_sm"]}px;
-            color: {TOKENS["text_primary"]};
-            font-size: {TYPOGRAPHY["body_small"]}px;
-            padding: 6px 10px;
-        }}
-
         QLabel[role="errorText"] {{
             background: transparent;
             color: {TOKENS["danger"]};

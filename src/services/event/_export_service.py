@@ -468,17 +468,9 @@ def export_events_report(
                 quality_report_required = "未設定"
             else:
                 quality_report_required = "是" if bool(row.get("quality_report_required")) else "否"
-            current = row.get("current_action") or {}
-            current_desc = str(current.get("description") or "").strip()
-            current_owner = str(current.get("owner") or "").strip()
-            current_due = str(current.get("due_date") or "").strip()
-            if current_desc:
-                if current_due:
-                    current_text = f"{current_desc}（{current_owner or '—'} / {current_due}）"
-                else:
-                    current_text = f"{current_desc}（{current_owner or '—'}）"
-            else:
-                current_text = ""
+            from services.overview_text_codec import format_current_action_text
+
+            current_text = format_current_action_text(row.get("current_action"))
             return [
                 str(row.get("ref_no") or ""),
                 row.get("event_date") or "",

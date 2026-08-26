@@ -59,14 +59,11 @@ class ThemeMinimalSurfacesTests(unittest.TestCase):
         qss = get_theme_qss()
         self.assertNotIn("StatsTabs", qss)
 
-    def test_stats_dashboard_keeps_only_the_insight_surface(self) -> None:
+    def test_stats_dashboard_has_no_retired_insight_surfaces(self) -> None:
         qss = get_theme_qss()
         self.assertNotIn('statsInfoBanner', qss)
         self.assertNotIn('statsInfoText', qss)
-
-        insight = _selector_block(qss, 'QLabel[role="insight"]')
-        self.assertIn(f'background: {TOKENS["panel_alt_bg"]};', insight)
-        self.assertIn(f'border-left: 4px solid {TOKENS["info"]};', insight)
+        self.assertNotIn('QLabel[role="insight"]', qss)
 
     def test_semantic_button_colors_are_preserved(self) -> None:
         qss = get_theme_qss()

@@ -64,7 +64,6 @@ class _StatsChartMixin:
     - self._resp_content_layout     (set in _setup_ui)
     - self._range_keys()            (provided by widget)
     - self._range_text()            (provided by widget)
-    - self._create_insight_label()  (provided by widget)
     """
 
     # ── 輔助方法 ──────────────────────────────────────────
