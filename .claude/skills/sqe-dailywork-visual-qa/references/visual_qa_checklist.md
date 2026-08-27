@@ -24,7 +24,7 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 
 - `QT_QPA_PLATFORM=offscreen` is structural smoke only — never visual evidence (it can miss Windows CJK fonts and render 方框).
 - Visual screenshots, CJK rendering, font, and typography judgments must use native Windows Qt via `scripts\qt_visual_probe.py` (it auto-forces `QT_QPA_PLATFORM=windows` on Windows).
-- **Automated Mode & Anti-Deadlock Guard**: Probes and test harnesses must run with `SQE_PROBE=1` or `SQE_TESTING=1` so that `MainWindow.closeEvent` and destructive action handlers bypass interactive modal question dialogs (`QMessageBox.question`). Custom event filters mounted on `QApplication` must directly `return False` for unhandled events to prevent PySide6 C++ trampoline recursion.
+- **Automated Mode & Anti-Deadlock Guard**: Probes and test harnesses must run with `SQE_PROBE=1` or `SQE_TESTING=1` so that `MainWindow.closeEvent`, `_ensure_has_active_suppliers`, and destructive action handlers bypass interactive modal dialogs (`QMessageBox.warning` / `QMessageBox.question`). Custom event filters mounted on `QApplication` must directly `return False` for unhandled events to prevent PySide6 C++ trampoline recursion.
 - **Read the PNG, not the console.** The probe prints CJK to the console as cp950 mojibake — that is a display artifact, NOT broken data. Judge CJK only from the saved PNG.
 - **`grab()` cannot capture top-level popups.** `QMenu` (e.g. the event action menu), `QComboBox` dropdown lists, and tooltips render as separate native surfaces that a parent-widget `grab()` does not include. Verify those with a **structural assert** (e.g. `widget.toolTip()` / `accessibleName()` is set for elided cells, menu actions exist), not a screenshot.
 

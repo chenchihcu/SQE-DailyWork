@@ -132,11 +132,12 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
         ]
         month_key = QDate(2026, 4, 1).toString("yyyyMM")
         host = _DummyMainWindow()
-        with patch("services.event_service.get_monthly_stats", return_value=summary), \
-             patch("services.event_service.get_anomaly_trend_by_range", return_value=trend_data), \
-             patch("services.event_service.get_visit_trend_by_range", return_value=visit_data), \
-             patch("services.event_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
-             patch("services.event_service.get_anomaly_category_pareto_by_range", return_value=category_pareto):
+        with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
+             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data), \
+             patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_data), \
+             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
+             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto), \
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=host)
             widget.set_range(month_key, month_key)
         widget.show()
