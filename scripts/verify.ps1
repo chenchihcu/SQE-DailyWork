@@ -154,9 +154,9 @@ function Run-CoverageTestSuite {
     }
 
     Write-Host "[coverage] pytest module-level regressions"
-    & $PythonPath -m pip install --disable-pip-version-check pytest *> $null
+    & $PythonPath -m pip install --disable-pip-version-check pytest pyyaml *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "pip install pytest failed with exit code $LASTEXITCODE"
+        throw "pip install pytest pyyaml failed with exit code $LASTEXITCODE"
     }
     $pytestModules = @(
         "tests/test_anomaly_folder_creation.py",
@@ -439,9 +439,9 @@ try {
 
         Write-Host ""
         Write-Host "[2c/6] pytest module-level regressions"
-        & $resolvedPython -m pip install --disable-pip-version-check pytest *> $null
+        & $resolvedPython -m pip install --disable-pip-version-check pytest pyyaml *> $null
         if ($LASTEXITCODE -ne 0) {
-            throw "pip install pytest failed with exit code $LASTEXITCODE"
+            throw "pip install pytest pyyaml failed with exit code $LASTEXITCODE"
         }
         $pytestModules = @(
             "tests/test_anomaly_folder_creation.py",

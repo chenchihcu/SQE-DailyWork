@@ -64,7 +64,7 @@ class PrepareVerifyDatabaseTests(unittest.TestCase):
             schema_source = Path(report["schema_source"])
             self.assertTrue(schema_source.is_file())
             self.assertEqual(SCHEMA_SOURCE_NAME, schema_source.name)
-            self.assertEqual(schema_source.parent, destination.parent)
+            self.assertEqual(schema_source.parent.resolve(), destination.parent.resolve())
             self.assertNotEqual(destination.resolve(), formal.resolve())
             self.assertNotEqual(schema_source.resolve(), formal.resolve())
 
