@@ -112,6 +112,7 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **CJK Font Resolution Cache**: Wrap OS font registry scans in `@lru_cache(maxsize=1)` to avoid multi-second startup and rendering stalls.
   - **QShortcut Escape**: Use `QKeySequence(Qt.Key.Key_Escape)`—not `QKeySequence.StandardKey.Escape` (invalid in PySide6).
   - **GlobalSearchDialog tests**: Dialog `parent` must be `QWidget`; stub routing with `QWidget` + mocked methods, not `MagicMock` as parent.
+  - **CI unittest hang watchdog**: `tests/hang_watchdog.py` arms on `GITHUB_ACTIONS` or `SQE_TEST_HANG_SECONDS>0` (CI default 180s). Dump all-thread traceback and `os._exit(3)` instead of waiting for the job timeout. CI `verify.ps1` uses `PYTHONUNBUFFERED=1` and unittest `-v`. A cancelled job is not a green gate.
 - **Migration and harness test patterns**:
   - **defect_supplier_id backfill tests**: `defect_supplier_id_backfill_v1` runs once at `create_schema` when `migration_meta` ≠ `1`; test backfill success by inserting supplier+defect after first schema, deleting the meta key, then re-running `create_schema`; memory DB `defect_records` inserts need `defect_no, event_date, processing_line, item_no, qty, defect_desc, status, created_at`.
   - **Harness membership**: After adding tracked source/tests, update `docs/harness/source-baseline-manifest.md` live count (`(git ls-files --cached --others --exclude-standard | Where-Object { Test-Path $_ }).Count`) before `harness_check.ps1` membership drift fails.

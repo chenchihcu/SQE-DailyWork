@@ -551,3 +551,19 @@ Fix: Schema-only scratch source + explicit CI visual skip; keep local missing-DB
 Harness update needed: yes
 Destination: `src/database/verify_prepare.py`, `scripts/prepare_verify_database.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `tests/test_prepare_verify_database.py`, `AGENTS.md`, `docs/harness/*`, `docs/exec-plans/completed/2026-08-27-ci-verify-schema-source.md`
 
+## CI Unittest Hang Watchdog Entry
+
+Date: 2026-08-27
+Task: Stop GitHub Actions Full/Coverage from sitting in `unittest discover` until the 120-minute job timeout.
+Changes: Added `tests/hang_watchdog.py` (per-test 180s abort + all-thread traceback on `GITHUB_ACTIONS` / `SQE_TEST_HANG_SECONDS`); CI `PYTHONUNBUFFERED` + unittest `-v`; isolated stats-view tests from live `get_anomaly_process_keyword_pareto_by_range`; made `verify.ps1` finally cleanup non-debug on cancel.
+Impact: A hung test fails in minutes with a stack instead of a silent cancel. Cancelled jobs must not be treated as green. CI remains not visual evidence.
+Verification: `python -m unittest tests.test_hang_watchdog`; GitHub Actions Verify on the PR branch.
+Residual risk: The exact hung frame on Windows PySide6 6.11.2 is still `not verified` until the watchdog dumps a stack. Native visual, packaging, and live formal-DB migration stay local / user-authorized.
+Next action: Read the next Full/Coverage log; if the watchdog fires, fix the dumped test. Do not mark CI green on cancelled.
+Debug/RCA:
+Observed: Run 33041390984 Soak SUCCESS; Full and Coverage cancelled at 07:05Z. Last unittest log was `test_partial_statistics_failure_is_not_rendered_as_empty_data` (`RuntimeError: service unavailable`) at 05:16Z, then ~110 minutes of silence. Cursor CI subscription treated cancelled as success.
+Root cause: Default unittest is not verbose, so the hung test name never appears. Job `timeout-minutes: 120` cancels rather than fails. Stats-view tests called unpatched process-keyword queries against the shared disposable DB.
+Fix: Hang watchdog + verbose CI unittest + patch process-keyword in stats-view tests; do not cite cancelled as pass.
+Harness update needed: yes
+Destination: `tests/hang_watchdog.py`, `tests/__init__.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `AGENTS.md`, this log
+

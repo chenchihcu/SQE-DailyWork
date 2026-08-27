@@ -142,7 +142,8 @@ function Run-CoverageTestSuite {
     }
 
     Write-Host "[coverage] unittest discover -s tests"
-    & $PythonPath -m coverage run -m unittest discover -s tests -t .
+    $coverageUnittestArgs = @("-m", "coverage", "run", "-m", "unittest", "discover", "-s", "tests", "-t", ".") + (Get-UnittestVerbosityArgs)
+    & $PythonPath @coverageUnittestArgs
     if ($LASTEXITCODE -ne 0) {
         throw "coverage unittest discover failed with exit code $LASTEXITCODE"
     }
@@ -224,6 +225,28 @@ function Export-CoverageReports {
 
 function Test-GitHubActionsEnvironment {
     return ($env:GITHUB_ACTIONS -eq "true")
+}
+
+function Get-UnittestVerbosityArgs {
+    if ((Test-GitHubActionsEnvironment) -or ($env:SQE_TEST_VERBOSE -eq "1")) {
+        return , @("-v")
+    }
+    return , @()
+}
+
+function Enable-CiUnittestDiagnostics {
+    $env:PYTHONUNBUFFERED = "1"
+    if ([string]::IsNullOrWhiteSpace($env:PYTHONFAULTHANDLER)) {
+        $env:PYTHONFAULTHANDLER = "1"
+    }
+    $verbose = Get-UnittestVerbosityArgs
+    if ($verbose.Count -gt 0) {
+        Write-Host "Unittest verbosity: -v (CI/SQE_TEST_VERBOSE); not visual evidence."
+    }
+    if ([string]::IsNullOrWhiteSpace($env:SQE_TEST_HANG_SECONDS) -and ($verbose.Count -gt 0)) {
+        $env:SQE_TEST_HANG_SECONDS = "180"
+        Write-Host "SQE_TEST_HANG_SECONDS=$env:SQE_TEST_HANG_SECONDS (per-test hang abort)."
+    }
 }
 
 function Convert-PrepareVerifyReport {
@@ -322,6 +345,8 @@ try {
     }
     $env:PYTHONPATH = $pythonPathEntries -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
+    Enable-CiUnittestDiagnostics
+    $unittestVerboseArgs = Get-UnittestVerbosityArgs
 
     if ($Profile -eq "Coverage") {
         Write-Host ""
@@ -357,7 +382,7 @@ try {
 
         Write-Host ""
         Write-Host "[1/2] stability smoke (tests.test_stability_smoke)"
-        & $resolvedPython -m unittest tests.test_stability_smoke
+        & $resolvedPython -m unittest tests.test_stability_smoke @unittestVerboseArgs
         if ($LASTEXITCODE -ne 0) {
             throw "stability smoke failed with exit code $LASTEXITCODE"
         }
@@ -388,6 +413,7 @@ try {
             "test_database_backup.py",
             "test_database_isolation.py",
             "test_prepare_verify_database.py",
+            "test_hang_watchdog.py",
             "test_anomaly_transaction_boundaries.py",
             "test_migration_atomicity.py",
             "test_anomaly_repository_invariants.py",
@@ -409,7 +435,8 @@ try {
             $testModule = [System.IO.Path]::GetFileNameWithoutExtension($pattern)
             if ($pattern -in @(
                     "test_supplier_360_service.py",
-                    "test_supplier_oriented_ui.py"
+                    "test_supplier_oriented_ui.py",
+                    "test_hang_watchdog.py"
                 )) {
                 # Import through the tests package so tests/__init__.py can
                 # initialize the shared QApplication before Qt widgets load.
@@ -425,14 +452,14 @@ try {
         Write-Host "[2/6] python -m unittest discover -s tests"
         # Keep tests package-qualified so tests/__init__.py initializes the
         # shared QApplication before any PySide6 widget test is imported.
-        & $resolvedPython -m unittest discover -s tests -t .
+        & $resolvedPython -m unittest discover -s tests -t . @unittestVerboseArgs
         if ($LASTEXITCODE -ne 0) {
             throw "unittest failed with exit code $LASTEXITCODE"
         }
 
         Write-Host ""
         Write-Host "[2b/6] python -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync"
-        & $resolvedPython -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync
+        & $resolvedPython -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync @unittestVerboseArgs
         if ($LASTEXITCODE -ne 0) {
             throw "ncr unittest failed with exit code $LASTEXITCODE"
         }
@@ -539,26 +566,31 @@ try {
     Write-Host ""
     Write-Host "Verification passed."
 } finally {
-    Pop-Location
-    if ($hadDbPath) {
-        $env:SQE_DB_PATH = $previousDbPath
-    } else {
-        Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
-    }
-    if ($hadDisposableGuard) {
-        $env:SQE_REQUIRE_DISPOSABLE_DB = $previousDisposableGuard
-    } else {
-        Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
-    }
-    if (Test-Path -LiteralPath $verificationDir -PathType Container) {
-        $resolvedVerificationRoot = [System.IO.Path]::GetFullPath($verificationRoot)
-        $resolvedVerificationDir = [System.IO.Path]::GetFullPath($verificationDir)
-        if (-not $resolvedVerificationDir.StartsWith(
-            $resolvedVerificationRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase
-        )) {
-            throw "Refusing to clean verification path outside scratch/verify: $resolvedVerificationDir"
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        Pop-Location
+        if ($hadDbPath) {
+            $env:SQE_DB_PATH = $previousDbPath
+        } else {
+            Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+        if ($hadDisposableGuard) {
+            $env:SQE_REQUIRE_DISPOSABLE_DB = $previousDisposableGuard
+        } else {
+            Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $verificationDir -PathType Container) {
+            $resolvedVerificationRoot = [System.IO.Path]::GetFullPath($verificationRoot)
+            $resolvedVerificationDir = [System.IO.Path]::GetFullPath($verificationDir)
+            if ($resolvedVerificationDir.StartsWith(
+                $resolvedVerificationRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+                Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+            }
+        }
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
     }
 }
