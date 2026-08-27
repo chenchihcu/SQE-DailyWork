@@ -1,7 +1,9 @@
 param(
     [string]$PythonExe,
     [ValidateSet("Focused", "Full", "Coverage", "Soak")]
-    [string]$Profile = "Full"
+    [string]$Profile = "Full",
+    [switch]$AllowSchemaOnlySource,
+    [switch]$SkipNativeVisual
 )
 
 Set-StrictMode -Version Latest
@@ -220,6 +222,48 @@ function Export-CoverageReports {
     Write-Host "Coverage reports: $xmlPath , $htmlDir"
 }
 
+function Test-GitHubActionsEnvironment {
+    return ($env:GITHUB_ACTIONS -eq "true")
+}
+
+function Convert-PrepareVerifyReport {
+    param([object]$RawOutput)
+
+    $text = if ($null -eq $RawOutput) {
+        ""
+    } elseif ($RawOutput -is [System.Array]) {
+        @($RawOutput | ForEach-Object { "$_" }) -join "`n"
+    } else {
+        [string]$RawOutput
+    }
+    try {
+        return $text | ConvertFrom-Json
+    } catch {
+        throw "prepare_verify_database.py returned non-JSON output: $text"
+    }
+}
+
+function Invoke-PrepareVerifyDatabase {
+    param(
+        [string]$PythonPath,
+        [string]$RepoRoot,
+        [string]$Source,
+        [string]$Destination,
+        [bool]$AllowSchemaOnly
+    )
+
+    $scriptPath = Join-Path $RepoRoot "scripts\prepare_verify_database.py"
+    $prepareArgs = @($scriptPath, $Source, $Destination)
+    if ($AllowSchemaOnly) {
+        $prepareArgs += "--allow-schema-only"
+    }
+    $raw = & $PythonPath @prepareArgs
+    if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create verified disposable database for verification: $raw"
+    }
+    return Convert-PrepareVerifyReport -RawOutput $raw
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
 
@@ -237,10 +281,22 @@ $verificationDir = Join-Path $verificationRoot ([Guid]::NewGuid().ToString("N"))
 $verificationDb = Join-Path $verificationDir "sqe_v2.db"
 New-Item -ItemType Directory -Path $verificationDir -Force | Out-Null
 
+$inGitHubActions = Test-GitHubActionsEnvironment
+$allowSchemaOnlyEffective = [bool]$AllowSchemaOnlySource -or $inGitHubActions
+$skipNativeVisualEffective = [bool]$SkipNativeVisual -or $inGitHubActions
+$prepareVerifyParams = @{
+    PythonPath = $resolvedPython
+    RepoRoot = $repoRoot
+    Source = $sourceDbPath
+    Destination = $verificationDb
+    AllowSchemaOnly = $allowSchemaOnlyEffective
+}
+
 try {
-    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unable to create verified disposable database for verification"
+    $prepareReport = Invoke-PrepareVerifyDatabase @prepareVerifyParams
+    $prepareMode = [string]$prepareReport.mode
+    if ($prepareMode -eq "schema_only") {
+        $skipNativeVisualEffective = $true
     }
 } catch {
     if (Test-Path -LiteralPath $verificationDir -PathType Container) {
@@ -255,6 +311,7 @@ $env:SQE_REQUIRE_DISPOSABLE_DB = "1"
 Write-Host "Using Python: $resolvedPython"
 Write-Host "Verification profile: $Profile"
 Write-Host "Disposable database: $verificationDb"
+Write-Host "Verify source mode: $prepareMode"
 
 Push-Location $repoRoot
 try {
@@ -330,6 +387,7 @@ try {
         $focusedPatterns = @(
             "test_database_backup.py",
             "test_database_isolation.py",
+            "test_prepare_verify_database.py",
             "test_anomaly_transaction_boundaries.py",
             "test_migration_atomicity.py",
             "test_anomaly_repository_invariants.py",
@@ -411,60 +469,64 @@ try {
 
     Write-Host ""
     Write-Host "[4/6] native Qt visual probe belt"
-    # Tests intentionally exercise writes against the disposable database.
-    # Reset it before visual evidence so charts and lists use the same
-    # source snapshot as native baseline generation.
-    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unable to reset disposable database before visual verification"
-    }
-    $previousQtPlatform = $env:QT_QPA_PLATFORM
-    try {
-        Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-        if ($Profile -eq "Full") {
-            & $resolvedPython scripts\qt_visual_belt.py
-        } else {
-            & $resolvedPython scripts\qt_visual_probe.py --target form-density
-            if ($LASTEXITCODE -eq 0) {
-                & $resolvedPython scripts\qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width
-            }
-        }
-        if ($LASTEXITCODE -ne 0) {
-            throw "native Qt visual belt failed with exit code $LASTEXITCODE"
-        }
-    } finally {
-        if ([string]::IsNullOrWhiteSpace($previousQtPlatform)) {
-            Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-        } else {
-            $env:QT_QPA_PLATFORM = $previousQtPlatform
-        }
-    }
-
-    Write-Host ""
-    Write-Host "[5/6] native visual regression"
-    if ($Profile -eq "Full") {
-        $targetManifest = Get-Content -LiteralPath "scripts\qt_probe_targets.json" -Raw | ConvertFrom-Json
-        foreach ($target in $targetManifest.targets) {
-            if (-not $target.baseline_required) {
-                continue
-            }
-            foreach ($scale in $targetManifest.required_scales) {
-                $regressArgs = @(
-                    "scripts\qt_visual_regress.py",
-                    "--target", [string]$target.name,
-                    "--scale", [string]$scale
-                )
-                if ($target.min_width) {
-                    $regressArgs += "--min-width"
-                }
-                & $resolvedPython @regressArgs
-                if ($LASTEXITCODE -ne 0) {
-                    throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
-                }
-            }
-        }
+    if ($skipNativeVisualEffective) {
+        Write-Host "Skipping native Qt visual belt (CI/SkipNativeVisual/schema-only); not visual evidence."
+        Write-Host ""
+        Write-Host "[5/6] native visual regression"
+        Write-Host "Skipping native visual regression (CI/SkipNativeVisual/schema-only); not visual evidence."
     } else {
-        Write-Host "Focused profile skips pixel baselines; native form-density probe already ran."
+        # Tests intentionally exercise writes against the disposable database.
+        # Reset it before visual evidence so charts and lists use the same
+        # source snapshot as native baseline generation.
+        $null = Invoke-PrepareVerifyDatabase @prepareVerifyParams
+        $previousQtPlatform = $env:QT_QPA_PLATFORM
+        try {
+            Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+            if ($Profile -eq "Full") {
+                & $resolvedPython scripts\qt_visual_belt.py
+            } else {
+                & $resolvedPython scripts\qt_visual_probe.py --target form-density
+                if ($LASTEXITCODE -eq 0) {
+                    & $resolvedPython scripts\qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width
+                }
+            }
+            if ($LASTEXITCODE -ne 0) {
+                throw "native Qt visual belt failed with exit code $LASTEXITCODE"
+            }
+        } finally {
+            if ([string]::IsNullOrWhiteSpace($previousQtPlatform)) {
+                Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+            } else {
+                $env:QT_QPA_PLATFORM = $previousQtPlatform
+            }
+        }
+
+        Write-Host ""
+        Write-Host "[5/6] native visual regression"
+        if ($Profile -eq "Full") {
+            $targetManifest = Get-Content -LiteralPath "scripts\qt_probe_targets.json" -Raw | ConvertFrom-Json
+            foreach ($target in $targetManifest.targets) {
+                if (-not $target.baseline_required) {
+                    continue
+                }
+                foreach ($scale in $targetManifest.required_scales) {
+                    $regressArgs = @(
+                        "scripts\qt_visual_regress.py",
+                        "--target", [string]$target.name,
+                        "--scale", [string]$scale
+                    )
+                    if ($target.min_width) {
+                        $regressArgs += "--min-width"
+                    }
+                    & $resolvedPython @regressArgs
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
+                    }
+                }
+            }
+        } else {
+            Write-Host "Focused profile skips pixel baselines; native form-density probe already ran."
+        }
     }
 
     Write-Host ""

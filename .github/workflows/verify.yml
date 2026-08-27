@@ -27,7 +27,7 @@ jobs:
       - name: Run Full verify gate
         shell: pwsh
         run: |
-          .\scripts\verify.ps1 -Profile Full -PythonExe (Get-Command python).Source
+          .\scripts\verify.ps1 -Profile Full -PythonExe (Get-Command python).Source -AllowSchemaOnlySource -SkipNativeVisual
 
       - name: Upload verification artifacts on failure
         if: failure()
@@ -59,7 +59,7 @@ jobs:
       - name: Run Coverage verify gate
         shell: pwsh
         run: |
-          .\scripts\verify.ps1 -Profile Coverage -PythonExe (Get-Command python).Source
+          .\scripts\verify.ps1 -Profile Coverage -PythonExe (Get-Command python).Source -AllowSchemaOnlySource
 
       - name: Upload coverage artifacts
         if: always()
@@ -91,4 +91,4 @@ jobs:
       - name: Run Soak verify gate
         shell: pwsh
         run: |
-          .\scripts\verify.ps1 -Profile Soak -PythonExe (Get-Command python).Source
+          .\scripts\verify.ps1 -Profile Soak -PythonExe (Get-Command python).Source -AllowSchemaOnlySource

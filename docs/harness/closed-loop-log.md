@@ -535,3 +535,19 @@ Next action: Phase 4 signing when certificate strategy chosen.
 Harness update needed: yes
 Destination: `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md`, `docs/qa-gap-assessment-phase1.md`, this log.
 
+## CI Schema-Only Verify Source Entry
+
+Date: 2026-08-27
+Task: Unblock GitHub Actions Verify when `data/sqe_v2.db` is absent from clean clones.
+Changes: Added `prepare_verify_database` (schema-only scratch `create_schema` + WAL-safe backup, refuse formal path); `verify.ps1` `-AllowSchemaOnlySource` / `-SkipNativeVisual` with `GITHUB_ACTIONS` defaults; CI Full skips native visual belt/regress; Coverage/Soak and Full pass `-AllowSchemaOnlySource`; focused tests for missing/schema-only/backup/formal-destination; harness/AGENTS/CLAUDE/Codex match examples; TBD vs Cloud branch recorded in contradiction-log.
+Impact: CI and clean clones can run Full-minus-visual, Coverage, and Soak without writing `data/sqe_v2.db`. Local Windows Full without the new switch still fails loud when the formal DB is missing. CI must not be cited as native visual evidence.
+Verification: Focused Python tests for prepare/isolation/backup/app_paths on Linux; GitHub Actions Verify on the PR branch.
+Residual risk: Native visual belt, Windows onedir/portable smoke, and live formal-DB migration remain local Windows / user-authorized. CI interpreter is Python 3.12 vs local 3.14.3.
+Next action: Confirm GitHub Actions Verify jobs on `cursor/ci-verify-schema-source-7802`; do not authorize live `initialize_database()` on `data/sqe_v2.db`.
+Debug/RCA:
+Observed: `main` Verify run 32563535658 failed all three jobs at disposable backup with `FileNotFoundError` for `data/sqe_v2.db`.
+Root cause: `verify.ps1` always copied the gitignored formal DB; GitHub checkout has no such file. Native visual on `windows-latest` is also not trustworthy CJK evidence.
+Fix: Schema-only scratch source + explicit CI visual skip; keep local missing-DB failure as the default.
+Harness update needed: yes
+Destination: `src/database/verify_prepare.py`, `scripts/prepare_verify_database.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `tests/test_prepare_verify_database.py`, `AGENTS.md`, `docs/harness/*`, `docs/exec-plans/completed/2026-08-27-ci-verify-schema-source.md`
+
