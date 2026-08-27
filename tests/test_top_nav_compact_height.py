@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -53,6 +54,15 @@ class MainWorkflowTabTests(unittest.TestCase):
             pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
+        # Schema-only / empty-supplier DBs would otherwise block on
+        # QMessageBox.warning inside _ensure_has_active_suppliers when
+        # tests switch to 新增訪廠 / 新增異常.
+        self._suppliers = patch(
+            "ui.main_window._product_service.has_active_suppliers",
+            return_value=True,
+        )
+        self._suppliers.start()
+        self.addCleanup(self._suppliers.stop)
         self.window = MainWindow()
         self.window.show()
         self.app.processEvents()

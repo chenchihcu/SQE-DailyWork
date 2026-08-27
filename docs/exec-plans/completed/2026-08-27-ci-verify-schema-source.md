@@ -38,6 +38,7 @@ CI native visual as evidence.
 - Native visual belt and Windows packaging stay local-only (`not verified` here)
 - First live `data/sqe_v2.db` `initialize_database()` still needs explicit user
   authorization
-- GitHub Actions Full/Coverage on `33b9797` cancelled at 120 minutes after
-  `test_partial_statistics_failure_is_not_rendered_as_empty_data` (Soak succeeded).
-  A cancelled job is not green. Follow-up adds per-test hang abort + unittest `-v`.
+- GitHub Actions Full/Coverage on `3c3e530` failed after hang watchdog dump:
+  `test_create_page_updates_sidebar_active_state` blocked in
+  `_ensure_has_active_suppliers` → `QMessageBox.warning` on schema-only empty
+  suppliers. Follow-up skips that modal when `is_automated_runtime()` is true.

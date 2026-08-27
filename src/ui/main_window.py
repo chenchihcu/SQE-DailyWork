@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 import sys
 from typing import Any
@@ -43,6 +42,7 @@ from ui.layout_constants import (
     MAIN_WINDOW_MIN_HEIGHT,
     MAIN_WINDOW_MIN_WIDTH,
 )
+from ui.runtime_mode import is_automated_runtime, missing_supplier_create_gate
 from ui.page_header_bar import PageHeaderBar
 from ui.sidebar_nav import (
     ACTION_OPEN_APPEARANCE_REDESIGN,
@@ -140,12 +140,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         self.setWindowIcon(QIcon(str(asset_path("mitcorp_logo.png"))))
-        is_automated = (
-            os.environ.get("QT_QPA_PLATFORM") == "offscreen"
-            or os.environ.get("SQE_TESTING") == "1"
-            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
-            or os.environ.get("SQE_PROBE") == "1"
-        )
+        is_automated = is_automated_runtime()
         prefs = load_application_preferences()
         geom = None
         if prefs.window_geometry_mode == "remember" and not is_automated:
@@ -705,13 +700,21 @@ class MainWindow(QMainWindow):
     # ── Dialogs ─────────────────────────────────────────────────────────────
 
     def _ensure_has_active_suppliers(self) -> bool:
-        if _product_service.has_active_suppliers():
-            return True
-        QMessageBox.warning(
-            self,
-            "需先建立供應商",
-            "目前沒有可用供應商，請先到基礎資料建立供應商。",
+        may_proceed, should_warn = missing_supplier_create_gate(
+            _product_service.has_active_suppliers()
         )
+        if may_proceed:
+            return True
+        if should_warn:
+            QMessageBox.warning(
+                self,
+                "需先建立供應商",
+                "目前沒有可用供應商，請先到基礎資料建立供應商。",
+            )
+        else:
+            logger.info(
+                "目前沒有可用供應商；自動化環境略過提示對話框，改開基礎資料。"
+            )
         self._open_master_data()
         return False
 
@@ -846,12 +849,7 @@ class MainWindow(QMainWindow):
             logger.exception("讀取顯示偏好失敗，使用預設值")
             from ui.appearance_preferences import AppearancePreferences
             prefs = AppearancePreferences.default()
-        is_automated = (
-            os.environ.get("QT_QPA_PLATFORM") == "offscreen"
-            or os.environ.get("SQE_TESTING") == "1"
-            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
-            or os.environ.get("SQE_PROBE") == "1"
-        )
+        is_automated = is_automated_runtime()
 
         if prefs.window_geometry_mode == "remember" and not is_automated:
             from PySide6.QtCore import QSettings

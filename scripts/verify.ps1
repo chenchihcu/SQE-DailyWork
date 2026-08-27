@@ -414,6 +414,7 @@ try {
             "test_database_isolation.py",
             "test_prepare_verify_database.py",
             "test_hang_watchdog.py",
+            "test_automated_modal_guard.py",
             "test_anomaly_transaction_boundaries.py",
             "test_migration_atomicity.py",
             "test_anomaly_repository_invariants.py",
@@ -436,7 +437,8 @@ try {
             if ($pattern -in @(
                     "test_supplier_360_service.py",
                     "test_supplier_oriented_ui.py",
-                    "test_hang_watchdog.py"
+                    "test_hang_watchdog.py",
+                    "test_automated_modal_guard.py"
                 )) {
                 # Import through the tests package so tests/__init__.py can
                 # initialize the shared QApplication before Qt widgets load.

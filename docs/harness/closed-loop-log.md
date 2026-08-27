@@ -567,3 +567,19 @@ Fix: Hang watchdog + verbose CI unittest + patch process-keyword in stats-view t
 Harness update needed: yes
 Destination: `tests/hang_watchdog.py`, `tests/__init__.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `AGENTS.md`, this log
 
+## CI Empty-Supplier Create-Page Modal Hang Entry
+
+Date: 2026-08-27
+Task: Stop schema-only CI unittest from hanging on `_ensure_has_active_suppliers`.
+Changes: Added `ui.runtime_mode.is_automated_runtime()` / `missing_supplier_create_gate()` and reused them in `MainWindow` `__init__` / `closeEvent` / `_ensure_has_active_suppliers`; skip `QMessageBox.warning` in automated runs and still return False + open master data; patch top-nav create-page tests with `has_active_suppliers=True`; focused tests in `tests/test_automated_modal_guard.py`.
+Impact: Empty schema-only verify DBs no longer block create-page navigation tests on an unclicked OK. Interactive users still see the warning.
+Verification: `python -m unittest tests.test_automated_modal_guard tests.test_hang_watchdog`; GitHub Actions Verify on the PR branch.
+Residual risk: Other unguarded `QMessageBox` / `QDialog.exec()` paths in `main_window.py` (anomaly-management critical, unclassified pending `exec()`) are not in the dumped stack. Native visual, packaging, and live formal-DB migration stay local / user-authorized.
+Next action: Confirm Full / Coverage / Soak SUCCESS on the PR; do not treat cancelled or watchdog abort as green.
+Debug/RCA:
+Observed: Run 33049324655 Soak SUCCESS; Full/Coverage failed after hang watchdog at `07:42:03Z` (`os._exit` / ACCESS_VIOLATION). Stack: `test_create_page_updates_sidebar_active_state` → `_switch_primary_page` → `_ensure_has_active_suppliers` → blocking `QMessageBox.warning`.
+Root cause: Schema-only source has no suppliers. Automated Modal Guard covered `closeEvent` but not this navigation gate. `test_lightweight_visit_entry_routing.py` already patched `has_active_suppliers`; `test_top_nav_compact_height.py` did not.
+Fix: Skip the modal when `is_automated_runtime()`; patch create-page tests; assert warning is not called in automated empty-supplier runs.
+Harness update needed: yes
+Destination: `src/ui/runtime_mode.py`, `src/ui/main_window.py`, `tests/test_automated_modal_guard.py`, `tests/test_top_nav_compact_height.py`, `scripts/verify.ps1`, `AGENTS.md`, this log
+
