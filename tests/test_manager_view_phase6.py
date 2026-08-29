@@ -8,6 +8,9 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtWidgets import QApplication, QWidget
+
 from database.repo_helpers import CASE_ACTION_TYPE_NEXT_ACTION
 from database import manager_view_repository
 from database import repository
@@ -145,11 +148,20 @@ class ManagerViewRepositoryTests(unittest.TestCase):
 class ManagerViewPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        from PySide6.QtWidgets import QApplication
-
         cls.app = QApplication.instance() or QApplication([])
+        cls._host = QWidget()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._host.close()
+        cls._host.deleteLater()
+        app = QApplication.instance()
+        if app is not None:
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
 
     def setUp(self) -> None:
+        self._pages: list[ManagerViewPage] = []
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys=ON")
@@ -170,9 +182,22 @@ class ManagerViewPageTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._conn_patcher.stop()
         self.conn.close()
+        for page in self._pages:
+            page.close()
+            page.deleteLater()
+        self._pages.clear()
+        app = QApplication.instance()
+        if app is not None:
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
+
+    def _make_page(self, parent: QWidget | None = None) -> ManagerViewPage:
+        page = ManagerViewPage(parent if parent is not None else self._host)
+        self._pages.append(page)
+        return page
 
     def test_page_renders_summary_and_queue_tabs(self) -> None:
-        page = ManagerViewPage(mock.Mock())
+        page = self._make_page()
         page.refresh_data()
         self.assertEqual(2, page._tabs.count())
         self.assertGreaterEqual(page._summary_table.rowCount(), 1)
@@ -180,7 +205,7 @@ class ManagerViewPageTests(unittest.TestCase):
 
     def test_open_summary_row_routes_to_workbench(self) -> None:
         main_window = mock.Mock()
-        page = ManagerViewPage(main_window)
+        page = self._make_page(main_window)
         page.refresh_data()
         page._open_anomaly(self.anomaly_id)
         main_window.open_anomaly_management.assert_called_once_with(self.anomaly_id)

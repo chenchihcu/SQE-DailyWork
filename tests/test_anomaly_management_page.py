@@ -6,6 +6,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea, QTabWidget, QWidget
 
 from services.event import (
@@ -21,8 +22,19 @@ class AnomalyManagementPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
+        cls._host = QWidget()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._host.close()
+        cls._host.deleteLater()
+        app = QApplication.instance()
+        if app is not None:
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
 
     def setUp(self) -> None:
+        self._pages: list[AnomalyManagementPage] = []
         self.detail = {
             "anomaly_no": "20260818001",
             "anomaly_date": "2026-08-18",
@@ -55,6 +67,12 @@ class AnomalyManagementPageTests(unittest.TestCase):
             mock.patch.object(
                 _anomaly_workbench_service, "list_attachment_actions", return_value=[]
             ),
+            mock.patch.object(
+                _anomaly_workbench_service, "list_attachment_notes", return_value=[]
+            ),
+            mock.patch.object(
+                _anomaly_workbench_service, "list_attachment_hypotheses", return_value=[]
+            ),
             mock.patch.object(_anomaly_workbench_service, "list_attachments", return_value=[]),
             mock.patch.object(_anomaly_workbench_service, "list_audit_logs", return_value=[]),
             mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=[]),
@@ -65,15 +83,22 @@ class AnomalyManagementPageTests(unittest.TestCase):
     def tearDown(self) -> None:
         for patcher in self.patchers:
             patcher.stop()
+        for page in self._pages:
+            page.close()
+            page.deleteLater()
+        self._pages.clear()
         app = QApplication.instance()
         if app is not None:
-            for widget in list(app.topLevelWidgets()):
-                widget.close()
-                widget.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
 
+    def _make_page(self) -> AnomalyManagementPage:
+        page = AnomalyManagementPage(self._host)
+        self._pages.append(page)
+        return page
+
     def test_renders_seven_management_tabs(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1")
 
         tabs = page.findChild(QTabWidget, "AnomalyManagementTabs")
@@ -85,7 +110,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         )
 
     def test_loads_anomaly_and_enters_inline_edit(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1", edit=True)
 
         self.assertIsNotNone(page._edit_form)
@@ -95,7 +120,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self.assertFalse(page.cancel_button.isHidden())
 
     def test_dirty_form_blocks_leave(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1", edit=True)
         assert page._edit_form is not None
         page._edit_form._dirty = True
@@ -103,7 +128,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             self.assertFalse(page.can_leave())
 
     def test_each_management_tab_has_one_visible_scroll_owner(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1")
 
         for index in range(page.tabs.count()):
@@ -113,7 +138,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             self.assertTrue(scrolls[0].widgetResizable())
 
     def test_analysis_tab_exposes_hypothesis_actions(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1")
         analysis_tab = page.tabs.widget(2)
         buttons = [
@@ -125,7 +150,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self.assertIn("晉升為根本原因", buttons)
 
     def test_command_buttons_follow_save_then_cancel_order(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         command_row = page.layout().itemAt(4).layout()
 
         self.assertIs(command_row.itemAt(1).widget(), page.save_button)
@@ -134,7 +159,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self.assertEqual(page.cancel_button.accessibleName(), "取消編輯")
 
     def test_header_close_and_reopen_buttons_are_mutually_exclusive(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1")
         self.assertTrue(page.close_button.isEnabled())
         self.assertFalse(page.reopen_button.isEnabled())
@@ -147,7 +172,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self.assertFalse(page.edit_button.isEnabled())
 
     def test_overview_tab_exposes_quality_conclusion_section(self) -> None:
-        page = AnomalyManagementPage(mock.Mock())
+        page = self._make_page()
         page.load_anomaly("anomaly-1")
         overview_tab = page.tabs.widget(0)
         labels = [
@@ -174,7 +199,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         with mock.patch.object(
             _case_action_service, "list_case_actions", return_value=[action]
         ):
-            page = AnomalyManagementPage(mock.Mock())
+            page = self._make_page()
             page.load_anomaly("anomaly-1")
             corrective_tab = page.tabs.widget(4)
             buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
@@ -220,7 +245,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             "list_case_actions",
             side_effect=[[pending_action], [verified_action]],
         ):
-            page = AnomalyManagementPage(mock.Mock())
+            page = self._make_page()
             page.load_anomaly("anomaly-1")
             corrective_tab = page.tabs.widget(4)
             buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
@@ -237,7 +262,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             "list_repeat_issues",
             side_effect=RuntimeError("schema not ready"),
         ):
-            page = AnomalyManagementPage(mock.Mock())
+            page = self._make_page()
             page.load_anomaly("anomaly-1")
             self.assertEqual(0, page.repeat_issues_panel._table.rowCount())
 
