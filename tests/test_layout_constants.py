@@ -70,7 +70,6 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_close_dialog_constants(self) -> None:
         self.assertEqual((12, 8, 12, 8), lc.CLOSE_DIALOG_REF_MARGINS)
         self.assertEqual(120, lc.CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
-        self.assertEqual(6, lc.CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS)
         self.assertEqual(320, lc.CLOSE_DIALOG_ATTACHMENT_SCROLL_MAX_HEIGHT)
 
     def test_global_search_dialog_constants(self) -> None:
@@ -126,8 +125,6 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_visit_form_layout_constants(self) -> None:
         self.assertEqual(6, lc.VISIT_FORM_CONTENT_SPACING)
         self.assertEqual(6, lc.VISIT_FORM_VERTICAL_SPACING)
-        self.assertEqual(1, lc.VISIT_SUMMARY_VISIBLE_ROWS)
-        self.assertEqual(4, lc.VISIT_PAGE_SUMMARY_VISIBLE_ROWS)
 
 
 if __name__ == "__main__":

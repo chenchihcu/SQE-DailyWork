@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +28,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -54,9 +54,9 @@ class AnomalyNoteDialog(DirtyTrackingMixin, QDialog):
         self.setMinimumWidth(WORKBENCH_DIALOG_WIDE_MIN_WIDTH)
         self.setMaximumWidth(FORM_MAX_WIDTH)
 
-        self.content_input = QTextEdit()
-        self.content_input.setPlaceholderText("記錄已確認事實、推論、假設或待確認事項")
-        self.content_input.setAcceptRichText(False)
+        self.content_input = BulletListWidget(
+            placeholder="記錄已確認事實、推論、假設或待確認事項"
+        )
 
         self.evidence_combo = QComboBox()
         for value in ANOMALY_EVIDENCE_TYPES:
@@ -97,17 +97,17 @@ class AnomalyNoteDialog(DirtyTrackingMixin, QDialog):
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
-        self.content_input.textChanged.connect(self._update_validation)
+        self.content_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.content_input.textChanged,
+            self.content_input.valueChanged,
             self.evidence_combo.currentIndexChanged,
         ])
 
     @property
     def _has_content(self) -> bool:
-        return bool(self.content_input.toPlainText().strip())
+        return bool(self.content_input.get_formatted_text().strip())
 
     def _update_validation(self) -> None:
         valid = self._has_content
@@ -118,7 +118,7 @@ class AnomalyNoteDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
-        content = self.content_input.toPlainText().strip()
+        content = self.content_input.get_formatted_text().strip()
         if not content:
             self._update_validation()
             return

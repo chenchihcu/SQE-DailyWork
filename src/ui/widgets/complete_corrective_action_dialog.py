@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -23,6 +22,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     make_inline_error_label,
@@ -59,14 +59,10 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         self.setMinimumWidth(WORKBENCH_DIALOG_MIN_WIDTH)
         self.setMaximumWidth(FORM_MAX_WIDTH)
 
-        self.evidence_input = QTextEdit()
-        self.evidence_input.setPlaceholderText(
-            "填寫實施證據（照片說明、文件連結、實測數據等）"
+        self.evidence_input = BulletListWidget(
+            placeholder="填寫實施證據（照片說明、文件連結、實測數據等）"
         )
-        self.evidence_input.setAcceptRichText(False)
-        self.note_input = QTextEdit()
-        self.note_input.setPlaceholderText("完成說明（選填）")
-        self.note_input.setAcceptRichText(False)
+        self.note_input = BulletListWidget(placeholder="完成說明（選填）")
 
         self._description = description
 
@@ -119,8 +115,8 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.evidence_input.textChanged,
-            self.note_input.textChanged,
+            self.evidence_input.valueChanged,
+            self.note_input.valueChanged,
         ])
 
     def _update_validation(self) -> None:
@@ -130,12 +126,12 @@ class CompleteCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
             self._error_label.setText("")
 
     def _on_submit(self) -> None:
-        evidence = self.evidence_input.toPlainText().strip()
+        evidence = self.evidence_input.get_formatted_text().strip()
         try:
             _case_action_service.complete_case_action(
                 self._action_id,
                 implementation_evidence=evidence,
-                completion_note=self.note_input.toPlainText().strip(),
+                completion_note=self.note_input.get_formatted_text().strip(),
                 actor_name=self._actor_name,
             )
         except ValueError as exc:

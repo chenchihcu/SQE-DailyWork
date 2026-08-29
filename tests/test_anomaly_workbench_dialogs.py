@@ -39,7 +39,7 @@ class AnomalyNoteDialogTests(unittest.TestCase):
         ) as mk:
             dialog._on_submit()
         self.assertEqual(mk.call_args.kwargs["evidence_type"], "INFERENCE")
-        self.assertEqual(mk.call_args.kwargs["content"], "推測為治具磨損")
+        self.assertEqual(mk.call_args.kwargs["content"], "1. 推測為治具磨損")
         self.assertEqual(emitted, ["n-1"])
 
 
@@ -77,9 +77,9 @@ class AnomalyRootCauseDialogTests(unittest.TestCase):
             _anomaly_workbench_service, "save_root_cause", return_value="rc-1"
         ) as mk:
             dialog._on_submit()
-        self.assertEqual(mk.call_args.kwargs["statement"], "治具磨損")
+        self.assertEqual(mk.call_args.kwargs["statement"], "1. 治具磨損")
         self.assertEqual(mk.call_args.kwargs["status"], "已驗證")
-        self.assertEqual(mk.call_args.kwargs["validation_method"], "5-Why")
+        self.assertEqual(mk.call_args.kwargs["validation_method"], "1. 5-Why")
         self.assertEqual(emitted, ["rc-1"])
 
 
@@ -117,7 +117,7 @@ class AnomalyHypothesisDialogTests(unittest.TestCase):
             ) as mk,
         ):
             dialog._on_submit()
-        self.assertEqual(mk.call_args.kwargs["statement"], "治具磨損")
+        self.assertEqual(mk.call_args.kwargs["statement"], "1. 治具磨損")
         self.assertEqual(emitted, ["h-1"])
 
     def test_reject_prompts_when_dirty(self) -> None:
@@ -162,7 +162,7 @@ class AddCorrectiveActionDialogTests(unittest.TestCase):
             dialog._on_submit()
         self.assertEqual(mk.call_args.kwargs["action_type"], "CORRECTIVE_ACTION")
         self.assertTrue(mk.call_args.kwargs["verification_required"])
-        self.assertEqual(mk.call_args.kwargs["description"], "更換治具")
+        self.assertEqual(mk.call_args.kwargs["description"], "1. 更換治具")
 
     def test_visual_probe_checks_checkbox_without_replacing_its_label(self) -> None:
         checkbox = QCheckBox("需進行有效性驗證")

@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -27,6 +26,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -57,9 +57,9 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
             self.action_type_combo.addItem(label, value)
         self.action_type_combo.setAccessibleName("Action 類型")
 
-        self.description_input = QTextEdit()
-        self.description_input.setPlaceholderText("接下來要做什麼，例如向供應商要求 8D 報告")
-        self.description_input.setAcceptRichText(False)
+        self.description_input = BulletListWidget(
+            placeholder="接下來要做什麼，例如向供應商要求 8D 報告"
+        )
 
         self.owner_input = QLineEdit()
         self.owner_input.setPlaceholderText("負責人（選填）")
@@ -115,7 +115,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
 
-        self.description_input.textChanged.connect(self._update_validation)
+        self.description_input.valueChanged.connect(self._update_validation)
         self.action_type_combo.currentIndexChanged.connect(
             self._sync_verification_contract
         )
@@ -123,7 +123,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.description_input.textChanged,
+            self.description_input.valueChanged,
             self.action_type_combo.currentIndexChanged,
             self.owner_input.textChanged,
             self.due_date_edit.dateChanged,
@@ -142,7 +142,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
     @property
     def _has_content(self) -> bool:
-        return bool(self.description_input.toPlainText().strip())
+        return bool(self.description_input.get_formatted_text().strip())
 
     def _update_validation(self) -> None:
         valid = self._has_content
@@ -155,7 +155,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
-        description = self.description_input.toPlainText().strip()
+        description = self.description_input.get_formatted_text().strip()
         if not description:
             self._update_validation()
             return

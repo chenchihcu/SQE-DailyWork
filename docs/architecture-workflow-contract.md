@@ -260,6 +260,12 @@ shared master-data area.
   quarterly reports are separate supplier-event exports and must not merge NCR rows.
 - VISIT rows are intentionally not enriched; only ANOMALY rows own the workbench
   sub-tables and the parity rules.
+- `list_anomaly_analysis_notes` and hypothesis evidence-chain attachment badges
+  use live `anomaly_attachments` COUNT by `related_note_id`; do not trust stored
+  `anomaly_analysis_notes.attachment_count`.
+- Manager-view and other `list_column_contract` exports must use the same display
+  strings as the page table renderer (e.g. `overdue` → `逾期`/`—`); see
+  `tests/test_exports_phase7.py`.
 
 ## Change Checklist
 

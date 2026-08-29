@@ -85,11 +85,14 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 2. **Visual Regression (視覺回歸)**：
    - `qt_visual_regress.py` 必須明確顯示 `pass`，或是因環境不符而合法 `skip`（不允許未解釋的 `failure`）。
 3. **Button Audit (動態按鍵稽核)**：
-   - `scratch/button_audit_report.md` 報表中的異常數量必須為 `0`，且 orchestrator exit code 為 `0`。
+   - Orchestrator exit code 必須為 `0`；僅報告異常數 `0` 但 exit `1` 視為 **not pass**。
+   - 報告頂部不得出現 `orchestrator_status: FAILED` banner（編排失敗時 `build_report_markdown` 會插入此標記）。
+   - `Worker 錯誤頁面數` 必須為 `0`；若有 `## Worker 錯誤頁面` 或 `## SEH 崩潰頁面`（未登錄頁面）視為 **not verified**。
+   - `scratch/button_audit_report.md` 報表中的異常數量必須為 `0`。
    - 總覽須顯示 `隔離模式: subprocess-per-page`。
-   - 若報告含 `## SEH 崩潰頁面`，視為 **not verified**。
    - `## 結構驗證頁面` 僅允許已登錄的 offscreen SEH 頁（目前 `event_create_anomaly`）；不得擴充為規避其他頁面失敗。
    - 任何拋出 Exceptions 的按鍵都必須修復完成，才可視為通過。
+   - 證據鏈：`scratch/button-audit-*-final.log` 結尾 `EXIT:0` **且** 報告無 FAILED banner。
 
 ### 視覺審查 15 維度 (The 15 Dimensions)
 

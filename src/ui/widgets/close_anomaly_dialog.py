@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -23,7 +22,6 @@ from services.appearance_preferences_service import load_application_preferences
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
     CLOSE_DIALOG_ATTACHMENT_SCROLL_MAX_HEIGHT,
-    CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS,
     CLOSE_DIALOG_PROBLEM_MIN_HEIGHT,
     CLOSE_DIALOG_REF_MARGINS,
     COMPACT_PAGE_SPACING,
@@ -37,13 +35,13 @@ from ui.layout_constants import (
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.anomaly_attachment_panel import EvidenceAttachmentPanel
 from ui.widgets.anomaly_attachment_editor import AttachmentEditor  # noqa: F401  # re-export
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
 )
 from ui.widgets.defect_form_widgets import (
     apply_dialog_layout,
-    set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
 )
@@ -93,12 +91,8 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self._connect_dirty_signals()
 
     def _setup_ui(self):
-        self.improvement_input = QTextEdit()
-        self.improvement_input.setPlaceholderText("請輸入改善內容（必填）")
+        self.improvement_input = BulletListWidget(placeholder="請輸入改善內容（必填）")
         self.improvement_input.setAccessibleName("改善內容")
-        set_text_edit_visible_rows(
-            self.improvement_input, CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS
-        )
 
         self.improvement_counter = QLabel(f"0 / {IMPROVEMENT_DESC_MAX_LEN}")
         self.improvement_counter.setProperty("role", "counterText")
@@ -121,7 +115,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self.closed_at_input.setDate(QDate.currentDate())
 
         if self.initial_improvement_desc:
-            self.improvement_input.setPlainText(self.initial_improvement_desc)
+            self.improvement_input.set_formatted_text(self.initial_improvement_desc)
         if self.date_adjustment_only:
             self.improvement_input.setReadOnly(True)
 
@@ -201,7 +195,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         apply_dialog_layout(self, content, buttons)
         self._button_box = buttons
 
-        self.improvement_input.textChanged.connect(self._update_validation)
+        self.improvement_input.valueChanged.connect(self._update_validation)
         self.closed_at_input.dateChanged.connect(self._update_validation)
         self._setup_tab_order()
 
@@ -227,13 +221,13 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.improvement_input.textChanged,
+            self.improvement_input.valueChanged,
             self.closed_at_input.dateChanged,
             self.evidence_panel.changed,
         ])
 
     def _update_validation(self) -> None:
-        text = self.improvement_input.toPlainText()
+        text = self.improvement_input.get_formatted_text()
         length = len(text)
         over_limit = length > IMPROVEMENT_DESC_MAX_LEN
         self.improvement_counter.setText(
@@ -253,7 +247,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self):
-        text = self.improvement_input.toPlainText().strip()
+        text = self.improvement_input.get_formatted_text().strip()
         closed_at = self.closed_at_input.date().toString("yyyy-MM-dd")
         closed_by = self.closed_by_input.text().strip()
         try:

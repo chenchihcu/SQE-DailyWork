@@ -691,6 +691,40 @@ Destination: `AGENTS.md`, `.claude/skills/sqe-dailywork-visual-qa/references/vis
 | 5 | Coverage gate fail after expansion → recalibrate baseline from fresh summary, not silent pass | `AGENTS.md` §7 + risk-ledger | `assert_coverage_baseline.py` |
 | 6 | Button audit: subprocess-per-page; `event_create_anomaly` structural-only; SEH pages in report | visual-qa skill + `scripts/button_audit_report.py` | orchestrator exit 0, no SEH section |
 
+## Agent Rules Harvest — Post-Remediation (2026-08-29)
+
+Task: Distill post-Phase-8 remediation lessons into durable repo policy; close AGENTS.md gaps where Phase 8 harvest claimed rules #5–#6 but body text was missing.
+Changes: Promoted 7 rules into `AGENTS.md` §2/§3/§4/§7, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, visual-qa skill, `docs/risk-ledger.md`, and `.codex/rules/project.rules`.
+Impact: Coverage evidence, export/UI display parity, repeat-links schema guard, live attachment COUNT, button-audit dual gate, and manager-view filter semantics follow explicit pass/fail semantics.
+Verification: Rules trace to remediation RCA + focused tests cited per rule; `scripts/harness_check.ps1`.
+Residual risk: Windows Coverage chunk 1 may still hang/SEH (`not verified` until watchdog + 4-chunk CI/local rerun confirms); `event_create_anomaly` offscreen SEH remains structural-only.
+Next action: Re-run `verify.ps1 -Profile Coverage` on Windows with 4-chunk log evidence; close Coverage residual in risk-ledger when complete profile log shows `EXIT:0`.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `.claude/skills/sqe-dailywork-visual-qa/references/visual_qa_checklist.md`, `.agents/skills/sqe-dailywork-visual-qa/references/visual_qa_checklist.md`, `docs/risk-ledger.md`, `.codex/rules/project.rules`, this log.
+
+| # | Rule (distilled) | Route | Check |
+| --- | --- | --- | --- |
+| 1 | Coverage profile uses 4-chunk `Invoke-UnittestDiscoverWindowsSafe` + `PYTHONUNBUFFERED=1`; no single discover as Windows Coverage evidence | `AGENTS.md` §7 + `.codex/rules/project.rules` | `scratch/verify-coverage-*-final*.log` shows `chunk 2/4` + `Coverage verification passed.` |
+| 2 | `assert_coverage_baseline.py` PASS ≠ `verify.ps1 -Profile Coverage` PASS; need full profile log chain | `AGENTS.md` §7 + `docs/risk-ledger.md` | Log ends `EXIT:0`, not `coverage-summary.json` alone |
+| 3 | `list_column_contract` export cells match page renderer display strings | `AGENTS.md` §3 + architecture contract | `tests/test_exports_phase7.py` |
+| 4 | `refresh_repeat_links_for_suppliers` calls `require_repeat_links_schema` before write | `AGENTS.md` §4 migration | `test_refresh_repeat_links_requires_schema` |
+| 5 | Analysis note `attachment_count` = live `anomaly_attachments` COUNT by `related_note_id` | `AGENTS.md` §2 + architecture contract | `test_analysis_note_attachment_count_uses_live_manifest` |
+| 6 | Button audit: orchestrator exit 0 + no `orchestrator_status: FAILED` + no Worker/SEH error pages | visual-qa skill + `AGENTS.md` §7 | `scratch/button-audit-*-final.log` + report |
+| 7 | Manager view shared owner filter labels differ by tab; global metrics note when filtered | `docs/ui-layout-theme-contract.md` | `test_owner_filter_matches_action_owner_in_summary_and_queue` |
+| 8 | Workbench dialog status/evidence combos consume `repo_helpers` tuples; no local identity-map dicts | `AGENTS.md` §4 | `rg EVIDENCE_OPTIONS` / `HYPOTHESIS_STATUS_LABELS` zero hits in `src/ui/` |
+| 9 | Workbench modal narrative fields use `BulletListWidget`; retire QTextEdit row-count caps (`VISIT_*_SUMMARY_VISIBLE_ROWS`, `CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS`) | `AGENTS.md` §3 + ui-layout-theme-contract | `test_anomaly_workbench_dialogs` + `test_layout_constants` |
+
+## Agent Rules Harvest — Code-Simplifier + Workbench BulletList (2026-08-29)
+
+Task: Distill Code-Simplifier Phase 5–8 and workbench `BulletListWidget` rollout into durable repo policy.
+Changes: Promoted rules #8–#9 into `AGENTS.md` §3/§4 and `docs/ui-layout-theme-contract.md`; migrated 15 workbench/visit/attachment dialogs from `QTextEdit` to `BulletListWidget`; removed obsolete row-count layout constants.
+Impact: Enum SSOT and itemized narrative UX are explicit policy; future safe-pass and dialog work avoid reintroducing duplicate evidence tuples or fixed-height text areas.
+Verification: `rg` zero hits for removed enum aliases; `tests/test_layout_constants.py`; `tests/test_anomaly_workbench_dialogs.py`.
+Residual risk: Native `dialog-density` visual baselines may need refresh after BulletList height changes (`not verified` in this pass).
+Next action: Run `scripts/qt_visual_probe.py --target dialog-density` if pixel regress is enforced.
+Harness update needed: yes
+Destination: `AGENTS.md`, `docs/ui-layout-theme-contract.md`, `src/ui/layout_constants.py`, workbench dialog widgets, this log.
+
 ## CI Schema-Only Verify Source Entry
 
 Date: 2026-08-27

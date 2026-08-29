@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -37,8 +36,6 @@ from ui.layout_constants import (
     ROW_GAP,
     VISIT_FORM_CONTENT_SPACING,
     VISIT_FORM_VERTICAL_SPACING,
-    VISIT_PAGE_SUMMARY_VISIBLE_ROWS,
-    VISIT_SUMMARY_VISIBLE_ROWS,
 )
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
@@ -49,11 +46,11 @@ from ui.widgets.common_widgets import (
     create_section_card,
     make_paired_form_row,
 )
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.defect_form_widgets import (
     VISIT_TIME_SLOT_OPTIONS,
     apply_dialog_layout,
     set_combo_current_text,
-    set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
 )
@@ -131,15 +128,8 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         self.visitor_input = QLineEdit()  # Retained headless for legacy accessor safety
         self.visitor_input.setPlaceholderText("訪廠人員")
         self.visitor_input.setAccessibleName("訪廠人員")
-        self.summary_input = QTextEdit()
-        self.summary_input.setPlaceholderText("活動摘要（選填）")
+        self.summary_input = BulletListWidget(placeholder="活動摘要（選填）")
         self.summary_input.setAccessibleName("活動摘要")
-        summary_rows = (
-            VISIT_PAGE_SUMMARY_VISIBLE_ROWS
-            if self._page_mode
-            else VISIT_SUMMARY_VISIBLE_ROWS
-        )
-        set_text_edit_visible_rows(self.summary_input, summary_rows)
 
         self.work_order_input = QLineEdit()
         self.work_order_input.setPlaceholderText("輸入工單號碼")
@@ -336,7 +326,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.product_combo.currentIndexChanged,
             self.product_stage_combo.currentTextChanged,
             self.visitor_input.textChanged,
-            self.summary_input.textChanged,
+            self.summary_input.valueChanged,
             self.work_order_input.textChanged,
             self.time_slot_input.currentTextChanged,
             self.qty_input.textChanged,
@@ -405,7 +395,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         )
 
         self.visitor_input.setText(str(self._initial_data.get("visitor_name") or ""))
-        self.summary_input.setPlainText(str(self._initial_data.get("summary") or ""))
+        self.summary_input.set_formatted_text(str(self._initial_data.get("summary") or ""))
         self.work_order_input.setText(str(self._initial_data.get("work_order_no") or ""))
         set_combo_current_text(
             self.time_slot_input, str(self._initial_data.get("time_slot") or "")
@@ -426,13 +416,11 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             section_summary = str(first_section.get("summary") or "").strip()
             if section_time or section_summary:
                 prefix = f"[{section_time}] " if section_time else ""
-                current_summary = self.summary_input.toPlainText().strip()
-                merged = "\n".join(
-                    part
-                    for part in (current_summary, f"{prefix}{section_summary}".strip())
-                    if part
-                )
-                self.summary_input.setPlainText(merged)
+                merged_items = list(self.summary_input.get_items())
+                section_item = f"{prefix}{section_summary}".strip()
+                if section_item:
+                    merged_items.append(section_item)
+                self.summary_input.set_items(merged_items)
         self._refresh_submit_state()
 
     def _on_submit(self):
@@ -487,7 +475,7 @@ class NewVisitDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             "supplier_id": (self.supplier_combo.currentData() or "").strip(),
             "product_id": product_id,
             "visitor_name": self.visitor_input.text().strip(),
-            "summary": self.summary_input.toPlainText().strip(),
+            "summary": self.summary_input.get_formatted_text().strip(),
             "time_slot": self.time_slot_input.currentText().strip(),
             "work_order_no": self.work_order_input.text().strip(),
             "production_qty": int(self.qty_input.text().strip() or 0),

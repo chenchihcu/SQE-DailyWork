@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +24,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -77,11 +77,9 @@ class AddAuditLogDialog(DirtyTrackingMixin, QDialog):
         self.action_combo.setEditable(True)
         self.action_combo.setCurrentIndex(0)
 
-        self.message_input = QTextEdit()
-        self.message_input.setPlaceholderText(
-            "紀錄內容（會出現在處理歷程；建議簡要描述事件、決定或追蹤事項）"
+        self.message_input = BulletListWidget(
+            placeholder="紀錄內容（會出現在處理歷程；建議簡要描述事件、決定或追蹤事項）"
         )
-        self.message_input.setAcceptRichText(False)
 
         self._setup_ui()
         self._update_validation()
@@ -126,17 +124,17 @@ class AddAuditLogDialog(DirtyTrackingMixin, QDialog):
         apply_dialog_layout(self, scroll, buttons)
 
         self.action_combo.currentTextChanged.connect(self._update_validation)
-        self.message_input.textChanged.connect(self._update_validation)
+        self.message_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.action_combo.currentTextChanged,
-            self.message_input.textChanged,
+            self.message_input.valueChanged,
         ])
 
     def _update_validation(self) -> None:
         action_text = self.action_combo.currentText().strip()
-        message_text = self.message_input.toPlainText().strip()
+        message_text = self.message_input.get_formatted_text().strip()
         valid = bool(action_text) and bool(message_text)
         set_field_invalid(self.action_combo, not action_text)
         set_field_invalid(self.message_input, not message_text)
@@ -154,7 +152,7 @@ class AddAuditLogDialog(DirtyTrackingMixin, QDialog):
 
     def _on_submit(self) -> None:
         action_text = self.action_combo.currentText().strip()
-        message_text = self.message_input.toPlainText().strip()
+        message_text = self.message_input.get_formatted_text().strip()
         if not action_text or not message_text:
             self._update_validation()
             return

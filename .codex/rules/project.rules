@@ -1,4 +1,12 @@
 # Project-local policy for commands that request execution outside the sandbox.
+#
+# Verification evidence (sync with AGENTS.md §7):
+# - Full and Coverage profiles use chunked unittest on Windows (Coverage: 4 chunks via
+#   Invoke-UnittestDiscoverWindowsSafe; PYTHONUNBUFFERED=1 in Run-CoverageTestSuite).
+# - assert_coverage_baseline.py PASS alone is not Coverage profile PASS; cite
+#   scratch/verify-coverage-*-final*.log ending Coverage verification passed. / EXIT:0.
+# - Button audit PASS requires orchestrator exit 0, no orchestrator_status: FAILED
+#   banner, and no unregistered Worker/SEH error pages in scratch/button_audit_report.md.
 
 POWERSHELL = [
     "pwsh",

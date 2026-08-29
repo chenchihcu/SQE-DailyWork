@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +29,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -62,10 +62,8 @@ class AnomalyHypothesisDialog(DirtyTrackingMixin, QDialog):
         self.setMinimumWidth(WORKBENCH_DIALOG_WIDE_MIN_WIDTH)
         self.setMaximumWidth(FORM_MAX_WIDTH)
 
-        self.statement_input = QTextEdit()
-        self.statement_input.setPlaceholderText("描述此層原因假設")
-        self.statement_input.setAcceptRichText(False)
-        self.statement_input.setPlainText(str(initial.get("statement") or ""))
+        self.statement_input = BulletListWidget(placeholder="描述此層原因假設")
+        self.statement_input.set_formatted_text(str(initial.get("statement") or ""))
 
         self.status_combo = QComboBox()
         for status in ANOMALY_HYPOTHESIS_STATUSES:
@@ -140,18 +138,18 @@ class AnomalyHypothesisDialog(DirtyTrackingMixin, QDialog):
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
-        self.statement_input.textChanged.connect(self._update_validation)
+        self.statement_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.statement_input.textChanged,
+            self.statement_input.valueChanged,
             self.status_combo.currentIndexChanged,
             self.evidence_combo.currentIndexChanged,
             self.parent_combo.currentIndexChanged,
         ])
 
     def _update_validation(self) -> None:
-        valid = bool(self.statement_input.toPlainText().strip())
+        valid = bool(self.statement_input.get_formatted_text().strip())
         set_field_invalid(self.statement_input, not valid)
         if self._error_label is not None:
             self._error_label.setText("" if valid else "請輸入假設說明（必填）")
@@ -159,7 +157,7 @@ class AnomalyHypothesisDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
-        statement = self.statement_input.toPlainText().strip()
+        statement = self.statement_input.get_formatted_text().strip()
         if not statement:
             self._update_validation()
             return

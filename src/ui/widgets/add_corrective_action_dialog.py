@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLineEdit,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +24,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -50,9 +50,7 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         self.setMinimumWidth(WORKBENCH_DIALOG_WIDE_MIN_WIDTH)
         self.setMaximumWidth(FORM_MAX_WIDTH)
 
-        self.description_input = QTextEdit()
-        self.description_input.setPlaceholderText("將採取什麼矯正措施？")
-        self.description_input.setAcceptRichText(False)
+        self.description_input = BulletListWidget(placeholder="將採取什麼矯正措施？")
         self.responsible_input = QLineEdit()
         self.responsible_input.setPlaceholderText("負責單位／人員（選填）")
         self.target_date_edit = QDateEdit()
@@ -97,11 +95,11 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
         buttons.accepted.connect(self._on_submit)
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
-        self.description_input.textChanged.connect(self._update_validation)
+        self.description_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
-            self.description_input.textChanged,
+            self.description_input.valueChanged,
             self.responsible_input.textChanged,
             self.target_date_edit.dateChanged,
             self.verify_check.toggled,
@@ -109,7 +107,7 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
 
     @property
     def _has_content(self) -> bool:
-        return bool(self.description_input.toPlainText().strip())
+        return bool(self.description_input.get_formatted_text().strip())
 
     def _update_validation(self) -> None:
         valid = self._has_content
@@ -120,7 +118,7 @@ class AddCorrectiveActionDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
-        description = self.description_input.toPlainText().strip()
+        description = self.description_input.get_formatted_text().strip()
         if not description:
             self._update_validation()
             return

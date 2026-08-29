@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +25,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -78,9 +78,7 @@ class AddEightDReviewDialog(DirtyTrackingMixin, QDialog):
             self.status_combo.addItem(label, value)
         self.status_combo.setCurrentIndex(2)  # 需補充證據 is the safe default
 
-        self.comment_input = QTextEdit()
-        self.comment_input.setPlaceholderText("審查意見（選填）")
-        self.comment_input.setAcceptRichText(False)
+        self.comment_input = BulletListWidget(placeholder="審查意見（選填）")
 
         self.review_date_edit = QDateEdit()
         self.review_date_edit.setCalendarPopup(True)
@@ -135,7 +133,7 @@ class AddEightDReviewDialog(DirtyTrackingMixin, QDialog):
             self.revision_input.textChanged,
             self.status_combo.currentIndexChanged,
             self.review_date_edit.dateChanged,
-            self.comment_input.textChanged,
+            self.comment_input.valueChanged,
         ])
 
     @property
@@ -162,7 +160,7 @@ class AddEightDReviewDialog(DirtyTrackingMixin, QDialog):
                 anomaly_id=self._anomaly_id,
                 revision=revision,
                 review_status=str(self.status_combo.currentData() or "需補充證據"),
-                review_comment=self.comment_input.toPlainText().strip(),
+                review_comment=self.comment_input.get_formatted_text().strip(),
                 review_date=self.review_date_edit.date().toString("yyyy-MM-dd"),
                 actor_name=self._actor_name,
             )

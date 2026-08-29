@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +25,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -83,13 +83,11 @@ class AddVerificationDialog(DirtyTrackingMixin, QDialog):
             self.result_combo.addItem(label, value)
         self.result_combo.setCurrentIndex(0)
 
-        self.evidence_input = QTextEdit()
-        self.evidence_input.setPlaceholderText("驗證證據說明（照片、量測數據…）")
-        self.evidence_input.setAcceptRichText(False)
+        self.evidence_input = BulletListWidget(
+            placeholder="驗證證據說明（照片、量測數據…）"
+        )
 
-        self.conclusion_input = QTextEdit()
-        self.conclusion_input.setPlaceholderText("驗證結論（選填）")
-        self.conclusion_input.setAcceptRichText(False)
+        self.conclusion_input = BulletListWidget(placeholder="驗證結論（選填）")
 
         self.verified_by_input = QLineEdit()
         self.verified_by_input.setPlaceholderText("驗證人")
@@ -155,8 +153,8 @@ class AddVerificationDialog(DirtyTrackingMixin, QDialog):
             self.criteria_input.textChanged,
             self.sample_input.textChanged,
             self.result_combo.currentIndexChanged,
-            self.evidence_input.textChanged,
-            self.conclusion_input.textChanged,
+            self.evidence_input.valueChanged,
+            self.conclusion_input.valueChanged,
             self.verified_by_input.textChanged,
             self.verified_date_edit.dateChanged,
         ])
@@ -187,8 +185,8 @@ class AddVerificationDialog(DirtyTrackingMixin, QDialog):
                 acceptance_criteria=self.criteria_input.text().strip(),
                 period_sample=self.sample_input.text().strip(),
                 result=str(self.result_combo.currentData() or "待驗證"),
-                evidence=self.evidence_input.toPlainText().strip(),
-                conclusion=self.conclusion_input.toPlainText().strip(),
+                evidence=self.evidence_input.get_formatted_text().strip(),
+                conclusion=self.conclusion_input.get_formatted_text().strip(),
                 verified_by=self.verified_by_input.text().strip(),
                 verified_date=self.verified_date_edit.date().toString("yyyy-MM-dd"),
                 actor_name=self._actor_name,

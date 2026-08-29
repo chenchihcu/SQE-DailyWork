@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +23,7 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     make_inline_error_label,
@@ -70,17 +70,13 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
             self.outcome_combo.addItem(label, value)
         self.outcome_combo.setCurrentIndex(0)
 
-        self.evidence_input = QTextEdit()
-        self.evidence_input.setPlaceholderText(
-            "完成證據（照片說明、文件或實測數據；取消時不適用）"
+        self.evidence_input = BulletListWidget(
+            placeholder="完成證據（照片說明、文件或實測數據；取消時不適用）"
         )
-        self.evidence_input.setAcceptRichText(False)
 
-        self.note_input = QTextEdit()
-        self.note_input.setPlaceholderText(
-            "完成說明／取消原因（選填；儲存後將寫入處理歷程）"
+        self.note_input = BulletListWidget(
+            placeholder="完成說明／取消原因（選填；儲存後將寫入處理歷程）"
         )
-        self.note_input.setAcceptRichText(False)
 
         self._action_summary = action_summary
 
@@ -125,13 +121,13 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
         buttons.rejected.connect(self.reject)
         apply_dialog_layout(self, scroll, buttons)
         self.outcome_combo.currentIndexChanged.connect(self._update_validation)
-        self.note_input.textChanged.connect(self._update_validation)
+        self.note_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
         self._init_dirty_tracking([
             self.outcome_combo.currentIndexChanged,
-            self.evidence_input.textChanged,
-            self.note_input.textChanged,
+            self.evidence_input.valueChanged,
+            self.note_input.valueChanged,
         ])
 
     def _update_validation(self) -> None:
@@ -140,7 +136,7 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
             == OUTCOME_CANCELLED
         )
         self.evidence_input.setEnabled(not cancelling)
-        valid = not cancelling or bool(self.note_input.toPlainText().strip())
+        valid = not cancelling or bool(self.note_input.get_formatted_text().strip())
         set_field_invalid(self.note_input, not valid)
         if self._save_button is not None:
             self._save_button.setEnabled(valid)
@@ -151,7 +147,7 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
 
     def _on_submit(self) -> None:
         outcome = str(self.outcome_combo.currentData() or OUTCOME_COMPLETED)
-        note = self.note_input.toPlainText().strip()
+        note = self.note_input.get_formatted_text().strip()
         if outcome == OUTCOME_CANCELLED and not note:
             self._update_validation()
             return
@@ -165,7 +161,7 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
             else:
                 _case_action_service.complete_case_action(
                     self._action_id,
-                    implementation_evidence=self.evidence_input.toPlainText().strip(),
+                    implementation_evidence=self.evidence_input.get_formatted_text().strip(),
                     completion_note=note,
                     actor_name=self._actor_name,
                 )

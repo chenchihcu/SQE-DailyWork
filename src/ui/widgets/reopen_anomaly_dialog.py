@@ -10,23 +10,21 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QMessageBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
-    CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS,
     DIALOG_OUTER_MARGINS,
     FORM_MAX_WIDTH,
     WORKBENCH_DIALOG_WIDE_MIN_WIDTH,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import DirtyTrackingMixin, RequiredFieldLabel
 from ui.widgets.defect_form_widgets import (
     apply_dialog_layout,
-    set_text_edit_visible_rows,
     set_tone,
     style_dialog_buttons,
 )
@@ -59,10 +57,8 @@ class ReopenAnomalyDialog(DirtyTrackingMixin, QDialog):
         self._connect_dirty_signals()
 
     def _setup_ui(self) -> None:
-        self.reason_input = QTextEdit()
-        self.reason_input.setPlaceholderText("為什麼要重新開啟此案件？")
+        self.reason_input = BulletListWidget(placeholder="為什麼要重新開啟此案件？")
         self.reason_input.setAccessibleName("重開原因")
-        set_text_edit_visible_rows(self.reason_input, CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS)
 
         self.reason_counter = QLabel(f"0 / {REOPEN_REASON_MAX_LEN}")
         self.reason_counter.setProperty("role", "counterText")
@@ -101,13 +97,13 @@ class ReopenAnomalyDialog(DirtyTrackingMixin, QDialog):
 
         apply_dialog_layout(self, content, buttons)
         self._button_box = buttons
-        self.reason_input.textChanged.connect(self._update_validation)
+        self.reason_input.valueChanged.connect(self._update_validation)
 
     def _connect_dirty_signals(self) -> None:
-        self._init_dirty_tracking([self.reason_input.textChanged])
+        self._init_dirty_tracking([self.reason_input.valueChanged])
 
     def _update_validation(self) -> None:
-        text = self.reason_input.toPlainText()
+        text = self.reason_input.get_formatted_text()
         length = len(text)
         over_limit = length > REOPEN_REASON_MAX_LEN
         self.reason_counter.setText(f"{length} / {REOPEN_REASON_MAX_LEN}")
@@ -117,7 +113,7 @@ class ReopenAnomalyDialog(DirtyTrackingMixin, QDialog):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
-        reason = self.reason_input.toPlainText().strip()
+        reason = self.reason_input.get_formatted_text().strip()
         try:
             result = event_service.reopen_anomaly(
                 self.anomaly_id,

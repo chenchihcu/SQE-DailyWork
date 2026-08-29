@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +29,7 @@ from database.repo_helpers import (
 from services import attachment_manager
 from services.event import _anomaly_workbench_service
 from ui.layout_constants import CONTROL_ROW_SPACING, FORM_VERTICAL_SPACING, PANEL_MARGINS
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
 from ui.popup_i18n import localize_exception
 
@@ -72,9 +72,8 @@ class AttachmentMetadataDialog(QDialog):
         index = self.category_combo.findData(current_category)
         self.category_combo.setCurrentIndex(max(index, 0))
 
-        self.description_input = QTextEdit()
-        self.description_input.setPlainText(str(row.get("description") or ""))
-        self.description_input.setFixedHeight(72)
+        self.description_input = BulletListWidget(placeholder="附件說明")
+        self.description_input.set_formatted_text(str(row.get("description") or ""))
         self.revision_input = QLineEdit(str(row.get("revision") or ""))
 
         self.note_combo = QComboBox()
@@ -141,7 +140,7 @@ class AttachmentMetadataDialog(QDialog):
     def payload(self) -> dict[str, str]:
         return {
             "category": str(self.category_combo.currentData() or "Other"),
-            "description": self.description_input.toPlainText().strip(),
+            "description": self.description_input.get_formatted_text().strip(),
             "revision": self.revision_input.text().strip(),
             "related_note_id": str(self.note_combo.currentData() or "") or None,
             "related_action_id": str(self.action_combo.currentData() or "") or None,
@@ -184,9 +183,7 @@ class EvidenceAttachmentPanel(QWidget):
             self.category_combo.addItem(
                 ANOMALY_ATTACHMENT_CATEGORY_LABELS.get(key, key), key
             )
-        self.description_input = QTextEdit()
-        self.description_input.setPlaceholderText("此附件用途？")
-        self.description_input.setFixedHeight(66)
+        self.description_input = BulletListWidget(placeholder="此附件用途？")
         self.revision_input = QLineEdit()
         self.revision_input.setPlaceholderText("如 Rev A")
         self.note_combo = QComboBox()
@@ -304,7 +301,7 @@ class EvidenceAttachmentPanel(QWidget):
                 anomaly_id=self._anomaly_id,
                 source_path=self._selected_path,
                 category=str(self.category_combo.currentData() or "Other"),
-                description=self.description_input.toPlainText().strip(),
+                description=self.description_input.get_formatted_text().strip(),
                 revision=self.revision_input.text().strip(),
                 uploaded_by="local_user",
                 related_note_id=str(self.note_combo.currentData() or "") or None,

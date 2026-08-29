@@ -101,7 +101,7 @@
   - `SupplierFormDialog`: `主聯絡人 + 部門` and `電話/行動 + 電子郵件`.
   - `ProductFormDialog`: `料號 + 階段`.
 - Keep large text, attachment, table, and long-selection fields as single-row blocks unless a later visual probe proves the paired version stays readable.
-- Long text boxes use row-count-based initial heights instead of legacy large fixed heights; they remain single-column fields.
+- Multi-line narrative fields use `BulletListWidget` (`[序號] [輸入框] [刪除]` + `+ 新增條目`); height grows with item count instead of fixed QTextEdit row caps.
 - `NewAnomalyDialog` has two presentation modes. Edit/preview uses the dialog
   form with `AnomalyFormScroll` and a fixed footer; full-page create exposes the
   same fields through `CreateWorkflowShell` without a nested scroll area. The
@@ -116,13 +116,19 @@
   nesting. Full-page create uses `CreateWorkflowShell` as its one scroll owner and
   bottom command row; modal edit/preview keeps a fixed footer. The dialog uses the
   same 900 x 780 preferred working size and active-screen clamp as
-  `NewAnomalyDialog`. Modal summary height stays compact (`VISIT_SUMMARY_VISIBLE_ROWS`);
-  full-page create uses `VISIT_PAGE_SUMMARY_VISIBLE_ROWS`. The retired defect-note
+  `NewAnomalyDialog`. `📝 活動摘要` uses `BulletListWidget` like anomaly problem
+  descriptions. The retired defect-note
   tab, separate `登錄訪廠缺失` entry, and nested group containers must not be recreated;
   editing legacy visits preserves their stored defect-note and additional product-section
   payloads without exposing hidden editor widgets.
 - Deferred conditional candidates: `主要產品 + 料號`, `主供應商 + 次要供應商`, and other long combo-box rows. These require long supplier/product-name checks before implementation.
 - Verify form density changes with focused structural tests plus `scripts/qt_visual_probe.py --target form-density` before treating CJK rendering and button visibility as confirmed.
+
+### Manager View Shared Filter Semantics
+
+- The shared「責任人」filter maps to **different fields per tab**: overview tab matches `anomalies.responsible_person` plus the current open action owner; queue tab matches `case_actions.owner` only.
+- Placeholder and tooltip on the shared control must state this difference; when any filter is active, global KPI/metrics labels must note「指標為全域」.
+- Regression: `tests/test_manager_view_phase6.py::test_owner_filter_matches_action_owner_in_summary_and_queue`; native `scripts/qt_visual_probe.py --target manager-view`.
 
 ## Theme Rules
 

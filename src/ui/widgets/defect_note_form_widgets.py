@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QTextEdit,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -29,6 +28,7 @@ from database.product_stage import (
     normalize_product_stage_ui,
 )
 from ui.layout_constants import INLINE_SPACING
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import (
     RequiredFieldLabel,
     make_paired_form_row as _make_paired_form_row,
@@ -36,7 +36,6 @@ from ui.widgets.common_widgets import (
 )
 from ui.widgets.defect_form_widgets import (
     product_label,
-    set_text_edit_visible_rows,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,10 +129,8 @@ class ProductSectionEditor(QGroupBox):
         self.qty_input.setPlaceholderText("輸入數量")
         self.qty_input.setAccessibleName("數量")
         self.qty_input.setValidator(QIntValidator(0, 10_000_000))
-        self.summary_input = QTextEdit()
-        self.summary_input.setPlaceholderText("產品區段摘要（選填）")
+        self.summary_input = BulletListWidget(placeholder="產品區段摘要（選填）")
         self.summary_input.setAccessibleName("摘要")
-        set_text_edit_visible_rows(self.summary_input, 3)
         self.defect_table = DefectNoteTable()
         self.defect_table.setAccessibleName("缺失紀錄表格")
         add_note_button = QPushButton("新增缺失")
@@ -218,7 +215,7 @@ class ProductSectionEditor(QGroupBox):
         self.work_order_input.setText(str(section.get("work_order_no") or ""))
         qty = int(section.get("production_qty") or 0)
         self.qty_input.setText(str(qty) if qty else "")
-        self.summary_input.setPlainText(str(section.get("summary") or ""))
+        self.summary_input.set_formatted_text(str(section.get("summary") or ""))
         self.defect_table.load_notes(list(section.get("defect_notes") or []))
 
     def section_data(self) -> dict | None:
@@ -230,7 +227,7 @@ class ProductSectionEditor(QGroupBox):
                 self.time_slot_input.text().strip(),
                 self.work_order_input.text().strip(),
                 self.qty_input.text().strip(),
-                self.summary_input.toPlainText().strip(),
+                self.summary_input.get_formatted_text().strip(),
                 notes,
             )
         )
@@ -246,7 +243,7 @@ class ProductSectionEditor(QGroupBox):
             "time_slot": self.time_slot_input.text().strip(),
             "work_order_no": self.work_order_input.text().strip(),
             "production_qty": int(self.qty_input.text().strip() or 0),
-            "summary": self.summary_input.toPlainText().strip(),
+            "summary": self.summary_input.get_formatted_text().strip(),
             "defect_notes": notes,
         }
 
