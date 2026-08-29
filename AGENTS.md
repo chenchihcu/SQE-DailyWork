@@ -109,7 +109,7 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **CJK Font Resolution Cache**: Wrap OS font registry scans in `@lru_cache(maxsize=1)` to avoid multi-second startup and rendering stalls.
   - **QShortcut Escape**: Use `QKeySequence(Qt.Key.Key_Escape)`—not `QKeySequence.StandardKey.Escape` (invalid in PySide6).
   - **GlobalSearchDialog tests**: Dialog `parent` must be `QWidget`; stub routing with `QWidget` + mocked methods, not `MagicMock` as parent.
-  - **Full-page Qt tearDown**: Close all `topLevelWidgets()` then `processEvents()`; no `sendPostedEvents(DeferredDelete)` in same module (SEH). `findChildren(PageClass)` insufficient.
+  - **Full-page Qt tearDown**: Shared `QWidget` `_host` + tracked `_pages`; close tracked pages only—never `topLevelWidgets()` sweep (closes `_host`). No `mock.Mock()` parent; mock tab service calls. No `DeferredDelete` flush in same module (SEH).
   - **CI unittest hang watchdog**: `tests/hang_watchdog.py` arms on `GITHUB_ACTIONS` or `SQE_TEST_HANG_SECONDS>0` (CI default 180s). Dump all-thread traceback and `os._exit(3)` instead of waiting for the job timeout. CI `verify.ps1` uses `PYTHONUNBUFFERED=1` and unittest `-v`. A cancelled job is not a green gate.
 - **Migration and harness test patterns**:
   - **defect_supplier_id backfill tests**: `defect_supplier_id_backfill_v1` runs once at `create_schema` when `migration_meta` ≠ `1`; test backfill success by inserting supplier+defect after first schema, deleting the meta key, then re-running `create_schema`; memory DB `defect_records` inserts need `defect_no, event_date, processing_line, item_no, qty, defect_desc, status, created_at`.
@@ -156,9 +156,9 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - **Coverage evidence chain**: `assert_coverage_baseline.py` alone ≠ `-Profile Coverage` PASS; require `scratch/verify-coverage-*-final*.log` with full chain + `EXIT:0` (see `docs/release/coverage-baseline.json`).
 - **Button audit dual gate**: orchestrator exit `0`, no `orchestrator_status: FAILED`, no unregistered Worker/SEH pages; exit `1` with zero exceptions is not PASS.
 - **Windows packaging gate**: Writable runtime roots (`data/`, `Outputs/`, `logs/`) resolve through `src/app_paths.py` (`runtime_root()` beside exe in frozen onedir). Build with `scripts\build_windows.ps1` (runs `write_build_info.py` first); validate frozen bundles with `SQE_DailyWork.exe --smoke-exit` on a scratch `SQE_DB_PATH` using `Start-Process -Wait` and `logs/smoke_exit.ok`—never treat immediate PowerShell return from a windowed exe as success.
-- **CI release gate**: `.github/workflows/verify.yml` runs Full + `Coverage` + `Soak` on push/PR. Clean clones have no `data/sqe_v2.db`; CI passes `-AllowSchemaOnlySource`, and Full also passes `-SkipNativeVisual`. CI Full is unittest + NCR + pytest + offscreen smoke + harness — not native visual evidence. Native visual belt/baselines remain local Windows + a verified disposable snapshot of the formal DB.
-- **Phase 3 QA gates**: see `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md` (`Coverage` / `Soak` profiles, portable smoke, release docs).
-- **Release DB safety**: Production release validation uses verified backup + disposable snapshots only; do not write `data/sqe_v2.db` during verify unless the user explicitly authorizes live migration.
+- **CI vs release gate**: CI Full/Coverage/Soak uses `-AllowSchemaOnlySource` + `-SkipNativeVisual`; CI green ≠ portable release-ready. Local cut: `-Profile Release` + Full with native visual on verified disposable DB (`docs/release/production-release-runbook.md`).
+- **Release profile**: `verify.ps1 -Profile Release` runs harness → smoke_test_v2 → button audit → build_windows → portable_install_smoke; writes `scratch/release-gate-summary.json`; `-UseExistingDist` skips rebuild. Promotion read-only: `audit_formal_db_promotion_status.ps1`. Zip SHA256 in `build-info.json` after build.
+- **Release DB safety**: Use verified backup + disposable snapshots only; do not write `data/sqe_v2.db` during verify unless explicitly authorized.
 - Data migration, destructive data changes, or export/data-contract changes follow the global Hard Trigger rules and require explicit verification evidence.
 
 ## 8. Multi-Assistant Coexistence

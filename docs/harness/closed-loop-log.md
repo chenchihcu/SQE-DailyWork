@@ -684,12 +684,12 @@ Destination: `AGENTS.md`, `.claude/skills/sqe-dailywork-visual-qa/references/vis
 
 | # | Rule (distilled) | Route | Check |
 | --- | --- | --- | --- |
-| 1 | Full-page Qt tests: `tearDown` closes all `topLevelWidgets()`; no `DeferredDelete` flush in same module | `AGENTS.md` PySide6 | Pair `test_anomaly_management_page` + `test_event_list_widget_render_stability` in one process |
+| 1 | Full-page Qt tests: tracked `_pages` on shared `_host`; no `topLevelWidgets()` sweep (superseded 2026-08-29 harvest) | `AGENTS.md` PySide6 | Pair `test_anomaly_management_page` + chunk-1 discover |
 | 2 | Long discover on Windows: keep chunked runner at `test_event_list_widget_render_stability` | `AGENTS.md` §7 | `verify.ps1 -Profile Full` |
 | 3 | VIEW readiness: never use `_table_exists` for VIEWs; use `sqlite_master.sql` or COUNT on VIEW | `AGENTS.md` migration | `preview_product_records_view_is_active_v1` row counts |
 | 4 | `product_records` VIEW filters `is_active=1`; Promotion via dual-marker CLI | `AGENTS.md` migration + README | `test_product_records_view_write_path` |
 | 5 | Coverage gate fail after expansion → recalibrate baseline from fresh summary, not silent pass | `AGENTS.md` §7 + risk-ledger | `assert_coverage_baseline.py` |
-| 6 | Button audit: subprocess-per-page; `event_create_anomaly` structural-only; SEH pages in report | visual-qa skill + `scripts/button_audit_report.py` | orchestrator exit 0, no SEH section |
+| 6 | Button audit: subprocess-per-page; `event_create_anomaly` + `event_create_visit` structural-only; SEH pages in report | visual-qa skill + `scripts/button_audit_report.py` | orchestrator exit 0, no SEH section |
 
 ## Agent Rules Harvest — Post-Remediation (2026-08-29)
 
@@ -772,4 +772,25 @@ Root cause: Schema-only source has no suppliers. Automated Modal Guard covered `
 Fix: Skip the modal when `is_automated_runtime()`; patch create-page tests; assert warning is not called in automated empty-supplier runs.
 Harness update needed: yes
 Destination: `src/ui/runtime_mode.py`, `src/ui/main_window.py`, `tests/test_automated_modal_guard.py`, `tests/test_top_nav_compact_height.py`, `scripts/verify.ps1`, `AGENTS.md`, this log
+
+## Agent Rules Harvest — Post-P0 Release Hardening (2026-08-29)
+
+Task: Distill P0 CI hang fix, Release profile land, and button-audit SEH guard into durable repo policy.
+Changes: Corrected `AGENTS.md` §4 full-page Qt tearDown (tracked `_pages`, not `topLevelWidgets()` sweep); added §7 Release profile + CI-vs-release gate; extended `STRUCTURAL_ONLY_PAGE_KEYS` to `event_create_visit`; promoted `audit_formal_db_promotion_status.ps1` and zip SHA256 traceability.
+Impact: Chunk-1 unittest hang from widget leaks is preventable; Release cut uses one local gate; button audit no longer false-fails on visit create offscreen SEH.
+Verification: CI [#33229763543](https://github.com/chenchihcu/SQE-DailyWork/actions/runs/33229763543) 3 jobs PASS; `verify.ps1 -Profile Release -UseExistingDist` PASS; commit `78cb761`.
+Residual risk: Local Full native visual failed on `event-create` visit baseline drift (ratio 0.154)—refresh baselines with verified disposable DB before claiming Full PASS; `AGENTS.md` byte budget ~32553/32768.
+Next action: Refresh `tests/visual_baseline/event-create/*visit*` if visit UI changed; re-run local Full after baseline update.
+Harness update needed: yes
+Destination: `AGENTS.md`, `.codex/rules/project.rules`, visual-qa checklist (`.claude` + `.agents`), `docs/release/production-release-runbook.md`, this log.
+
+| # | Rule (distilled) | Route | Check |
+| --- | --- | --- | --- |
+| 1 | Full-page Qt tests: `QWidget` `_host` + tracked `_pages`; tearDown closes tracked pages only—never `topLevelWidgets()` sweep | `AGENTS.md` §4 | Pair `test_anomaly_management_page` + chunk-1 discover; no 180s watchdog exit 3 |
+| 2 | Full-page Qt tests: no `mock.Mock()` parent; mock service calls from tab builds (e.g. attachment lists) | `AGENTS.md` §4 | `tests/test_anomaly_management_page.py` pattern |
+| 3 | CI green ≠ portable release-ready; local cut needs `-Profile Release` + Full with native visual | `AGENTS.md` §7 + runbook | `scratch/release-gate-summary.json` + `docs/release/production-release-runbook.md` |
+| 4 | Release profile: harness → smoke_test_v2 → button audit → build → portable; `-UseExistingDist` skips rebuild | `AGENTS.md` §7 + `verify.ps1` | `Release verification passed.` + summary JSON |
+| 5 | Formal DB promotion status: read-only `audit_formal_db_promotion_status.ps1`; no `-Apply` in audit | `AGENTS.md` §7 + runbook §1.3 | `scratch/formal-db-promotion-status.json` |
+| 6 | Zip SHA256 written to `build-info.json` after `build_windows.ps1` packages zip | `AGENTS.md` §7 + `build_windows.ps1` | `dist/SQE_DailyWork/build-info.json` `zip_sha256` field |
+| 7 | Button audit: `event_create_visit` structural-only alongside `event_create_anomaly` (offscreen SEH) | visual-qa checklist + `button_audit_report.py` | orchestrator exit 0; no unregistered SEH pages |
 
