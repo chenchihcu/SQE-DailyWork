@@ -19,6 +19,8 @@ from typing import Iterable
 
 from database.connection import DATA_DIR
 
+from services.path_name_helpers import contains_invalid_path_char
+
 logger = logging.getLogger(__name__)
 
 ANOMALY_ATTACHMENT_ROOT = DATA_DIR / "attachments" / "anomaly"
@@ -84,7 +86,7 @@ def _validate_storage_name(value: str, *, field_name: str) -> str:
     path = Path(name)
     if path.is_absolute() or path.name != name:
         raise ValueError(f"{field_name} must be a file name")
-    if any(char in name for char in '\x00<>:"/\\|?*'):
+    if contains_invalid_path_char(name):
         raise ValueError(f"{field_name} contains an invalid path character")
     return name
 

@@ -1,6 +1,6 @@
 # Phase 2 項目 14–19 對照（Design-Derived）
 
-Plan status: active — design-derived traceability for 48-item rollout Phase 2
+Plan status: completed — design-derived traceability verified; item 19 partial-accepted residual documented
 
 ## Scope and methodology
 
@@ -10,7 +10,7 @@ Plan status: active — design-derived traceability for 48-item rollout Phase 2
 - Each item below is derived from:
   - [SQE Incident Management UI Design Framework v0.1 §6.6](../../SQE_Incident_Management_UI_Design_Framework_v0.1.md) (Attachments / Evidence)
   - [architecture-workflow-contract.md](../../architecture-workflow-contract.md) (`anomaly_attachments` SSOT)
-  - [2026-08-24-case-workbench-48-item-rollout.md](2026-08-24-case-workbench-48-item-rollout.md) Phase 2 implementation contract
+  - [2026-08-24-case-workbench-48-item-rollout.md](../completed/2026-08-24-case-workbench-48-item-rollout.md) Phase 2 implementation contract
   - Current implementation and focused verification gates
 - Do **not** confuse this numbering with design-framework §7.7 items 14–15
   (screen-fit helper / sidebar IA); those are a separate 15-item borrow list.
@@ -96,7 +96,7 @@ Plan status: active — design-derived traceability for 48-item rollout Phase 2
 | **implementation_paths** | `src/database/repository.py` (`get_anomaly_overview_card`); `src/services/event/_anomaly_markdown.py`; `src/services/event_pdf_exporter.py`; `src/services/event/_anomaly_workbench_service.py` (`ATTACHMENT_CREATED/UPDATED/DELETED` audit) |
 | **verification_gate** | `tests/test_attachments_phase2.py` (overview count, audit actions); `tests/test_anomaly_folder_creation.py` (markdown attachments); `tests/test_event_pdf_export.py` (PDF attachment HTML); overview parity tests |
 | **status** | **partial-accepted** |
-| **residual_notes** | `src/ui/widgets/close_anomaly_dialog.py` still uses legacy `AttachmentEditor` (image/captions closure path). Coexists with workbench metadata path; **does not block** Phase 2 completion. Unifying closure attachment UX is a separate follow-up (Phase 4 / closure UX) |
+| **residual_notes** | Phase 4 unified closure attachment path via `EvidenceAttachmentPanel` in `CloseAnomalyDialog`; legacy `AttachmentEditor` retained only on `NewAnomalyDialog` create path |
 
 ---
 
@@ -107,7 +107,7 @@ Plan status: active — design-derived traceability for 48-item rollout Phase 2
 | Original 48-item titles 14–19 | Not in repo; this file is design-derived only | No |
 | `related_ca_id` legacy column | Retained for rollback/lineage | No |
 | Unregistered physical-only bulk register migration | Deferred; projection + union count only | No |
-| `CloseAnomalyDialog` legacy `AttachmentEditor` | partial-accepted on item 19 | No |
+| `CloseAnomalyDialog` legacy `AttachmentEditor` | mitigated in Phase 4 — closure uses `EvidenceAttachmentPanel` | No |
 
 ## Phase boundaries
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -13,6 +15,14 @@ from PySide6.QtWidgets import (
 )
 
 from services import global_search_service
+from ui.layout_constants import (
+    GLOBAL_SEARCH_DIALOG_MARGINS,
+    GLOBAL_SEARCH_DIALOG_MIN_WIDTH,
+    GLOBAL_SEARCH_DIALOG_SPACING,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalSearchDialog(QDialog):
@@ -22,12 +32,12 @@ class GlobalSearchDialog(QDialog):
         super().__init__(parent or main_window)
         self.main_window = main_window
         self.setWindowTitle("全域搜尋")
-        self.setMinimumWidth(620)
+        self.setMinimumWidth(GLOBAL_SEARCH_DIALOG_MIN_WIDTH)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 14)
-        layout.setSpacing(8)
+        layout.setContentsMargins(*GLOBAL_SEARCH_DIALOG_MARGINS)
+        layout.setSpacing(GLOBAL_SEARCH_DIALOG_SPACING)
 
         hint = QLabel("搜尋異常單號、供應商、料號、訪廠摘要或不合格品單號")
         hint.setProperty("role", "helperText")
@@ -60,6 +70,7 @@ class GlobalSearchDialog(QDialog):
         try:
             rows = global_search_service.search_global(keyword)
         except Exception:
+            logger.exception("全域搜尋查詢失敗 keyword=%r", keyword)
             rows = []
         for row in rows:
             source = str(row.get("source") or "資料")

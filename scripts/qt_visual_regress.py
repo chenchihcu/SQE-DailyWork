@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from itertools import zip_longest
@@ -137,7 +138,7 @@ def main() -> int:
         names = []
         for shot in screenshots:
             dest = baseline_dir / shot.name
-            dest.write_bytes(shot.read_bytes())
+            shutil.copy2(shot, dest)
             names.append(shot.name)
         existing = {}
         if manifest_path.exists():

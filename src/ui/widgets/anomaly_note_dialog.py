@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 from ui.layout_constants import WORKBENCH_DIALOG_WIDE_MIN_WIDTH
 
+from database.repo_helpers import ANOMALY_EVIDENCE_LABELS, ANOMALY_EVIDENCE_TYPES
 from services.event import _anomaly_workbench_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
@@ -40,14 +41,6 @@ from ui.widgets.defect_form_widgets import (
 )
 
 
-EVIDENCE_OPTIONS = [
-    ("FACT", "已確認事實"),
-    ("INFERENCE", "推論"),
-    ("ASSUMPTION", "假設"),
-    ("UNKNOWN", "待確認"),
-]
-
-
 class AnomalyNoteDialog(DirtyTrackingMixin, QDialog):
     """Create a single analysis note on an anomaly."""
 
@@ -66,7 +59,8 @@ class AnomalyNoteDialog(DirtyTrackingMixin, QDialog):
         self.content_input.setAcceptRichText(False)
 
         self.evidence_combo = QComboBox()
-        for value, label in EVIDENCE_OPTIONS:
+        for value in ANOMALY_EVIDENCE_TYPES:
+            label = ANOMALY_EVIDENCE_LABELS[value]
             self.evidence_combo.addItem(f"{label}（{value}）", value)
         self.evidence_combo.setCurrentIndex(0)
 

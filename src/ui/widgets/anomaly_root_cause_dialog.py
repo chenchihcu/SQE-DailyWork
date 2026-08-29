@@ -42,15 +42,6 @@ from ui.widgets.defect_form_widgets import (
     style_dialog_buttons,
 )
 
-ROOT_CAUSE_STATUS_LABELS = {
-    ANOMALY_ROOT_CAUSE_NOT_STARTED: "尚未開始",
-    ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION: "調查中",
-    ANOMALY_ROOT_CAUSE_PROPOSED: "提案",
-    ANOMALY_ROOT_CAUSE_VERIFIED: "已驗證",
-    ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED: "無法確認",
-}
-
-
 class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
     """Create or update the single root-cause record for an anomaly."""
 
@@ -78,7 +69,7 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
 
         self.status_combo = QComboBox()
         for status in ANOMALY_ROOT_CAUSE_STATUSES:
-            self.status_combo.addItem(ROOT_CAUSE_STATUS_LABELS.get(status, status), status)
+            self.status_combo.addItem(status, status)
         current_status = str(initial.get("status") or ANOMALY_ROOT_CAUSE_NOT_STARTED)
         status_index = self.status_combo.findData(current_status)
         self.status_combo.setCurrentIndex(max(status_index, 0))

@@ -267,10 +267,13 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "改善措施狀態",
                     "有效性驗證",
                     "附件數",
+                    "原因假設數",
+                    "已採納假設",
+                    "重複警示",
                     "狀態",
                     "結案日期",
                 ],
-                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 28)],
+                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 31)],
             )
             self.assertEqual(4, anomaly_sheet.max_row)
             self.assertEqual(
@@ -300,10 +303,13 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "—",
                     "—",
                     0,
+                    0,
+                    "否",
+                    0,
                     "已結案",
                     "2026-06-12",
                 ],
-                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 28)],
+                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 31)],
             )
             self.assertEqual("否", anomaly_sheet.cell(row=3, column=17).value)
             self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=17).value)

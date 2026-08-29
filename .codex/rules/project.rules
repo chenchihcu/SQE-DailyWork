@@ -110,6 +110,90 @@ PHASE2_ATTACHMENTS_PROMOTION = [
     "./scripts/apply_anomaly_attachments_promotion.ps1",
 ]
 
+PHASE3_HYPOTHESIS_CHECK = [
+    "scripts\\verify_hypothesis_phase3.ps1",
+    ".\\scripts\\verify_hypothesis_phase3.ps1",
+    "scripts/verify_hypothesis_phase3.ps1",
+    "./scripts/verify_hypothesis_phase3.ps1",
+]
+
+PHASE3_HYPOTHESIS_FULL = [
+    "scripts\\verify_hypothesis_phase3_full.ps1",
+    ".\\scripts\\verify_hypothesis_phase3_full.ps1",
+    "scripts/verify_hypothesis_phase3_full.ps1",
+    "./scripts/verify_hypothesis_phase3_full.ps1",
+]
+
+PHASE3_HYPOTHESIS_VISUAL = [
+    "scripts\\verify_hypothesis_phase3_visual.ps1",
+    ".\\scripts\\verify_hypothesis_phase3_visual.ps1",
+    "scripts/verify_hypothesis_phase3_visual.ps1",
+    "./scripts/verify_hypothesis_phase3_visual.ps1",
+]
+
+PHASE3_HYPOTHESIS_PROMOTION = [
+    "scripts\\apply_anomaly_hypotheses_promotion.ps1",
+    ".\\scripts\\apply_anomaly_hypotheses_promotion.ps1",
+    "scripts/apply_anomaly_hypotheses_promotion.ps1",
+    "./scripts/apply_anomaly_hypotheses_promotion.ps1",
+]
+
+PHASE5_REPEAT_LINKS_PROMOTION = [
+    "scripts\\apply_anomaly_repeat_links_promotion.ps1",
+    ".\\scripts\\apply_anomaly_repeat_links_promotion.ps1",
+    "scripts/apply_anomaly_repeat_links_promotion.ps1",
+    "./scripts/apply_anomaly_repeat_links_promotion.ps1",
+]
+
+PHASE8_PRODUCT_RECORDS_VIEW_PROMOTION = [
+    "scripts\\apply_product_records_view_promotion.ps1",
+    ".\\scripts\\apply_product_records_view_promotion.ps1",
+    "scripts/apply_product_records_view_promotion.ps1",
+    "./scripts/apply_product_records_view_promotion.ps1",
+]
+
+PHASE4_WORKBENCH_CHECK = [
+    "scripts\\verify_workbench_phase4.ps1",
+    ".\\scripts\\verify_workbench_phase4.ps1",
+    "scripts/verify_workbench_phase4.ps1",
+    "./scripts/verify_workbench_phase4.ps1",
+]
+
+PHASE4_WORKBENCH_FULL = [
+    "scripts\\verify_workbench_phase4_full.ps1",
+    ".\\scripts\\verify_workbench_phase4_full.ps1",
+    "scripts/verify_workbench_phase4_full.ps1",
+    "./scripts/verify_workbench_phase4_full.ps1",
+]
+
+PHASE4_WORKBENCH_VISUAL = [
+    "scripts\\verify_workbench_phase4_visual.ps1",
+    ".\\scripts\\verify_workbench_phase4_visual.ps1",
+    "scripts/verify_workbench_phase4_visual.ps1",
+    "./scripts/verify_workbench_phase4_visual.ps1",
+]
+
+PHASE5_WORKBENCH = [
+    "scripts\\verify_workbench_phase5.ps1",
+    ".\\scripts\\verify_workbench_phase5.ps1",
+    "scripts/verify_workbench_phase5.ps1",
+    "./scripts/verify_workbench_phase5.ps1",
+]
+
+PHASE6_WORKBENCH = [
+    "scripts\\verify_workbench_phase6.ps1",
+    ".\\scripts\\verify_workbench_phase6.ps1",
+    "scripts/verify_workbench_phase6.ps1",
+    "./scripts/verify_workbench_phase6.ps1",
+]
+
+PHASE7_EXPORTS = [
+    "scripts\\verify_exports_phase7.ps1",
+    ".\\scripts\\verify_exports_phase7.ps1",
+    "scripts/verify_exports_phase7.ps1",
+    "./scripts/verify_exports_phase7.ps1",
+]
+
 BUILD_SCRIPTS = [
     "scripts\\build_windows.ps1",
     ".\\scripts\\build_windows.ps1",
@@ -346,6 +430,218 @@ prefix_rule(
     justification = "Run read-only attachment Promotion dry-run or explicit -Apply after verified backup and dual markers.",
     match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/apply_anomaly_attachments_promotion.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE3_HYPOTHESIS_CHECK,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 3 hypothesis contract regression gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_hypothesis_phase3.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_hypothesis_phase3.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE3_HYPOTHESIS_VISUAL,
+    ],
+    decision = "allow",
+    justification = "Run fixed native Windows multi-DPI workbench and dialog-density verification for Phase 3 hypothesis on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_hypothesis_phase3_visual.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE3_HYPOTHESIS_FULL,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 3 Full verification gate.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_hypothesis_phase3_full.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_hypothesis_phase3_full.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE3_HYPOTHESIS_PROMOTION,
+    ],
+    decision = "allow",
+    justification = "Run read-only hypothesis Promotion dry-run or explicit -Apply after verified backup and dual markers.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/apply_anomaly_hypotheses_promotion.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE4_WORKBENCH_CHECK,
+    ],
+    decision = "allow",
+    justification = "Run the fixed Phase 4 workbench UI focused verification gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase4.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase4.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE4_WORKBENCH_VISUAL,
+    ],
+    decision = "allow",
+    justification = "Run fixed native Windows multi-DPI workbench and dialog-density verification for Phase 4 on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase4_visual.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE4_WORKBENCH_FULL,
+    ],
+    decision = "allow",
+    justification = "Run the fixed, parameterless Phase 4 Full verification gate.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase4_full.ps1",
+    ],
+    not_match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase4_full.ps1 -PythonExe C:/Python/python.exe",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE5_WORKBENCH,
+    ],
+    decision = "allow",
+    justification = "Run the fixed Phase 5 repeat-issue focused verification gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase5.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE6_WORKBENCH,
+    ],
+    decision = "allow",
+    justification = "Run the fixed Phase 6 manager-view focused verification gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_phase6.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE7_EXPORTS,
+    ],
+    decision = "allow",
+    justification = "Run the fixed Phase 7 export/report focused verification gate on a disposable database.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify_exports_phase7.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE5_REPEAT_LINKS_PROMOTION,
+    ],
+    decision = "allow",
+    justification = "Run read-only repeat-issue Promotion dry-run or explicit -Apply after verified backup and dual markers.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/apply_anomaly_repeat_links_promotion.ps1",
+    ],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        PHASE8_PRODUCT_RECORDS_VIEW_PROMOTION,
+    ],
+    decision = "allow",
+    justification = "Run read-only product_records VIEW Promotion dry-run or explicit -Apply after verified backup and dual markers.",
+    match = [
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/apply_product_records_view_promotion.ps1",
     ],
     not_match = [],
 )

@@ -48,16 +48,13 @@ def get_supplier_summary(supplier_id: str) -> dict:
         anomaly = conn.execute(
             """
             SELECT
-                COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count,
-                COUNT(CASE WHEN status = '待處理'
-                            AND due_date <> ''
-                            AND due_date < date('now', 'localtime')
-                           THEN 1 END) AS overdue_count
+                COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_count
             FROM anomalies
             WHERE supplier_id = ?
             """,
             (sid,),
         ).fetchone()
+        overdue_count = repository.count_overdue_open_anomalies(conn, supplier_id=sid)
         ncr = conn.execute(
             f"""
             SELECT COUNT(*) AS count
@@ -74,9 +71,12 @@ def get_supplier_summary(supplier_id: str) -> dict:
         return {
             "supplier": supplier,
             "open_anomaly_count": int(anomaly["open_count"] or 0),
-            "overdue_anomaly_count": int(anomaly["overdue_count"] or 0),
+            "overdue_anomaly_count": overdue_count,
             "ncr_90d_count": int(ncr["count"] or 0),
             "latest_visit_date": visit["latest"] if visit else "",
+            "repeat_flagged_anomaly_count": repository.count_supplier_repeat_flagged_anomalies(
+                conn, sid
+            ),
         }
 
 
@@ -142,6 +142,7 @@ def list_supplier_rows(*, view_scope: str = "open_anomaly") -> list[dict]:
         raise ValueError(f"Unsupported supplier overview scope: {view_scope}") from exc
 
     with _connection.get_connection() as conn:
+        overdue_by_supplier = repository.count_overdue_open_anomalies_by_supplier(conn)
         defect_columns = {
             str(item["name"])
             for item in conn.execute("PRAGMA table_info(defect_records)").fetchall()
@@ -185,14 +186,7 @@ def list_supplier_rows(*, view_scope: str = "open_anomaly") -> list[dict]:
                     COUNT(*) AS anomaly_count,
                     SUM(CASE WHEN status = '待處理' THEN 1 ELSE 0 END)
                         AS open_anomaly_count,
-                    SUM(
-                        CASE
-                            WHEN status = '待處理'
-                                AND due_date <> ''
-                                AND due_date < date('now', 'localtime')
-                            THEN 1 ELSE 0
-                        END
-                    ) AS overdue_anomaly_count
+                    0 AS overdue_anomaly_count
                 FROM anomalies
                 GROUP BY supplier_id
             ) AS a ON a.supplier_id = s.id
@@ -220,7 +214,15 @@ def list_supplier_rows(*, view_scope: str = "open_anomaly") -> list[dict]:
             ORDER BY s.supplier_name COLLATE NOCASE
             """
         ).fetchall()
-        return [dict(item) for item in row]
+        rows: list[dict] = []
+        for item in row:
+            entry = dict(item)
+            entry["overdue_anomaly_count"] = overdue_by_supplier.get(
+                str(entry.get("id") or ""),
+                0,
+            )
+            rows.append(entry)
+        return rows
 
 
 def list_supplier_anomalies(supplier_id: str) -> list[dict]:

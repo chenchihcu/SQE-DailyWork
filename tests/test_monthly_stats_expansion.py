@@ -56,6 +56,29 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         )
         self.conn.commit()
 
+    def _create_overdue_case_action(
+        self,
+        anomaly_no: str,
+        due_date: str = "2020-01-01",
+        *,
+        execution_status: str = "執行中",
+    ) -> None:
+        from database import case_action_repository
+
+        row = self.conn.execute(
+            "SELECT id FROM anomalies WHERE anomaly_no = ?",
+            (anomaly_no,),
+        ).fetchone()
+        case_action_repository.create_case_action(
+            self.conn,
+            anomaly_id=str(row["id"]),
+            action_type="NEXT_ACTION",
+            description="test action",
+            due_date=due_date,
+            execution_status=execution_status,
+        )
+        self.conn.commit()
+
     def _force_close(self, anomaly_no: str, closed_at: str) -> None:
         self.conn.execute(
             """
@@ -175,10 +198,10 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         supplier_id = self._create_supplier("Supplier-A")
 
         overdue_no = self._create_anomaly(supplier_id, "2026-04-02")
-        self._set_due_date(overdue_no, "2020-01-01")  # 已逾期（待處理且過期）
+        self._create_overdue_case_action(overdue_no, "2020-01-01")  # 已逾期（待處理且過期）
         future_no = self._create_anomaly(supplier_id, "2026-04-03")
-        self._set_due_date(future_no, "2999-12-31")  # 尚未到期
-        self._create_anomaly(supplier_id, "2026-04-04")  # due_date 空白 → 不算逾期
+        self._create_overdue_case_action(future_no, "2999-12-31")  # 尚未到期
+        self._create_anomaly(supplier_id, "2026-04-04")  # 無 open action → 不算逾期
 
         rows = repository.list_events(
             self.conn,
@@ -198,7 +221,7 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
         supplier_id = self._create_supplier("Supplier-A")
         self._create_visit(supplier_id, "2026-04-05")
         overdue_no = self._create_anomaly(supplier_id, "2026-04-02")
-        self._set_due_date(overdue_no, "2020-01-01")
+        self._create_overdue_case_action(overdue_no, "2020-01-01")
 
         rows = repository.list_events(
             self.conn,
@@ -289,6 +312,7 @@ class MonthlyStatsExpansionExportTests(unittest.TestCase):
         with (
             patch("services.event._query_service.get_monthly_stats", return_value=mocked_stats),
             patch("services.event._query_service.list_events", return_value=mocked_rows),
+            patch("services.event._query_service.get_responsible_person_stats", return_value=[]),
         ):
             ok, msg = event_service.export_monthly_excel(str(self.export_path), "202604")
 

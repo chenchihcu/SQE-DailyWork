@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from PySide6.QtCore import Signal
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
 from services import supplier_360_service
 from ui.list_column_contract import SUPPLIER_OVERVIEW_COLUMNS
 from ui.layout_constants import (
+    PAGE_OUTER_MARGINS,
+    QUERY_WORKFLOW_PAGE_SPACING,
     SUPPLIER_OVERVIEW_ANOMALY_NO_WIDTH,
     SUPPLIER_OVERVIEW_CATEGORY_WIDTH,
     SUPPLIER_OVERVIEW_COUNT_WIDTH,
@@ -36,6 +39,9 @@ from ui.widgets.common_widgets import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class SupplierOverviewPage(QWidget):
     supplier_selected = Signal(str)
 
@@ -43,8 +49,8 @@ class SupplierOverviewPage(QWidget):
         super().__init__(parent)
         self._rows: list[dict] = []
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(10)
+        root.setContentsMargins(*PAGE_OUTER_MARGINS)
+        root.setSpacing(QUERY_WORKFLOW_PAGE_SPACING)
 
         controls = QueryWorkflowShell()
         controls_layout = QHBoxLayout(controls)
@@ -105,6 +111,10 @@ class SupplierOverviewPage(QWidget):
             for row in self._rows:
                 row["grade"] = grades.get(str(row.get("id") or ""), "—")
         except Exception:
+            logger.exception(
+                "供應商總覽查詢失敗 scope=%r",
+                self.scope_combo.currentData(),
+            )
             self._rows = []
         self._render()
 

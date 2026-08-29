@@ -173,6 +173,26 @@ def build_event_pdf_html(
                 _text_section("確認事項", detail.get("pending_items"))
             )
 
+        anomaly_id = str(detail.get("id") or row.get("event_id") or "").strip()
+        if anomaly_id:
+            try:
+                from services.appearance_preferences_service import load_application_preferences
+
+                prefs = load_application_preferences()
+                include_hypothesis_png = bool(
+                    getattr(prefs, "export_include_charts", True)
+                )
+            except Exception:
+                include_hypothesis_png = True
+            overview, open_actions, hypotheses = _anomaly_export_enrichment(anomaly_id)
+            sections.append(_quality_overview_section(overview, open_actions))
+            hypothesis_html = _hypothesis_tree_section(
+                hypotheses,
+                include_png=include_hypothesis_png,
+            )
+            if hypothesis_html:
+                sections.append(hypothesis_html)
+
         closing_section = _closing_info_section(
             detail,
             status_value,
@@ -421,6 +441,105 @@ def _linked_visit_date(row: dict, linked_visit: dict | None) -> object:
     if linked_visit is not None:
         return linked_visit.get("visit_date")
     return row.get("linked_visit_date")
+
+
+def _current_action_display(current: object) -> str:
+    if not isinstance(current, dict):
+        return "—"
+    description = str(current.get("description") or "").strip()
+    if not description:
+        return "—"
+    owner = str(current.get("owner") or "").strip() or "—"
+    due = str(current.get("due_date") or "").strip()
+    if due:
+        return f"{description}（{owner} / {due}）"
+    return f"{description}（{owner}）"
+
+
+def _quality_overview_section(overview: dict, open_actions: list[dict]) -> str:
+    from database.repo_helpers import CASE_ACTION_OPEN_STATUSES
+
+    fields: list[tuple[str, object]] = [
+        ("逾期", "是" if overview.get("overdue") else "否"),
+        ("目前處置", _current_action_display(overview.get("current_action"))),
+        ("進行中處置數", int(overview.get("open_action_count") or 0)),
+        ("根本原因狀態", overview.get("root_cause_status") or "尚未開始"),
+        ("改善措施狀態", overview.get("corrective_action_status") or "—"),
+        ("有效性驗證", overview.get("verification_result") or "—"),
+        ("原因假設數", int(overview.get("hypothesis_count") or 0)),
+        ("附件數", int(overview.get("attachment_count") or 0)),
+    ]
+    html = _section("品質結論／目前處置", fields)
+    open_rows = [
+        action
+        for action in open_actions
+        if action.get("execution_status") in CASE_ACTION_OPEN_STATUSES
+    ]
+    if open_rows:
+        lines = []
+        for action in open_rows:
+            action_type = str(action.get("action_type") or "").strip()
+            description = str(action.get("description") or "").strip()
+            owner = str(action.get("owner") or "").strip() or "—"
+            due = str(action.get("due_date") or "").strip() or "—"
+            lines.append(f"{action_type}：{description}（{owner} / {due}）")
+        html += _text_section("開啟中處置", "\n".join(lines))
+    return html
+
+
+def _hypothesis_tree_section(hypotheses: list[dict], *, include_png: bool) -> str:
+    if not hypotheses:
+        return ""
+    from services.event._hypothesis_tree_png import (
+        format_hypothesis_tree_text,
+        render_hypothesis_tree_png,
+    )
+
+    text_body = format_hypothesis_tree_text(hypotheses)
+    if include_png:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            png_path = Path(tmp.name)
+        if render_hypothesis_tree_png(hypotheses, png_path):
+            try:
+                data = png_path.read_bytes()
+            except OSError:
+                data = b""
+            finally:
+                try:
+                    png_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            if data:
+                b64 = base64.b64encode(data).decode("ascii")
+                return (
+                    '<div class="section-breakable">'
+                    '<div class="section-title">原因假設樹</div>'
+                    '<table width="100%" cellspacing="0" cellpadding="0" '
+                    'style="page-break-inside:avoid;width:100%;">'
+                    "<tr><td align=\"center\" style=\"padding:12px;\">"
+                    f'<img src="data:image/png;base64,{b64}" width="480" '
+                    'style="display:block;margin:0 auto;" />'
+                    "</td></tr></table>"
+                    "</div>"
+                )
+    return _text_section("原因假設樹", text_body)
+
+
+def _anomaly_export_enrichment(anomaly_id: str) -> tuple[dict, list[dict], list[dict]]:
+    from services.event import _anomaly_workbench_service
+    from services.event import _case_action_service
+
+    try:
+        overview = _anomaly_workbench_service.get_overview_card(anomaly_id)
+        actions = _case_action_service.list_case_actions(anomaly_id)
+        hypotheses = _anomaly_workbench_service.list_hypotheses(anomaly_id)
+    except ValueError:
+        overview = {}
+        actions = []
+        hypotheses = []
+    return overview, actions, hypotheses
 
 
 def build_brief_event_pdf_html(

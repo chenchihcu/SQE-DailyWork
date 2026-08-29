@@ -7,6 +7,10 @@ from datetime import date
 
 from database import connection as _connection
 from database import repository
+from database.repo_helpers import (
+    ANOMALY_AUDIT_CASE_CLOSED,
+    ANOMALY_AUDIT_CASE_REOPENED,
+)
 
 from services.appearance_preferences_service import load_application_preferences
 from services.anomaly_trace_contract import normalize_anomaly_source
@@ -15,6 +19,7 @@ from services.anomaly_trace_validator import (
     validate_anomaly_trace_payload,
 )
 from services.process_keyword_codec import validate_process_keywords
+from services.repeat_issue_service import refresh_repeat_links_for_suppliers
 
 from ._anomaly_folder import relocate_anomaly_folder
 from ._anomaly_markdown import sync_anomaly_markdown_by_id, write_anomaly_markdown
@@ -151,7 +156,10 @@ def create_anomaly(payload: dict) -> str:
         row = conn.execute(
             "SELECT id FROM anomalies WHERE anomaly_no = ?", (anomaly_no,)
         ).fetchone()
-        detail = repository.get_anomaly_detail(conn, str(row["id"])) if row else None
+        anomaly_id = str(row["id"]) if row else ""
+        if anomaly_id:
+            refresh_repeat_links_for_suppliers(conn, supplier_id)
+        detail = repository.get_anomaly_detail(conn, anomaly_id) if anomaly_id else None
     if detail is None:
         raise ValueError("Created anomaly could not be loaded")
     warnings = _write_snapshot_with_warning(detail, action="新增")
@@ -205,6 +213,11 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
         detail = repository.get_anomaly_detail(
             conn, str(result.get("anomaly_id") or "")
         )
+        if detail:
+            refresh_repeat_links_for_suppliers(
+                conn,
+                str(detail.get("supplier_id") or supplier_id),
+            )
     if detail is None:
         raise ValueError("Created anomaly could not be loaded")
     result["warnings"] = _write_snapshot_with_warning(detail, action="新增")
@@ -264,6 +277,11 @@ def update_anomaly(anomaly_id: str, payload: dict) -> dict:
                 trace_fields=trace_fields,
             ),
             anomaly_no=payload.get("anomaly_no"),
+        )
+        refresh_repeat_links_for_suppliers(
+            conn,
+            str(existing.get("supplier_id") or ""),
+            supplier_id,
         )
         conn.commit()
         detail = repository.get_anomaly_detail(conn, anomaly_key)
@@ -333,20 +351,32 @@ def close_anomaly(
     *,
     closed_by: str | None = None,
     closed_at: str | None = None,
+    actor_name: str | None = None,
 ) -> dict:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
     text = (improvement_desc or "").strip()
     if not text:
         raise ValueError("Improvement description is required")
+    closer = (closed_by or actor_name or "").strip()
     with _connection.get_connection() as conn:
         repository.close_anomaly(
             conn,
             anomaly_id=anomaly_id,
             improvement_desc=improvement_desc,
-            closed_by=closed_by,
+            closed_by=closer,
             closed_at=closed_at,
+            _commit=False,
         )
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action=ANOMALY_AUDIT_CASE_CLOSED,
+            after_value=text[:240],
+            actor_name=closer,
+            _commit=False,
+        )
+        conn.commit()
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Closed anomaly could not be loaded")
@@ -370,11 +400,35 @@ def update_anomaly_closed_at(anomaly_id: str, closed_at: str) -> dict:
     return {"anomaly_id": anomaly_id, "warnings": warnings}
 
 
-def reopen_anomaly(anomaly_id: str) -> dict:
+def reopen_anomaly(
+    anomaly_id: str,
+    *,
+    reopen_reason: str,
+    actor_name: str | None = None,
+) -> dict:
     if not (anomaly_id or "").strip():
         raise ValueError("Anomaly id is required")
+    reason = (reopen_reason or "").strip()
+    if not reason:
+        raise ValueError("Reopen reason is required")
+    actor = (actor_name or "").strip()
     with _connection.get_connection() as conn:
-        repository.reopen_anomaly(conn, anomaly_id)
+        before = repository.reopen_anomaly(conn, anomaly_id, _commit=False)
+        closed_at = before.get("closed_at") or "—"
+        improvement = str(before.get("improvement_desc") or "").strip()
+        before_summary = f"closed_at={closed_at}"
+        if improvement:
+            before_summary = f"{before_summary}; improvement={improvement[:200]}"
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action=ANOMALY_AUDIT_CASE_REOPENED,
+            before_value=before_summary[:240],
+            after_value=reason[:240],
+            actor_name=actor,
+            _commit=False,
+        )
+        conn.commit()
         detail = repository.get_anomaly_detail(conn, anomaly_id)
     if detail is None:
         raise ValueError("Reopened anomaly could not be loaded")

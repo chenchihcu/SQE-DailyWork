@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -55,10 +56,10 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 8 SQE DailyWork 頁（另含異常案件管理）+ 4 倉庫不合格品工作頁。
-        self.assertEqual(10 + NCR_PAGE_COUNT, self.window.stack.count())
-        # 側欄按鈕 = 13 固定列；事件 scope 已移入事件管理頁 chips。
-        self.assertEqual(13, len(self.window.sidebar._buttons))
+        # 9 SQE DailyWork 頁（含異常案件管理、主管檢視）+ 4 倉庫不合格品工作頁。
+        self.assertEqual(11 + NCR_PAGE_COUNT, self.window.stack.count())
+        # 側欄按鈕 = 14 固定列；事件 scope 已移入事件管理頁 chips。
+        self.assertEqual(14, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:
@@ -138,9 +139,15 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
             self.assertEqual("true", ncr_btn.property("nav_active"))
 
     def test_ncr_uses_shared_database(self) -> None:
+        from app_paths import resolve_db_path
+
         rows = self.window.ncr.conn.execute("PRAGMA database_list").fetchall()
         main_db = next((r[2] for r in rows if r[1] == "main"), "")
-        self.assertTrue(main_db.replace("\\", "/").endswith("sqe_v2.db"), main_db)
+        self.assertEqual(
+            str(resolve_db_path().resolve()),
+            str(Path(main_db).resolve()),
+            main_db,
+        )
 
     def test_open_warehouse_nonconforming_tracker_navigates_in_window(self) -> None:
         self.window._switch_primary_page(HOME_PAGE_INDEX)

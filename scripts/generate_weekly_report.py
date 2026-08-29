@@ -63,9 +63,11 @@ def get_conn():
     return conn
 
 def fetch_open_anomalies(conn):
+    from database import repository
+
     cur = conn.cursor()
     cur.execute("""
-        SELECT a.anomaly_no, a.anomaly_date, a.category, a.product_name,
+        SELECT a.id, a.anomaly_no, a.anomaly_date, a.category, a.product_name,
                a.product_stage, a.problem_desc, a.pending_items, a.improvement_desc,
                a.responsible_person, a.due_date, a.status,
                a.visit_id,
@@ -75,7 +77,17 @@ def fetch_open_anomalies(conn):
         WHERE a.status != '已結案'
         ORDER BY s.supplier_name, a.anomaly_date DESC
     """)
-    return [dict(r) for r in cur.fetchall()]
+    rows = [dict(r) for r in cur.fetchall()]
+    enriched: list[dict] = []
+    for row in rows:
+        anomaly_id = str(row.get("id") or "").strip()
+        if anomaly_id:
+            overview = repository.get_anomaly_overview_card(conn, anomaly_id)
+            row["overview_overdue"] = bool(overview.get("overdue"))
+        else:
+            row["overview_overdue"] = False
+        enriched.append(row)
+    return enriched
 
 def fetch_visits(conn):
     cur = conn.cursor()
@@ -198,7 +210,7 @@ def calc_col_widths(headers, data, total_width_cm):
     if total_len == 0:
         return [Cm(total_width_cm / len(headers))] * len(headers)
     
-    return [Cm(total_width_cm * (l / total_len)) for l in max_lens]
+    return [Cm(total_width_cm * (length / total_len)) for length in max_lens]
 
 # ── 投影片建構 ────────────────────────────────────────────
 
@@ -394,7 +406,6 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
     ROW_H    = Cm(ROW_H_CM)
     LEFT     = Cm(0.3)
     total_w  = 33.2  # 滿版寬度
-    today_str  = _TODAY.isoformat()
     cutoff_str = (_TODAY - timedelta(days=new_within_days)).isoformat() \
                  if new_within_days > 0 else None
 
@@ -434,10 +445,8 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
         is_overdue  = False
         is_new_item = False
 
-        if "due_date" in raw_row:
-            due = raw_row.get("due_date") or ""
-            if due and due != "未設定" and due < today_str:
-                is_overdue = True
+        if raw_row.get("overview_overdue"):
+            is_overdue = True
 
         if cutoff_str and "anomaly_date" in raw_row:
             adate = raw_row.get("anomaly_date") or ""
@@ -459,13 +468,10 @@ def add_matrix_table(slide, title, cols_def, data_dicts,
 
 def add_kpi_row(slide, anomalies: list[dict]) -> None:
     """在 slide 頂部繪製 4 個 KPI 統計方塊（僅第一頁呼叫）。"""
-    today_str  = _TODAY.isoformat()
     cutoff_str = (_TODAY - timedelta(days=7)).isoformat()
 
     total     = len(anomalies)
-    overdue   = sum(1 for a in anomalies
-                    if (a.get("due_date") or "") not in ("", "未設定")
-                    and a["due_date"] < today_str)
+    overdue   = sum(1 for a in anomalies if a.get("overview_overdue"))
     suppliers = len({a["supplier_name"] for a in anomalies if a.get("supplier_name")})
     new_7d    = sum(1 for a in anomalies
                     if (a.get("anomaly_date") or "") >= cutoff_str)
@@ -518,17 +524,15 @@ def categorize_anomalies(anomalies: list[dict]) -> tuple[list, list, list]:
     """
     將未結案異常依互斥規則分成三類（逾期優先）：
       - new_items:     7 天內 anomaly_date，且未逾期
-      - overdue_items: due_date < today（且 due_date 有設定）
+      - overdue_items: overview_overdue SSOT
       - others:        其餘
     輸入排序保留（呼叫端負責 supplier_name 排序）。
     """
-    today_str  = _TODAY.isoformat()
     cutoff_str = (_TODAY - timedelta(days=7)).isoformat()
 
     new_items, overdue_items, others = [], [], []
     for a in anomalies:
-        due = a.get("due_date") or ""
-        is_overdue = bool(due and due != "未設定" and due < today_str)
+        is_overdue = bool(a.get("overview_overdue"))
 
         adate = a.get("anomaly_date") or ""
         is_new = bool(adate and adate >= cutoff_str)

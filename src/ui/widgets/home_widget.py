@@ -86,6 +86,16 @@ class HomeWidget(QWidget):
         self._backlog_title = QLabel("待辦事項（待處理異常，逾期優先）")
         self._backlog_title.setProperty("role", "sectionTitle")
         outer.addWidget(self._backlog_title)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addStretch(1)
+        self._manager_view_button = QPushButton("主管檢視 →")
+        self._manager_view_button.setProperty("variant", "secondary")
+        self._manager_view_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._manager_view_button.setToolTip("開啟案件總覽與作業清單")
+        self._manager_view_button.clicked.connect(self._open_manager_view)
+        title_row.addWidget(self._manager_view_button)
+        outer.addLayout(title_row)
         outer.addWidget(BrandDivider())
 
         self._backlog_table = QTableWidget()
@@ -182,6 +192,9 @@ class HomeWidget(QWidget):
         callback = getattr(self.main_window, method_name, None)
         if callable(callback):
             callback()
+
+    def _open_manager_view(self) -> None:
+        self._invoke_main("open_manager_view")
 
     def _month_key(self) -> str:
         return QDate.currentDate().toString("yyyyMM")

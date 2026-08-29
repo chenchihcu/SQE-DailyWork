@@ -154,6 +154,38 @@ class OverviewParityTests(unittest.TestCase):
         self.assertEqual(target["verification_result"], "有效")
         self.assertEqual(target["open_action_count"], 0)
 
+    def test_overview_card_includes_repeat_link_count(self) -> None:
+        with _connection.get_connection() as conn:
+            card = repository.get_anomaly_overview_card(conn, self.anomaly_id)
+        self.assertIn("repeat_link_count", card)
+        self.assertEqual(0, card["repeat_link_count"])
+
+    def test_list_events_repeat_link_count_matches_overview_ssot(self) -> None:
+        rows = _query_service.list_events({})
+        target = next(r for r in rows if r["event_id"] == self.anomaly_id)
+        with _connection.get_connection() as conn:
+            card = repository.get_anomaly_overview_card(conn, self.anomaly_id)
+        self.assertEqual(card["repeat_link_count"], target["repeat_link_count"])
+
+    def test_list_events_by_range_includes_trace_fields(self) -> None:
+        with _connection.get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE anomalies
+                SET anomaly_source = ?, material_receipt_no = ?
+                WHERE id = ?
+                """,
+                ("進料檢驗 (IQC)", "MR-9001", self.anomaly_id),
+            )
+            conn.commit()
+        rows = _query_service.list_events_by_range("2026-06-01", "2026-06-30")
+        target = next(
+            r for r in rows
+            if r.get("event_type") == "ANOMALY" and r["event_id"] == self.anomaly_id
+        )
+        self.assertEqual("進料檢驗 (IQC)", target.get("anomaly_source"))
+        self.assertEqual("MR-9001", target.get("material_receipt_no"))
+
 
 if __name__ == "__main__":
     unittest.main()

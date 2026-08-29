@@ -2,13 +2,13 @@
   "env": {
     "qt_platform": "windows",
     "selected_font": "Microsoft JhengHei UI",
-    "scale": "1.5",
-    "device_pixel_ratio": 3.0
+    "scale": "1.25",
+    "device_pixel_ratio": 2.5
   },
   "files": [
-    "stats-stress@1.5x_stats-overview.png",
-    "stats-stress@1.5x_stats-pareto.png",
-    "stats-stress@1.5x_stats-risk.png"
+    "stats-stress@1.25x_stats-overview.png",
+    "stats-stress@1.25x_stats-pareto.png",
+    "stats-stress@1.25x_stats-risk.png"
   ],
   "scales": {
     "1.0": {

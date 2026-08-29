@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zipfile import BadZipFile
+
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     normalize_product_stage_ui,
+)
+from services.excel_import_helpers import (
+    find_excel_column_index,
+    normalize_excel_cell,
+    read_excel_workbook_rows,
 )
 
 
@@ -112,58 +117,10 @@ class ProductMasterImportResult:
     batch_id: str | None = None
 
 
-def _normalize_cell(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _normalize_header(value: Any) -> str:
-    return _normalize_cell(value).lower()
-
-
-def _find_column_index(headers: list[Any], accepted_names: set[str]) -> int | None:
-    accepted = {name.lower() for name in accepted_names}
-    for index, header in enumerate(headers):
-        if _normalize_header(header) in accepted:
-            return index
-    return None
-
-
-def _read_workbook_rows(file_path: str | Path) -> tuple[list[Any], list[tuple[int, list[Any]]]]:
-    path = Path(file_path)
-    if path.suffix.lower() != ".xlsx":
-        raise MasterImportError("僅支援 .xlsx 檔案。")
-    try:
-        from openpyxl import load_workbook
-        from openpyxl.utils.exceptions import InvalidFileException
-
-        workbook = load_workbook(path, read_only=True, data_only=True)
-    except (OSError, BadZipFile, Exception) as exc:
-        if isinstance(exc, (ValueError, OSError, BadZipFile)) or exc.__class__.__name__ == "InvalidFileException":
-            raise MasterImportError(f"無法開啟 Excel 檔案：{exc}") from exc
-        raise MasterImportError(f"無法開啟 Excel 檔案：{exc}") from exc
-
-    try:
-        worksheet = workbook.worksheets[0]
-        rows_iter = worksheet.iter_rows(values_only=True)
-        header_row = next(rows_iter, None)
-        if header_row is None or not any(_normalize_cell(cell) for cell in header_row):
-            return [], []
-        data_rows: list[tuple[int, list[Any]]] = []
-        for row_number, row_values in enumerate(rows_iter, start=2):
-            values = list(row_values)
-            if any(_normalize_cell(cell) for cell in values):
-                data_rows.append((row_number, values))
-        return list(header_row), data_rows
-    finally:
-        workbook.close()
-
-
 def _cell(values: list[Any], index: int | None) -> str:
     if index is None or index >= len(values):
         return ""
-    return _normalize_cell(values[index])
+    return normalize_excel_cell(values[index])
 
 
 def _supplier_by_name(conn: sqlite3.Connection, supplier_name: str) -> sqlite3.Row | None:
@@ -241,16 +198,19 @@ def _unassigned_product_by_code(
 def preview_product_master_import(
     conn: sqlite3.Connection, file_path: str | Path
 ) -> ProductMasterImportPreview:
-    headers, data_rows = _read_workbook_rows(file_path)
+    headers, data_rows = read_excel_workbook_rows(
+        file_path,
+        error_type=MasterImportError,
+    )
     file_errors: list[str] = []
     preview_rows: list[ProductMasterImportRow] = []
     if not headers:
         return ProductMasterImportPreview(rows=[], file_errors=["Excel 第一列需包含欄位標題。"])
 
-    code_index = _find_column_index(headers, PRODUCT_CODE_HEADERS)
-    name_index = _find_column_index(headers, PRODUCT_NAME_HEADERS)
-    supplier_index = _find_column_index(headers, SUPPLIER_NAME_HEADERS)
-    stage_index = _find_column_index(headers, PRODUCT_STAGE_HEADERS)
+    code_index = find_excel_column_index(headers, PRODUCT_CODE_HEADERS)
+    name_index = find_excel_column_index(headers, PRODUCT_NAME_HEADERS)
+    supplier_index = find_excel_column_index(headers, SUPPLIER_NAME_HEADERS)
+    stage_index = find_excel_column_index(headers, PRODUCT_STAGE_HEADERS)
     if code_index is None:
         file_errors.append("找不到料號欄位，請使用「料號」、「產品料號」或 product_code。")
     if name_index is None:

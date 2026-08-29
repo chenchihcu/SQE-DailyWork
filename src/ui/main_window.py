@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_version import APP_TITLE
-from database.connection import get_connection
+from database.connection import disposable_runtime_enabled, get_connection
 from database import repository
 from services.appearance_preferences_service import load_application_preferences
 from services.event import _product_service, _query_service
@@ -46,6 +46,7 @@ from ui.sidebar_nav import (
     PAGE_ANOMALY_CREATE,
     PAGE_EVENT_QUERY,
     PAGE_HOME,
+    PAGE_MANAGER_VIEW,
     PAGE_MASTER,
     PAGE_SUPPLIER_OVERVIEW,
     PAGE_NCR,
@@ -68,6 +69,7 @@ from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.home_widget import HomeWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
+from ui.widgets.manager_view_page import ManagerViewPage
 from ui.widgets.supplier_360_page import Supplier360Page
 from ui.widgets.supplier_overview_page import SupplierOverviewPage
 
@@ -90,6 +92,7 @@ ANOMALY_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 2
 ANOMALY_MANAGEMENT_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX + 1
 SUPPLIER_OVERVIEW_PAGE_INDEX = ANOMALY_MANAGEMENT_PAGE_INDEX + 1
 SUPPLIER_360_PAGE_INDEX = SUPPLIER_OVERVIEW_PAGE_INDEX + 1
+MANAGER_VIEW_PAGE_INDEX = SUPPLIER_360_PAGE_INDEX + 1
 EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
 EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
@@ -104,6 +107,7 @@ _PAGE_TITLES = {
     ANOMALY_MANAGEMENT_PAGE_INDEX: ("異常案件管理", "查看與維護單一供應商異常案件"),
     SUPPLIER_OVERVIEW_PAGE_INDEX: ("供應商總覽", "依供應商查看異常、訪廠與不合格品品質狀況"),
     SUPPLIER_360_PAGE_INDEX: ("供應商檔案", "供應商事件、訪廠與不合格品的唯讀聚合視角"),
+    MANAGER_VIEW_PAGE_INDEX: ("主管檢視", "案件總覽、作業清單與品質狀態營運分析"),
 }
 
 # Compatibility alias kept for external callers
@@ -116,6 +120,7 @@ for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
 _PAGE_KEY_TO_INDEX = {
     PAGE_HOME: HOME_PAGE_INDEX,
     PAGE_EVENT_QUERY: EVENT_PAGE_INDEX,
+    PAGE_MANAGER_VIEW: MANAGER_VIEW_PAGE_INDEX,
     PAGE_SUPPLIER_OVERVIEW: SUPPLIER_OVERVIEW_PAGE_INDEX,
     PAGE_STATS: STATS_PAGE_INDEX,
     PAGE_NCR: NCR_TRACKING_PAGE_INDEX,
@@ -140,7 +145,7 @@ class MainWindow(QMainWindow):
         is_automated = (
             os.environ.get("QT_QPA_PLATFORM") == "offscreen"
             or os.environ.get("SQE_TESTING") == "1"
-            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
+            or disposable_runtime_enabled()
             or os.environ.get("SQE_PROBE") == "1"
         )
         prefs = load_application_preferences()
@@ -445,6 +450,7 @@ class MainWindow(QMainWindow):
         self._supplier_overview_page = SupplierOverviewPage(self)
         self._supplier_overview_page.supplier_selected.connect(self.open_supplier_360)
         self._supplier_360_page = Supplier360Page(self, self)
+        self._manager_view_page = ManagerViewPage(self)
 
         self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
         self.stack.insertWidget(EVENT_PAGE_INDEX, self._events_page)
@@ -473,6 +479,7 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(ANOMALY_MANAGEMENT_PAGE_INDEX, self._anomaly_management_page)
         self.stack.insertWidget(SUPPLIER_OVERVIEW_PAGE_INDEX, self._supplier_overview_page)
         self.stack.insertWidget(SUPPLIER_360_PAGE_INDEX, self._supplier_360_page)
+        self.stack.insertWidget(MANAGER_VIEW_PAGE_INDEX, self._manager_view_page)
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -537,6 +544,7 @@ class MainWindow(QMainWindow):
                 NCR_STATS_PAGE_INDEX,
                 SUPPLIER_OVERVIEW_PAGE_INDEX,
                 SUPPLIER_360_PAGE_INDEX,
+                MANAGER_VIEW_PAGE_INDEX,
             ):
                 should_refresh = hasattr(real_widget, "refresh_data")
             elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
@@ -799,7 +807,11 @@ class MainWindow(QMainWindow):
         self.ncr_stats_widget.refresh_data()
         self.master_widget.refresh_data()
         self._supplier_overview_page.refresh_data()
+        self._manager_view_page.refresh_data()
         self._refresh_sidebar_badge()
+
+    def open_manager_view(self) -> None:
+        self._switch_primary_page(MANAGER_VIEW_PAGE_INDEX)
 
     def _refresh_sidebar_badge(self) -> None:
         try:
@@ -846,7 +858,7 @@ class MainWindow(QMainWindow):
         is_automated = (
             os.environ.get("QT_QPA_PLATFORM") == "offscreen"
             or os.environ.get("SQE_TESTING") == "1"
-            or os.environ.get("SQE_REQUIRE_DISPOSABLE_DB") == "1"
+            or disposable_runtime_enabled()
             or os.environ.get("SQE_PROBE") == "1"
         )
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from database import connection as _connection
+from database import repository
+from database.repo_helpers import format_current_action_text
 from services import supplier_360_service
 
 
@@ -29,6 +32,7 @@ def export_supplier_report(
             ("目前評級", scorecard.get("grade", "")),
             ("未結異常", summary.get("open_anomaly_count", 0)),
             ("逾期異常", summary.get("overdue_anomaly_count", 0)),
+            ("重複警示", summary.get("repeat_flagged_anomaly_count", 0)),
             ("近 90 日 NCR", summary.get("ncr_90d_count", 0)),
             ("最近訪廠", summary.get("latest_visit_date", "")),
         ]
@@ -36,11 +40,24 @@ def export_supplier_report(
             overview.append(row)
         overview["A1"].font = Font(bold=True)
 
+        anomaly_rows = _enriched_supplier_anomalies(supplier_id)
         _append_table(
             workbook,
             "異常統計",
-            supplier_360_service.list_supplier_anomalies(supplier_id),
-            ("anomaly_no", "anomaly_date", "problem_desc", "status", "responsible_person", "due_date"),
+            anomaly_rows,
+            (
+                "anomaly_no",
+                "anomaly_date",
+                "problem_desc",
+                "status",
+                "responsible_person",
+                "due_date",
+                "overdue",
+                "current_action_text",
+                "root_cause_status",
+                "corrective_action_status",
+                "verification_result",
+            ),
         )
         _append_table(
             workbook,
@@ -61,6 +78,38 @@ def export_supplier_report(
         return True, f"已輸出供應商報告：{file_path}"
     except Exception as exc:
         return False, f"供應商報告輸出失敗：{exc}"
+
+
+def _enriched_supplier_anomalies(supplier_id: str) -> list[dict]:
+    base_rows = supplier_360_service.list_supplier_anomalies(supplier_id)
+    enriched: list[dict] = []
+    with _connection.get_connection() as conn:
+        for row in base_rows:
+            anomaly_id = conn.execute(
+                "SELECT id FROM anomalies WHERE anomaly_no = ? LIMIT 1",
+                (str(row.get("anomaly_no") or ""),),
+            ).fetchone()
+            if anomaly_id is None:
+                enriched.append(dict(row))
+                continue
+            aid = str(anomaly_id["id"])
+            overview = repository.get_anomaly_overview_card(conn, aid)
+            enriched.append(
+                {
+                    **row,
+                    "overdue": "是" if overview.get("overdue") else "否",
+                    "current_action_text": format_current_action_text(
+                        overview.get("current_action"),
+                        include_owner_due=True,
+                    ),
+                    "root_cause_status": overview.get("root_cause_status") or "尚未開始",
+                    "corrective_action_status": overview.get(
+                        "corrective_action_status"
+                    ) or "—",
+                    "verification_result": overview.get("verification_result") or "—",
+                }
+            )
+    return enriched
 
 
 def _append_table(workbook, title: str, rows: list[dict], keys: tuple[str, ...]) -> None:

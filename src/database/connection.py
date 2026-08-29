@@ -58,10 +58,17 @@ def _disposable_runtime_enabled() -> bool:
     }
 
 
+def disposable_runtime_enabled() -> bool:
+    """Return True when ``SQE_REQUIRE_DISPOSABLE_DB`` is set to a truthy token."""
+    return _disposable_runtime_enabled()
+
+
 def _fail_closed_for_unpromoted_formal_database(
     *,
     schema_ready: Callable[[sqlite3.Connection], bool],
     attachment_schema_ready: Callable[[sqlite3.Connection], bool],
+    hypothesis_schema_ready: Callable[[sqlite3.Connection], bool],
+    repeat_links_schema_ready: Callable[[sqlite3.Connection], bool],
 ) -> None:
     """Inspect the existing formal DB read-only before any writable bootstrap."""
     target = DB_PATH.expanduser().resolve()
@@ -88,6 +95,16 @@ def _fail_closed_for_unpromoted_formal_database(
                 raise RuntimeError(
                     "需要完成附件資料升級：anomaly_attachments_contract_v1。"
                     "請先關閉應用程式並執行經核准的附件 Promotion Gate。"
+                )
+            if not hypothesis_schema_ready(connection):
+                raise RuntimeError(
+                    "需要完成 Hypothesis 資料升級：anomaly_hypotheses_v1。"
+                    "請先關閉應用程式並執行經核准的 Hypothesis Promotion Gate。"
+                )
+            if not repeat_links_schema_ready(connection):
+                raise RuntimeError(
+                    "需要完成 Repeat Issue 資料升級：anomaly_repeat_links_v1。"
+                    "請先關閉應用程式並執行經核准的 Repeat Issue Promotion Gate。"
                 )
     finally:
         connection.close()
@@ -131,7 +148,11 @@ def initialize_database() -> dict:
         get_migration_meta,
         case_actions_schema_ready,
         anomaly_attachments_contract_ready,
+        anomaly_hypotheses_schema_ready,
+        anomaly_repeat_links_schema_ready,
         migrate_case_actions_v1,
+        migrate_anomaly_hypotheses_v1,
+        migrate_anomaly_repeat_links_v1,
         recode_anomaly_numbers,
         seed_products_from_anomalies,
         sync_all_product_stages_to_events_once,
@@ -142,6 +163,8 @@ def initialize_database() -> dict:
     _fail_closed_for_unpromoted_formal_database(
         schema_ready=case_actions_schema_ready,
         attachment_schema_ready=anomaly_attachments_contract_ready,
+        hypothesis_schema_ready=anomaly_hypotheses_schema_ready,
+        repeat_links_schema_ready=anomaly_repeat_links_schema_ready,
     )
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection(DB_PATH) as conn:
@@ -154,6 +177,24 @@ def initialize_database() -> dict:
             raise RuntimeError(
                 "需要完成資料升級：case_actions_v1。"
                 "請先關閉應用程式並執行經核准的資料庫 Promotion Gate。"
+            )
+        if anomaly_hypotheses_schema_ready(conn):
+            hypotheses_migration = migrate_anomaly_hypotheses_v1(conn, apply=False)
+        elif _disposable_runtime_enabled():
+            hypotheses_migration = migrate_anomaly_hypotheses_v1(conn, apply=True)
+        else:
+            raise RuntimeError(
+                "需要完成 Hypothesis 資料升級：anomaly_hypotheses_v1。"
+                "請先關閉應用程式並執行經核准的 Hypothesis Promotion Gate。"
+            )
+        if anomaly_repeat_links_schema_ready(conn):
+            repeat_links_migration = migrate_anomaly_repeat_links_v1(conn, apply=False)
+        elif _disposable_runtime_enabled():
+            repeat_links_migration = migrate_anomaly_repeat_links_v1(conn, apply=True)
+        else:
+            raise RuntimeError(
+                "需要完成 Repeat Issue 資料升級：anomaly_repeat_links_v1。"
+                "請先關閉應用程式並執行經核准的 Repeat Issue Promotion Gate。"
             )
 
     report = migrate_legacy_data_if_needed(DB_PATH, LEGACY_DB_PATH)
@@ -217,6 +258,7 @@ def initialize_database() -> dict:
     report["align_legacy_categories"] = aligned_count
     report["ncr_migration"] = ncr_migration_report
     report["case_actions_migration"] = case_actions_migration
+    report["hypotheses_migration"] = hypotheses_migration
     if report.get("migrated"):
         logger.info("已將 Legacy 資料從 %s 遷移至 %s", LEGACY_DB_PATH, DB_PATH)
     return report

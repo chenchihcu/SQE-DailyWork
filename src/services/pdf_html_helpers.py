@@ -14,7 +14,8 @@ from PySide6.QtGui import QFontDatabase
 
 from services.appearance_preferences_service import load_application_preferences
 
-_ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+from services.path_name_helpers import sanitize_filename_part
+
 _BRAND_PRIMARY = "#065977"
 _BRAND_SECONDARY = "#0274BE"
 _TEXT_PRIMARY = "#1F2937"
@@ -31,15 +32,6 @@ _STATUS_NOT_PROVIDED: object = object()
 
 class _RawHtml(str):
     """Marker subclass: pass through pre-rendered HTML without escaping."""
-
-
-def sanitize_filename_part(value: object, *, fallback: str = "未命名") -> str:
-    text = str(value or "").strip()
-    if not text:
-        text = fallback
-    cleaned = _ILLEGAL_FILENAME_CHARS.sub("_", text)
-    cleaned = re.sub(r"\s+", "_", cleaned).strip(" ._")
-    return cleaned or fallback
 
 
 def _write_html_pdf(html: str, output: Path) -> None:

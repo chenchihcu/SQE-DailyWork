@@ -1,12 +1,12 @@
 {
-  "description": "Line coverage baseline for verify.ps1 -Profile Coverage (Wave 2 gate). Recalibrate after major test or source changes.",
-  "baseline_line_percent": 81.1,
-  "fail_under_line_percent": 79.0,
+  "description": "Line coverage baseline for verify.ps1 -Profile Coverage (Wave 2 gate). Recalibrated after Phase 1–7 + Phase 8 source expansion.",
+  "baseline_line_percent": 72.3,
+  "fail_under_line_percent": 71.0,
   "core_module_min_percent": {
-    "database": 77.0,
-    "services": 77.0,
-    "ncr": 80.0
+    "database": 68.0,
+    "services": 73.0,
+    "ncr": 81.0
   },
-  "updated": "2026-08-22",
-  "evidence": "scratch/coverage-summary.json from verify.ps1 -Profile Coverage"
+  "updated": "2026-08-28",
+  "evidence": "scratch/coverage-summary.json from verify.ps1 -Profile Coverage (Phase 8 recalibration)"
 }

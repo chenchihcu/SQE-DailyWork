@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from services.event import _anomaly_service, _visit_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.defect_form_shim import CloseAnomalyDialog
+from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.common_widgets import safe_ui_operation
@@ -296,24 +297,7 @@ class EventActionsController:
             )
 
     def reopen_anomaly(self, anomaly_id: str, ref_no: str) -> None:
-        ref_text = ref_no.strip() or anomaly_id
-        confirm = QMessageBox.question(
-            self._parent,
-            "確認重新處理",
-            localize_popup_message(f"確定要將異常單「{ref_text}」設為「待處理」？\n原有的結案對策與日期將會被清除。"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
+        dialog = ReopenAnomalyDialog(anomaly_id, ref_no, self._parent)
+        if not dialog.exec():
             return
-        safe_ui_operation(
-            self._parent,
-            lambda: (
-                _anomaly_service.reopen_anomaly(anomaly_id),
-                self._refresh_all_views(),
-            ),
-            success_msg=f"異常單「{ref_text}」已變更為待處理狀態",
-            warning_title="操作失敗",
-            logger_msg="重新處理異常失敗",
-            error_msg="重新處理失敗：",
-        )
+        self._refresh_all_views()

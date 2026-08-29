@@ -7,6 +7,33 @@ and is shown in the main-window title bar and the startup log (`logs/app.log`).
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses semantic versioning (MAJOR.MINOR.PATCH).
 
+## [1.2.0] - 2026-08-27
+
+Case workbench Phase 7: export/report parity with overview SSOT, manager-view Excel,
+supplier repeat summary, weekly PPTX overdue alignment, and unsigned Windows onedir release.
+
+### Added
+- Hypothesis tree PNG renderer for Excel range reports and event PDF exports.
+- Manager view Excel export (`案件總覽` + `作業清單`) with UI `匯出 Excel` action.
+- Excel anomaly detail append columns: `原因假設數`, `已採納假設`, `重複警示`.
+- Markdown anomaly snapshots append overview / hypothesis / open-action blocks.
+- Supplier quarterly report: `重複警示` summary and overview quality columns on anomalies.
+- Weekly PPTX overdue KPI and row highlighting via `get_anomaly_overview_card()` SSOT.
+- `scripts/verify_exports_phase7.ps1` focused gate and `tests/test_exports_phase7.py`.
+
+### Changed
+- Event PDF exports include quality-conclusion and open-action sections from overview SSOT.
+- Statistics Excel respects `export_include_charts` for chart and hypothesis PNG embedding.
+
+### Fixed
+- Phase 8 pre-release audit: overview `repeat_link_count` SSOT, case-action overdue
+  unification, range-export trace columns, hypothesis reparent level cascade,
+  UI action/verification gating, dirty-guard on dialog cancel, manager-view
+  native visual probe target, `product_records` VIEW `is_active` filter with
+  formal Promotion CLI, and coverage baseline recalibration (72.3% / fail-under 71.0%).
+- Reopen anomaly refreshes monthly stats cache when the service defers commit.
+- Supplier 360 repeat-flag count no longer crashes when repeat-links schema is absent.
+
 ## [1.1.0] - 2026-08-22
 
 Operational release with supplier-oriented UI closeout, frozen path contract, and

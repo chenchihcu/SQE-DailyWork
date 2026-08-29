@@ -7,7 +7,7 @@ build can be identified from a user's bug report / log file.
 
 from __future__ import annotations
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 APP_NAME = "SQE DailyWork"
 APP_TITLE = f"{APP_NAME} v{__version__} - SQE 工作台"

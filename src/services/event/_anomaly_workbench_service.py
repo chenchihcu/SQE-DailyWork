@@ -14,6 +14,12 @@ from typing import Any
 
 from database import connection as _connection
 from database import repository
+from database.repo_helpers import (
+    ANOMALY_AUDIT_HYPOTHESIS_CREATED,
+    ANOMALY_AUDIT_HYPOTHESIS_PROMOTED,
+    ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED,
+    ANOMALY_AUDIT_HYPOTHESIS_UPDATED,
+)
 from services import attachment_manager
 
 
@@ -76,6 +82,145 @@ def save_root_cause(
         )
 
 
+# ---- Hypotheses ---------------------------------------------------------
+def list_hypotheses(anomaly_id: str) -> list[dict[str, Any]]:
+    with _open_conn() as conn:
+        return repository.list_anomaly_hypotheses(conn, anomaly_id)
+
+
+def create_hypothesis(
+    *,
+    anomaly_id: str,
+    statement: str,
+    status: str = "提案",
+    evidence_type: str = "UNKNOWN",
+    parent_hypothesis_id: str | None = None,
+    linked_note_id: str | None = None,
+    actor_name: str = "",
+) -> str:
+    with _open_conn() as conn:
+        hypothesis_id = repository.create_anomaly_hypothesis(
+            conn,
+            anomaly_id=anomaly_id,
+            statement=statement,
+            status=status,
+            evidence_type=evidence_type,
+            parent_hypothesis_id=parent_hypothesis_id,
+            linked_note_id=linked_note_id,
+            _commit=False,
+        )
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action=ANOMALY_AUDIT_HYPOTHESIS_CREATED,
+            after_value=(statement or "")[:240],
+            actor_name=actor_name,
+            _commit=False,
+        )
+        conn.commit()
+    return hypothesis_id
+
+
+def update_hypothesis(
+    *,
+    anomaly_id: str,
+    hypothesis_id: str,
+    statement: str | None = None,
+    status: str | None = None,
+    evidence_type: str | None = None,
+    parent_hypothesis_id: str | None = None,
+    linked_note_id: str | None = None,
+    actor_name: str = "",
+) -> dict[str, Any]:
+    with _open_conn() as conn:
+        before = repository.get_anomaly_hypothesis(conn, hypothesis_id) or {}
+        updated = repository.update_anomaly_hypothesis(
+            conn,
+            hypothesis_id=hypothesis_id,
+            anomaly_id=anomaly_id,
+            statement=statement,
+            status=status,
+            evidence_type=evidence_type,
+            parent_hypothesis_id=parent_hypothesis_id,
+            linked_note_id=linked_note_id,
+            _commit=False,
+        )
+        if status is not None and status != before.get("status"):
+            repository.append_anomaly_audit_log(
+                conn,
+                anomaly_id=anomaly_id,
+                action=ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED,
+                before_value=str(before.get("status") or ""),
+                after_value=str(updated.get("status") or ""),
+                actor_name=actor_name,
+                _commit=False,
+            )
+        changed_fields: list[str] = []
+        if statement is not None and (statement or "").strip() != str(
+            before.get("statement") or ""
+        ).strip():
+            changed_fields.append("statement")
+        if evidence_type is not None and str(evidence_type or "").strip() != str(
+            before.get("evidence_type") or ""
+        ).strip():
+            changed_fields.append("evidence_type")
+        if parent_hypothesis_id is not None:
+            before_parent = str(before.get("parent_hypothesis_id") or "").strip() or None
+            after_parent = str(updated.get("parent_hypothesis_id") or "").strip() or None
+            if before_parent != after_parent:
+                changed_fields.append("parent_hypothesis_id")
+        if linked_note_id is not None:
+            before_note = str(before.get("linked_note_id") or "").strip() or None
+            after_note = str(updated.get("linked_note_id") or "").strip() or None
+            if before_note != after_note:
+                changed_fields.append("linked_note_id")
+        if changed_fields:
+            repository.append_anomaly_audit_log(
+                conn,
+                anomaly_id=anomaly_id,
+                action=ANOMALY_AUDIT_HYPOTHESIS_UPDATED,
+                before_value=",".join(changed_fields),
+                after_value=str(updated.get("id") or hypothesis_id),
+                actor_name=actor_name,
+                _commit=False,
+            )
+        conn.commit()
+    return updated
+
+
+def promote_hypothesis_to_root_cause(
+    *,
+    anomaly_id: str,
+    hypothesis_id: str,
+    root_cause_status: str | None = None,
+    actor_name: str = "",
+) -> dict[str, Any]:
+    with _open_conn() as conn:
+        result = repository.promote_hypothesis_to_root_cause(
+            conn,
+            hypothesis_id=hypothesis_id,
+            anomaly_id=anomaly_id,
+            root_cause_status=root_cause_status,
+            _commit=False,
+        )
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=anomaly_id,
+            action=ANOMALY_AUDIT_HYPOTHESIS_PROMOTED,
+            after_value=str(result.get("root_cause_status") or ""),
+            actor_name=actor_name,
+            _commit=False,
+        )
+        conn.commit()
+    _sync_markdown(anomaly_id)
+    return result
+
+
+def list_evidence_chain(anomaly_id: str) -> list[dict[str, Any]]:
+    with _open_conn() as conn:
+        return repository.list_anomaly_evidence_chain(conn, anomaly_id)
+
+
 # ---- Attachments --------------------------------------------------------
 def create_attachment(
     *,
@@ -90,6 +235,7 @@ def create_attachment(
     uploaded_by: str = "",
     related_note_id: str | None = None,
     related_action_id: str | None = None,
+    related_hypothesis_id: str | None = None,
 ) -> str:
     with _open_conn() as conn:
         attachment_id = repository.create_anomaly_attachment(
@@ -105,6 +251,7 @@ def create_attachment(
             uploaded_by=uploaded_by,
             related_note_id=related_note_id,
             related_action_id=related_action_id,
+            related_hypothesis_id=related_hypothesis_id,
             _commit=False,
         )
         repository.append_anomaly_audit_log(
@@ -130,6 +277,7 @@ def import_attachment_from_file(
     uploaded_by: str = "",
     related_note_id: str | None = None,
     related_action_id: str | None = None,
+    related_hypothesis_id: str | None = None,
     target_name: str | None = None,
 ) -> str:
     """Copy one evidence file and register its metadata with compensation.
@@ -157,6 +305,7 @@ def import_attachment_from_file(
             uploaded_by=uploaded_by,
             related_note_id=related_note_id,
             related_action_id=related_action_id,
+            related_hypothesis_id=related_hypothesis_id,
         )
         return attachment_id
     except Exception:
@@ -175,6 +324,7 @@ def update_attachment(
     revision: str = "",
     related_note_id: str | None = None,
     related_action_id: str | None = None,
+    related_hypothesis_id: str | None = None,
     actor_name: str = "",
 ) -> dict[str, Any]:
     """Update metadata and links transactionally, without renaming bytes."""
@@ -198,6 +348,7 @@ def update_attachment(
             revision=revision,
             related_note_id=related_note_id,
             related_action_id=related_action_id,
+            related_hypothesis_id=related_hypothesis_id,
             _commit=False,
         )
         repository.append_anomaly_audit_log(
@@ -350,6 +501,10 @@ def list_attachments(anomaly_id: str) -> list[dict[str, Any]]:
 
 def list_attachment_notes(anomaly_id: str) -> list[dict[str, Any]]:
     return list_analysis_notes(anomaly_id)
+
+
+def list_attachment_hypotheses(anomaly_id: str) -> list[dict[str, Any]]:
+    return list_hypotheses(anomaly_id)
 
 
 def list_attachment_actions(anomaly_id: str) -> list[dict[str, Any]]:

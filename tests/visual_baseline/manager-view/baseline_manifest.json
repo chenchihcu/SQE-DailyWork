@@ -1,0 +1,46 @@
+{
+  "env": {
+    "qt_platform": "windows",
+    "selected_font": "Microsoft JhengHei UI",
+    "scale": "1.5",
+    "device_pixel_ratio": 3.0
+  },
+  "files": [
+    "manager-view@1.5x_manager-view.png"
+  ],
+  "scales": {
+    "1.0": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.0",
+        "device_pixel_ratio": 2.0
+      },
+      "files": [
+        "manager-view_manager-view.png"
+      ]
+    },
+    "1.25": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.25",
+        "device_pixel_ratio": 2.5
+      },
+      "files": [
+        "manager-view@1.25x_manager-view.png"
+      ]
+    },
+    "1.5": {
+      "env": {
+        "qt_platform": "windows",
+        "selected_font": "Microsoft JhengHei UI",
+        "scale": "1.5",
+        "device_pixel_ratio": 3.0
+      },
+      "files": [
+        "manager-view@1.5x_manager-view.png"
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # SQE DailyWork 全量 48 項七階段導入
 
-Plan status: active — Phase 2 completed; Phase 3/4 pending
+Plan status: completed — all seven phases completed; 48-item rollout closed
 
 ## Goal
 
@@ -74,11 +74,11 @@ Timeline 與後續 exporters 各自重算。Phase 1 因此先建立 canonical
 | --- | --- | --- | --- |
 | 1 | 統一 Action 模型與執行閉環（02、03、07、08、09） | yes | completed — formal Promotion verified |
 | 2 | 附件與 Evidence 基礎契約（14–19） | yes | completed — formal Promotion verified; items 14–19 design-derived mapping documented |
-| 3 | Hypothesis、多層原因與證據鏈（20–23） | yes | pending |
-| 4 | 案件工作台完整 UI 閉環（01、04–06、10–13、24） | no | pending |
-| 5 | Supplier 360 與 Repeat Issue（25–30） | yes | pending |
-| 6 | 作業清單、Manager View 與分析（31–36） | no | pending |
-| 7 | 匯出、報告、全系統驗收與發布（37–48） | no | pending |
+| 3 | Hypothesis、多層原因與證據鏈（20–23） | yes | completed — formal Promotion verified |
+| 4 | 案件工作台完整 UI 閉環（01、04–06、10–13、24） | no | completed |
+| 5 | Supplier 360 與 Repeat Issue（25–30） | yes | completed — formal Promotion verified |
+| 6 | 作業清單、Manager View 與分析（31–36） | no | completed |
+| 7 | 匯出、報告、全系統驗收與發布（37–48） | no | completed |
 
 ## Phase 1 implementation contract
 
@@ -175,14 +175,101 @@ The contract below records only repo-confirmed foundation behavior.
 - Harness: `scripts/harness_check.ps1` PASS (live membership `625`)
 - Audit report: `scratch/phase2r-attachment-audit.json`
 - Items 14–19 mapping:
-  `docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md`
+  `docs/exec-plans/completed/2026-08-26-phase2-items-14-19-mapping.md`
   (design-derived; item 19 partial-accepted for legacy closure attachment path)
+
+## Phase 4 implementation contract — workbench UI closure (no schema)
+
+Item-level mapping for 01、04–06、10–13、24 is documented in
+[2026-08-26-phase4-items-01-24-workbench-ui.md](../completed/2026-08-26-phase4-items-01-24-workbench-ui.md)
+(`mapping_type: design-derived`).
+
+- `AnomalyManagementPage` header exposes mutually exclusive `結案` / `重新開啟`
+  actions wired to `CloseAnomalyDialog` and `ReopenAnomalyDialog`.
+- Overview tab consumes `get_anomaly_overview_card()` for quality-conclusion
+  badges (`root_cause_status`, `corrective_action_status`,
+  `verification_result`) and current-action summary.
+- `CloseAnomalyDialog` embeds `EvidenceAttachmentPanel` (Phase 2 metadata path);
+  uploads persist immediately. `NewAnomalyDialog` retains legacy `AttachmentEditor`.
+- `reopen_anomaly` service requires non-empty `reopen_reason`; same transaction
+  clears closure fields and writes `CASE_REOPENED` audit. No `reopened_at` column.
+- `close_anomaly` service writes `CASE_CLOSED` audit in the same transaction.
+- No formal DB Promotion; no new tables or columns.
+
+## Phase 4 evidence gates
+
+- `tests/test_workbench_phase4.py` — close/reopen audit, reopen reason validation.
+- `tests/test_anomaly_management_page.py` — header buttons, overview cards, stepper.
+- `scripts/verify_workbench_phase4.ps1` — disposable DB + formal fingerprint.
+- Native visual: `workbench` overview + `dialog-density` close/reopen dialogs.
+
+## Phase 5 implementation contract — repeat issue + supplier 360 summary
+
+Item-level mapping for 25–30 is documented in
+[2026-08-26-phase5-items-25-30-repeat-issue.md](../completed/2026-08-26-phase5-items-25-30-repeat-issue.md)
+(`mapping_type: design-derived`).
+
+- Canonical `anomaly_repeat_links` stores directed same-supplier similarity rows
+  with deterministic score + newline-delimited `match_reasons`.
+- Scoring SSOT: `src/services/repeat_issue_scoring.py` (category/product/keywords/
+  problem-token overlap; minimum score = category match).
+- `refresh_supplier_repeat_links` rebuilds all links for one supplier; invoked on
+  anomaly create/update and during migration backfill.
+- `AnomalyManagementPage` embeds `RepeatIssuesPanel` between stepper and tabs;
+  empty state「無相似案件」; double-click opens peer workbench.
+- `get_supplier_summary()` exposes `repeat_flagged_anomaly_count` for Supplier 360.
+- Formal DB requires explicit Promotion (`anomaly_repeat_links_v1`).
+
+## Phase 5 evidence gates
+
+- `tests/test_repeat_issue_phase5.py` — schema, scoring, refresh, supplier summary.
+- `tests/test_anomaly_management_page.py` — panel wiring (mocked list).
+- `scripts/verify_workbench_phase5.ps1` — disposable DB + formal fingerprint.
+- Promotion: `scripts/migrate_anomaly_repeat_links_v1.py` + `apply_anomaly_repeat_links_promotion.ps1`.
+
+## Phase 6 implementation contract — manager view + operational queues (no schema)
+
+Item-level mapping for 31–36 is documented in
+[2026-08-26-phase6-items-31-36-manager-view.md](../completed/2026-08-26-phase6-items-31-36-manager-view.md)
+(`mapping_type: design-derived`).
+
+- `list_manager_summary_rows()` enriches anomaly list rows from
+  `get_anomaly_overview_card()` SSOT (root cause / CA / verification / overdue).
+- `list_operational_action_queue()` lists open canonical `case_actions` joined to
+  parent anomalies (supplier-event line only).
+- `ManagerViewPage` exposes tabs「案件總覽」and「作業清單」with shared filters.
+- Sidebar entry「主管檢視」; home backlog shortcut「主管檢視 →``.
+- Compact operational metrics header; no verbose analytics paragraphs.
+
+## Phase 6 evidence gates
+
+- `tests/test_manager_view_phase6.py`
+- `scripts/verify_workbench_phase6.ps1`
+
+## Phase 7 implementation contract — export parity + release 1.2.0 (no schema)
+
+Item-level mapping for 37–48 is documented in
+[2026-08-27-phase7-items-37-48-export-release.md](2026-08-27-phase7-items-37-48-export-release.md)
+(`mapping_type: design-derived`).
+
+- Excel「異常」sheet append `原因假設數`、`已採納假設`、`重複警示` after parity columns.
+- Event PDF + Markdown consume `get_anomaly_overview_card()`; PDF embeds hypothesis tree PNG when enabled.
+- Range Excel adds「原因假設」sheet (max 12 embedded PNGs).
+- `ManagerViewPage` exports two-sheet Excel; supplier report adds repeat summary + overview columns.
+- Weekly PPTX overdue uses overview SSOT, not `anomalies.due_date` alone.
+- `export_include_charts` gates statistics chart PNG and hypothesis PNG embedding.
+- Release **1.2.0**: Full verify + `build_windows.ps1` + portable smoke; Authenticode deferred.
+
+## Phase 7 evidence gates
+
+- `tests/test_exports_phase7.py`
+- `scripts/verify_exports_phase7.ps1`
+- Background `scripts/verify.ps1 -Profile Full`
+- `scripts/portable_install_smoke.ps1 -UseExistingDist`
 
 ## Stop rule
 
-Phase 2 Promotion gate 已完成（2026-08-26）。下一停點由使用者選擇：
+Phase 6 UI-only 閉環已完成（2026-08-26）。Phase 7 匯出／報告／1.2.0 發布已完成（2026-08-27）。
 
-- **Phase 3**：Hypothesis／多層原因／證據鏈（需先寫契約；3a Root Cause 1:1 寫入 UI 已部分落地）
-- **Phase 4**：案件工作台完整 UI 閉環（header 結案／重開、概況品質結論徽章；無新 schema）
-
-不得在未另開核准的情況下 DROP 舊 action tables 或發明 14–19／20–23 逐項對照。
+不得在未另開核准的情況下 DROP 舊 action tables。項目 14–19／20–23／01–24／25–30／31–36／37–48 僅允許
+design-derived 對照；不得發明原始 48 項標題。

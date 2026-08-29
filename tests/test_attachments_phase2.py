@@ -368,7 +368,7 @@ class Phase2ItemsMappingDocTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[1]
         mapping_doc = (
             repo_root
-            / "docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md"
+            / "docs/exec-plans/completed/2026-08-26-phase2-items-14-19-mapping.md"
         )
         self.assertTrue(mapping_doc.is_file())
         text = mapping_doc.read_text(encoding="utf-8")

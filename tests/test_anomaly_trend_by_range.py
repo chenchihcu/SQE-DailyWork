@@ -59,10 +59,26 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         assert row is not None
         return str(row["id"])
 
-    def _set_due_date(self, anomaly_no: str, due_date: str) -> None:
-        self.conn.execute(
-            "UPDATE anomalies SET due_date = ? WHERE anomaly_no = ?",
-            (due_date, anomaly_no),
+    def _create_overdue_case_action(
+        self,
+        anomaly_no: str,
+        due_date: str = "2020-01-01",
+        *,
+        execution_status: str = "執行中",
+    ) -> None:
+        from database import case_action_repository
+
+        row = self.conn.execute(
+            "SELECT id FROM anomalies WHERE anomaly_no = ?",
+            (anomaly_no,),
+        ).fetchone()
+        case_action_repository.create_case_action(
+            self.conn,
+            anomaly_id=str(row["id"]),
+            action_type="NEXT_ACTION",
+            description="test action",
+            due_date=due_date,
+            execution_status=execution_status,
         )
         self.conn.commit()
 
@@ -71,10 +87,10 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         a = self._create_anomaly("2026-01-05")
         self._force_close(a, "2026-02-10")
 
-        # B: opened Jan, never closed, due date far in the past -> always
-        # overdue regardless of when this test runs.
+        # B: opened Jan, never closed, case action due far in the past -> always
+        # overdue regardless of when this test runs (SSOT: case_actions due_date).
         b = self._create_anomaly("2026-01-10")
-        self._set_due_date(b, "2020-01-01")
+        self._create_overdue_case_action(b, "2020-01-01")
 
         # C: opened Feb, never closed, no due date set -> open but not
         # overdue (the '待處理' status alone doesn't make it overdue).
@@ -99,7 +115,7 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         self.assertEqual(1, by_month["2026-02"]["closed_count"])
         self.assertEqual(1, by_month["2026-03"]["closed_count"])
 
-        # overdue_count: only B (待處理 + due_date far in the past).
+        # overdue_count: only B (待處理 + case action due_date far in the past).
         self.assertEqual(1, by_month["2026-01"]["overdue_count"])
         self.assertEqual(0, by_month["2026-02"]["overdue_count"])
         self.assertEqual(0, by_month["2026-03"]["overdue_count"])

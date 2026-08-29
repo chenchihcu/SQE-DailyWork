@@ -109,6 +109,95 @@ function Resolve-PythonExe {
     throw "No valid python executable with required dependencies (PySide6, pandas, openpyxl) found. Use -PythonExe <path>."
 }
 
+function Get-UnittestModuleNames {
+    param(
+        [string]$RepoRoot,
+        [ValidateSet("BeforeEventListRenderStability", "FromEventListRenderStability")]
+        [string]$Segment
+    )
+
+    $paths = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "tests") -Filter "test_*.py" |
+        Sort-Object Name
+    $splitName = "test_event_list_widget_render_stability.py"
+    switch ($Segment) {
+        "BeforeEventListRenderStability" {
+            return @(
+                $paths |
+                    Where-Object { $_.Name -lt $splitName } |
+                    ForEach-Object { "tests.$($_.BaseName)" }
+            )
+        }
+        "FromEventListRenderStability" {
+            return @(
+                $paths |
+                    Where-Object { $_.Name -ge $splitName } |
+                    ForEach-Object { "tests.$($_.BaseName)" }
+            )
+        }
+    }
+}
+
+function Split-ModuleChunks {
+    param(
+        [object[]]$Modules,
+        [int]$ChunkCount = 4
+    )
+
+    if ($ChunkCount -le 1 -or $Modules.Count -le 1) {
+        return ,@($Modules)
+    }
+
+    $size = [math]::Ceiling($Modules.Count / [double]$ChunkCount)
+    $chunks = @()
+    for ($index = 0; $index -lt $Modules.Count; $index += $size) {
+        $end = [math]::Min($index + $size - 1, $Modules.Count - 1)
+        $chunks += ,@($Modules[$index..$end])
+    }
+    return $chunks
+}
+
+function Invoke-UnittestDiscoverWindowsSafe {
+    param(
+        [string]$PythonPath,
+        [string]$RepoRoot,
+        [ValidateSet("Plain", "CoverageRun", "CoverageAppend")]
+        [string]$Mode = "Plain"
+    )
+
+    $beforeModules = @(Get-UnittestModuleNames -RepoRoot $RepoRoot -Segment "BeforeEventListRenderStability")
+    $afterModules = @(Get-UnittestModuleNames -RepoRoot $RepoRoot -Segment "FromEventListRenderStability")
+    if ($Mode -in @("CoverageRun", "CoverageAppend")) {
+        $allModules = @($beforeModules + $afterModules)
+        $chunks = Split-ModuleChunks -Modules $allModules -ChunkCount 4
+    } else {
+        $chunks = @($beforeModules, $afterModules)
+    }
+
+    for ($index = 0; $index -lt $chunks.Count; $index++) {
+        $modules = $chunks[$index]
+        $label = $index + 1
+        Write-Host "[unittest chunk $label/$($chunks.Count)] $($modules.Count) modules"
+        $chunkMode = $Mode
+        if ($Mode -eq "CoverageRun" -and $index -gt 0) {
+            $chunkMode = "CoverageAppend"
+        }
+        switch ($chunkMode) {
+            "CoverageRun" {
+                & $PythonPath -m coverage run -m unittest @modules
+            }
+            "CoverageAppend" {
+                & $PythonPath -m coverage run --append -m unittest @modules
+            }
+            default {
+                & $PythonPath -m unittest @modules
+            }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "unittest chunk $label failed with exit code $LASTEXITCODE"
+        }
+    }
+}
+
 function Install-CoverageTool {
     param([string]$PythonPath)
 
@@ -121,6 +210,7 @@ function Install-CoverageTool {
 function Run-CoverageTestSuite {
     param([string]$PythonPath, [string]$RepoRoot)
 
+    $env:PYTHONUNBUFFERED = "1"
     Install-CoverageTool -PythonPath $PythonPath
 
     $scratchDir = Join-Path $RepoRoot "scratch"
@@ -139,11 +229,8 @@ function Run-CoverageTestSuite {
         throw "coverage erase failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "[coverage] unittest discover -s tests"
-    & $PythonPath -m coverage run -m unittest discover -s tests -t .
-    if ($LASTEXITCODE -ne 0) {
-        throw "coverage unittest discover failed with exit code $LASTEXITCODE"
-    }
+    Write-Host "[coverage] unittest discover -s tests (Windows-safe chunked runner)"
+    Invoke-UnittestDiscoverWindowsSafe -PythonPath $PythonPath -RepoRoot $RepoRoot -Mode CoverageRun
 
     Write-Host "[coverage] ncr.tests.test_core ncr.tests.test_supplier_sync"
     & $PythonPath -m coverage run --append -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync
@@ -380,13 +467,12 @@ try {
             }
         }
     } else {
-        Write-Host "[2/6] python -m unittest discover -s tests"
+        Write-Host "[2/6] python -m unittest discover -s tests (Windows-safe chunked runner)"
         # Keep tests package-qualified so tests/__init__.py initializes the
         # shared QApplication before any PySide6 widget test is imported.
-        & $resolvedPython -m unittest discover -s tests -t .
-        if ($LASTEXITCODE -ne 0) {
-            throw "unittest failed with exit code $LASTEXITCODE"
-        }
+        # Windows offscreen Qt can AV when the full discover suite runs in one
+        # process; split at test_event_list_widget_render_stability boundary.
+        Invoke-UnittestDiscoverWindowsSafe -PythonPath $resolvedPython -RepoRoot $repoRoot
 
         Write-Host ""
         Write-Host "[2b/6] python -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync"

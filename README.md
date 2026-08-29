@@ -23,7 +23,7 @@ python main.py
 .\run_app.bat
 ```
 
-### Windows packaged build (1.1.0+)
+### Windows packaged build (1.2.0+)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
@@ -75,6 +75,18 @@ no separate launcher window, and no standalone NCR main window.
 - Supplier anomaly closure uses the user-selected `closed_at` date from the
   close dialog; closed anomalies can adjust that date without reopening, and
   supplier-event trend charts group closures by the same date.
+- 案件工作台（Phase 4）提供七個分頁：概況、歷程、分析（含多層原因假設樹）、8D、
+  改善措施、附件與變更紀錄；結案／重開走 header 與 footer 閘控，並寫入
+  `CASE_CLOSED` / `CASE_REOPENED` audit。
+- 重複案件警示（Phase 5）以 `anomaly_repeat_links` 索引同供應商相似歷史異常；
+  工作台 `RepeatIssuesPanel` 與 Supplier 360 `repeat_flagged_anomaly_count` 共用
+  scoring SSOT，且不納入倉庫 `defect_records`。
+- `主管檢視`（Phase 6）提供案件總覽與作業清單兩個分頁，摘要列 enriched
+  `get_anomaly_overview_card()` 品質欄位；逾期篩選與 KPI 與 case-action 到期日
+  SSOT 一致，不含 NCR 列。
+- 匯出／週報（Phase 7）讓 Excel／PDF／Markdown／PPTX 共用 overview read-model；
+  區間 Excel「異常」工作表含追溯欄位與假設樹 PNG（最多 12 案）；主管檢視可匯出
+  雙工作表 Excel。
 - 案件工作台的「下一步處置」與「改善措施」共用 canonical `case_actions`。
   Action 類型為 `NEXT_ACTION / CONTAINMENT / CORRECTION / CORRECTIVE_ACTION /
   SYSTEMIC_IMPROVEMENT`，執行狀態只使用 `已規劃 / 執行中 / 已完成 / 已取消`；
@@ -222,6 +234,16 @@ into `defect_records`. Warehouse nonconforming-product statistics must query
   `SQE_ANOMALY_ATTACHMENTS_PROMOTION_APPROVED=1` 與 `SQE_DAILYWORK_CONFIRM_APPLY=1`
   及使用者核准）。Focused gate：
   `scripts/verify_attachments_phase2.ps1`。
+- `anomaly_hypotheses_v1` 為 Phase 3 明確升級：未完成時新版本 fail closed
+  並提示「需要完成 Hypothesis 資料升級」。正式套用使用
+  `scripts/apply_anomaly_hypotheses_promotion.ps1`（dry-run 預設；`-Apply` 需
+  `SQE_ANOMALY_HYPOTHESES_PROMOTION_APPROVED=1` 與 `SQE_DAILYWORK_CONFIRM_APPLY=1`
+  及使用者精確回覆 `繼續`）。Focused gate：
+  `scripts/verify_hypothesis_phase3.ps1`。
+- `product_records_view_is_active_v1` 為 Phase 8 NCR 相容 VIEW 修正：正式套用使用
+  `scripts/apply_product_records_view_promotion.ps1`（dry-run 預設；`-Apply` 需
+  `SQE_PRODUCT_RECORDS_VIEW_PROMOTION_APPROVED=1` 與 `SQE_DAILYWORK_CONFIRM_APPLY=1`
+  及使用者核准）。Focused gate：`tests/test_product_records_view_write_path.py`。
 
 Bulk ERP imports, schema migrations, and destructive cleanup require backup,
 dry run, reconciliation, and focused verification.

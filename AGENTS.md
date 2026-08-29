@@ -112,6 +112,7 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **CJK Font Resolution Cache**: Wrap OS font registry scans in `@lru_cache(maxsize=1)` to avoid multi-second startup and rendering stalls.
   - **QShortcut Escape**: Use `QKeySequence(Qt.Key.Key_Escape)`—not `QKeySequence.StandardKey.Escape` (invalid in PySide6).
   - **GlobalSearchDialog tests**: Dialog `parent` must be `QWidget`; stub routing with `QWidget` + mocked methods, not `MagicMock` as parent.
+  - **Full-page Qt tearDown**: Close all `topLevelWidgets()` then `processEvents()`; no `sendPostedEvents(DeferredDelete)` in same module (SEH). `findChildren(PageClass)` insufficient.
 - **Migration and harness test patterns**:
   - **defect_supplier_id backfill tests**: `defect_supplier_id_backfill_v1` runs once at `create_schema` when `migration_meta` ≠ `1`; test backfill success by inserting supplier+defect after first schema, deleting the meta key, then re-running `create_schema`; memory DB `defect_records` inserts need `defect_no, event_date, processing_line, item_no, qty, defect_desc, status, created_at`.
   - **Harness membership**: After adding tracked source/tests, update `docs/harness/source-baseline-manifest.md` live count (`(git ls-files --cached --others --exclude-standard | Where-Object { Test-Path $_ }).Count`) before `harness_check.ps1` membership drift fails.
@@ -151,7 +152,8 @@ To ensure system stability and avoid "suspicion-based" errors, the following rul
 - Python code edits: use `scripts\verify.ps1` when practical; otherwise run the closest focused unittest or compile check and report the gap.
 - UI behavior changes: use offscreen Qt only for structural smoke checks such as startup, widget existence, and signal wiring.
 - UI visual review, screenshots, typography, and Chinese text rendering checks must use the native Windows Qt platform through `scripts\qt_visual_probe.py` or an equivalent native-platform capture. Do not treat `QT_QPA_PLATFORM=offscreen` screenshots as visual evidence because offscreen can miss Windows CJK fonts and render square glyphs.
-- **qt_visual_probe multi-target**: Run one `--target` per invocation (`main`, `supplier-360`, `event-list`, `home`); do not assume multiple `--target` flags execute all pages.
+- **qt_visual_probe multi-target**: Run one `--target` per invocation (`main`, `supplier-360`, `event-list`, `home`, `manager-view`); do not assume multiple `--target` flags execute all pages.
+- **Windows unittest discover**: chunked runner at `test_event_list_widget_render_stability`; see §4 PySide6 tearDown.
 - **Windows packaging gate**: Writable runtime roots (`data/`, `Outputs/`, `logs/`) resolve through `src/app_paths.py` (`runtime_root()` beside exe in frozen onedir). Build with `scripts\build_windows.ps1` (runs `write_build_info.py` first); validate frozen bundles with `SQE_DailyWork.exe --smoke-exit` on a scratch `SQE_DB_PATH` using `Start-Process -Wait` and `logs/smoke_exit.ok`—never treat immediate PowerShell return from a windowed exe as success.
 - **CI release gate**: `.github/workflows/verify.yml` runs Full + `Coverage` + `Soak` verify jobs on push/PR; Full evidence `scratch/verify-full-log-final.txt`.
 - **Phase 3 QA gates**: see `docs/exec-plans/completed/2026-08-22-qa-improvement-phase3.md` (`Coverage` / `Soak` profiles, portable smoke, release docs).

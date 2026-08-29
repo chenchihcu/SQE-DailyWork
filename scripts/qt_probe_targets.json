@@ -17,6 +17,7 @@
     {"name": "pdf-export", "baseline_required": false, "min_width": false},
     {"name": "workbench", "baseline_required": true, "min_width": true},
     {"name": "dialog-density", "baseline_required": true, "min_width": false},
-    {"name": "supplier-360", "baseline_required": true, "min_width": true}
+    {"name": "supplier-360", "baseline_required": true, "min_width": true},
+    {"name": "manager-view", "baseline_required": true, "min_width": true}
   ]
 }

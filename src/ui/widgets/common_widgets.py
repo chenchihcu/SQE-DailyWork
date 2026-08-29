@@ -474,6 +474,11 @@ class DirtyTrackingMixin:
             return
         super().closeEvent(event)
 
+    def reject(self) -> None:
+        if getattr(self, "_dirty", False) and not self._confirm_discard():
+            return
+        super().reject()
+
 
 class EmptyStateWidget(QFrame):
     """Shared empty-state placeholder for list/table pages."""

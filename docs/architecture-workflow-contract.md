@@ -11,7 +11,7 @@ shared master-data area.
 | Area | Tables | Source | Writes Allowed From | Must Not Write |
 | --- | --- | --- | --- | --- |
 | Shared master data | `suppliers`, `products` | Company product and supplier master data | Manual master-data dialogs; ERP/Excel master import | Supplier events, visit/audit defect notes, warehouse defect records |
-| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `case_actions`, `action_verifications`, `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs`; legacy rollback snapshots: `anomaly_actions`, `corrective_actions`, `effectiveness_verifications` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; Action writes through `_case_action_service`; remaining workbench CRUD through `_anomaly_workbench_service` | `defect_records`; post-migration writes to legacy Action tables |
+| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `case_actions`, `action_verifications`, `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_hypotheses`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs`; legacy rollback snapshots: `anomaly_actions`, `corrective_actions`, `effectiveness_verifications` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; Action writes through `_case_action_service`; remaining workbench CRUD through `_anomaly_workbench_service` | `defect_records`; post-migration writes to legacy Action tables |
 | Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` (and all anomaly sub-tables) |
 | Import audit | `import_batches`, `import_batch_rows` | ERP/Excel import runs | Import services | Workflow data rows |
 
@@ -28,6 +28,20 @@ shared master-data area.
    statistics. Timeline is a projection over the authoritative audit log plus
    sub-table rows and must not double count an event that already has an audit
    entry.
+   - **Evidence chain (Phase 3 contract):** investigation evidence flows
+     analysis note → optional attachment (`related_note_id`) → optional
+     multi-layer hypothesis (`anomaly_hypotheses`) → optional
+     attachment (`related_hypothesis_id`) → 1:1 root cause conclusion.
+     Consumers (overview, timeline, Markdown, export) must use a single
+     read-model helper (`list_anomaly_evidence_chain`, planned) rather than
+     ad-hoc per-table joins. See
+     `docs/exec-plans/completed/2026-08-26-phase3-items-20-23-hypothesis-contract.md`.
+   - **Workbench header closure (Phase 4):** `AnomalyManagementPage` and
+     `CloseAnomalyDialog` / `ReopenAnomalyDialog` are the primary close/reopen
+     surfaces. Close attachments use `EvidenceAttachmentPanel` metadata writes.
+     Reopen requires a non-empty reason stored in `anomaly_audit_logs` as
+     `CASE_REOPENED`; closure fields on `anomalies` are cleared. See
+     `docs/exec-plans/completed/2026-08-26-phase4-items-01-24-workbench-ui.md`.
    - `case_actions.action_type` is one of `NEXT_ACTION`, `CONTAINMENT`,
      `CORRECTION`, `CORRECTIVE_ACTION`, or `SYSTEMIC_IMPROVEMENT`; execution
      status is one of `已規劃`, `執行中`, `已完成`, or `已取消`.
@@ -66,7 +80,7 @@ shared master-data area.
     marks DB rows as `storage_state=present/missing` and exposes unregistered
     physical files as `legacy_physical=true` without guessing their category,
     note, Action, or uploader. Item-level Phase 2 traceability (14–19) is
-    documented in `docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md`
+    documented in `docs/exec-plans/completed/2026-08-26-phase2-items-14-19-mapping.md`
     (design-derived).
 
 1. `visit_defect_notes` remains a compatible supplier-event store for existing
@@ -95,6 +109,19 @@ shared master-data area.
    identifier. The NCR-to-anomaly action is an explicit user action and records
    `anomalies.source_defect_no` for traceability; it does not mutate or delete
    the originating warehouse record.
+9. Repeat Issue similarity is supplier-event scoped only. Canonical storage is
+   `anomaly_repeat_links` (directed `anomaly_id` → `peer_anomaly_id` with
+   deterministic `similarity_score` and newline-delimited `match_reasons`).
+   Scoring SSOT is `repeat_issue_scoring.py`; refresh runs per supplier on
+   anomaly create/update and during `anomaly_repeat_links_v1` backfill. The
+   workbench `RepeatIssuesPanel` and Supplier 360 `repeat_flagged_anomaly_count`
+   are read-only projections over this index. Warehouse `defect_records` are not
+   indexed for repeat similarity.
+10. Manager View is a supplier-event operational read model only. Canonical
+   projections are `list_manager_summary_rows()` (overview SSOT quality columns)
+   and `list_operational_action_queue()` (open canonical `case_actions`). The
+   `ManagerViewPage` is separate from event query/list scope chips and does not
+   merge warehouse NCR rows.
 
 ## Supplier Anomaly Quality-Report Requirement
 
@@ -224,9 +251,13 @@ shared master-data area.
   annotate each anomaly row with the overview card fields so every consumer
   (table, dashboard cards, export) sees the same numbers.
 - Excel 異常 detail sheet appends the parity columns (`逾期`, `目前處置`,
-  `進行中處置數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`)
-  after the existing legacy fields. Removing any of the legacy columns is a
-  contract change and must follow the standard change checklist.
+  `進行中處置數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`,
+  `原因假設數`, `已採納假設`, `重複警示`) after the existing legacy fields.
+  Range Excel may add a「原因假設」sheet with up to 12 embedded hypothesis-tree
+  PNGs when `export_include_charts` is enabled. Event PDF and Markdown snapshots
+  consume the same overview card; weekly PPTX overdue highlighting uses overview
+  `overdue`, not `anomalies.due_date` alone. Manager view Excel and supplier
+  quarterly reports are separate supplier-event exports and must not merge NCR rows.
 - VISIT rows are intentionally not enriched; only ANOMALY rows own the workbench
   sub-tables and the parity rules.
 

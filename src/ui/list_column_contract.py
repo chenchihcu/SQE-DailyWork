@@ -83,6 +83,31 @@ SUPPLIER_360_ANOMALY_COLUMNS = (
     ColumnSpec("status", "狀態"),
 )
 
+MANAGER_SUMMARY_COLUMNS = (
+    ColumnSpec("ref_no", "異常單號"),
+    ColumnSpec("supplier_name", "供應商"),
+    ColumnSpec("content", "異常摘要"),
+    ColumnSpec("status", "狀態"),
+    ColumnSpec("current_action_text", "下一步處置"),
+    ColumnSpec("action_due_date", "到期日"),
+    ColumnSpec("overdue", "逾期"),
+    ColumnSpec("root_cause_status", "根本原因"),
+    ColumnSpec("corrective_action_status", "矯正措施"),
+    ColumnSpec("verification_result", "有效性驗證"),
+    ColumnSpec("last_updated", "最後更新"),
+)
+
+OPERATIONAL_ACTION_QUEUE_COLUMNS = (
+    ColumnSpec("ref_no", "異常單號"),
+    ColumnSpec("supplier_name", "供應商"),
+    ColumnSpec("action_type", "處置類型"),
+    ColumnSpec("description", "處置內容"),
+    ColumnSpec("owner", "負責人"),
+    ColumnSpec("due_date", "到期日"),
+    ColumnSpec("execution_status", "執行狀態"),
+    ColumnSpec("overdue", "逾期"),
+)
+
 VISIT_SELECTION_COLUMNS = (
     ColumnSpec("visit_date", "日期"),
     ColumnSpec("summary", "摘要"),

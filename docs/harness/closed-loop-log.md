@@ -547,6 +547,90 @@ Next action: User chooses Phase 4 workbench UI closure or Phase 3b hypothesis sc
 Harness update needed: yes
 Destination: `docs/exec-plans/active/2026-08-24-case-workbench-48-item-rollout.md`, `docs/risk-ledger.md`, this log.
 
+## Phase 3b Hypothesis Schema Spec
+
+Date: 2026-08-26
+Task: Design-derived Phase 3 items 20–23 mapping and multi-layer hypothesis / evidence-chain schema RFC (spec only).
+Changes: Added `docs/exec-plans/active/2026-08-26-phase3-items-20-23-hypothesis-contract.md`; synced `architecture-workflow-contract.md`, main exec plan Phase 3 status, risk ledger (hypothesis schema + 20–23 traceability).
+Impact: Recommends Option A (`anomaly_hypotheses` table); documents Phase 3a partial-complete inventory; no migration/UI/Promotion code.
+Verification: `scripts/harness_check.ps1` PASS (docs-only session).
+Residual risk: Original items 20–23 titles UNKNOWN; `attachment_count` on notes not synced with `related_note_id`; implementation session still required.
+Next action: User approves RFC → Phase 3 implementation session, or parallel Phase 4 workbench UI closure.
+Harness update needed: yes
+Destination: `docs/exec-plans/active/2026-08-26-phase3-items-20-23-hypothesis-contract.md`, `docs/architecture-workflow-contract.md`, `docs/risk-ledger.md`, this log.
+
+## Phase 3 Hypothesis Implementation
+
+Date: 2026-08-26
+Task: Implement Option A `anomaly_hypotheses` migration, service, tests, Promotion CLI, and workbench Hypothesis UI (items 20–23).
+Changes: Added `anomaly_hypothesis_repository.py`, hypothesis fail-closed in `connection.py`, workbench hypothesis/evidence-chain APIs, `AnomalyHypothesisDialog`, analysis-tab hypothesis block, attachment `related_hypothesis_id`, verify/promotion scripts, `tests/test_hypothesis_phase3.py`.
+Impact: Fresh/disposable DB auto-installs `anomaly_hypotheses_v1`; formal DB remains fail closed until Promotion; promotion copies statement without auto `已驗證`.
+Verification: `scripts/verify_hypothesis_phase3.ps1` PASS (44 tests); Promotion dry-run + audit `scratch/phase3-hypothesis-audit.json`; formal fingerprint unchanged during dry-run.
+Residual risk: Formal Promotion `-Apply` pending user `繼續`; note `attachment_count` denormalization still not synced; original items 20–23 titles UNKNOWN.
+Next action: User replies `繼續` for formal `-Apply`, or run `verify_hypothesis_phase3_visual.ps1` / Full gate for release evidence.
+Harness update needed: yes
+Destination: `docs/exec-plans/active/2026-08-24-case-workbench-48-item-rollout.md`, `docs/risk-ledger.md`, `README.md`, `.codex/rules/project.rules`, this log.
+
+## Phase 3 Hypothesis Promotion Gate
+
+Date: 2026-08-26
+Task: Close Phase 3 hypothesis contract Promotion gate for the 48-item workbench rollout (user authorized `繼續`).
+Changes: Executed `scripts/apply_anomaly_hypotheses_promotion.ps1 -Apply`; updated exec plan Phase 3 status, risk ledger, post-apply audit `scratch/phase3-hypothesis-audit.json`.
+Impact: Formal `data/sqe_v2.db` now has `anomaly_hypotheses` table, extension columns `promoted_from_hypothesis_id` / `related_hypothesis_id`, and `migration_meta.anomaly_hypotheses_v1=1`; existing 37 anomaly rows unchanged; schema state SHA-256 `8c94c3b3…76619` (expected additive delta from pre-promotion `c44e5c20…57aa3`).
+Verification: `apply_anomaly_hypotheses_promotion.ps1 -Apply` PASS (`applied: true`, `integrity_check: ok`, FK `[]`); post-apply `verify_hypothesis_phase3.ps1` PASS (44 tests); `initialize_database()` smoke PASS; `main.py --smoke-exit` offscreen PASS (`tabs=14`); backup `sqe_v2_backup_anomaly_hypotheses_v1_20260826_214151.db`.
+Residual risk: Note `attachment_count` denormalization still not synced; original items 20–23 titles UNKNOWN; optional `verify_hypothesis_phase3_visual.ps1` / Full gate for release evidence.
+Next action: User chooses Phase 4 workbench UI closure or Full verify for release evidence.
+Harness update needed: yes
+Destination: `docs/exec-plans/active/2026-08-24-case-workbench-48-item-rollout.md`, `docs/risk-ledger.md`, this log.
+
+## Phase 5 Repeat Issue + Supplier 360 Summary
+
+Date: 2026-08-26
+Task: Phase 5 Supplier 360 / Repeat Issue (items 25–30); schema `anomaly_repeat_links_v1`.
+Changes: `anomaly_repeat_links` index + deterministic scoring; supplier-scoped refresh on anomaly create/update; workbench `RepeatIssuesPanel`; Supplier 360 `repeat_flagged_anomaly_count`; verify/promotion scripts.
+Impact: Workbench shows same-supplier similar historical cases; Supplier 360 header surfaces repeat-alert count; formal DB requires Promotion before startup writes index.
+Verification: `scripts/verify_workbench_phase5.ps1` PASS (19 tests); formal Promotion verified 2026-08-26 (22 links, 19 suppliers; backup `sqe_v2_backup_anomaly_repeat_links_v1_20260826_223506.db`).
+Residual risk: Scoring is rule-based (no FTS/ML); original 48-item titles 25–30 still design-derived.
+Next action: User chooses Phase 6 (items 31–36).
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-26-phase5-items-25-30-repeat-issue.md`, exec plan, architecture contract, risk ledger, codex rules, this log.
+
+## Phase 6 Manager View + Operational Queues
+
+Date: 2026-08-26
+Task: Phase 6 manager view, operational action queue, and compact metrics (items 31–36); no schema.
+Changes: `manager_view_repository.py`, `manager_view_service.py`, `ManagerViewPage` (tabs「案件總覽」「作業清單」), sidebar「主管檢視」, home shortcut; `MANAGER_SUMMARY_COLUMNS` / `OPERATIONAL_ACTION_QUEUE_COLUMNS`; `tests/test_manager_view_phase6.py`, `scripts/verify_workbench_phase6.ps1`.
+Impact: Managers can filter open supplier anomalies with SSOT quality columns and browse cross-case open `case_actions`; double-click routes to workbench; no new tables or exports.
+Verification: `scripts/verify_workbench_phase6.ps1` PASS (10 tests); architecture §10 + UI layout contract updated.
+Residual risk: Summary rows enrich via per-row `get_anomaly_overview_card()` (acceptable for manager-scale lists); original items 31–36 titles design-derived; no dedicated visual probe target yet.
+Next action: User chooses Phase 7 (items 37–48) export/report/full-system acceptance.
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-26-phase6-items-31-36-manager-view.md`, exec plan, architecture contract, UI layout contract, risk ledger, codex rules, source-baseline manifest, this log.
+
+## Phase 7 Export / Report Parity + Release 1.2.0
+
+Date: 2026-08-27
+Task: Phase 7 export/report SSOT parity, manager Excel, supplier repeat summary, weekly PPTX overdue, version 1.2.0 unsigned onedir (items 37–48); no schema.
+Changes: `_hypothesis_tree_png.py`, Excel/PDF/Markdown overview parity, manager export service + UI button, supplier report enrichment, `generate_weekly_report.py` overview overdue, `export_include_charts` gating, `tests/test_exports_phase7.py`, `scripts/verify_exports_phase7.ps1`, `app_version` 1.2.0.
+Impact: All primary supplier-event exports align with `get_anomaly_overview_card()`; hypothesis trees embed in Excel/PDF when enabled; managers can export two-sheet Excel; weekly overdue KPI matches workbench SSOT.
+Verification: `scripts/verify_exports_phase7.ps1` PASS (12 tests); formal DB fingerprint unchanged; `build_windows.ps1` + portable smoke; Full verify in `scratch/verify-full-log-final.txt`.
+Residual risk: Authenticode signing still deferred; hypothesis PNG grab may warn on headless/offscreen hosts.
+Next action: Optional formal DB promotions only on explicit user `繼續`; Phase 4 signing deferred doc remains authoritative for Authenticode.
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-27-phase7-items-37-48-export-release.md`, architecture contract, CHANGELOG, portable checklist, codex PHASE7 allow, source-baseline manifest, this log.
+
+## Phase 4 Workbench UI Closure
+
+Date: 2026-08-26
+Task: Phase 4 workbench UI closure (items 01、04–06、10–13、24); no schema.
+Changes: Header close/reopen; overview quality badges; `CloseAnomalyDialog` → `EvidenceAttachmentPanel`; `ReopenAnomalyDialog` + `CASE_CLOSED`/`CASE_REOPENED` audit; verify scripts and tests.
+Impact: Workbench is the primary close/reopen surface; closure attachments use Phase 2 metadata path; timeline/history show close/reopen audit events.
+Verification: `scripts/verify_workbench_phase4.ps1` PASS (47 tests); native `dialog-density` close/reopen baselines @ 1.0/1.25/1.5.
+Residual risk: Original 48-item titles 01–24 still UNKNOWN; workbench overview not refreshed against live formal DB during this session; Full gate not run in foreground.
+Next action: User chooses Phase 5 (Supplier 360 / Repeat Issue) or `verify_workbench_phase4_full.ps1` for release evidence.
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-26-phase4-items-01-24-workbench-ui.md`, exec plan, architecture contract, risk ledger, this log.
+
 ## Phase 2 Items 14–19 Design-Derived Mapping
 
 Date: 2026-08-26
@@ -558,4 +642,52 @@ Residual risk: Original 48-item titles 14–19 still not in repo; bulk physical-
 Next action: Delta audit only if user supplies original list; optional closure-dialog attachment unification.
 Harness update needed: yes
 Destination: mapping doc, exec plan, risk ledger, audit script, this log.
+
+## Phase 8 Pre-Release Audit Remediation
+
+Date: 2026-08-28
+Task: Formal pre-release audit fixes (11 P1 + P2 cleanup) across SSOT, hypothesis integrity, UI gating, contract tests, docs, manager-view visual probe.
+Changes: `repeat_link_count` overview SSOT; overdue via `is_case_action_overdue`; `list_events_by_range` trace columns; hypothesis reparent cascade + `HYPOTHESIS_UPDATED` audit; closed-case/verification UI gating; `DirtyTrackingMixin.reject()`; contract tests (12-PNG, NCR boundary, warehouse boundary); P2 helpers (`format_current_action_text`, excel/path helpers, disposable flag); `manager-view` probe + baselines; Phase 3 exec-plan completed.
+Impact: Supplier-event exports, manager view, supplier 360, and monthly/trend overdue KPIs align on case-action due-date SSOT; workbench action surfaces respect closed-case and verification state.
+Verification: Phase 8 focused unittest bundle PASS; regression fixes for `test_anomaly_trend_by_range`, `test_chart_axis_integer_ticks`, `test_supplier_360_service`, `test_ncr_embedding_smoke`; `verify.ps1` Windows-safe chunked unittest runner; `test_anomaly_management_page.tearDown` closes all `topLevelWidgets()`; sequential Full (`scratch/verify-full-chunked-final.log`) + Soak (`scratch/verify-soak-final.log`) PASS; Coverage baseline recalibrated (`docs/release/coverage-baseline.json` 72.3% / fail-under 71.0%) and gate PASS; `product_records` VIEW `is_active` filter promoted to formal DB (backup `sqe_v2_backup_product_records_view_is_active_v1_20260828_204019.db`, audit `scratch/product-records-view-audit-post.json`); native visual regress for workbench/dialog-density/manager-view/supplier-360 PASS.
+Residual risk: Authenticode deferred.
+Next action: Optional button-audit subprocess isolation; no further Phase 8 blockers.
+Debug/RCA (when applicable):
+Observed: Single-process `unittest discover` intermittently exit `-1073741819` at `test_event_list_widget_render_stability.setUp` after `test_anomaly_management_page` cases that construct `AnomalyManagementPage`.
+Root cause: Orphan top-level Qt widgets from management-page tests; `findChildren(AnomalyManagementPage)` tearDown insufficient; `sendPostedEvents(DeferredDelete)` in tearDown causes use-after-free in the same module.
+Fix: `tearDown` iterates `QApplication.topLevelWidgets()`, `close()` + `deleteLater()` + `processEvents()` only; keep chunked discover split in `verify.ps1` as belt-and-suspenders.
+Harness update needed: yes
+Destination: `docs/exec-plans/completed/2026-08-28-phase8-pre-release-audit-fix.md`, risk ledger, README, architecture contract, `qt_probe_targets.json`, source-baseline manifest, this log.
+
+## Code-Simplifier Phase 5–8 WIP Entry
+
+Date: 2026-08-28
+Task: Behavior-preserving simplification across Phase 5–8 WIP modules (safe-pass depth only).
+Changes: Removed identity-map dead code (`HYPOTHESIS_STATUS_LABELS`, `ROOT_CAUSE_STATUS_LABELS`, duplicate `EVIDENCE_OPTIONS`) in workbench dialogs; aligned evidence/status combos to `repo_helpers` SSOT. DRY helpers in `_hypothesis_tree_png` (`_hypothesis_node_label`), `manager_export_service` (`_append_contract_sheet`), `excel_import_helpers` except branch, and import-service alias inlining (`master_import_service`, `product_import_service`). Removed unused `repeat_issue_service` re-exports. Moved `format_current_action_due_date` to `repo_helpers`; `manager_view_page` overdue cell + `_open_row` helpers.
+Impact: Reduced SSOT drift and copy-paste across Phase 5–8 dialogs, exports, imports, and manager view without changing workflow boundaries, schema, list contracts, or public service APIs (`list_repeat_issues`, `refresh_repeat_links_for_suppliers`).
+Verification: `py_compile` on 12 touched modules; focused unittest bundle 45 OK (`test_anomaly_workbench_dialogs`, `test_hypothesis_phase3`, `test_repeat_issue_phase5`, `test_manager_view_phase6`, `test_exports_phase7`); background `scripts/verify.ps1 -Profile Focused` (`scratch/verify-focused-code-simplifier.log`).
+Residual risk: Full `unittest discover` not re-run in foreground; `create_insight_label` / `QLabel[role="insight"]` QSS remain for non-statistics surfaces; path-name / overview-enrichment cross-module DRY deferred to second pass.
+Next action: Confirm Focused verify log completion; optional second pass for `path_name_helpers` vs `_anomaly_folder` and insight helper retirement after repo-wide caller audit.
+Harness update needed: yes
+Destination: workbench dialogs, `repo_helpers.py`, `manager_view_repository.py`, `manager_view_page.py`, `manager_export_service.py`, `excel_import_helpers.py`, import services, `repeat_issue_service.py`, `_hypothesis_tree_png.py`, and this log.
+
+## Agent Rules Harvest — Phase 8 (2026-08-28)
+
+Task: Distill Phase 8 closure lessons into durable repo policy (`/harvest-agent-rules`).
+Changes: Promoted 5 rules into `AGENTS.md` §4 PySide6 / migration / §7 Verification; updated `sqe-dailywork-visual-qa` button-audit pass criteria for offscreen AV residual.
+Impact: Future Qt page tests, VIEW promotions, coverage gates, and button-audit claims follow explicit pass/fail semantics.
+Verification: Rules trace to `closed-loop-log.md` Phase 8 RCA + `docs/exec-plans/completed/2026-08-28-phase8-pre-release-audit-fix.md`.
+Residual risk: `event_create_anomaly` button clicks skipped (offscreen SEH); Authenticode deferred.
+Next action: None for Phase 8 harvest residuals.
+Harness update needed: yes
+Destination: `AGENTS.md`, `.claude/skills/sqe-dailywork-visual-qa/references/visual_qa_checklist.md`, this log.
+
+| # | Rule (distilled) | Route | Check |
+| --- | --- | --- | --- |
+| 1 | Full-page Qt tests: `tearDown` closes all `topLevelWidgets()`; no `DeferredDelete` flush in same module | `AGENTS.md` PySide6 | Pair `test_anomaly_management_page` + `test_event_list_widget_render_stability` in one process |
+| 2 | Long discover on Windows: keep chunked runner at `test_event_list_widget_render_stability` | `AGENTS.md` §7 | `verify.ps1 -Profile Full` |
+| 3 | VIEW readiness: never use `_table_exists` for VIEWs; use `sqlite_master.sql` or COUNT on VIEW | `AGENTS.md` migration | `preview_product_records_view_is_active_v1` row counts |
+| 4 | `product_records` VIEW filters `is_active=1`; Promotion via dual-marker CLI | `AGENTS.md` migration + README | `test_product_records_view_write_path` |
+| 5 | Coverage gate fail after expansion → recalibrate baseline from fresh summary, not silent pass | `AGENTS.md` §7 + risk-ledger | `assert_coverage_baseline.py` |
+| 6 | Button audit: subprocess-per-page; `event_create_anomaly` structural-only; SEH pages in report | visual-qa skill + `scripts/button_audit_report.py` | orchestrator exit 0, no SEH section |
 

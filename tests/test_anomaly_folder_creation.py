@@ -1,12 +1,60 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import yaml
 
 from services.event import _anomaly_folder
 from services.event import _anomaly_markdown
+
+
+_DEFAULT_OVERVIEW = {
+    "overdue": False,
+    "current_action_text": "",
+    "open_action_count": 0,
+    "root_cause_status": "尚未開始",
+    "corrective_action_status": "—",
+    "verification_result": "—",
+    "hypothesis_count": 0,
+    "hypothesis_adopted": False,
+    "attachment_count": 0,
+    "repeat_link_count": 0,
+}
+
+
+@contextmanager
+def _markdown_write_patches(tmp_path: Path):
+    with (
+        patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
+        patch.object(
+            _anomaly_markdown.attachment_manager,
+            "list_stored_attachment_files",
+            return_value=[],
+        ),
+        patch.object(
+            _anomaly_markdown.attachment_manager,
+            "get_anomaly_captions",
+            return_value={},
+        ),
+        patch.object(
+            _anomaly_markdown,
+            "_overview_snapshot",
+            return_value=_DEFAULT_OVERVIEW,
+        ),
+        patch.object(
+            _anomaly_markdown.repository,
+            "list_anomaly_hypotheses",
+            return_value=[],
+        ),
+        patch.object(
+            _anomaly_markdown.repository,
+            "list_case_actions",
+            return_value=[],
+        ),
+    ):
+        yield
 
 
 def _detail(**overrides) -> dict:
@@ -25,19 +73,7 @@ def _detail(**overrides) -> dict:
 
 
 def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
-    with (
-        patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "list_stored_attachment_files",
-            return_value=[],
-        ),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "get_anomaly_captions",
-            return_value={},
-        ),
-    ):
+    with _markdown_write_patches(tmp_path):
         result = _anomaly_markdown.write_anomaly_markdown(_detail())
 
     assert result == tmp_path / "供應商甲20260714001" / "供應商甲20260714001.md"
@@ -53,19 +89,7 @@ def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
 
 
 def test_markdown_sanitizes_invalid_supplier_filename_chars(tmp_path: Path) -> None:
-    with (
-        patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "list_stored_attachment_files",
-            return_value=[],
-        ),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "get_anomaly_captions",
-            return_value={},
-        ),
-    ):
+    with _markdown_write_patches(tmp_path):
         result = _anomaly_markdown.write_anomaly_markdown(
             _detail(supplier_name="供應商/甲", anomaly_no="20260714002")
         )
@@ -88,6 +112,21 @@ def test_markdown_lists_attachments_and_captions(tmp_path: Path) -> None:
             "get_anomaly_captions",
             return_value={"evidence.png": "現場照片"},
         ),
+        patch.object(
+            _anomaly_markdown,
+            "_overview_snapshot",
+            return_value=_DEFAULT_OVERVIEW,
+        ),
+        patch.object(
+            _anomaly_markdown.repository,
+            "list_anomaly_hypotheses",
+            return_value=[],
+        ),
+        patch.object(
+            _anomaly_markdown.repository,
+            "list_case_actions",
+            return_value=[],
+        ),
     ):
         result = _anomaly_markdown.write_anomaly_markdown(_detail())
 
@@ -97,19 +136,7 @@ def test_markdown_lists_attachments_and_captions(tmp_path: Path) -> None:
 
 
 def test_write_anomaly_markdown_overwrites_changed_values(tmp_path: Path) -> None:
-    with (
-        patch.object(_anomaly_folder, "ANOMALY_FOLDER_ROOT", tmp_path),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "list_stored_attachment_files",
-            return_value=[],
-        ),
-        patch.object(
-            _anomaly_markdown.attachment_manager,
-            "get_anomaly_captions",
-            return_value={},
-        ),
-    ):
+    with _markdown_write_patches(tmp_path):
         result = _anomaly_markdown.write_anomaly_markdown(_detail(status="待處理"))
         _anomaly_markdown.write_anomaly_markdown(
             _detail(

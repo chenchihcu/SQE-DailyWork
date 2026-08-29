@@ -33,7 +33,10 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-        # style initialized once in tests/__init__.py
+        # Drain deferred deletes left by earlier suites before building another
+        # EventListWidget; full top-level widget teardown can hang offscreen Qt.
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        cls.app.processEvents()
         apply_app_theme(cls.app)
 
     @classmethod
@@ -54,6 +57,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.widget.close()
+        self.widget.deleteLater()
         self._drain_events()
         self._list_events_patch.stop()
 

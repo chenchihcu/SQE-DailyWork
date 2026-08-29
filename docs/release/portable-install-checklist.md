@@ -1,6 +1,6 @@
 # Portable Install QA Checklist — SQE DailyWork
 
-**適用版本：** 1.1.0+  
+**適用版本：** 1.2.0+  
 **交付物：** `dist/SQE_DailyWork-win64.zip`（PyInstaller onedir portable）  
 **自動化 gate：** `scripts/portable_install_smoke.ps1`（zip 解壓 → scratch DB → `--smoke-exit`）
 

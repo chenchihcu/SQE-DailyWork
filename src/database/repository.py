@@ -62,6 +62,8 @@ from database.repo_helpers import (
     ANOMALY_ATTACHMENT_CATEGORY_OTHER,
     ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY,
     ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY,
+    PRODUCT_RECORDS_VIEW_IS_ACTIVE_META_KEY,
+    PRODUCT_RECORDS_VIEW_IS_ACTIVE_SCHEMA_VERSION,
     # ── TypedDicts ──
     SupplierDeleteFailure,
     SupplierDeleteResult,
@@ -116,6 +118,52 @@ from database.case_action_repository import (
     require_case_actions_schema as require_case_actions_schema,
     update_case_action as update_case_action,
 )
+from database import anomaly_hypothesis_repository as _anomaly_hypothesis_repository
+from database import anomaly_repeat_repository as _anomaly_repeat_repository
+from database.connection import disposable_runtime_enabled
+from services.path_name_helpers import contains_invalid_path_char
+
+anomaly_hypotheses_schema_ready = (
+    _anomaly_hypothesis_repository.anomaly_hypotheses_schema_ready
+)
+create_anomaly_hypothesis = _anomaly_hypothesis_repository.create_anomaly_hypothesis
+get_anomaly_hypothesis = _anomaly_hypothesis_repository.get_anomaly_hypothesis
+hypothesis_overview_metrics = _anomaly_hypothesis_repository.hypothesis_overview_metrics
+list_anomaly_evidence_chain = _anomaly_hypothesis_repository.list_anomaly_evidence_chain
+list_anomaly_hypotheses = _anomaly_hypothesis_repository.list_anomaly_hypotheses
+migrate_anomaly_hypotheses_v1 = _anomaly_hypothesis_repository.migrate_anomaly_hypotheses_v1
+preview_anomaly_hypotheses_v1 = (
+    _anomaly_hypothesis_repository.preview_anomaly_hypotheses_v1
+)
+promote_hypothesis_to_root_cause = (
+    _anomaly_hypothesis_repository.promote_hypothesis_to_root_cause
+)
+update_anomaly_hypothesis = _anomaly_hypothesis_repository.update_anomaly_hypothesis
+validate_attachment_hypothesis_link = (
+    _anomaly_hypothesis_repository.validate_attachment_hypothesis_link
+)
+_ensure_anomaly_hypotheses_v1 = _anomaly_hypothesis_repository._ensure_anomaly_hypotheses_v1
+
+anomaly_repeat_links_schema_ready = (
+    _anomaly_repeat_repository.anomaly_repeat_links_schema_ready
+)
+backfill_all_repeat_links = _anomaly_repeat_repository.backfill_all_repeat_links
+count_repeat_links_for_anomaly = _anomaly_repeat_repository.count_repeat_links_for_anomaly
+count_supplier_repeat_flagged_anomalies = (
+    _anomaly_repeat_repository.count_supplier_repeat_flagged_anomalies
+)
+list_repeat_links_for_anomaly = _anomaly_repeat_repository.list_repeat_links_for_anomaly
+migrate_anomaly_repeat_links_v1 = _anomaly_repeat_repository.migrate_anomaly_repeat_links_v1
+preview_anomaly_repeat_links_v1 = _anomaly_repeat_repository.preview_anomaly_repeat_links_v1
+refresh_supplier_repeat_links = _anomaly_repeat_repository.refresh_supplier_repeat_links
+_ensure_anomaly_repeat_links_v1 = _anomaly_repeat_repository._ensure_anomaly_repeat_links_v1
+
+
+def require_repeat_links_schema(conn: sqlite3.Connection) -> None:
+    if not anomaly_repeat_links_schema_ready(conn):
+        raise RuntimeError(
+            "需要完成 Repeat Issue 資料升級：anomaly_repeat_links_v1。"
+        )
 
 logger = logging.getLogger(__name__)
 
@@ -331,12 +379,34 @@ def create_schema(conn: sqlite3.Connection) -> None:
             validation_evidence TEXT NOT NULL DEFAULT '',
             conclusion_note TEXT NOT NULL DEFAULT '',
             not_established_reason TEXT NOT NULL DEFAULT '',
+            promoted_from_hypothesis_id TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_anomaly_root_causes_anomaly
             ON anomaly_root_causes(anomaly_id);
+
+        CREATE TABLE IF NOT EXISTS anomaly_hypotheses (
+            id TEXT PRIMARY KEY,
+            anomaly_id TEXT NOT NULL,
+            parent_hypothesis_id TEXT REFERENCES anomaly_hypotheses(id),
+            level INTEGER NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 5),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            statement TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '提案'
+                CHECK (status IN ('提案','調查中','支持','反證','採納','淘汰')),
+            evidence_type TEXT NOT NULL DEFAULT 'UNKNOWN'
+                CHECK (evidence_type IN ('FACT','INFERENCE','ASSUMPTION','UNKNOWN')),
+            linked_note_id TEXT REFERENCES anomaly_analysis_notes(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_anomaly_hypotheses_anomaly
+            ON anomaly_hypotheses(anomaly_id, level, sort_order);
+        CREATE INDEX IF NOT EXISTS idx_anomaly_hypotheses_parent
+            ON anomaly_hypotheses(parent_hypothesis_id);
 
         -- Corrective actions + effectiveness verifications (Phase 3).
         CREATE TABLE IF NOT EXISTS corrective_actions (
@@ -394,11 +464,13 @@ def create_schema(conn: sqlite3.Connection) -> None:
             related_ca_id TEXT,
             related_note_id TEXT,
             related_action_id TEXT,
+            related_hypothesis_id TEXT,
             uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (anomaly_id) REFERENCES anomalies(id) ON DELETE CASCADE,
             FOREIGN KEY (related_ca_id) REFERENCES corrective_actions(id),
             FOREIGN KEY (related_note_id) REFERENCES anomaly_analysis_notes(id),
-            FOREIGN KEY (related_action_id) REFERENCES case_actions(id)
+            FOREIGN KEY (related_action_id) REFERENCES case_actions(id),
+            FOREIGN KEY (related_hypothesis_id) REFERENCES anomaly_hypotheses(id)
         );
         CREATE INDEX IF NOT EXISTS idx_anomaly_attachments_anomaly
             ON anomaly_attachments(anomaly_id);
@@ -561,7 +633,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             product_code AS item_no,
             product_name,
             created_at
-        FROM products;
+        FROM products
+        WHERE is_active = 1;
 
         -- 內層採「純 INSERT」不帶 ON CONFLICT：products.product_code 僅有部分唯一索引
         -- （idx_products_global_code WHERE supplier_id IS NULL），無法作為 ON CONFLICT 目標
@@ -750,13 +823,11 @@ def create_schema(conn: sqlite3.Connection) -> None:
     # schema from their first row. Existing databases may auto-upgrade only
     # while the verified disposable-runtime guard is explicitly enabled; the
     # formal database still has to pass the separately approved Promotion Gate.
-    disposable_upgrade = os.environ.get("SQE_REQUIRE_DISPOSABLE_DB", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
+    disposable_upgrade = disposable_runtime_enabled()
     if fresh_install or disposable_upgrade:
         _ensure_anomaly_attachment_contract_v1(conn)
+        _ensure_anomaly_hypotheses_v1(conn)
+        _ensure_anomaly_repeat_links_v1(conn)
         migrate_case_actions_v1(
             conn,
             apply=True,
@@ -1739,16 +1810,15 @@ def cancel_anomaly_action(
     conn.commit()
 
 
-def is_anomaly_overdue(
+def is_legacy_anomaly_action_overdue(
     conn: sqlite3.Connection,
     anomaly_id: str,
     *,
     today: str | None = None,
 ) -> bool:
-    """Return True when an open anomaly has at least one due action that is
-    overdue.
+    """Legacy overdue check against deprecated ``anomaly_actions`` table.
 
-    Closed anomalies are never overdue. Cancelled actions are ignored.
+    New code must use ``is_case_action_overdue`` (canonical ``case_actions`` SSOT).
     """
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
@@ -3759,6 +3829,17 @@ def create_anomaly_analysis_note(
     return note_id
 
 
+def _count_analysis_note_attachments(conn: sqlite3.Connection, note_id: str) -> int:
+    if not note_id:
+        return 0
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM anomaly_attachments WHERE related_note_id = ?",
+            (note_id,),
+        ).fetchone()[0]
+    )
+
+
 def list_anomaly_analysis_notes(
     conn: sqlite3.Connection, anomaly_id: str
 ) -> list[dict]:
@@ -3778,6 +3859,9 @@ def list_anomaly_analysis_notes(
         item["evidence_label"] = ANOMALY_EVIDENCE_LABELS.get(
             item.get("evidence_type"), item.get("evidence_type")
         )
+        item["attachment_count"] = _count_analysis_note_attachments(
+            conn, str(item.get("id") or "")
+        )
         result.append(item)
     return result
 
@@ -3785,10 +3869,17 @@ def list_anomaly_analysis_notes(
 def get_anomaly_root_cause(
     conn: sqlite3.Connection, anomaly_id: str
 ) -> dict | None:
+    available = _table_columns(conn, "anomaly_root_causes")
+    promoted_expr = (
+        "promoted_from_hypothesis_id"
+        if "promoted_from_hypothesis_id" in available
+        else "NULL AS promoted_from_hypothesis_id"
+    )
     row = conn.execute(
-        """
+        f"""
         SELECT id, anomaly_id, statement, status, validation_method,
                validation_evidence, conclusion_note, not_established_reason,
+               {promoted_expr},
                created_at, updated_at
         FROM anomaly_root_causes
         WHERE anomaly_id = ?
@@ -3809,6 +3900,8 @@ def upsert_anomaly_root_cause(
     validation_evidence: str = "",
     conclusion_note: str = "",
     not_established_reason: str = "",
+    promoted_from_hypothesis_id: str | None = None,
+    _commit: bool = True,
 ) -> str:
     require_anomaly(conn, anomaly_id)
     if status not in ANOMALY_ROOT_CAUSE_STATUSES:
@@ -3823,48 +3916,75 @@ def upsert_anomaly_root_cause(
                 "Not established reason is required when root cause status is 無法確認"
             )
     existing = get_anomaly_root_cause(conn, anomaly_id)
+    promoted_key = (promoted_from_hypothesis_id or "").strip() or None
+    root_columns = _table_columns(conn, "anomaly_root_causes")
     if existing is None:
         rc_id = _gen_id()
-        conn.execute(
-            """
-            INSERT INTO anomaly_root_causes(
-                id, anomaly_id, statement, status, validation_method,
-                validation_evidence, conclusion_note, not_established_reason,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """,
-            (
-                rc_id,
-                anomaly_id.strip(),
-                (statement or "").strip(),
-                status,
-                (validation_method or "").strip(),
-                (validation_evidence or "").strip(),
-                (conclusion_note or "").strip(),
-                (not_established_reason or "").strip(),
-            ),
-        )
-        conn.commit()
-        return rc_id
-    conn.execute(
-        """
-        UPDATE anomaly_root_causes
-        SET statement = ?, status = ?, validation_method = ?,
-            validation_evidence = ?, conclusion_note = ?,
-            not_established_reason = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (
+        insert_columns = [
+            "id",
+            "anomaly_id",
+            "statement",
+            "status",
+            "validation_method",
+            "validation_evidence",
+            "conclusion_note",
+            "not_established_reason",
+        ]
+        insert_values: list[object] = [
+            rc_id,
+            anomaly_id.strip(),
             (statement or "").strip(),
             status,
             (validation_method or "").strip(),
             (validation_evidence or "").strip(),
             (conclusion_note or "").strip(),
             (not_established_reason or "").strip(),
-            existing["id"],
-        ),
+        ]
+        if "promoted_from_hypothesis_id" in root_columns:
+            insert_columns.append("promoted_from_hypothesis_id")
+            insert_values.append(promoted_key)
+        placeholders = ", ".join("?" for _ in insert_columns)
+        conn.execute(
+            f"""
+            INSERT INTO anomaly_root_causes(
+                {", ".join(insert_columns)}, created_at, updated_at
+            ) VALUES ({placeholders}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            tuple(insert_values),
+        )
+        if _commit:
+            conn.commit()
+        return rc_id
+    update_fields = [
+        "statement = ?",
+        "status = ?",
+        "validation_method = ?",
+        "validation_evidence = ?",
+        "conclusion_note = ?",
+        "not_established_reason = ?",
+    ]
+    update_values: list[object] = [
+        (statement or "").strip(),
+        status,
+        (validation_method or "").strip(),
+        (validation_evidence or "").strip(),
+        (conclusion_note or "").strip(),
+        (not_established_reason or "").strip(),
+    ]
+    if promoted_from_hypothesis_id is not None and "promoted_from_hypothesis_id" in root_columns:
+        update_fields.append("promoted_from_hypothesis_id = ?")
+        update_values.append(promoted_key)
+    update_values.append(existing["id"])
+    conn.execute(
+        f"""
+        UPDATE anomaly_root_causes
+        SET {", ".join(update_fields)}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        tuple(update_values),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
     return str(existing["id"])
 
 
@@ -4151,6 +4271,7 @@ def create_anomaly_attachment(
     uploaded_by: str = "",
     related_note_id: str | None = None,
     related_action_id: str | None = None,
+    related_hypothesis_id: str | None = None,
     _commit: bool = True,
 ) -> str:
     require_anomaly(conn, anomaly_id)
@@ -4182,6 +4303,12 @@ def create_anomaly_attachment(
         ).fetchone()
         if note is None or str(note[0] or "") != anomaly_key:
             raise ValueError("Related analysis note not found")
+    normalized_hypothesis_id = validate_attachment_hypothesis_link(
+        conn,
+        anomaly_id=anomaly_key,
+        related_note_id=normalized_note_id,
+        related_hypothesis_id=related_hypothesis_id,
+    )
 
     available = _table_columns(conn, "anomaly_attachments")
     if normalized_action_id and "related_action_id" not in available:
@@ -4216,6 +4343,7 @@ def create_anomaly_attachment(
         "uploaded_by": (uploaded_by or "").strip(),
         "related_note_id": normalized_note_id,
         "related_action_id": normalized_action_id,
+        "related_hypothesis_id": normalized_hypothesis_id,
     }
     for column_name, value in optional_values.items():
         if column_name in available:
@@ -4242,6 +4370,7 @@ def update_anomaly_attachment(
     revision: str = "",
     related_note_id: str | None = None,
     related_action_id: str | None = None,
+    related_hypothesis_id: str | None = None,
     _commit: bool = True,
 ) -> dict:
     """Update editable Evidence metadata while preserving storage identity."""
@@ -4282,6 +4411,12 @@ def update_anomaly_attachment(
         action = get_case_action(conn, normalized_action_id)
         if action is None or str(action.get("anomaly_id") or "") != anomaly_key:
             raise ValueError("Related Action not found")
+    normalized_hypothesis_id = validate_attachment_hypothesis_link(
+        conn,
+        anomaly_id=anomaly_key,
+        related_note_id=normalized_note_id,
+        related_hypothesis_id=related_hypothesis_id,
+    )
 
     available = _table_columns(conn, "anomaly_attachments")
     fields = ["category = ?", "description = ?", "revision = ?"]
@@ -4296,6 +4431,9 @@ def update_anomaly_attachment(
     if "related_action_id" in available:
         fields.append("related_action_id = ?")
         values.append(normalized_action_id)
+    if "related_hypothesis_id" in available:
+        fields.append("related_hypothesis_id = ?")
+        values.append(normalized_hypothesis_id)
     values.extend([attachment_key, anomaly_key])
     conn.execute(
         f"UPDATE anomaly_attachments SET {', '.join(fields)} "
@@ -4344,7 +4482,7 @@ def _normalize_attachment_file_name(value: str, *, field_name: str) -> str:
     name = str(value or "").strip()
     if not name or name in {".", ".."}:
         raise ValueError(f"{field_name} is required")
-    if any(char in name for char in '\x00<>:"/\\|?*'):
+    if contains_invalid_path_char(name):
         raise ValueError(f"{field_name} must be a file name")
     if len(name) >= 2 and name[1] == ":":
         raise ValueError(f"{field_name} must be a file name")
@@ -4371,6 +4509,7 @@ def list_anomaly_attachments(
         "related_ca_id",
         "related_note_id",
         "related_action_id",
+        "related_hypothesis_id",
         "uploaded_at",
     ):
         if optional in available:
@@ -4614,7 +4753,7 @@ def get_anomaly_overview_card(conn: sqlite3.Connection, anomaly_id: str) -> dict
     action_status = _aggregate_case_action_execution_status(actions)
     improvement_status = _aggregate_case_action_execution_status(improvement_actions)
     verify_result = _aggregate_action_verification_status(improvement_actions)
-    return {
+    overview = {
         "anomaly_id": anomaly_id,
         "status": detail.get("status") or "待處理",
         "overdue": overdue if detail.get("status") == "待處理" else False,
@@ -4630,7 +4769,51 @@ def get_anomaly_overview_card(conn: sqlite3.Connection, anomaly_id: str) -> dict
         "verification_result": verify_result or "—",
         "has_analysis_notes": bool(list_anomaly_analysis_notes(conn, anomaly_id)),
         "attachment_count": _count_anomaly_attachment_manifest(conn, anomaly_id),
+        "repeat_link_count": count_repeat_links_for_anomaly(conn, anomaly_id),
     }
+    overview.update(hypothesis_overview_metrics(conn, anomaly_id))
+    return overview
+
+
+def count_overdue_open_anomalies(
+    conn: sqlite3.Connection,
+    *,
+    supplier_id: str | None = None,
+    anomaly_where: str | None = None,
+    anomaly_params: list[Any] | None = None,
+) -> int:
+    """Count open anomalies overdue per case-action due-date SSOT."""
+    sql = "SELECT id FROM anomalies WHERE status = '待處理'"
+    params: list[Any] = list(anomaly_params or [])
+    if anomaly_where:
+        sql += f" AND {anomaly_where}"
+    if supplier_id:
+        sql += " AND supplier_id = ?"
+        params.append(str(supplier_id).strip())
+    return sum(
+        1
+        for row in conn.execute(sql, params).fetchall()
+        if is_case_action_overdue(conn, str(row["id"]))
+    )
+
+
+def count_overdue_open_anomalies_by_supplier(
+    conn: sqlite3.Connection,
+    *,
+    anomaly_where: str | None = None,
+    anomaly_params: list[Any] | None = None,
+) -> dict[str, int]:
+    """Return per-supplier overdue open anomaly counts (case-action SSOT)."""
+    sql = "SELECT id, supplier_id FROM anomalies WHERE status = '待處理'"
+    params: list[Any] = list(anomaly_params or [])
+    if anomaly_where:
+        sql += f" AND {anomaly_where}"
+    counts: dict[str, int] = {}
+    for row in conn.execute(sql, params).fetchall():
+        if is_case_action_overdue(conn, str(row["id"])):
+            sid = str(row["supplier_id"])
+            counts[sid] = counts.get(sid, 0) + 1
+    return counts
 
 
 def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None:
@@ -4961,6 +5144,7 @@ def close_anomaly(
     *,
     closed_by: str = "",
     closed_at: str | None = None,
+    _commit: bool = True,
 ) -> None:
     text = (improvement_desc or "").strip()
     if not text:
@@ -5007,7 +5191,8 @@ def close_anomaly(
             close_date[:7].replace("-", ""),
             _commit=False,
         )
-        conn.commit()
+        if _commit:
+            conn.commit()
     except Exception:
         conn.rollback()
         raise
@@ -5065,7 +5250,13 @@ def update_anomaly_closed_at(
         refresh_monthly_cache(conn, month)
 
 
-def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
+def reopen_anomaly(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    *,
+    _commit: bool = True,
+) -> dict:
+    """Reopen a closed anomaly. Returns the pre-reopen detail snapshot."""
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
         raise ValueError("Anomaly id is required")
@@ -5076,6 +5267,7 @@ def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
         raise ValueError("Only closed anomalies can be reopened")
 
     closed_at = existing.get("closed_at")
+    snapshot = dict(existing)
 
     conn.execute(
         """
@@ -5089,9 +5281,6 @@ def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
         """,
         (_now_iso(), anomaly_key),
     )
-    conn.commit()
-
-    # Refresh cache for both the anomaly date and the original closure date
     months_to_refresh = {
         month
         for month in (
@@ -5100,8 +5289,15 @@ def reopen_anomaly(conn: sqlite3.Connection, anomaly_id: str) -> None:
         )
         if month
     }
-    for month in months_to_refresh:
-        refresh_monthly_cache(conn, month)
+    try:
+        for month in months_to_refresh:
+            refresh_monthly_cache(conn, month, _commit=False)
+        if _commit:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return snapshot
 
 
 def create_visit(
@@ -5992,9 +6188,6 @@ def list_events(
             # Move closed events to dedicated tab: exclude them from active tabs by default.
             anomaly_sql += " AND a.status != '已結案'"
 
-        if overdue_only:
-            anomaly_sql += " AND a.due_date <> '' AND a.due_date < date('now', 'localtime')"
-
         if keyword:
             kw = f"%{keyword.lower()}%"
             if keyword.strip() == "未指定":
@@ -6008,6 +6201,12 @@ def list_events(
 
         for row in conn.execute(anomaly_sql, anomaly_params).fetchall():
             events.append(dict(row))
+        if overdue_only:
+            events = [
+                event
+                for event in events
+                if is_case_action_overdue(conn, str(event.get("event_id") or ""))
+            ]
 
     if include_visits:
         visit_sql = """
@@ -6172,8 +6371,7 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             COUNT(CASE WHEN status = '已結案' THEN 1 END) AS closed_anomaly_count,
             COUNT(CASE WHEN status = '待處理' THEN 1 END) AS open_anomaly_count,
             COUNT(CASE WHEN status = '待處理' AND (visit_id IS NULL OR visit_id = '') THEN 1 END) AS standalone_open_anomaly_count,
-            COUNT(CASE WHEN status = '待處理' AND (visit_id IS NOT NULL AND visit_id <> '') THEN 1 END) AS visit_open_anomaly_count,
-            COUNT(CASE WHEN status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') THEN 1 END) AS overdue_open_anomaly_count
+            COUNT(CASE WHEN status = '待處理' AND (visit_id IS NOT NULL AND visit_id <> '') THEN 1 END) AS visit_open_anomaly_count
         FROM anomalies
         WHERE {anomaly_where}
         """,
@@ -6183,7 +6381,11 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
     open_anomaly_count = int(row["open_anomaly_count"])
     standalone_open_anomaly_count = int(row["standalone_open_anomaly_count"])
     visit_open_anomaly_count = int(row["visit_open_anomaly_count"])
-    overdue_open_anomaly_count = int(row["overdue_open_anomaly_count"])
+    overdue_open_anomaly_count = count_overdue_open_anomalies(
+        conn,
+        anomaly_where=anomaly_where,
+        anomaly_params=anomaly_params,
+    )
     # closed_anomaly_count deliberately keeps its historical per-branch
     # semantics: fixed months count anomalies CLOSED in the month (the
     # monthly_stats_cache / KPI contract, cross-cohort close rate), while
@@ -6250,20 +6452,14 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
             FROM anomalies
             WHERE status = '待處理' AND {anomaly_where}
             GROUP BY supplier_id
-        ),
-        month_overdue AS (
-            SELECT supplier_id, COUNT(*) AS overdue_open_anomaly_count
-            FROM anomalies
-            WHERE status = '待處理' AND due_date <> '' AND due_date < date('now', 'localtime') AND {anomaly_where}
-            GROUP BY supplier_id
         )
         SELECT
+            s.id AS supplier_id,
             s.supplier_name AS supplier_name,
             COALESCE(ma.anomaly_count, 0) AS anomaly_count,
             COALESCE(mv.visit_count, 0) AS visit_count,
             COALESCE(mc.closed_anomaly_count, 0) AS closed_anomaly_count,
             COALESCE(mo.open_anomaly_count, 0) AS open_anomaly_count,
-            COALESCE(mod.overdue_open_anomaly_count, 0) AS overdue_open_anomaly_count,
             COALESCE(mo.standalone_open_anomaly_count, 0) AS standalone_open_anomaly_count,
             COALESCE(mo.visit_open_anomaly_count, 0) AS visit_open_anomaly_count,
             COALESCE(ma.avg_resolution_time, 0) AS avg_resolution_time
@@ -6273,7 +6469,6 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
         LEFT JOIN month_visits mv ON mv.supplier_id = ms.supplier_id
         LEFT JOIN month_closed mc ON mc.supplier_id = ms.supplier_id
         LEFT JOIN month_open mo ON mo.supplier_id = ms.supplier_id
-        LEFT JOIN month_overdue mod ON mod.supplier_id = ms.supplier_id
         ORDER BY
             COALESCE(ma.anomaly_count, 0) DESC,
             COALESCE(mv.visit_count, 0) DESC,
@@ -6282,7 +6477,12 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
     top_params = tuple(
         anomaly_params + visit_params + closed_params
         + anomaly_params + visit_params + closed_params
-        + anomaly_params + anomaly_params
+        + anomaly_params
+    )
+    overdue_by_supplier = count_overdue_open_anomalies_by_supplier(
+        conn,
+        anomaly_where=anomaly_where,
+        anomaly_params=anomaly_params,
     )
 
     top_supplier_rows = conn.execute(top_sql, top_params).fetchall()
@@ -6304,7 +6504,10 @@ def get_monthly_stats(conn: sqlite3.Connection, yyyymm: str) -> dict:
                 "visit_count": int(item["visit_count"]),
                 "closed_anomaly_count": supplier_closed_count,
                 "open_anomaly_count": int(item["open_anomaly_count"]),
-                "overdue_open_anomaly_count": int(item.get("overdue_open_anomaly_count") or 0),
+                "overdue_open_anomaly_count": overdue_by_supplier.get(
+                    str(item.get("supplier_id") or ""),
+                    0,
+                ),
                 "standalone_open_anomaly_count": int(item.get("standalone_open_anomaly_count") or 0),
                 "visit_open_anomaly_count": int(item.get("visit_open_anomaly_count") or 0),
                 "close_rate_pct": supplier_close_rate,
@@ -7806,3 +8009,118 @@ def _rebuild_products_without_spec_desc(conn: sqlite3.Connection) -> None:
     finally:
         conn.execute("PRAGMA legacy_alter_table=OFF")
     _ensure_product_indexes(conn)
+
+
+_PRODUCT_RECORDS_VIEW_DDL = """
+DROP VIEW IF EXISTS product_records;
+CREATE VIEW product_records AS
+SELECT
+    id,
+    product_code AS item_no,
+    product_name,
+    created_at
+FROM products
+WHERE is_active = 1;
+
+CREATE TRIGGER IF NOT EXISTS trg_product_records_insert
+INSTEAD OF INSERT ON product_records
+BEGIN
+    INSERT INTO products (id, product_code, product_name, created_at, updated_at, is_active)
+    VALUES (
+        COALESCE(NEW.id, hex(randomblob(16))),
+        NEW.item_no,
+        NEW.product_name,
+        COALESCE(NEW.created_at, datetime('now', 'localtime')),
+        datetime('now', 'localtime'),
+        1
+    );
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_product_records_update
+INSTEAD OF UPDATE ON product_records
+BEGIN
+    UPDATE products
+    SET product_code = NEW.item_no,
+        product_name = NEW.product_name,
+        updated_at = datetime('now', 'localtime')
+    WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_product_records_delete
+INSTEAD OF DELETE ON product_records
+BEGIN
+    DELETE FROM products WHERE id = OLD.id;
+END;
+"""
+
+
+def _product_records_view_sql(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'product_records'"
+    ).fetchone()
+    if row is None or row[0] is None:
+        return ""
+    return str(row[0])
+
+
+def _product_records_view_has_is_active_filter(view_sql: str) -> bool:
+    normalized = "".join(view_sql.lower().split())
+    return "whereis_active=1" in normalized or "whereis_active=1;" in normalized
+
+
+def preview_product_records_view_is_active_v1(conn: sqlite3.Connection) -> dict[str, Any]:
+    view_sql = _product_records_view_sql(conn)
+    has_filter = _product_records_view_has_is_active_filter(view_sql)
+    inactive_products = int(
+        conn.execute("SELECT COUNT(*) FROM products WHERE is_active = 0").fetchone()[0]
+    )
+    active_products = int(
+        conn.execute("SELECT COUNT(*) FROM products WHERE is_active = 1").fetchone()[0]
+    )
+    product_records_rows = 0
+    if view_sql.strip():
+        product_records_rows = int(
+            conn.execute("SELECT COUNT(*) FROM product_records").fetchone()[0]
+        )
+    meta_applied = (
+        get_migration_meta(conn, PRODUCT_RECORDS_VIEW_IS_ACTIVE_META_KEY)
+        == PRODUCT_RECORDS_VIEW_IS_ACTIVE_SCHEMA_VERSION
+    )
+    return {
+        "ready": has_filter,
+        "view_has_is_active_filter": has_filter,
+        "meta_applied": meta_applied,
+        "inactive_products": inactive_products,
+        "active_products": active_products,
+        "product_records_rows": product_records_rows,
+        "counts_aligned": product_records_rows == active_products,
+    }
+
+
+def product_records_view_is_active_schema_ready(conn: sqlite3.Connection) -> bool:
+    return bool(preview_product_records_view_is_active_v1(conn)["ready"])
+
+
+def migrate_product_records_view_is_active_v1(
+    conn: sqlite3.Connection,
+    *,
+    apply: bool = False,
+) -> dict[str, Any]:
+    preview = preview_product_records_view_is_active_v1(conn)
+    if not apply:
+        return {**preview, "applied": False, "skipped": preview["ready"]}
+    if preview["ready"] and preview["meta_applied"]:
+        return {**preview, "applied": False, "skipped": True}
+    conn.executescript(_PRODUCT_RECORDS_VIEW_DDL)
+    upsert_migration_meta(
+        conn,
+        PRODUCT_RECORDS_VIEW_IS_ACTIVE_META_KEY,
+        PRODUCT_RECORDS_VIEW_IS_ACTIVE_SCHEMA_VERSION,
+    )
+    conn.commit()
+    report = preview_product_records_view_is_active_v1(conn)
+    if not report["ready"]:
+        raise RuntimeError(
+            "product_records_view_is_active_v1 migration did not install the filtered view."
+        )
+    return {**report, "applied": True, "skipped": False}

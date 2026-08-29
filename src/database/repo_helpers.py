@@ -178,6 +178,35 @@ ANOMALY_ATTACHMENTS_MIGRATION_META_KEY = "anomaly_attachments_v1"
 ANOMALY_ATTACHMENTS_CONTRACT_META_KEY = "anomaly_attachments_contract_v1"
 ANOMALY_ATTACHMENTS_CONTRACT_SCHEMA_VERSION = "1"
 
+ANOMALY_HYPOTHESIS_PROPOSED = "提案"
+ANOMALY_HYPOTHESIS_UNDER_INVESTIGATION = "調查中"
+ANOMALY_HYPOTHESIS_SUPPORTED = "支持"
+ANOMALY_HYPOTHESIS_REFUTED = "反證"
+ANOMALY_HYPOTHESIS_ADOPTED = "採納"
+ANOMALY_HYPOTHESIS_DISCARDED = "淘汰"
+ANOMALY_HYPOTHESIS_STATUSES: tuple[str, ...] = (
+    ANOMALY_HYPOTHESIS_PROPOSED,
+    ANOMALY_HYPOTHESIS_UNDER_INVESTIGATION,
+    ANOMALY_HYPOTHESIS_SUPPORTED,
+    ANOMALY_HYPOTHESIS_REFUTED,
+    ANOMALY_HYPOTHESIS_ADOPTED,
+    ANOMALY_HYPOTHESIS_DISCARDED,
+)
+ANOMALY_HYPOTHESIS_MAX_LEVEL = 5
+ANOMALY_HYPOTHESES_MIGRATION_META_KEY = "anomaly_hypotheses_v1"
+ANOMALY_HYPOTHESES_SCHEMA_VERSION = "1"
+ANOMALY_REPEAT_LINKS_MIGRATION_META_KEY = "anomaly_repeat_links_v1"
+ANOMALY_REPEAT_LINKS_SCHEMA_VERSION = "1"
+PRODUCT_RECORDS_VIEW_IS_ACTIVE_META_KEY = "product_records_view_is_active_v1"
+PRODUCT_RECORDS_VIEW_IS_ACTIVE_SCHEMA_VERSION = "1"
+
+ANOMALY_AUDIT_HYPOTHESIS_CREATED = "HYPOTHESIS_CREATED"
+ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED = "HYPOTHESIS_STATUS_CHANGED"
+ANOMALY_AUDIT_HYPOTHESIS_UPDATED = "HYPOTHESIS_UPDATED"
+ANOMALY_AUDIT_HYPOTHESIS_PROMOTED = "HYPOTHESIS_PROMOTED"
+ANOMALY_AUDIT_CASE_CLOSED = "CASE_CLOSED"
+ANOMALY_AUDIT_CASE_REOPENED = "CASE_REOPENED"
+
 ANOMALY_ATTACHMENT_CATEGORY_EVIDENCE = "Evidence"
 ANOMALY_ATTACHMENT_CATEGORY_NG_PHOTO = "NG Photo"
 ANOMALY_ATTACHMENT_CATEGORY_FA_REPORT = "FA Report"
@@ -238,6 +267,41 @@ class ProductStageSyncReport(TypedDict):
 class ProductStageSyncOnceReport(ProductStageSyncReport):
     skipped: bool
     reason: str
+
+
+# ── Case action presentation helpers ───────────────────────────────────────
+def format_current_action_text(
+    current: object,
+    *,
+    empty_fallback: str = "",
+    include_owner_due: bool = False,
+) -> str:
+    """Format the current case action for UI rows, exports, or markdown snapshots."""
+    if not isinstance(current, dict):
+        return empty_fallback
+    description = str(current.get("description") or "").strip()
+    if not description:
+        return empty_fallback
+    if not include_owner_due:
+        return description
+    owner = str(current.get("owner") or "").strip() or "—"
+    due = str(current.get("due_date") or "").strip()
+    if due:
+        return f"{description}（{owner} / {due}）"
+    return f"{description}（{owner}）"
+
+
+def format_current_action_due_date(
+    current: object,
+    *,
+    fallback: str = "",
+) -> str:
+    """Return the due date for a current case action, with display fallback."""
+    if isinstance(current, dict):
+        due = str(current.get("due_date") or "").strip()
+        if due:
+            return due
+    return str(fallback or "").strip() or "—"
 
 
 # ── Date / ID / value helpers ──────────────────────────────────────────────

@@ -58,6 +58,10 @@ def _enrich_events_with_overview(
         row["verification_result"] = card.get("verification_result")
         row["has_analysis_notes"] = bool(card.get("has_analysis_notes"))
         row["attachment_count"] = int(card.get("attachment_count", 0))
+        row["hypothesis_count"] = int(card.get("hypothesis_count") or 0)
+        row["hypothesis_deepest_level"] = int(card.get("hypothesis_deepest_level") or 0)
+        row["hypothesis_adopted"] = bool(card.get("hypothesis_adopted"))
+        row["repeat_link_count"] = int(card.get("repeat_link_count") or 0)
 
 
 def get_dashboard_summary() -> dict:
@@ -114,8 +118,17 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
             s.supplier_name AS supplier_name,
             a.product_id AS product_id,
             p.product_code AS product_code,
+            a.product_lot_no AS product_lot_no,
             a.product_name AS product_name,
             a.product_stage AS product_stage,
+            a.anomaly_source AS anomaly_source,
+            a.material_receipt_no AS material_receipt_no,
+            a.internal_work_order_no AS internal_work_order_no,
+            a.outsource_work_order AS work_order_no,
+            a.outsource_work_order AS outsource_work_order,
+            a.outsource_receipt_no AS outsource_receipt_no,
+            a.batch_qty AS production_qty,
+            a.batch_qty AS batch_qty,
             a.problem_desc AS content,
             a.status AS status,
             a.category AS category,
@@ -483,29 +496,24 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
         return f"{year:04d}-{month:02d}-{last_day:02d}"
 
     with _connection.get_connection() as conn:
-        # total + overdue per month in one grouped query (both keyed off
-        # anomaly_date; overdue's "now" cutoff doesn't depend on the month
-        # being reported, so it groups cleanly alongside total). Keep the
-        # date predicate exact so custom export ranges do not include
-        # same-month rows outside the selected start/end dates.
-        total_overdue_rows = conn.execute(
+        cohort_rows = conn.execute(
             """
-            SELECT
-                substr(anomaly_date, 1, 7) AS yyyymm,
-                COUNT(*) AS total_count,
-                SUM(
-                    CASE WHEN status = '待處理' AND due_date <> ''
-                              AND due_date < date('now', 'localtime')
-                         THEN 1 ELSE 0 END
-                ) AS overdue_count
+            SELECT id, substr(anomaly_date, 1, 7) AS yyyymm, status
             FROM anomalies
             WHERE anomaly_date BETWEEN ? AND ?
-            GROUP BY yyyymm
             """,
             (start_date, end_date),
         ).fetchall()
-        total_by_month = {r["yyyymm"]: int(r["total_count"] or 0) for r in total_overdue_rows}
-        overdue_by_month = {r["yyyymm"]: int(r["overdue_count"] or 0) for r in total_overdue_rows}
+        total_by_month: dict[str, int] = {}
+        overdue_by_month: dict[str, int] = {}
+        for row in cohort_rows:
+            month_key = str(row["yyyymm"] or "")
+            total_by_month[month_key] = total_by_month.get(month_key, 0) + 1
+            if str(row["status"] or "") == "待處理" and repository.is_case_action_overdue(
+                conn,
+                str(row["id"]),
+            ):
+                overdue_by_month[month_key] = overdue_by_month.get(month_key, 0) + 1
 
         # closed per month, grouped by closed_at (a different column than
         # anomaly_date, so it needs its own query).

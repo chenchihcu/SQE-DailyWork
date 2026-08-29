@@ -334,14 +334,29 @@ def _capture_combo_popup(dialog, combo, output_path: Path, app: "QApplication") 
     dialog.raise_()
     dialog.activateWindow()
     app.processEvents()
-    QTest.mouseClick(
-        combo,
-        Qt.MouseButton.LeftButton,
-        pos=QPoint(combo.width() - 10, combo.height() // 2),
-    )
-    QTest.qWait(150)
-    app.processEvents()
+
     popup = combo.view().window()
+    for attempt in range(4):
+        if popup.isVisible():
+            break
+        QTest.mouseClick(
+            combo,
+            Qt.MouseButton.LeftButton,
+            pos=QPoint(max(8, combo.width() - 10), combo.height() // 2),
+        )
+        QTest.qWait(120 + attempt * 80)
+        app.processEvents()
+        popup = combo.view().window()
+        if popup.isVisible():
+            break
+        try:
+            combo.showPopup()
+        except Exception:
+            pass
+        QTest.qWait(120 + attempt * 80)
+        app.processEvents()
+        popup = combo.view().window()
+
     if not popup.isVisible():
         raise RuntimeError(f"Combo popup did not become visible: {combo.objectName()}")
     pixmap = app.primaryScreen().grabWindow(int(popup.winId()))
@@ -1242,6 +1257,40 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         root_cause_dialog.status_combo.setCurrentIndex(verified_index)
     _capture_dialog(root_cause_dialog, "dialog-density-edit-root-cause")
 
+    from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
+
+    hypothesis_dialog = AnomalyHypothesisDialog("probe-density", parent=None)
+    _fill(
+        hypothesis_dialog,
+        statement_input="錫膏回溫時間不足導致印刷厚度偏低。",
+    )
+    _capture_dialog(hypothesis_dialog, "dialog-density-edit-hypothesis")
+
+    from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
+    from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
+
+    close_dialog = CloseAnomalyDialog(
+        "probe-density",
+        "錫膏印刷厚度偏低，需供應商提交改善報告。",
+        parent=None,
+    )
+    _fill(
+        close_dialog,
+        improvement_input="供應商已更換刮刀並完成首件確認，暫時結案。",
+    )
+    _capture_dialog(close_dialog, "dialog-density-close-anomaly")
+
+    reopen_dialog = ReopenAnomalyDialog(
+        "probe-density",
+        "20260826001",
+        parent=None,
+    )
+    _fill(
+        reopen_dialog,
+        reason_input="供應商回報同缺陷再發，需重新調查。",
+    )
+    _capture_dialog(reopen_dialog, "dialog-density-reopen-anomaly")
+
     ca_dialog = AddCorrectiveActionDialog("probe-density", parent=None)
     _fill(
         ca_dialog,
@@ -1765,6 +1814,20 @@ def _capture_supplier_360(output: Path, app: "QApplication", size: tuple[int, in
     return [str(target)]
 
 
+def _capture_manager_view(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    from ui.widgets.manager_view_page import ManagerViewPage
+
+    page = ManagerViewPage(None)
+    page.refresh_data()
+    page.resize(*(size or (1360, 860)))
+    page.show()
+    app.processEvents()
+    target = _target_output_path(output, "manager-view")
+    _capture_widget(page, target, app)
+    page.close()
+    return [str(target)]
+
+
 def main() -> int:
     args = parse_args()
 
@@ -1852,6 +1915,8 @@ def main() -> int:
             screenshots = _capture_dialog_density(output, app)
         elif args.target == "supplier-360":
             screenshots = _capture_supplier_360(output, app, size)
+        elif args.target == "manager-view":
+            screenshots = _capture_manager_view(output, app, size)
         else:
             screenshots = _capture_main_window(output, app, size)
         screenshot_path = screenshots[0] if screenshots else None

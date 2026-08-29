@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from services import supplier_360_service
 from services import supplier_report_service
 from ui.list_column_contract import SUPPLIER_360_ANOMALY_COLUMNS
+from ui.layout_constants import PAGE_OUTER_MARGINS, QUERY_WORKFLOW_PAGE_SPACING
 from ui.widgets.common_widgets import EmptyStateWidget, style_table
 
 
@@ -70,8 +71,8 @@ class Supplier360Page(QWidget):
         self.supplier_id = ""
         self._supplier_name = QLabel()
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(10)
+        root.setContentsMargins(*PAGE_OUTER_MARGINS)
+        root.setSpacing(QUERY_WORKFLOW_PAGE_SPACING)
 
         header = QHBoxLayout()
         header.addWidget(self._supplier_name, 1)
@@ -144,6 +145,7 @@ class Supplier360Page(QWidget):
             f"未結異常 {summary.get('open_anomaly_count', 0)}　"
             f"逾期 {summary.get('overdue_anomaly_count', 0)}　"
             f"近90日 NCR {summary.get('ncr_90d_count', 0)}　"
+            f"重複警示 {summary.get('repeat_flagged_anomaly_count', 0)}　"
             f"最近訪廠 {summary.get('latest_visit_date') or '—'}"
         )
         today = date.today()

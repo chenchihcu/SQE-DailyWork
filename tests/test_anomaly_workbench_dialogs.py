@@ -12,6 +12,8 @@ from scripts.qt_visual_probe import _set_probe_widget_value
 from services.event import _anomaly_workbench_service, _case_action_service
 from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
 from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
+from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
+from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
 from ui.widgets.add_corrective_action_dialog import AddCorrectiveActionDialog
 
 
@@ -79,6 +81,64 @@ class AnomalyRootCauseDialogTests(unittest.TestCase):
         self.assertEqual(mk.call_args.kwargs["status"], "已驗證")
         self.assertEqual(mk.call_args.kwargs["validation_method"], "5-Why")
         self.assertEqual(emitted, ["rc-1"])
+
+
+class AnomalyHypothesisDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _dialog(self) -> AnomalyHypothesisDialog:
+        with mock.patch.object(
+            _anomaly_workbench_service, "list_hypotheses", return_value=[]
+        ):
+            return AnomalyHypothesisDialog("a-1")
+
+    def test_requires_statement_to_enable_save(self) -> None:
+        dialog = self._dialog()
+        self.assertFalse(dialog._save_button.isEnabled())
+        dialog.statement_input.setPlainText("錫膏回溫不足")
+        self.assertTrue(dialog._save_button.isEnabled())
+
+    def test_submit_calls_create_hypothesis(self) -> None:
+        dialog = self._dialog()
+        dialog.statement_input.setPlainText("治具磨損")
+        dialog.evidence_combo.setCurrentIndex(0)
+        emitted = []
+        dialog.hypothesis_saved.connect(lambda hid: emitted.append(hid))
+        with (
+            mock.patch.object(
+                _anomaly_workbench_service, "list_hypotheses", return_value=[]
+            ),
+            mock.patch.object(
+                _anomaly_workbench_service,
+                "create_hypothesis",
+                return_value="h-1",
+            ) as mk,
+        ):
+            dialog._on_submit()
+        self.assertEqual(mk.call_args.kwargs["statement"], "治具磨損")
+        self.assertEqual(emitted, ["h-1"])
+
+    def test_reject_prompts_when_dirty(self) -> None:
+        dialog = self._dialog()
+        dialog.statement_input.setPlainText("dirty hypothesis")
+        with mock.patch.object(dialog, "_confirm_discard", return_value=False) as confirm:
+            dialog.reject()
+        confirm.assert_called_once()
+
+
+class ReopenAnomalyDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_reject_prompts_when_dirty(self) -> None:
+        dialog = ReopenAnomalyDialog("a-1", ref_no="20260818001")
+        dialog.reason_input.setPlainText("need reopen")
+        with mock.patch.object(dialog, "_confirm_discard", return_value=False) as confirm:
+            dialog.reject()
+        confirm.assert_called_once()
 
 
 class AddCorrectiveActionDialogTests(unittest.TestCase):

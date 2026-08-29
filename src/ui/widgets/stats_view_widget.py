@@ -439,6 +439,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
 
         try:
+            from services.appearance_preferences_service import load_application_preferences
+
+            prefs = load_application_preferences()
+            include_charts = bool(getattr(prefs, "export_include_charts", True))
+        except Exception:
+            include_charts = True
+
+        try:
             # 取得這段時間範圍的數據
             trend_data = _query_service.get_anomaly_trend_by_range(start_date, end_date)
             visit_trend_data = _query_service.get_visit_trend_by_range(start_date, end_date)
@@ -454,7 +462,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             # 如果有數據，則在背景繪製圖表並 grab 儲存
             active_temp_paths = {}
             requested_chart_keys = []
-            if has_data:
+            if has_data and include_charts:
                 # 1. Trend chart
                 if trend_data:
                     requested_chart_keys.append("trend")
@@ -511,17 +519,19 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             )
 
             if ok:
-                missing_charts = missing_chart_labels(
-                    requested_chart_keys,
-                    active_temp_paths,
-                    {
-                        "trend": "異常趨勢圖",
-                        "visit_anomaly": "訪廠與異常趨勢圖",
-                        "responsible": "責任人統計圖",
-                        "category_pareto": "異常類別柏拉圖",
-                        "process_keyword_pareto": "SMT 製程關鍵詞柏拉圖",
-                    },
-                )
+                missing_charts = []
+                if include_charts:
+                    missing_charts = missing_chart_labels(
+                        requested_chart_keys,
+                        active_temp_paths,
+                        {
+                            "trend": "異常趨勢圖",
+                            "visit_anomaly": "訪廠與異常趨勢圖",
+                            "responsible": "責任人統計圖",
+                            "category_pareto": "異常類別柏拉圖",
+                            "process_keyword_pareto": "SMT 製程關鍵詞柏拉圖",
+                        },
+                    )
                 if missing_charts:
                     QMessageBox.warning(
                         self,
@@ -531,7 +541,10 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         + f"\n\n{msg}",
                     )
                 else:
-                    handle_export_completion(file_path, f"Excel 報告匯出成功！\n{msg}", self)
+                    if "完成但有警告" in msg:
+                        QMessageBox.warning(self, "完成但有警告", msg)
+                    else:
+                        handle_export_completion(file_path, f"Excel 報告匯出成功！\n{msg}", self)
             else:
                 QMessageBox.critical(self, "失敗", f"Excel 報告匯出失敗：\n{msg}")
 

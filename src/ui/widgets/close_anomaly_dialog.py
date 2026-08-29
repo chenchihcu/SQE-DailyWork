@@ -1,4 +1,4 @@
-"""Close-anomaly dialog with its inline attachment editor."""
+"""Close-anomaly dialog with evidence metadata attachment panel."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 from services.appearance_preferences_service import load_application_preferences
 from services.event import _anomaly_service as event_service
 from ui.layout_constants import (
+    CLOSE_DIALOG_ATTACHMENT_SCROLL_MAX_HEIGHT,
     CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS,
     CLOSE_DIALOG_PROBLEM_MIN_HEIGHT,
     CLOSE_DIALOG_REF_MARGINS,
@@ -33,6 +35,8 @@ from ui.layout_constants import (
     WORKBENCH_DIALOG_WIDE_MIN_WIDTH,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
+from ui.widgets.anomaly_attachment_panel import EvidenceAttachmentPanel
+from ui.widgets.anomaly_attachment_editor import AttachmentEditor  # noqa: F401  # re-export
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -84,7 +88,6 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             logger.exception("Failed to get initial anomaly detail for anomaly %s", self.anomaly_id)
 
         self._setup_ui()
-        self.attachment_editor.load_existing_attachments(self.anomaly_id)
         self._update_validation()
 
         self._connect_dirty_signals()
@@ -122,9 +125,10 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         if self.date_adjustment_only:
             self.improvement_input.setReadOnly(True)
 
-        self.attachment_editor = AttachmentEditor(self)
+        self.evidence_panel = EvidenceAttachmentPanel(self)
+        self.evidence_panel.set_anomaly(self.anomaly_id)
         if self.date_adjustment_only:
-            self.attachment_editor.setEnabled(False)
+            self.evidence_panel.setEnabled(False)
 
         prefs = load_application_preferences()
         self.closed_by_input = QLineEdit()
@@ -175,10 +179,16 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         form.addRow("結案驗證人", self.closed_by_input)
         content_layout.addLayout(form)
 
-        attach_label = QLabel("📷 現場照片與改善佐證附件：")
+        attach_label = QLabel("改善佐證附件（上傳後立即寫入案件附件）：")
         attach_label.setProperty("role", "meta")
         content_layout.addWidget(attach_label)
-        content_layout.addWidget(self.attachment_editor)
+
+        panel_scroll = QScrollArea()
+        panel_scroll.setWidgetResizable(True)
+        panel_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        panel_scroll.setWidget(self.evidence_panel)
+        panel_scroll.setMaximumHeight(CLOSE_DIALOG_ATTACHMENT_SCROLL_MAX_HEIGHT)
+        content_layout.addWidget(panel_scroll)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save
@@ -201,7 +211,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
             self.improvement_input,
             self.closed_at_input,
             self.closed_by_input,
-            self.attachment_editor,
+            self.evidence_panel,
         ]
         if hasattr(self, "_button_box") and self._button_box is not None:
             save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
@@ -219,8 +229,7 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
         self._init_dirty_tracking([
             self.improvement_input.textChanged,
             self.closed_at_input.dateChanged,
-            self.attachment_editor.add_button.clicked,
-            self.attachment_editor.remove_button.clicked,
+            self.evidence_panel.changed,
         ])
 
     def _update_validation(self) -> None:
@@ -258,20 +267,12 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
                 close_kwargs = {"closed_at": closed_at}
                 if closed_by:
                     close_kwargs["closed_by"] = closed_by
+                    close_kwargs["actor_name"] = closed_by
                 result = event_service.close_anomaly(
                     self.anomaly_id,
                     text,
                     **close_kwargs,
                 )
-
-                self.attachment_editor.save_to_anomaly(self.anomaly_id)
-                if self.attachment_editor._last_rename_failures:
-                    QMessageBox.warning(
-                        self,
-                        "附件改名失敗",
-                        "以下附件改名未成功，檔名可能維持原狀：\n"
-                        + "\n".join(self.attachment_editor._last_rename_failures),
-                    )
                 completion_text = "異常已結案"
             warnings = list(result.get("warnings") or [])
             if warnings:
@@ -299,7 +300,3 @@ class CloseAnomalyDialog(DirtyTrackingMixin, QDialog):
                 "錯誤",
                 localize_popup_message(f"結案失敗：{localize_exception(exc)}"),
             )
-
-
-# ── Re-export for backward compatibility ─────────────────────────────────
-from ui.widgets.anomaly_attachment_editor import AttachmentEditor  # noqa: F401

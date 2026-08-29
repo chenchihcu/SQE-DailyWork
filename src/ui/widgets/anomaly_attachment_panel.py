@@ -51,6 +51,7 @@ class AttachmentMetadataDialog(QDialog):
         row: dict,
         notes: list[dict],
         actions: list[dict],
+        hypotheses: list[dict],
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -97,11 +98,28 @@ class AttachmentMetadataDialog(QDialog):
         action_index = self.action_combo.findData(str(row.get("related_action_id") or ""))
         self.action_combo.setCurrentIndex(max(action_index, 0))
 
+        self.hypothesis_combo = QComboBox()
+        self.hypothesis_combo.addItem("（不關聯）", "")
+        for hypothesis in hypotheses:
+            level = int(hypothesis.get("level") or 1)
+            preview = str(hypothesis.get("statement") or "").replace("\n", " ").strip()
+            self.hypothesis_combo.addItem(
+                f"L{level} {preview[:30]}",
+                str(hypothesis.get("id") or ""),
+            )
+        hypothesis_index = self.hypothesis_combo.findData(
+            str(row.get("related_hypothesis_id") or "")
+        )
+        self.hypothesis_combo.setCurrentIndex(max(hypothesis_index, 0))
+        self.note_combo.currentIndexChanged.connect(self._sync_link_exclusivity)
+        self.hypothesis_combo.currentIndexChanged.connect(self._sync_link_exclusivity)
+
         form.addRow("附件分類", self.category_combo)
         form.addRow("說明", self.description_input)
         form.addRow("版本", self.revision_input)
         form.addRow("關聯分析紀錄", self.note_combo)
         form.addRow("關聯 Action", self.action_combo)
+        form.addRow("關聯假設", self.hypothesis_combo)
         root.addLayout(form)
 
         self.buttons = QDialogButtonBox(
@@ -112,6 +130,14 @@ class AttachmentMetadataDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         root.addWidget(self.buttons)
 
+    def _sync_link_exclusivity(self) -> None:
+        if str(self.note_combo.currentData() or ""):
+            if str(self.hypothesis_combo.currentData() or ""):
+                self.hypothesis_combo.setCurrentIndex(0)
+        elif str(self.hypothesis_combo.currentData() or ""):
+            if str(self.note_combo.currentData() or ""):
+                self.note_combo.setCurrentIndex(0)
+
     def payload(self) -> dict[str, str]:
         return {
             "category": str(self.category_combo.currentData() or "Other"),
@@ -119,6 +145,7 @@ class AttachmentMetadataDialog(QDialog):
             "revision": self.revision_input.text().strip(),
             "related_note_id": str(self.note_combo.currentData() or "") or None,
             "related_action_id": str(self.action_combo.currentData() or "") or None,
+            "related_hypothesis_id": str(self.hypothesis_combo.currentData() or "") or None,
         }
 
 
@@ -164,6 +191,7 @@ class EvidenceAttachmentPanel(QWidget):
         self.revision_input.setPlaceholderText("如 Rev A")
         self.note_combo = QComboBox()
         self.action_combo = QComboBox()
+        self.hypothesis_combo = QComboBox()
         self.upload_button = QPushButton("上傳")
         self.upload_button.setAccessibleName("上傳 Evidence")
         self.upload_button.setProperty("variant", "primary")
@@ -182,6 +210,7 @@ class EvidenceAttachmentPanel(QWidget):
         form.addRow("版本", self.revision_input)
         form.addRow("關聯分析紀錄", self.note_combo)
         form.addRow("關聯 Action", self.action_combo)
+        form.addRow("關聯假設", self.hypothesis_combo)
         upload_layout.addLayout(form)
         upload_layout.addWidget(self.upload_button, 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(upload)
@@ -209,6 +238,8 @@ class EvidenceAttachmentPanel(QWidget):
         self.note_combo.addItem("（不關聯）", "")
         self.action_combo.clear()
         self.action_combo.addItem("（不關聯）", "")
+        self.hypothesis_combo.clear()
+        self.hypothesis_combo.addItem("（不關聯）", "")
         if not self._anomaly_id:
             return
         for note in _anomaly_workbench_service.list_attachment_notes(self._anomaly_id):
@@ -222,6 +253,29 @@ class EvidenceAttachmentPanel(QWidget):
                 f"{str(action.get('description') or 'Action')[:30]} — {action.get('execution_status') or '—'}",
                 str(action.get("id") or ""),
             )
+        try:
+            hypothesis_rows = _anomaly_workbench_service.list_attachment_hypotheses(
+                self._anomaly_id
+            )
+        except RuntimeError:
+            hypothesis_rows = []
+        for hypothesis in hypothesis_rows:
+            level = int(hypothesis.get("level") or 1)
+            preview = str(hypothesis.get("statement") or "").replace("\n", " ").strip()
+            self.hypothesis_combo.addItem(
+                f"L{level} {preview[:30]}",
+                str(hypothesis.get("id") or ""),
+            )
+        self.note_combo.currentIndexChanged.connect(self._enforce_note_hypothesis_exclusivity)
+        self.hypothesis_combo.currentIndexChanged.connect(self._enforce_note_hypothesis_exclusivity)
+
+    def _enforce_note_hypothesis_exclusivity(self) -> None:
+        if str(self.note_combo.currentData() or "") and str(self.hypothesis_combo.currentData() or ""):
+            sender = self.sender()
+            if sender is self.note_combo:
+                self.hypothesis_combo.setCurrentIndex(0)
+            else:
+                self.note_combo.setCurrentIndex(0)
 
     def _choose_file(self) -> None:
         path_text, _ = QFileDialog.getOpenFileName(
@@ -255,6 +309,7 @@ class EvidenceAttachmentPanel(QWidget):
                 uploaded_by="local_user",
                 related_note_id=str(self.note_combo.currentData() or "") or None,
                 related_action_id=str(self.action_combo.currentData() or "") or None,
+                related_hypothesis_id=str(self.hypothesis_combo.currentData() or "") or None,
             )
         except Exception as exc:
             self.upload_button.setEnabled(True)
@@ -318,6 +373,8 @@ class EvidenceAttachmentPanel(QWidget):
             links.append(f"關聯分析紀錄：{row.get('related_note_id')}")
         if row.get("related_action_id"):
             links.append(f"關聯 Action：{row.get('related_action_id')}")
+        if row.get("related_hypothesis_id"):
+            links.append(f"關聯假設：{row.get('related_hypothesis_id')}")
         if links:
             link_label = QLabel("　".join(links))
             link_label.setWordWrap(True)
@@ -344,6 +401,7 @@ class EvidenceAttachmentPanel(QWidget):
             row,
             _anomaly_workbench_service.list_attachment_notes(self._anomaly_id),
             _anomaly_workbench_service.list_attachment_actions(self._anomaly_id),
+            _anomaly_workbench_service.list_attachment_hypotheses(self._anomaly_id),
             self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:

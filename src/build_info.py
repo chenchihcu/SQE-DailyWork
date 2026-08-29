@@ -6,8 +6,8 @@ Development checkouts keep the placeholder values below.
 
 from __future__ import annotations
 
-__git_commit__ = "8dd2333"
-__build_timestamp__ = "2026-08-22T08:29:20Z"
+__git_commit__ = "8a02f7d"
+__build_timestamp__ = "2026-08-28T03:51:05Z"
 __dirty_worktree__ = True
 
 

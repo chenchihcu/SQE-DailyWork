@@ -71,7 +71,8 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 ```
 
 - **適用時機**：大規模重構、移除屬性或重新佈局表單後，做為比視覺檢查更深一層的功能性防崩潰保證。
-- **報告輸出**：執行完畢後會產生 `button_audit_report.md` 報表，請檢視該報表以確認是否有任何按鈕拋出例外錯誤 (Exceptions)。
+- **已知限制（2026-08-28，已緩解）**：Orchestrator 以 subprocess-per-page 隔離，避免單一 Qt process 長鏈 AV。`event_create_anomaly` 在 offscreen 點擊按鍵仍會 SEH，改為結構驗證（略過按鍵點擊）；報告 `## 結構驗證頁面` 會列出。其他頁若仍 SEH，見 `## SEH 崩潰頁面`。
+- **報告輸出**：執行完畢後會產生 `scratch/button_audit_report.md` 報表，請檢視該報表以確認是否有任何按鈕拋出例外錯誤 (Exceptions)。
 
 ## 定義通過條件 (Passing Conditions)
 
@@ -84,7 +85,10 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 2. **Visual Regression (視覺回歸)**：
    - `qt_visual_regress.py` 必須明確顯示 `pass`，或是因環境不符而合法 `skip`（不允許未解釋的 `failure`）。
 3. **Button Audit (動態按鍵稽核)**：
-   - `button_audit_report.md` 報表中的異常數量必須為 `0`。
+   - `scratch/button_audit_report.md` 報表中的異常數量必須為 `0`，且 orchestrator exit code 為 `0`。
+   - 總覽須顯示 `隔離模式: subprocess-per-page`。
+   - 若報告含 `## SEH 崩潰頁面`，視為 **not verified**。
+   - `## 結構驗證頁面` 僅允許已登錄的 offscreen SEH 頁（目前 `event_create_anomaly`）；不得擴充為規避其他頁面失敗。
    - 任何拋出 Exceptions 的按鍵都必須修復完成，才可視為通過。
 
 ### 視覺審查 15 維度 (The 15 Dimensions)

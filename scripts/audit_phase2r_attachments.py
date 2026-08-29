@@ -22,7 +22,7 @@ from database.backup import sqlite_state_fingerprint  # noqa: E402
 from database import repository  # noqa: E402
 
 PHASE2_ITEMS_14_19_MAPPING_DOC = (
-    "docs/exec-plans/active/2026-08-26-phase2-items-14-19-mapping.md"
+    "docs/exec-plans/completed/2026-08-26-phase2-items-14-19-mapping.md"
 )
 
 PHASE2_ITEMS_14_19: dict[str, Any] = {

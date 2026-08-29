@@ -276,6 +276,27 @@ class ProductRecordsViewWritePathTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(str(row["category"]), "正式供應商")
 
+    def test_inactive_products_hidden_from_view(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO products (id, product_code, product_name, is_active, created_at, updated_at)
+            VALUES ('inactive-1', 'P-INACTIVE', 'Hidden Product', 0, '2026-08-28', '2026-08-28')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO products (id, product_code, product_name, is_active, created_at, updated_at)
+            VALUES ('active-1', 'P-ACTIVE', 'Visible Product', 1, '2026-08-28', '2026-08-28')
+            """
+        )
+        self.conn.commit()
+        item_nos = {
+            str(row["item_no"])
+            for row in self.conn.execute("SELECT item_no FROM product_records").fetchall()
+        }
+        self.assertIn("P-ACTIVE", item_nos)
+        self.assertNotIn("P-INACTIVE", item_nos)
+
 
 if __name__ == "__main__":
     unittest.main()

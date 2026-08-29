@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from database.repository import create_schema
 from services import supplier_360_service
+from database import case_action_repository
 
 
 class Supplier360ServiceTests(unittest.TestCase):
@@ -44,6 +45,14 @@ class Supplier360ServiceTests(unittest.TestCase):
             INSERT INTO visits(id, visit_date, supplier_id, summary)
             VALUES ('v-open', '2026-08-18', 'open', '最近訪廠')
             """
+        )
+        case_action_repository.create_case_action(
+            self.conn,
+            anomaly_id="a-open",
+            action_type="NEXT_ACTION",
+            description="overdue action",
+            due_date="2026-08-19",
+            execution_status="執行中",
         )
         self.conn.commit()
 

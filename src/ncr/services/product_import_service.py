@@ -5,9 +5,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zipfile import BadZipFile
 
 from ncr.db import crud
+from services.excel_import_helpers import (
+    find_excel_column_index,
+    normalize_excel_cell,
+    read_excel_workbook_rows,
+)
 
 
 STATUS_CAN_ADD = "可新增"
@@ -111,67 +115,20 @@ class ProductImportResult:
     backup_path: Path | None
 
 
-def _normalize_cell(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _normalize_header(value: Any) -> str:
-    return _normalize_cell(value).lower()
-
-
-def _find_column_index(headers: list[Any], accepted_names: set[str]) -> int | None:
-    accepted = {name.lower() for name in accepted_names}
-    for index, header in enumerate(headers):
-        if _normalize_header(header) in accepted:
-            return index
-    return None
-
-
-def _read_workbook_rows(
-    file_path: str | Path,
-) -> tuple[list[Any], list[tuple[int, list[Any]]]]:
-    path = Path(file_path)
-    if path.suffix.lower() != ".xlsx":
-        raise ProductImportError("僅支援 .xlsx 檔案。")
-    try:
-        from openpyxl import load_workbook
-        from openpyxl.utils.exceptions import InvalidFileException
-
-        workbook = load_workbook(path, read_only=True, data_only=True)
-    except (OSError, BadZipFile, Exception) as exc:
-        if isinstance(exc, (ValueError, OSError, BadZipFile)) or exc.__class__.__name__ == "InvalidFileException":
-            raise ProductImportError(f"無法開啟 Excel 檔案：{exc}") from exc
-        raise ProductImportError(f"無法開啟 Excel 檔案：{exc}") from exc
-
-    try:
-        worksheet = workbook.worksheets[0]
-        rows_iter = worksheet.iter_rows(values_only=True)
-        header_row = next(rows_iter, None)
-        if header_row is None or not any(_normalize_cell(cell) for cell in header_row):
-            return [], []
-        data_rows: list[tuple[int, list[Any]]] = []
-        for row_number, row_values in enumerate(rows_iter, start=2):
-            values = list(row_values)
-            if any(_normalize_cell(cell) for cell in values):
-                data_rows.append((row_number, values))
-        return list(header_row), data_rows
-    finally:
-        workbook.close()
-
-
 def preview_product_import(
     conn: sqlite3.Connection, file_path: str | Path
 ) -> ProductImportPreview:
-    headers, data_rows = _read_workbook_rows(file_path)
+    headers, data_rows = read_excel_workbook_rows(
+        file_path,
+        error_type=ProductImportError,
+    )
     file_errors: list[str] = []
     preview_rows: list[ProductImportRow] = []
     if not headers:
         return ProductImportPreview(rows=[], file_errors=["Excel 第一列需包含欄位標題。"])
 
-    item_no_index = _find_column_index(headers, ITEM_NO_HEADERS)
-    product_name_index = _find_column_index(headers, PRODUCT_NAME_HEADERS)
+    item_no_index = find_excel_column_index(headers, ITEM_NO_HEADERS)
+    product_name_index = find_excel_column_index(headers, PRODUCT_NAME_HEADERS)
     if item_no_index is None:
         file_errors.append("找不到料號欄位，請使用「料號」、「產品料號」或「item_no」。")
     if product_name_index is None:
@@ -184,9 +141,13 @@ def preview_product_import(
     normalized_rows: list[tuple[int, str, str]] = []
     item_no_counts: dict[str, int] = {}
     for row_number, values in data_rows:
-        item_no = _normalize_cell(values[item_no_index]) if item_no_index < len(values) else ""
+        item_no = (
+            normalize_excel_cell(values[item_no_index])
+            if item_no_index < len(values)
+            else ""
+        )
         product_name = (
-            _normalize_cell(values[product_name_index])
+            normalize_excel_cell(values[product_name_index])
             if product_name_index < len(values)
             else ""
         )
@@ -254,7 +215,7 @@ def preview_product_import(
                 )
             )
             continue
-        current_product_name = _normalize_cell(existing["product_name"])
+        current_product_name = normalize_excel_cell(existing["product_name"])
         if current_product_name == product_name:
             if defect_update_count:
                 preview_rows.append(

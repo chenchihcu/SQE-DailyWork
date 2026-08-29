@@ -71,6 +71,15 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual((12, 8, 12, 8), lc.CLOSE_DIALOG_REF_MARGINS)
         self.assertEqual(120, lc.CLOSE_DIALOG_PROBLEM_MIN_HEIGHT)
         self.assertEqual(6, lc.CLOSE_DIALOG_IMPROVEMENT_VISIBLE_ROWS)
+        self.assertEqual(320, lc.CLOSE_DIALOG_ATTACHMENT_SCROLL_MAX_HEIGHT)
+
+    def test_global_search_dialog_constants(self) -> None:
+        self.assertEqual(620, lc.GLOBAL_SEARCH_DIALOG_MIN_WIDTH)
+        self.assertEqual((18, 16, 18, 14), lc.GLOBAL_SEARCH_DIALOG_MARGINS)
+        self.assertEqual(8, lc.GLOBAL_SEARCH_DIALOG_SPACING)
+
+    def test_query_workflow_page_spacing(self) -> None:
+        self.assertEqual(10, lc.QUERY_WORKFLOW_PAGE_SPACING)
 
     def test_ncr_list_preferred_column_widths(self) -> None:
         self.assertEqual(140, lc.NCR_LIST_PREFERRED_DEFECT_NO_WIDTH)

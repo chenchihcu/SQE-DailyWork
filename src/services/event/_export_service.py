@@ -113,6 +113,74 @@ def _stats_period_label(yyyymm: str) -> str:
     return month
 
 
+def _append_hypothesis_export_sheet(
+    workbook,
+    anomaly_rows: list[dict],
+    *,
+    output_parent: Path,
+    warnings: list[str],
+) -> list[Path]:
+    """Add a hypothesis overview sheet with optional embedded tree PNGs (max 12)."""
+    from openpyxl.drawing.image import Image
+    from openpyxl.styles import Font
+
+    from services.event import _anomaly_workbench_service
+    from services.event._hypothesis_tree_png import (
+        HYPOTHESIS_EXCEL_PNG_LIMIT,
+        format_hypothesis_tree_text,
+        render_hypothesis_tree_png,
+    )
+
+    candidates = [
+        row
+        for row in anomaly_rows
+        if int(row.get("hypothesis_count") or 0) > 0
+    ]
+    if not candidates:
+        return []
+
+    sheet = workbook.create_sheet("原因假設")
+    sheet.views.sheetView[0].showGridLines = True
+    headers = ["異常單號", "供應商", "假設數", "樹狀圖 / 文字摘要"]
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+
+    png_budget = HYPOTHESIS_EXCEL_PNG_LIMIT
+    skipped_png = 0
+    temp_png_paths: list[Path] = []
+    for row in candidates:
+        anomaly_id = str(row.get("event_id") or "").strip()
+        ref_no = str(row.get("ref_no") or "")
+        supplier = str(row.get("supplier_name") or "")
+        count = int(row.get("hypothesis_count") or 0)
+        hypotheses = _anomaly_workbench_service.list_hypotheses(anomaly_id)
+        text_summary = format_hypothesis_tree_text(hypotheses)
+        row_idx = sheet.max_row + 1
+        sheet.append([ref_no, supplier, count, text_summary[:2000]])
+        if png_budget <= 0:
+            skipped_png += 1
+            continue
+        png_path = output_parent / f"temp_hypothesis_{anomaly_id}.png"
+        if render_hypothesis_tree_png(hypotheses, png_path):
+            img = Image(str(png_path))
+            img.width = 360
+            img.height = 220
+            anchor = f"D{row_idx}"
+            sheet.add_image(img, anchor)
+            png_budget -= 1
+            temp_png_paths.append(png_path)
+        else:
+            warnings.append(f"原因假設樹 PNG 未產生：{ref_no}")
+
+    if skipped_png:
+        warnings.append(
+            f"原因假設 PNG 僅嵌入前 {HYPOTHESIS_EXCEL_PNG_LIMIT} 案；"
+            f"其餘 {skipped_png} 案僅輸出文字摘要"
+        )
+    return temp_png_paths
+
+
 def export_monthly_excel(path: str, yyyymm: str) -> tuple[bool, str]:
     import pandas as pd
     try:
@@ -325,7 +393,8 @@ def export_events_report(
                 report_sheet.cell(row=r, column=c).border = STYLE_BORDER_THIN
 
         # 插入統計圖表 (橫向與縱向並排)
-        if temp_chart_paths:
+        include_charts = bool(getattr(prefs, "export_include_charts", True))
+        if temp_chart_paths and include_charts:
             chart_placements = [
                 ("trend", "A7"),
                 ("visit_anomaly", "I7"),
@@ -505,6 +574,9 @@ def export_events_report(
                 str(row.get("corrective_action_status") or "—"),
                 str(row.get("verification_result") or "—"),
                 int(row.get("attachment_count") or 0),
+                int(row.get("hypothesis_count") or 0),
+                "是" if row.get("hypothesis_adopted") else "否",
+                int(row.get("repeat_link_count") or 0),
                 row.get("status") or "",
                 row.get("closed_at") or "",
             ]
@@ -537,13 +609,26 @@ def export_events_report(
                 "改善措施狀態",
                 "有效性驗證",
                 "附件數",
+                "原因假設數",
+                "已採納假設",
+                "重複警示",
                 "狀態",
                 "結案日期",
             ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27},
+            {1, 2, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
         )
+
+        export_warnings: list[str] = []
+        hypothesis_temp_pngs: list[Path] = []
+        if include_charts:
+            hypothesis_temp_pngs = _append_hypothesis_export_sheet(
+                workbook,
+                anomaly_rows,
+                output_parent=Path(file_path).parent,
+                warnings=export_warnings,
+            )
 
         # 4. 責任人排行榜頁
         resp_stats_rows = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
@@ -698,7 +783,15 @@ def export_events_report(
         output_path = Path(file_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         workbook.save(output_path)
-        return True, f"已匯出至：{output_path}"
+        for png_path in hypothesis_temp_pngs:
+            try:
+                png_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        message = f"已匯出至：{output_path}"
+        if export_warnings:
+            message += "\n完成但有警告：\n- " + "\n- ".join(export_warnings)
+        return True, message
     except Exception as exc:
         logger.exception("自訂日期區間 Excel 報告匯出出錯")
         return False, f"匯出報告失敗：{exc}"
