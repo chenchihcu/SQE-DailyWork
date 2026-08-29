@@ -1,7 +1,9 @@
 param(
     [string]$PythonExe,
     [ValidateSet("Focused", "Full", "Coverage", "Soak")]
-    [string]$Profile = "Full"
+    [string]$Profile = "Full",
+    [switch]$AllowSchemaOnlySource,
+    [switch]$SkipNativeVisual
 )
 
 Set-StrictMode -Version Latest
@@ -239,9 +241,9 @@ function Run-CoverageTestSuite {
     }
 
     Write-Host "[coverage] pytest module-level regressions"
-    & $PythonPath -m pip install --disable-pip-version-check pytest *> $null
+    & $PythonPath -m pip install --disable-pip-version-check pytest pyyaml *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "pip install pytest failed with exit code $LASTEXITCODE"
+        throw "pip install pytest pyyaml failed with exit code $LASTEXITCODE"
     }
     $pytestModules = @(
         "tests/test_anomaly_folder_creation.py",
@@ -307,6 +309,70 @@ function Export-CoverageReports {
     Write-Host "Coverage reports: $xmlPath , $htmlDir"
 }
 
+function Test-GitHubActionsEnvironment {
+    return ($env:GITHUB_ACTIONS -eq "true")
+}
+
+function Get-UnittestVerbosityArgs {
+    if ((Test-GitHubActionsEnvironment) -or ($env:SQE_TEST_VERBOSE -eq "1")) {
+        return , @("-v")
+    }
+    return , @()
+}
+
+function Enable-CiUnittestDiagnostics {
+    $env:PYTHONUNBUFFERED = "1"
+    if ([string]::IsNullOrWhiteSpace($env:PYTHONFAULTHANDLER)) {
+        $env:PYTHONFAULTHANDLER = "1"
+    }
+    $verbose = Get-UnittestVerbosityArgs
+    if ($verbose.Count -gt 0) {
+        Write-Host "Unittest verbosity: -v (CI/SQE_TEST_VERBOSE); not visual evidence."
+    }
+    if ([string]::IsNullOrWhiteSpace($env:SQE_TEST_HANG_SECONDS) -and ($verbose.Count -gt 0)) {
+        $env:SQE_TEST_HANG_SECONDS = "180"
+        Write-Host "SQE_TEST_HANG_SECONDS=$env:SQE_TEST_HANG_SECONDS (per-test hang abort)."
+    }
+}
+
+function Convert-PrepareVerifyReport {
+    param([object]$RawOutput)
+
+    $text = if ($null -eq $RawOutput) {
+        ""
+    } elseif ($RawOutput -is [System.Array]) {
+        @($RawOutput | ForEach-Object { "$_" }) -join "`n"
+    } else {
+        [string]$RawOutput
+    }
+    try {
+        return $text | ConvertFrom-Json
+    } catch {
+        throw "prepare_verify_database.py returned non-JSON output: $text"
+    }
+}
+
+function Invoke-PrepareVerifyDatabase {
+    param(
+        [string]$PythonPath,
+        [string]$RepoRoot,
+        [string]$Source,
+        [string]$Destination,
+        [bool]$AllowSchemaOnly
+    )
+
+    $scriptPath = Join-Path $RepoRoot "scripts\prepare_verify_database.py"
+    $prepareArgs = @($scriptPath, $Source, $Destination)
+    if ($AllowSchemaOnly) {
+        $prepareArgs += "--allow-schema-only"
+    }
+    $raw = & $PythonPath @prepareArgs
+    if ($LASTEXITCODE -ne 0) {
+            throw "Unable to create verified disposable database for verification: $raw"
+    }
+    return Convert-PrepareVerifyReport -RawOutput $raw
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
 $formalDbPath = Join-Path $repoRoot "data\sqe_v2.db"
@@ -334,10 +400,22 @@ $verificationDir = Join-Path $verificationRoot ([Guid]::NewGuid().ToString("N"))
 $verificationDb = Join-Path $verificationDir "sqe_v2.db"
 New-Item -ItemType Directory -Path $verificationDir -Force | Out-Null
 
+$inGitHubActions = Test-GitHubActionsEnvironment
+$allowSchemaOnlyEffective = [bool]$AllowSchemaOnlySource -or $inGitHubActions
+$skipNativeVisualEffective = [bool]$SkipNativeVisual -or $inGitHubActions
+$prepareVerifyParams = @{
+    PythonPath = $resolvedPython
+    RepoRoot = $repoRoot
+    Source = $sourceDbPath
+    Destination = $verificationDb
+    AllowSchemaOnly = $allowSchemaOnlyEffective
+}
+
 try {
-    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unable to create verified disposable database for verification"
+    $prepareReport = Invoke-PrepareVerifyDatabase @prepareVerifyParams
+    $prepareMode = [string]$prepareReport.mode
+    if ($prepareMode -eq "schema_only") {
+        $skipNativeVisualEffective = $true
     }
 } catch {
     if (Test-Path -LiteralPath $verificationDir -PathType Container) {
@@ -352,6 +430,7 @@ $env:SQE_REQUIRE_DISPOSABLE_DB = "1"
 Write-Host "Using Python: $resolvedPython"
 Write-Host "Verification profile: $Profile"
 Write-Host "Disposable database: $verificationDb"
+Write-Host "Verify source mode: $prepareMode"
 
 Push-Location $repoRoot
 try {
@@ -362,6 +441,8 @@ try {
     }
     $env:PYTHONPATH = $pythonPathEntries -join [System.IO.Path]::PathSeparator
     $env:QT_QPA_PLATFORM = "offscreen"
+    Enable-CiUnittestDiagnostics
+    $unittestVerboseArgs = Get-UnittestVerbosityArgs
 
     Write-Host "[preflight] initialize disposable case_actions_v1"
     & $resolvedPython -c "from database.connection import initialize_database; report=initialize_database(); migration=report['case_actions_migration']; assert migration['ready']; print('case_actions_ready', migration['canonical_case_actions'])"
@@ -403,7 +484,7 @@ try {
 
         Write-Host ""
         Write-Host "[1/2] stability smoke (tests.test_stability_smoke)"
-        & $resolvedPython -m unittest tests.test_stability_smoke
+        & $resolvedPython -m unittest tests.test_stability_smoke @unittestVerboseArgs
         if ($LASTEXITCODE -ne 0) {
             throw "stability smoke failed with exit code $LASTEXITCODE"
         }
@@ -433,6 +514,9 @@ try {
         $focusedPatterns = @(
             "test_database_backup.py",
             "test_database_isolation.py",
+            "test_prepare_verify_database.py",
+            "test_hang_watchdog.py",
+            "test_automated_modal_guard.py",
             "test_anomaly_transaction_boundaries.py",
             "test_migration_atomicity.py",
             "test_anomaly_repository_invariants.py",
@@ -454,7 +538,9 @@ try {
             $testModule = [System.IO.Path]::GetFileNameWithoutExtension($pattern)
             if ($pattern -in @(
                     "test_supplier_360_service.py",
-                    "test_supplier_oriented_ui.py"
+                    "test_supplier_oriented_ui.py",
+                    "test_hang_watchdog.py",
+                    "test_automated_modal_guard.py"
                 )) {
                 # Import through the tests package so tests/__init__.py can
                 # initialize the shared QApplication before Qt widgets load.
@@ -476,16 +562,16 @@ try {
 
         Write-Host ""
         Write-Host "[2b/6] python -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync"
-        & $resolvedPython -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync
+        & $resolvedPython -m unittest ncr.tests.test_core ncr.tests.test_supplier_sync @unittestVerboseArgs
         if ($LASTEXITCODE -ne 0) {
             throw "ncr unittest failed with exit code $LASTEXITCODE"
         }
 
         Write-Host ""
         Write-Host "[2c/6] pytest module-level regressions"
-        & $resolvedPython -m pip install --disable-pip-version-check pytest *> $null
+        & $resolvedPython -m pip install --disable-pip-version-check pytest pyyaml *> $null
         if ($LASTEXITCODE -ne 0) {
-            throw "pip install pytest failed with exit code $LASTEXITCODE"
+            throw "pip install pytest pyyaml failed with exit code $LASTEXITCODE"
         }
         $pytestModules = @(
             "tests/test_anomaly_folder_creation.py",
@@ -513,71 +599,73 @@ try {
 
     Write-Host ""
     Write-Host "[4/6] native Qt visual probe belt"
-    # Tests intentionally exercise writes against the disposable database.
-    # Reset it before visual evidence so charts and lists use the same
-    # source snapshot as native baseline generation.
-    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unable to reset disposable database before visual verification"
-    }
-    $previousQtPlatform = $env:QT_QPA_PLATFORM
-    try {
-        Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-        if ($Profile -eq "Full") {
-            & $resolvedPython scripts\qt_visual_belt.py
-        } else {
-            & $resolvedPython scripts\qt_visual_probe.py --target form-density
-            if ($LASTEXITCODE -eq 0) {
-                & $resolvedPython scripts\qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width
-            }
-        }
-        if ($LASTEXITCODE -ne 0) {
-            throw "native Qt visual belt failed with exit code $LASTEXITCODE"
-        }
-    } finally {
-        if ([string]::IsNullOrWhiteSpace($previousQtPlatform)) {
-            Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-        } else {
-            $env:QT_QPA_PLATFORM = $previousQtPlatform
-        }
-    }
-
-    Write-Host ""
-    Write-Host "[5/6] native visual regression"
-    if ($Profile -eq "Full") {
-        $targetManifest = Get-Content -LiteralPath "scripts\qt_probe_targets.json" -Raw | ConvertFrom-Json
-        foreach ($target in $targetManifest.targets) {
-            if (-not $target.baseline_required) {
-                continue
-            }
-            foreach ($scale in $targetManifest.required_scales) {
-                $regressArgs = @(
-                    "scripts\qt_visual_regress.py",
-                    "--target", [string]$target.name,
-                    "--scale", [string]$scale
-                )
-                if ($target.min_width) {
-                    $regressArgs += "--min-width"
-                }
-
-                # Each native probe is allowed to initialize or otherwise touch
-                # the disposable database.  Keep every pixel-regression child
-                # on the same fresh source snapshot used for baseline capture;
-                # otherwise an earlier target/scale can change later geometry
-                # without changing the visual contract under test.
-                Write-Host "[preflight] reset disposable database before visual regression: $($target.name)@$scale"
-                & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Unable to reset disposable database before visual regression for $($target.name) at scale $scale"
-                }
-                & $resolvedPython @regressArgs
-                if ($LASTEXITCODE -ne 0) {
-                    throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
-                }
-            }
-        }
+    if ($skipNativeVisualEffective) {
+        Write-Host "Skipping native Qt visual belt (CI/SkipNativeVisual/schema-only); not visual evidence."
+        Write-Host ""
+        Write-Host "[5/6] native visual regression"
+        Write-Host "Skipping native visual regression (CI/SkipNativeVisual/schema-only); not visual evidence."
     } else {
-        Write-Host "Focused profile skips pixel baselines; native form-density probe already ran."
+        # Tests intentionally exercise writes against the disposable database.
+        # Reset it before visual evidence so charts and lists use the same
+        # source snapshot as native baseline generation.
+        & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to reset disposable database before visual verification"
+        }
+        $previousQtPlatform = $env:QT_QPA_PLATFORM
+        try {
+            Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+            if ($Profile -eq "Full") {
+                & $resolvedPython scripts\qt_visual_belt.py
+            } else {
+                & $resolvedPython scripts\qt_visual_probe.py --target form-density
+                if ($LASTEXITCODE -eq 0) {
+                    & $resolvedPython scripts\qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width
+                }
+            }
+            if ($LASTEXITCODE -ne 0) {
+                throw "native Qt visual belt failed with exit code $LASTEXITCODE"
+            }
+        } finally {
+            if ([string]::IsNullOrWhiteSpace($previousQtPlatform)) {
+                Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+            } else {
+                $env:QT_QPA_PLATFORM = $previousQtPlatform
+            }
+        }
+
+        Write-Host ""
+        Write-Host "[5/6] native visual regression"
+        if ($Profile -eq "Full") {
+            $targetManifest = Get-Content -LiteralPath "scripts\qt_probe_targets.json" -Raw | ConvertFrom-Json
+            foreach ($target in $targetManifest.targets) {
+                if (-not $target.baseline_required) {
+                    continue
+                }
+                foreach ($scale in $targetManifest.required_scales) {
+                    $regressArgs = @(
+                        "scripts\qt_visual_regress.py",
+                        "--target", [string]$target.name,
+                        "--scale", [string]$scale
+                    )
+                    if ($target.min_width) {
+                        $regressArgs += "--min-width"
+                    }
+
+                    Write-Host "[preflight] reset disposable database before visual regression: $($target.name)@$scale"
+                    & $resolvedPython (Join-Path $repoRoot "scripts\sqlite_backup.py") $sourceDbPath $verificationDb
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Unable to reset disposable database before visual regression for $($target.name) at scale $scale"
+                    }
+                    & $resolvedPython @regressArgs
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "visual regression failed for $($target.name) at scale $scale with exit code $LASTEXITCODE"
+                    }
+                }
+            }
+        } else {
+            Write-Host "Focused profile skips pixel baselines; native form-density probe already ran."
+        }
     }
 
     Write-Host ""
@@ -590,27 +678,32 @@ try {
     Write-Host ""
     Write-Host "Verification passed."
 } finally {
-    Pop-Location
-    if ($hadDbPath) {
-        $env:SQE_DB_PATH = $previousDbPath
-    } else {
-        Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
-    }
-    if ($hadDisposableGuard) {
-        $env:SQE_REQUIRE_DISPOSABLE_DB = $previousDisposableGuard
-    } else {
-        Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
-    }
-    if (Test-Path -LiteralPath $verificationDir -PathType Container) {
-        $resolvedVerificationRoot = [System.IO.Path]::GetFullPath($verificationRoot)
-        $resolvedVerificationDir = [System.IO.Path]::GetFullPath($verificationDir)
-        if (-not $resolvedVerificationDir.StartsWith(
-            $resolvedVerificationRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase
-        )) {
-            throw "Refusing to clean verification path outside scratch/verify: $resolvedVerificationDir"
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        Pop-Location
+        if ($hadDbPath) {
+            $env:SQE_DB_PATH = $previousDbPath
+        } else {
+            Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+        if ($hadDisposableGuard) {
+            $env:SQE_REQUIRE_DISPOSABLE_DB = $previousDisposableGuard
+        } else {
+            Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $verificationDir -PathType Container) {
+            $resolvedVerificationRoot = [System.IO.Path]::GetFullPath($verificationRoot)
+            $resolvedVerificationDir = [System.IO.Path]::GetFullPath($verificationDir)
+            if ($resolvedVerificationDir.StartsWith(
+                $resolvedVerificationRoot + [System.IO.Path]::DirectorySeparatorChar,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+                Remove-Item -LiteralPath $resolvedVerificationDir -Recurse -Force
+            }
+        }
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
     }
     $formalFingerprintAfter = "ABSENT"
     if (Test-Path -LiteralPath $formalDbPath -PathType Leaf) {

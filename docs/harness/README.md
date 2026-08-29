@@ -32,8 +32,15 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 
 - `scripts/verify.ps1` always creates a disposable SQLite online-backup snapshot
   and enables the formal-path refusal guard before imports or initialization.
+- Clean clones and GitHub Actions have no gitignored `data/sqe_v2.db`. Pass
+  `-AllowSchemaOnlySource` so `scripts/prepare_verify_database.py` synthesizes a
+  scratch schema-only source and backs it up; never write the formal path.
+  Local runs without that switch still fail loud when the source DB is missing.
 - Use `-Profile Focused` for the recurrent safety/contract set and the default
   `-Profile Full` for complete unit, native visual, baseline, and harness gates.
+- CI Full (`GITHUB_ACTIONS` or `-SkipNativeVisual`) skips the native visual belt
+  and pixel baselines. That skip is not visual evidence; native Windows Qt plus
+  a verified disposable snapshot of the formal DB remains the visual gate.
 - Never raw-copy an active WAL database. A verified backup must pass read-only
   `integrity_check` and per-table count parity.
 

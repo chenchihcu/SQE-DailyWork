@@ -691,3 +691,51 @@ Destination: `AGENTS.md`, `.claude/skills/sqe-dailywork-visual-qa/references/vis
 | 5 | Coverage gate fail after expansion → recalibrate baseline from fresh summary, not silent pass | `AGENTS.md` §7 + risk-ledger | `assert_coverage_baseline.py` |
 | 6 | Button audit: subprocess-per-page; `event_create_anomaly` structural-only; SEH pages in report | visual-qa skill + `scripts/button_audit_report.py` | orchestrator exit 0, no SEH section |
 
+## CI Schema-Only Verify Source Entry
+
+Date: 2026-08-27
+Task: Unblock GitHub Actions Verify when `data/sqe_v2.db` is absent from clean clones.
+Changes: Added `prepare_verify_database` (schema-only scratch `create_schema` + WAL-safe backup, refuse formal path); `verify.ps1` `-AllowSchemaOnlySource` / `-SkipNativeVisual` with `GITHUB_ACTIONS` defaults; CI Full skips native visual belt/regress; Coverage/Soak and Full pass `-AllowSchemaOnlySource`; focused tests for missing/schema-only/backup/formal-destination; harness/AGENTS/CLAUDE/Codex match examples; TBD vs Cloud branch recorded in contradiction-log.
+Impact: CI and clean clones can run Full-minus-visual, Coverage, and Soak without writing `data/sqe_v2.db`. Local Windows Full without the new switch still fails loud when the formal DB is missing. CI must not be cited as native visual evidence.
+Verification: Focused Python tests for prepare/isolation/backup/app_paths on Linux; GitHub Actions Verify on the PR branch.
+Residual risk: Native visual belt, Windows onedir/portable smoke, and live formal-DB migration remain local Windows / user-authorized. CI interpreter is Python 3.12 vs local 3.14.3.
+Next action: Confirm GitHub Actions Verify jobs on `cursor/ci-verify-schema-source-7802`; do not authorize live `initialize_database()` on `data/sqe_v2.db`.
+Debug/RCA:
+Observed: `main` Verify run 32563535658 failed all three jobs at disposable backup with `FileNotFoundError` for `data/sqe_v2.db`.
+Root cause: `verify.ps1` always copied the gitignored formal DB; GitHub checkout has no such file. Native visual on `windows-latest` is also not trustworthy CJK evidence.
+Fix: Schema-only scratch source + explicit CI visual skip; keep local missing-DB failure as the default.
+Harness update needed: yes
+Destination: `src/database/verify_prepare.py`, `scripts/prepare_verify_database.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `tests/test_prepare_verify_database.py`, `AGENTS.md`, `docs/harness/*`, `docs/exec-plans/completed/2026-08-27-ci-verify-schema-source.md`
+
+## CI Unittest Hang Watchdog Entry
+
+Date: 2026-08-27
+Task: Stop GitHub Actions Full/Coverage from sitting in `unittest discover` until the 120-minute job timeout.
+Changes: Added `tests/hang_watchdog.py` (per-test 180s abort + all-thread traceback on `GITHUB_ACTIONS` / `SQE_TEST_HANG_SECONDS`); CI `PYTHONUNBUFFERED` + unittest `-v`; isolated stats-view tests from live `get_anomaly_process_keyword_pareto_by_range`; made `verify.ps1` finally cleanup non-debug on cancel.
+Impact: A hung test fails in minutes with a stack instead of a silent cancel. Cancelled jobs must not be treated as green. CI remains not visual evidence.
+Verification: `python -m unittest tests.test_hang_watchdog`; GitHub Actions Verify on the PR branch.
+Residual risk: The exact hung frame on Windows PySide6 6.11.2 is still `not verified` until the watchdog dumps a stack. Native visual, packaging, and live formal-DB migration stay local / user-authorized.
+Next action: Read the next Full/Coverage log; if the watchdog fires, fix the dumped test. Do not mark CI green on cancelled.
+Debug/RCA:
+Observed: Run 33041390984 Soak SUCCESS; Full and Coverage cancelled at 07:05Z. Last unittest log was `test_partial_statistics_failure_is_not_rendered_as_empty_data` (`RuntimeError: service unavailable`) at 05:16Z, then ~110 minutes of silence. Cursor CI subscription treated cancelled as success.
+Root cause: Default unittest is not verbose, so the hung test name never appears. Job `timeout-minutes: 120` cancels rather than fails. Stats-view tests called unpatched process-keyword queries against the shared disposable DB.
+Fix: Hang watchdog + verbose CI unittest + patch process-keyword in stats-view tests; do not cite cancelled as pass.
+Harness update needed: yes
+Destination: `tests/hang_watchdog.py`, `tests/__init__.py`, `scripts/verify.ps1`, `.github/workflows/verify.yml`, `AGENTS.md`, this log
+
+## CI Empty-Supplier Create-Page Modal Hang Entry
+
+Date: 2026-08-27
+Task: Stop schema-only CI unittest from hanging on `_ensure_has_active_suppliers`.
+Changes: Added `ui.runtime_mode.is_automated_runtime()` / `missing_supplier_create_gate()` and reused them in `MainWindow` `__init__` / `closeEvent` / `_ensure_has_active_suppliers`; skip `QMessageBox.warning` in automated runs and still return False + open master data; patch top-nav create-page tests with `has_active_suppliers=True`; focused tests in `tests/test_automated_modal_guard.py`.
+Impact: Empty schema-only verify DBs no longer block create-page navigation tests on an unclicked OK. Interactive users still see the warning.
+Verification: `python -m unittest tests.test_automated_modal_guard tests.test_hang_watchdog`; GitHub Actions Verify on the PR branch.
+Residual risk: Other unguarded `QMessageBox` / `QDialog.exec()` paths in `main_window.py` (anomaly-management critical, unclassified pending `exec()`) are not in the dumped stack. Native visual, packaging, and live formal-DB migration stay local / user-authorized.
+Next action: Confirm Full / Coverage / Soak SUCCESS on the PR; do not treat cancelled or watchdog abort as green.
+Debug/RCA:
+Observed: Run 33049324655 Soak SUCCESS; Full/Coverage failed after hang watchdog at `07:42:03Z` (`os._exit` / ACCESS_VIOLATION). Stack: `test_create_page_updates_sidebar_active_state` → `_switch_primary_page` → `_ensure_has_active_suppliers` → blocking `QMessageBox.warning`.
+Root cause: Schema-only source has no suppliers. Automated Modal Guard covered `closeEvent` but not this navigation gate. `test_lightweight_visit_entry_routing.py` already patched `has_active_suppliers`; `test_top_nav_compact_height.py` did not.
+Fix: Skip the modal when `is_automated_runtime()`; patch create-page tests; assert warning is not called in automated empty-supplier runs.
+Harness update needed: yes
+Destination: `src/ui/runtime_mode.py`, `src/ui/main_window.py`, `tests/test_automated_modal_guard.py`, `tests/test_top_nav_compact_height.py`, `scripts/verify.ps1`, `AGENTS.md`, this log
+

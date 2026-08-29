@@ -1,3 +1,4 @@
+import faulthandler
 import os
 import sys
 from pathlib import Path
@@ -10,6 +11,18 @@ if SRC_DIR not in sys.path:
 # 全域確保單元測試以 offscreen 模式執行，避免彈出 GUI 視窗或 Windows Message Loop 阻塞進程
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("SQE_TESTING", "1")
+
+faulthandler.enable(all_threads=True)
+if os.environ.get("GITHUB_ACTIONS", "").strip().lower() in {"1", "true", "yes", "on"}:
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
+from tests.hang_watchdog import install_hang_watchdog
+
+install_hang_watchdog()
 
 try:
     from PySide6.QtWidgets import QApplication

@@ -94,6 +94,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_trend_data),
             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_data),
             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data),
+            patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
         ):
             widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
             self.widgets.append(widget)

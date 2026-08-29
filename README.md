@@ -287,8 +287,12 @@ dry run, reconciliation, and focused verification.
 
 `Full` is the default. Both profiles create a verified disposable database via
 SQLite online backup, set `SQE_DB_PATH`, and fail fast if verification resolves
-to the formal `data/sqe_v2.db`. `Full` additionally runs every manifest target
-at 100% / 125% / 150% DPI plus required pixel baselines.
+to the formal `data/sqe_v2.db`. Local `Full` additionally runs every manifest
+target at 100% / 125% / 150% DPI plus required pixel baselines. GitHub Actions
+and other clean clones pass `-AllowSchemaOnlySource` (no gitignored formal DB);
+CI `Full` also passes `-SkipNativeVisual`. That skip is not visual evidence.
+CI unittest uses `-v` and a 180s per-test hang abort (`SQE_TEST_HANG_SECONDS`);
+a cancelled GitHub Actions job is not a passing gate.
 
 ## Backup
 

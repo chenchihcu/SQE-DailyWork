@@ -1,6 +1,6 @@
 # Source Baseline Manifest - SQE DailyWork
 
-Last inspected: 2026-08-22 (repo boundary hygiene)
+Last inspected: 2026-08-28
 
 ## Purpose
 

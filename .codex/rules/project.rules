@@ -680,6 +680,8 @@ prefix_rule(
     match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Focused",
         "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify.ps1 -PythonExe C:/Python/python.exe",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Full -AllowSchemaOnlySource -SkipNativeVisual",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Profile Coverage -AllowSchemaOnlySource",
     ],
     not_match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",

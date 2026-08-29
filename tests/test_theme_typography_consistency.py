@@ -11,9 +11,9 @@ from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QComboBox, QDateEdit
 
 from ui.theme import (
-    PREFERRED_CJK_FONT_FAMILIES,
     TOKENS,
     _apply_calendar_palette,
+    _resolve_preferred_cjk_font_family,
     apply_app_theme,
     get_theme_qss,
 )
@@ -38,7 +38,7 @@ class ThemeTypographyConsistencyTests(unittest.TestCase):
     def test_apply_app_theme_sets_application_font_to_preferred_cjk_family(self) -> None:
         app = QApplication.instance() or QApplication([])
         apply_app_theme(app)
-        self.assertIn(app.font().family(), (*PREFERRED_CJK_FONT_FAMILIES, "Segoe UI"))
+        self.assertEqual(app.font().family(), _resolve_preferred_cjk_font_family())
 
     def test_widget_font_family_prioritizes_cjk_fallbacks(self) -> None:
         qss = get_theme_qss()

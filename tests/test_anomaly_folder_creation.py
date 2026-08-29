@@ -4,8 +4,6 @@ from pathlib import Path
 from contextlib import contextmanager
 from unittest.mock import patch
 
-import yaml
-
 from services.event import _anomaly_folder
 from services.event import _anomaly_markdown
 
@@ -72,6 +70,12 @@ def _detail(**overrides) -> dict:
     return detail
 
 
+def _parse_yaml(text: str) -> object:
+    import yaml
+
+    return yaml.safe_load(text)
+
+
 def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
     with _markdown_write_patches(tmp_path):
         result = _anomaly_markdown.write_anomaly_markdown(_detail())
@@ -83,7 +87,7 @@ def test_write_anomaly_markdown_creates_named_yaml_file(tmp_path: Path) -> None:
     assert '  改善說明: ""' in text
     assert '  是否要求品質異常單: ""' in text
     assert "  附件: []" in text
-    parsed = yaml.safe_load(text)
+    parsed = _parse_yaml(text)
     assert parsed["異常事件"]["改善說明"] == ""
     assert list(parsed["異常事件"])[-1] == "附件"
 
@@ -146,7 +150,7 @@ def test_write_anomaly_markdown_overwrites_changed_values(tmp_path: Path) -> Non
             )
         )
 
-    parsed = yaml.safe_load(result.read_text(encoding="utf-8"))["異常事件"]
+    parsed = _parse_yaml(result.read_text(encoding="utf-8"))["異常事件"]
     assert parsed["狀態"] == "已結案"
     assert parsed["改善說明"] == "完成改善"
     assert parsed["結案日期"] == "2026-07-14"
