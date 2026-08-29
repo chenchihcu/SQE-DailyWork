@@ -708,7 +708,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 },
             )
             self.addCleanup(dialog.close)
-            dialog.summary_input.setPlainText("只更新摘要")
+            dialog.summary_input.set_formatted_text("只更新摘要")
             dialog._on_submit()
 
         self.assertEqual([visit_note], captured["defect_notes"])
@@ -749,13 +749,13 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         ):
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
-            dialog.improvement_input.setPlainText("改善完成")
+            dialog.improvement_input.set_formatted_text("改善完成")
             dialog.closed_at_input.setDate(QDate(2026, 5, 10))
             dialog._on_submit()
 
         close_mock.assert_called_once_with(
             "anomaly-123",
-            "改善完成",
+            "1. 改善完成",
             closed_at="2026-05-10",
         )
 

@@ -39,7 +39,7 @@ class AddAnomalyActionDialogTests(unittest.TestCase):
         mk.assert_called_once_with(
             anomaly_id="anomaly-1",
             action_type="NEXT_ACTION",
-            description="要求 8D",
+            description="1. 要求 8D",
             owner="Alice",
             due_date=dialog.due_date_edit.date().toString("yyyy-MM-dd"),
             execution_status="已規劃",

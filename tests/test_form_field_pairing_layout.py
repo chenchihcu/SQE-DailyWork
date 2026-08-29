@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QScrollArea,
-    QTextEdit,
     QWidget,
 )
 
@@ -24,6 +23,7 @@ from ui.layout_constants import (
     ANOMALY_DIALOG_PREFERRED_WIDTH,
     FORM_MAX_WIDTH,
 )
+from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
@@ -80,9 +80,10 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         for widget in widgets:
             self.assertTrue(row.isAncestorOf(widget), widget.objectName() or repr(widget))
 
-    def _assert_compacted_text_edit(self, editor: QTextEdit, legacy_height: int) -> None:
-        self.assertLess(editor.maximumHeight(), legacy_height)
-        self.assertEqual(editor.minimumHeight(), editor.maximumHeight())
+    def _assert_bullet_list_field(self, editor: BulletListWidget) -> None:
+        self.assertIsInstance(editor, BulletListWidget)
+        self.assertEqual(editor.maximumHeight(), 16777215)
+        self.assertGreaterEqual(len(editor._rows), 1)
 
     def test_anomaly_dialog_compacts_long_text_fields_without_new_pairs(self) -> None:
         dialog = self._show_dialog(NewAnomalyDialog())
@@ -125,7 +126,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
             dialog.work_order_input,
         )
 
-        self._assert_compacted_text_edit(dialog.summary_input, 200)
+        self._assert_bullet_list_field(dialog.summary_input)
 
     def test_visit_dialog_uses_vertical_section_cards(self) -> None:
         dialog = self._show_dialog(NewVisitDialog())
@@ -150,7 +151,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         ]
         self.assertEqual(sorted(card_indices), card_indices)
 
-    def test_visit_page_mode_uses_taller_summary_block(self) -> None:
+    def test_visit_page_mode_uses_bullet_list_summary(self) -> None:
         dialog = NewVisitDialog(embedded=True, page_mode=True)
         self.addCleanup(dialog.close)
         dialog.show()
@@ -161,10 +162,8 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         modal_dialog.show()
         self.app.processEvents()
 
-        self.assertGreater(
-            dialog.summary_input.maximumHeight(),
-            modal_dialog.summary_input.maximumHeight(),
-        )
+        self._assert_bullet_list_field(dialog.summary_input)
+        self._assert_bullet_list_field(modal_dialog.summary_input)
         self.assertEqual([], dialog.findChildren(QScrollArea))
 
     def test_visit_dialog_matches_anomaly_dialog_working_size(self) -> None:
@@ -184,8 +183,7 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self.assertFalse(row.isAncestorOf(editor.product_combo))
         self.assertFalse(row.isAncestorOf(editor.product_code_input))
         self.assertFalse(row.isAncestorOf(editor.qty_input))
-        self.assertEqual(editor.summary_input.minimumHeight(), editor.summary_input.maximumHeight())
-        self.assertLessEqual(editor.summary_input.maximumHeight(), 80)
+        self._assert_bullet_list_field(editor.summary_input)
 
     def test_close_anomaly_omits_retired_closer_field(self) -> None:
         dialog = self._show_dialog(CloseAnomalyDialog("missing-id", "測試問題描述"))

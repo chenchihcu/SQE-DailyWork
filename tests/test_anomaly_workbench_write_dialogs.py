@@ -36,7 +36,7 @@ class CompleteActionDialogTests(unittest.TestCase):
         ) as mk:
             dialog._on_submit()
         self.assertEqual(mk.call_args.args[0], "a-1")
-        self.assertEqual(mk.call_args.kwargs["completion_note"], "submitted to supplier")
+        self.assertEqual(mk.call_args.kwargs["completion_note"], "1. submitted to supplier")
         self.assertEqual(emitted, ["a-1"])
 
     def test_cancels_open_action(self) -> None:
@@ -48,7 +48,7 @@ class CompleteActionDialogTests(unittest.TestCase):
         ) as mk:
             dialog._on_submit()
         self.assertEqual(mk.call_args.args[0], "a-2")
-        self.assertEqual(mk.call_args.kwargs["cancel_note"], "duplicate of #3")
+        self.assertEqual(mk.call_args.kwargs["cancel_note"], "1. duplicate of #3")
 
 
 class CompleteCorrectiveActionDialogTests(unittest.TestCase):
@@ -67,7 +67,7 @@ class CompleteCorrectiveActionDialogTests(unittest.TestCase):
             mk.call_args.args[0], "ca-1"
         )
         self.assertEqual(
-            mk.call_args.kwargs["implementation_evidence"], "更換完成照片"
+            mk.call_args.kwargs["implementation_evidence"], "1. 更換完成照片"
         )
 
 
@@ -134,7 +134,7 @@ class AddEightDReviewDialogTests(unittest.TestCase):
         self.assertEqual(kwargs["anomaly_id"], "an-1")
         self.assertEqual(kwargs["revision"], "Rev A")
         self.assertEqual(kwargs["review_status"], "接受")
-        self.assertEqual(kwargs["review_comment"], "已補齊")
+        self.assertEqual(kwargs["review_comment"], "1. 已補齊")
         self.assertEqual(emitted, ["rev-1"])
 
 
@@ -170,7 +170,7 @@ class AddAuditLogDialogTests(unittest.TestCase):
         kwargs = mk.call_args.kwargs
         self.assertEqual(kwargs["anomaly_id"], "an-1")
         self.assertEqual(kwargs["action"], "MEETING")
-        self.assertEqual(kwargs["after_value"], "與供應商電話會議")
+        self.assertEqual(kwargs["after_value"], "1. 與供應商電話會議")
         self.assertEqual(emitted, ["audit-1"])
 
 
