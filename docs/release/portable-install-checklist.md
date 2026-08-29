@@ -41,6 +41,8 @@
 | 測試日期 | |
 | 測試者 | |
 | zip 路徑 / git commit | |
+| zip SHA256 | |
+| build-info.json zip_sha256 | |
 | 解壓路徑 | |
 | SmartScreen 行為 | |
 | AV 產品 | |

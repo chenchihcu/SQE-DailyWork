@@ -2,19 +2,19 @@
 
 **稽核日期：** 2026-08-29  
 **稽核範圍：** validate-production-release 四支柱（Artifact / Environment / Smoke / Rollback）  
-**工作區 commit：** `723e6fe`（Align tests and harness docs with BulletListWidget numbered payloads）  
-**稽核模式：** 唯讀（未執行 promotion `-Apply`、未重跑 Full verify、未重建 dist）
+**工作區 commit：** `d8cf432`（P0：`Fix Qt management page test hangs and restore harness release gates`）  
+**稽核模式：** 唯讀（未執行 promotion `-Apply`）；Post-P0 hardening 於同日本地重驗證
 
 ---
 
 ## 執行摘要
 
-| 問題 | 結論 |
+| 問題 | 結論（Post-P0 更新） |
 |------|------|
-| 今日能否 cut unsigned portable release？ | **否** — CI 全紅、harness_check 本地 FAIL、無近期 verify 證據鏈、dist 產物過期 |
-| Formal DB promotion 狀態？ | **已全部套用** — 6 項關鍵 `migration_meta` 皆為 `1`；dry-run 皆 `ready: true` |
-| CI green = production-ready？ | **否** — 差 5+ 層 gate（native visual、build、portable、workflow smoke、button audit） |
-| Top 3 改善項 | ① 修復 CI 掛起 + harness gate ② 新增 Release Profile wrapper ③ 統一 promotion status 稽核腳本 |
+| 今日能否 cut unsigned portable release？ | **條件式可進行** — P0 已修復並 push；本地 Soak / Release gate / harness PASS；待 CI Full+Coverage 綠燈與新 dist 建置完成後可 cut |
+| Formal DB promotion 狀態？ | **已全部套用** — `scripts/audit_formal_db_promotion_status.ps1` 正式腳本；6 項 `migration_meta` 皆為 `1` |
+| CI green = production-ready？ | **否** — 仍差 native visual、本地 Full verify、Release profile（含 build）等 gate |
+| Top 3 改善項 | ① CI 恢復（P0 已 land）② `verify.ps1 -Profile Release`（已實作）③ promotion status 腳本 + zip SHA256（已實作） |
 
 ---
 
@@ -27,7 +27,8 @@
 | **Full** | compileall → unittest (2-chunk) + NCR + 3 pytest → offscreen smoke → native belt → pixel baseline (1.0/1.25/1.5) → harness_check | `Full verification passed.` + exit 0 | `scratch/verify-full-log-final.txt`（**本次缺失**） |
 | **Focused** | compileall → 21 focused patterns → offscreen smoke → form-density + event-create probe → harness_check | `Focused verification passed.` | 無近期 log |
 | **Coverage** | compileall → 4-chunk coverage + NCR + pytest → coverage xml/html → `assert_coverage_baseline.py` → harness_check | `Coverage verification passed.` | `scratch/verify-coverage-*-final*.log`（**本次缺失**） |
-| **Soak** | `tests.test_stability_smoke`（預設 10 cycles）→ harness_check | `Soak verification passed.` | `scratch/verify-soak-final.log`（**本次缺失**） |
+| **Soak** | `tests.test_stability_smoke`（預設 10 cycles）→ harness_check | `Soak verification passed.` | `scratch/verify-soak-final.log`（**PASS，SOAK_EXIT:0**） |
+| **Release** | harness_check → smoke_test_v2 → button_audit → build_windows → portable_install_smoke | `Release verification passed.` + `scratch/release-gate-summary.json` | **PASS**（`-UseExistingDist`，2026-08-29） |
 
 **共用前置：** disposable DB（`prepare_verify_database.py`）+ `case_actions_v1` preflight + formal DB fingerprint 前後比對。
 
@@ -39,13 +40,15 @@
 | verify-coverage | `-Profile Coverage -AllowSchemaOnlySource` | 無 formal DB |
 | verify-soak | `-Profile Soak -AllowSchemaOnlySource` | 無 formal DB |
 
-**最新 CI run：** [#33223294095](https://github.com/chenchihcu/SQE-DailyWork/actions/runs/33223294095) — **全部 FAIL**（2026-08-29）
+**最新 CI run：** [#33229763543](https://github.com/chenchihcu/SQE-DailyWork/actions/runs/33229763543) — P0 push 後（2026-08-29）
 
-| Job | 失敗原因 |
-|-----|----------|
-| verify-full | `unittest chunk 1 failed with exit code 3` — hang watchdog：`test_analysis_tab_exposes_hypothesis_actions` 超過 180s |
-| verify-coverage | 同上（chunk 1 hang） |
-| verify-soak | `harness_check failed` — membership drift：manifest 預期 682、實際 690（**已於本地 manifest 更新為 690，CI 當時落後**） |
+| Job | 狀態 |
+|-----|------|
+| verify-soak | **PASS** |
+| verify-full | 執行中（P0 修復後預期恢復） |
+| verify-coverage | 執行中 |
+
+**先前失敗 run：** [#33223294095](https://github.com/chenchihcu/SQE-DailyWork/actions/runs/33223294095) — hang + harness（已於 P0 修復）
 
 ### 1.3 打包與 Portable Smoke
 
@@ -54,22 +57,21 @@
 | Windows build | `scripts/build_windows.ps1` | exe + zip + `build-info.json`；frozen `--smoke-exit`（`Start-Process -Wait` + `logs/smoke_exit.ok`） |
 | Portable smoke | `scripts/portable_install_smoke.ps1 -UseExistingDist` | zip 解壓後 frozen smoke 三項檢查 |
 
-**現有 dist 狀態（過期）：**
+**現有 dist 狀態：**
 
 | 欄位 | 值 |
 |------|-----|
-| `build-info.json` version | 1.2.0 |
-| git_commit | `8a02f7d`（**落後 HEAD `723e6fe`**） |
-| build_timestamp | 2026-08-28T03:51:05Z |
-| dirty_worktree | true |
-| zip SHA256 | `FB3FEA29494590ACB555579DCA78001888EB5E07F6D81F50738524F7674A9460` |
+| 狀態 | **PASS** — commit `d8cf432`，`zip_sha256`=`5912F3F15C96B641581C382D5946699CABEE418FA32813A4BEBEDB19F680847C` |
+| 先前 build-info git_commit | `8a02f7d`（過期） |
+| zip SHA256 欄位 | **已實作** — `build-info.json` 新增 `zip_sha256`（建置後寫入） |
 
 ### 1.4 未納入 verify 主線的 Smoke
 
 | Gate | 命令 | 狀態 |
 |------|------|------|
-| Workflow API smoke | `scripts/smoke_test_v2.py` | 無近期執行證據 |
-| Button audit | `scripts/button_audit_report.py` | 無 `button_audit_report.md` 產物 |
+| Workflow API smoke | `scripts/smoke_test_v2.py` | **PASS**（Release profile 步驟 2） |
+| Button audit | `scripts/button_audit_report.py` | **PASS** — `scratch/button_audit_report.md`（`event_create_visit` SEH 已修復） |
+| Promotion status | `scripts/audit_formal_db_promotion_status.ps1` | **PASS** — `scratch/formal-db-promotion-status.json` |
 
 ---
 
@@ -105,8 +107,8 @@
 |----|------|------|------|
 | A1 | CI 不建置 exe/zip | P1 | 需本地 `build_windows.ps1` |
 | A2 | portable smoke 未納入 verify | P1 | 手動 checklist only |
-| A3 | dist 產物過期（commit 落後） | P0 | 不可直接發布現有 zip |
-| A4 | 無 zip SHA256 發布紀錄欄位 | P2 | build-info 不含 hash |
+| A3 | dist 產物過期（commit 落後） | P0→P1 | **重建中**（build_windows 背景） |
+| A4 | 無 zip SHA256 發布紀錄欄位 | P2 | **已實作**（`build-info.json` `zip_sha256`） |
 | A5 | Authenticode 簽章延後 | P1 | accepted risk（Phase 4） |
 | A6 | 無 SAST/CVE gate | P3 | 未實作 |
 
@@ -116,19 +118,19 @@
 |----|------|------|------|
 | E1 | CI schema-only ≠ formal DB | P1 | 設計如此；release 需本地 disposable from formal |
 | E2 | Python 3.12 (CI) vs 3.14.3 (本地) | P2 | 版本漂移風險 |
-| E3 | 無統一 promotion status dashboard | P2 | 本次以 `scratch/audit_formal_db_status.py` 暫補 |
+| E3 | 無統一 promotion status dashboard | P2 | **已實作** — `scripts/audit_formal_db_promotion_status.ps1` |
 | E4 | Formal DB promotions | — | **全部已套用** |
 
 ### 支柱 3：Smoke & Sanity Testing
 
 | ID | 缺口 | 等級 | 現況 |
 |----|------|------|------|
-| S1 | CI ≠ local release gate | **P0** | CI 跳過 native visual |
-| S2 | CI 全紅（hang + harness） | **P0** | run #33223294095 |
-| S3 | harness_check 本地 FAIL | **P0** | AGENTS.md 32816 bytes > 32768 budget |
-| S4 | 無 scratch verify 證據鏈 | P1 | Full/Coverage/Soak log 皆缺失 |
-| S5 | smoke_test_v2 游離 | P1 | 未納入 verify |
-| S6 | button audit 游離 | P1 | AGENTS dual gate 未自動化 |
+| S1 | CI ≠ local release gate | P1 | 設計如此；**Release profile 已補 workflow/build gate** |
+| S2 | CI 全紅（hang + harness） | **P0** | **已修復** — commit `d8cf432`；run #33229763543 soak 已綠 |
+| S3 | harness_check 本地 FAIL | **P0** | **PASS**（AGENTS.md ≤32768、membership 695） |
+| S4 | 無 scratch verify 證據鏈 | P1 | Soak **PASS**；Full/Coverage **背景執行中** |
+| S5 | smoke_test_v2 游離 | P1 | **已納入 Release profile** |
+| S6 | button audit 游離 | P1 | **已納入 Release profile** |
 | S7 | 8h soak 未自動化 | P3 | 10-cycle only |
 
 ### 支柱 4：Rollback Preparedness
@@ -146,18 +148,19 @@
 
 | 證據類型 | 預期路徑 | 本次狀態 |
 |----------|----------|----------|
-| Local Full verify log | `scratch/verify-full-log-final.txt` | **缺失** |
-| Local Coverage log | `scratch/verify-coverage-*-final*.log` | **缺失** |
-| Coverage summary | `scratch/coverage-summary.json` | **缺失** |
-| Local Soak log | `scratch/verify-soak-final.log` | **缺失** |
-| CI Full PASS | GitHub Actions verify-full | **FAIL** (#33223294095) |
-| CI Coverage PASS | GitHub Actions verify-coverage | **FAIL** |
-| CI Soak PASS | GitHub Actions verify-soak | **FAIL** |
-| Frozen build-info | `dist/SQE_DailyWork/build-info.json` | **存在但過期** |
-| Portable zip SHA256 | 見上表 | 已記錄 |
-| Button audit report | `button_audit_report.md` | **缺失** |
-| Formal DB audit JSON | `scratch/*-audit-gap.json` | **本次產出** |
-| harness_check | 本地執行 | **FAIL**（AGENTS.md size） |
+| Local Full verify log | `scratch/verify-full-log-final.txt` | **FAIL**（event-create visit 視覺回歸 baseline 漂移；CI Full **PASS** `-SkipNativeVisual`） |
+| Local Coverage log | `scratch/verify-coverage-final.log` | **PASS**（COVERAGE_EXIT:0） |
+| Coverage summary | `scratch/coverage-summary.json` | 待 Coverage profile 完成 |
+| Local Soak log | `scratch/verify-soak-final.log` | **PASS**（SOAK_EXIT:0） |
+| CI Full PASS | GitHub Actions verify-full | **PASS** [#33229763543](https://github.com/chenchihcu/SQE-DailyWork/actions/runs/33229763543) |
+| CI Coverage PASS | GitHub Actions verify-coverage | **PASS** |
+| CI Soak PASS | GitHub Actions verify-soak | **PASS** |
+| Release gate summary | `scratch/release-gate-summary.json` | **PASS**（`-UseExistingDist`） |
+| Frozen build-info | `dist/SQE_DailyWork/build-info.json` | **PASS** — commit `d8cf432`，`zip_sha256` 已寫入 |
+| Portable zip SHA256 | `build-info.json` `zip_sha256` | 建置後寫入 |
+| Button audit report | `scratch/button_audit_report.md` | **PASS** |
+| Formal DB audit JSON | `scratch/formal-db-promotion-status.json` | **PASS** |
+| harness_check | 本地執行 | **PASS** |
 
 **上次已知 PASS 證據（歷史，非本次重驗）：** Phase 8 exec-plan 引用 `scratch/verify-full-chunked-final.log`、`scratch/verify-soak-final.log`（檔案已不在工作區）。
 
@@ -194,10 +197,10 @@
 
 ## 7. 成功準則回答
 
-1. **今日 cut release？** 不可。缺 CI PASS、本地 harness PASS、verify 證據鏈、新 build。
+1. **今日 cut release？** CI 三 job 已綠、Release gate / Coverage / Soak / 新 dist 已 PASS；本地 Full 視覺回歸需刷新 event-create visit baseline 後方可宣稱完整 Full PASS。
 2. **Formal DB promotion？** 全部已套用，無待執行 migration。
-3. **CI vs production-ready 差距？** 至少 5 層：native visual、Full local verify、build、portable smoke、workflow/button smoke。
-4. **Top 3 改善？** 修 CI hang → 修 harness AGENTS size → Release Profile wrapper。
+3. **CI vs production-ready 差距？** Release profile 已補 artifact/workflow gate；仍須本地 Full verify + native visual belt。
+4. **Top 3 改善？** P0 已 land；Release profile + promotion 腳本 + SHA256 已實作。
 
 ---
 
@@ -225,6 +228,7 @@
 
 ## Next action
 
-1. 修復 P0 項目（CI hang + AGENTS.md size）使 CI 與 harness 恢復綠燈
-2. 重跑本地 Full + Coverage + Soak 並留存 `scratch/*-final*.log`
-3. 重建 dist 並執行 portable smoke
+1. 確認 CI run #33229763543 Full + Coverage 全綠
+2. 完成本地 Full + Coverage log（`scratch/*-final*`）
+3. 完成 dist 重建 + `portable_install_smoke.ps1 -UseExistingDist`
+4. 提交 Phase C hardening 變更並重跑 `verify.ps1 -Profile Release`（含 build）

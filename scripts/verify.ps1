@@ -1,9 +1,10 @@
 param(
     [string]$PythonExe,
-    [ValidateSet("Focused", "Full", "Coverage", "Soak")]
+    [ValidateSet("Focused", "Full", "Coverage", "Soak", "Release")]
     [string]$Profile = "Full",
     [switch]$AllowSchemaOnlySource,
-    [switch]$SkipNativeVisual
+    [switch]$SkipNativeVisual,
+    [switch]$UseExistingDist
 )
 
 Set-StrictMode -Version Latest
@@ -448,6 +449,112 @@ try {
     & $resolvedPython -c "from database.connection import initialize_database; report=initialize_database(); migration=report['case_actions_migration']; assert migration['ready']; print('case_actions_ready', migration['canonical_case_actions'])"
     if ($LASTEXITCODE -ne 0) {
         throw "Disposable case_actions_v1 preflight failed with exit code $LASTEXITCODE"
+    }
+
+    if ($Profile -eq "Release") {
+        $releaseSteps = [System.Collections.Generic.List[object]]::new()
+        $scratchDir = Join-Path $repoRoot "scratch"
+        if (-not (Test-Path -LiteralPath $scratchDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $scratchDir -Force | Out-Null
+        }
+
+        function Add-ReleaseStep {
+            param(
+                [string]$Name,
+                [int]$ExitCode,
+                [string]$Detail = ""
+            )
+            $script:releaseSteps.Add([ordered]@{
+                name = $Name
+                exit_code = $ExitCode
+                detail = $Detail
+            }) | Out-Null
+        }
+
+        Write-Host ""
+        Write-Host "[1/5] scripts\harness_check.ps1"
+        & (Join-Path $repoRoot "scripts\harness_check.ps1")
+        Add-ReleaseStep -Name "harness_check" -ExitCode $LASTEXITCODE
+        if ($LASTEXITCODE -ne 0) {
+            throw "harness_check failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[2/5] workflow smoke (scripts\smoke_test_v2.py)"
+        & $resolvedPython (Join-Path $repoRoot "scripts\smoke_test_v2.py")
+        Add-ReleaseStep -Name "smoke_test_v2" -ExitCode $LASTEXITCODE
+        if ($LASTEXITCODE -ne 0) {
+            throw "smoke_test_v2 failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host ""
+        Write-Host "[3/5] button audit (scripts\button_audit_report.py)"
+        $buttonReportPath = Join-Path $scratchDir "button_audit_report.md"
+        & $resolvedPython (Join-Path $repoRoot "scripts\button_audit_report.py") --report $buttonReportPath
+        $buttonExit = $LASTEXITCODE
+        $buttonDetail = "report=$buttonReportPath"
+        if (Test-Path -LiteralPath $buttonReportPath -PathType Leaf) {
+            $buttonText = Get-Content -LiteralPath $buttonReportPath -Raw
+            if ($buttonText -match "orchestrator_status:\s*FAILED") {
+                $buttonExit = 1
+                $buttonDetail = "orchestrator_status FAILED"
+            }
+        }
+        Add-ReleaseStep -Name "button_audit" -ExitCode $buttonExit -Detail $buttonDetail
+        if ($buttonExit -ne 0) {
+            throw "button_audit failed with exit code $buttonExit"
+        }
+
+        if ($UseExistingDist) {
+            Write-Host ""
+            Write-Host "[4/5] build_windows.ps1 skipped (-UseExistingDist)"
+            Add-ReleaseStep -Name "build_windows" -ExitCode 0 -Detail "skipped"
+        } else {
+            Write-Host ""
+            Write-Host "[4/5] build_windows.ps1"
+            & (Join-Path $repoRoot "scripts\build_windows.ps1")
+            Add-ReleaseStep -Name "build_windows" -ExitCode $LASTEXITCODE
+            if ($LASTEXITCODE -ne 0) {
+                throw "build_windows.ps1 failed with exit code $LASTEXITCODE"
+            }
+        }
+
+        Write-Host ""
+        Write-Host "[5/5] portable_install_smoke.ps1 -UseExistingDist"
+        & (Join-Path $repoRoot "scripts\portable_install_smoke.ps1") -UseExistingDist
+        Add-ReleaseStep -Name "portable_install_smoke" -ExitCode $LASTEXITCODE
+        if ($LASTEXITCODE -ne 0) {
+            throw "portable_install_smoke failed with exit code $LASTEXITCODE"
+        }
+
+        $zipPath = Join-Path $repoRoot "dist\SQE_DailyWork-win64.zip"
+        $buildInfoPath = Join-Path $repoRoot "dist\SQE_DailyWork\build-info.json"
+        $buildInfo = $null
+        if (Test-Path -LiteralPath $buildInfoPath -PathType Leaf) {
+            $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
+        }
+        $zipSha = ""
+        if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
+            $zipSha = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+        }
+
+        $summary = [ordered]@{
+            profile = "Release"
+            passed = $true
+            steps = @($releaseSteps)
+            artifacts = [ordered]@{
+                zip_path = $zipPath
+                zip_sha256 = $zipSha
+                build_info_path = $buildInfoPath
+                build_info = $buildInfo
+            }
+        }
+        $summaryPath = Join-Path $scratchDir "release-gate-summary.json"
+        ($summary | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+        Write-Host "Release gate summary: $summaryPath"
+        Write-Host ""
+        Write-Host "Release verification passed."
+        return
     }
 
     if ($Profile -eq "Coverage") {

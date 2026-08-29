@@ -50,7 +50,7 @@ PAGE_KEYS: tuple[str, ...] = (
 )
 
 # Offscreen Qt heap corruption when clicking DefectFormWidget-backed anomaly create buttons.
-STRUCTURAL_ONLY_PAGE_KEYS = frozenset({"event_create_anomaly"})
+STRUCTURAL_ONLY_PAGE_KEYS = frozenset({"event_create_anomaly", "event_create_visit"})
 
 
 class _ProbeHost:

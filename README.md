@@ -283,6 +283,7 @@ dry run, reconciliation, and focused verification.
 ```powershell
 .\scripts\verify.ps1
 .\scripts\verify.ps1 -Profile Focused
+.\scripts\verify.ps1 -Profile Release
 ```
 
 `Full` is the default. Both profiles create a verified disposable database via

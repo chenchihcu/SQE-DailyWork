@@ -77,8 +77,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\backup_data.ps1
 盤點狀態（read-only）：
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\audit_formal_db_promotion_status.ps1
+```
+
+或：
+
+```powershell
 $env:PYTHONPATH='src'
-.venv\Scripts\python.exe scratch\audit_formal_db_status.py
+.venv\Scripts\python.exe scripts\audit_formal_db_promotion_status.py
 ```
 
 ---
@@ -116,7 +122,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Profile 
 **PASS：** 10× MainWindow 導覽無例外 + harness_check  
 **證據：** `scratch/verify-soak-final.log`
 
-### 2.4 Workflow smoke（建議）
+### 2.4 Release artifact gate（CI 補足）
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Profile Release
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Profile Release -UseExistingDist
+```
+
+**PASS：** exit 0 + `scratch/release-gate-summary.json`；**不取代**本地 `-Profile Full` native visual gate。
+
+### 2.5 Workflow smoke（建議；Release profile 已含）
 
 ```powershell
 $env:PYTHONPATH='src;.'
@@ -124,7 +139,7 @@ $env:QT_QPA_PLATFORM='offscreen'
 .venv\Scripts\python.exe scripts\smoke_test_v2.py
 ```
 
-### 2.5 Button audit（建議）
+### 2.6 Button audit（建議；Release profile 已含）
 
 ```powershell
 $env:PYTHONPATH='src;.'

@@ -75,6 +75,12 @@ try {
     Compress-Archive -Path $distDir -DestinationPath $zipPath
     Write-Host "Portable zip: $zipPath"
 
+    $zipSha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+    $buildInfoObject = $buildInfo | ConvertFrom-Json
+    $buildInfoObject | Add-Member -NotePropertyName zip_sha256 -NotePropertyValue $zipSha256 -Force
+    ($buildInfoObject | ConvertTo-Json -Compress) | Set-Content -LiteralPath $buildInfoPath -Encoding UTF8
+    Write-Host "Zip SHA256: $zipSha256"
+
     if ($SkipSmoke) {
         Write-Host ""
         Write-Host "Build complete (smoke skipped)."
