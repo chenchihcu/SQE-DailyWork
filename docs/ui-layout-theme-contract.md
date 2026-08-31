@@ -12,8 +12,9 @@
 - Preferences are local display and workflow default state stored under `ui_settings.appearance.preferences.v5`. Valid `v1`, `v2`, `v3`, and `v4` payloads map in memory to v5 defaults for added fields; `v5` is the active persistence key. Preferences must not alter workflow routes, SQE historical data, counts, statistics, exports, or NCR column-order compatibility keys.
 - Appearance metrics are applied through shared QSS plus runtime sidebar/table helpers. Structural values in `layout_constants.py` remain authoritative and are not user-editable. High contrast is one fixed semantic palette for the whole desktop shell, popups, tables, and charts; it is not page-specific colour customization.
 | Main workflow shell | `main.py` | `src/ui/main_window.py` / `MainWindow` | Desktop app | 1024 x 680 minimum, 1360 x 860 preferred, 95% active-screen cap | Page-specific layouts | `src/ui/theme.py`, `src/ui/layout_constants.py`, `src/ui/window_sizing.py` | `scripts/qt_visual_probe.py` |
-| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Read-only backlog (待辦) list,「主管檢視 →」shortcut, plus warehouse pending shortcuts; no visible KPI panel/cards | Shared theme tokens | UI smoke + native visual probe |
-| Manager view | Sidebar `主管檢視` | `src/ui/widgets/manager_view_page.py` / `ManagerViewPage` | `MainWindow` | Fills content stack | Tabs「案件總覽」+「作業清單」; overview SSOT quality columns; shared filters; double-click opens workbench | Shared theme tokens plus `src/ui/layout_constants.py` | `tests/test_manager_view_phase6.py` + native `scripts/qt_visual_regress.py --target manager-view` @ 1.0/1.25/1.5 |
+| Home workbench | Sidebar `首頁` | `src/ui/widgets/home_widget.py` / `HomeWidget` | `MainWindow` | Fills content stack | Supplier-event queue hub (逾期未結 / 待根本原因 / 進行中處置 counts),「主管檢視 →」shortcut, plus warehouse pending shortcuts; no backlog table | Shared theme tokens | UI smoke + native visual probe |
+| Supplier-event queues | Sidebar `逾期未結` / `待根本原因` / `進行中處置` | `src/ui/widgets/supplier_event_queue_page.py` | `MainWindow` | Fills content stack | Visible queue scope banner; case or action rows; single-click opens workbench; sidebar badge aligned to COUNT SSOT | `CASE_QUEUE_*` / `OPERATIONAL_ACTION_QUEUE_COLUMNS` | `tests/test_supplier_event_queues.py` + native probe |
+| Manager view | Sidebar `主管檢視` | `src/ui/widgets/manager_view_page.py` / `ManagerViewPage` | `MainWindow` | Fills content stack | Case overview only (含已結案); quality SSOT columns; double-click opens workbench | Shared theme tokens plus `src/ui/layout_constants.py` | `tests/test_manager_view_phase6.py` + native `scripts/qt_visual_probe.py --target manager-view` |
 | Event management (consolidated) | Sidebar `事件管理` | `src/ui/widgets/defect_list_widget.py` / `EventListWidget` (`mode="query"`, no fixed scope) plus dedicated dialogs below | `MainWindow` | Fills content stack, dialogs clamped | Filter row with scope chips + table pagination; chips show per-scope counts; sidebar badge shows all open anomalies | Shared theme tokens | UI smoke |
 | New anomaly / visit | Sidebar and event toolbar `新增異常` / `新增訪廠` | `src/ui/widgets/event_create_page.py` / `EventCreatePage`, with `NewAnomalyDialog` / `NewVisitDialog` page presentation | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns one scroll body and the bottom `返回清單` / `儲存` command row; saved page shows `查看清單` / `繼續新增` | Shared theme tokens | Focused page smoke + native `event-create` probe |
 | Warehouse create | Sidebar `建立不合格品` | `src/ncr/embed.py` + `src/ncr/ui/defect_form.py` / embedded NCR create page | `MainWindow` | Fills content stack | `CreateWorkflowShell` owns the continuous-entry command row, feedback and one scroll body | Shared theme tokens plus `src/ncr/ui/ui_style.py` | Embedded smoke tests + native NCR visual probe |
@@ -154,19 +155,19 @@
 - Supplier event pages and warehouse nonconforming-product pages must stay visually
   connected through the shell while keeping their data sources and statistics
   labeled separately.
-- Home is an operations workbench (daily cockpit): one read-only backlog (待辦)
-  list plus warehouse pending shortcuts, rendered directly on the page root
+- Home is an operations workbench (daily cockpit): supplier-event queue hub buttons
+  plus warehouse pending shortcuts, rendered directly on the page root
   without a decorative backlog card. Still forbidden: KPI panels/cards,
   quick-entry write panels, hero/cover banners, feature-tour blocks, and
-  project-structure explanations. The backlog list is not a generic recent-event
-  feed — it is a filtered, actionable to-do list (open / overdue anomalies) that
-  only reads existing services and only routes through existing navigation.
+  project-structure explanations. The queue hub routes to three supplier-event
+  operational queues (逾期未結 / 待根本原因 / 進行中處置) via shared COUNT SSOT;
+  it is not a generic recent-event feed or a full open-anomaly union list.
 - Home warehouse shortcuts are operational navigation only. Their compact visible
   labels are `委外待處理 · N`, `原物料待處理 · N`, and `未分流 · N`; the full
   target description remains in each button tooltip. The first two route to formal stack pages;
-  `未分流待整理` opens a cleanup list for migrated rows. The backlog reads
-  existing services only (`event_service.list_events` plus warehouse processing-line
-  counts); it must not add statistics tables, caches, migrations, or
+  `未分流待整理` opens a cleanup list for migrated rows. Queue counts read
+  existing services only (`get_supplier_event_queue_counts` plus warehouse processing-line
+  counts); they must not add statistics tables, caches, migrations, or
   cross-workflow write paths.
 - Supplier event lists show a compact source tag such as `供應商事件 / 單獨異常`
   or `供應商事件 / 訪廠發現異常`. PDF export remains single-record output and
@@ -361,6 +362,12 @@ behavior is defined by the routing table and cross-reference above.
   `defect_records.processing_line`; `未分流` is only a migrated cleanup state.
   NCR stack indexes are now `3 建立不合格品 / 4 待處理委外加工 / 5 待處理原物料 /
   6 歷史紀錄`, while `不合格品統計分析` is index 7 and `基礎資料` is index 8.
+- Supplier-event operational queues - 2026-08-31: Home replaces the read-only
+  backlog table with a three-button queue hub (`逾期未結` / `待根本原因` /
+  `進行中處置`). The sidebar gains three matching operational-queue rows after
+  `主管檢視`; manager view drops the duplicate operational-action tab and exports
+  only `案件總覽`. Confirm with `scripts/qt_visual_probe.py --target home`,
+  `--target main`, and `--target manager-view`.
 
 ## Design Framework Cross-Reference (SQE Incident Management UI Design Framework v0.1 §7.7 items 1-9)
 

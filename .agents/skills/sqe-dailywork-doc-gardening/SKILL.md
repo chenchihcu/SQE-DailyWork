@@ -1,7 +1,7 @@
 ---
 name: sqe-dailywork-doc-gardening
 version: 1.0.0
-description: 唯讀(report-only)檢查 SQE DailyWork 的文件與 harness 漂移,範圍涵蓋 README、AGENTS、.cursor/rules、docs/harness、risk ledger 與驗證腳本。Use this skill 當要盤點文件是否與實作脫節時。觸發詞包含「文件漂移」「doc gardening」「harness drift」「README」「AGENTS」「risk ledger」「report-only」。
+description: "唯讀檢查 SQE DailyWork 文件與 harness 漂移（README、AGENTS、.cursor/rules、docs/harness、risk ledger）。Use when 盤點文件是否與實作脫節、doc gardening 或 harness drift。Do NOT use for 跨專案通用文件同步（改用 sync-project-docs）或實際改程式（先用 sqe-dailywork-change-router）。"
 allowed-tools: Read, Grep, Glob
 ---
 

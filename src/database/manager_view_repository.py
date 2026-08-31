@@ -12,6 +12,7 @@ from database.repo_helpers import (
     format_current_action_text,
 )
 from database.repository import (
+    count_overdue_open_anomalies,
     get_anomaly_overview_card,
     list_events,
 )
@@ -166,22 +167,71 @@ def list_operational_action_queue(
     return results
 
 
-def get_manager_operational_metrics(conn: sqlite3.Connection) -> dict[str, int]:
-    """Compact operational counters for the manager summary header."""
-    pending_rows = list_manager_summary_rows(conn, status="待處理")
-    overdue_count = sum(1 for row in pending_rows if row.get("overdue"))
-    open_action_count = sum(int(row.get("open_action_count") or 0) for row in pending_rows)
-    root_cause_pending = sum(
-        1
-        for row in pending_rows
+def count_root_cause_pending_open_anomalies(conn: sqlite3.Connection) -> int:
+    """Count open anomalies whose root-cause status is not yet established."""
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM anomalies AS a
+        LEFT JOIN anomaly_root_causes AS rc ON rc.anomaly_id = a.id
+        WHERE a.status = '待處理'
+          AND COALESCE(rc.status, ?) IN (?, ?)
+        """,
+        (
+            ANOMALY_ROOT_CAUSE_NOT_STARTED,
+            ANOMALY_ROOT_CAUSE_NOT_STARTED,
+            ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION,
+        ),
+    ).fetchone()
+    return int(row["total"] if row is not None else 0)
+
+
+def list_overdue_case_queue_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return list_manager_summary_rows(conn, status="待處理", overdue_only=True)
+
+
+def list_root_cause_pending_case_queue_rows(
+    conn: sqlite3.Connection,
+) -> list[dict[str, Any]]:
+    pending = list_manager_summary_rows(conn, status="待處理")
+    return [
+        row
+        for row in pending
         if str(row.get("root_cause_status") or "")
         in {ANOMALY_ROOT_CAUSE_NOT_STARTED, ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION}
-    )
-    queue_count = len(list_operational_action_queue(conn))
+    ]
+
+
+def count_open_operational_actions(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM case_actions AS ca
+        JOIN anomalies AS a ON a.id = ca.anomaly_id
+        WHERE ca.execution_status IN ('已規劃', '執行中')
+          AND a.status = '待處理'
+        """
+    ).fetchone()
+    return int(row["total"] if row is not None else 0)
+
+
+def get_supplier_event_queue_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    return {
+        "overdue_anomaly_count": count_overdue_open_anomalies(conn),
+        "root_cause_pending_count": count_root_cause_pending_open_anomalies(conn),
+        "open_queue_action_count": count_open_operational_actions(conn),
+    }
+
+
+def get_manager_operational_metrics(conn: sqlite3.Connection) -> dict[str, int]:
+    """Compact operational counters (shared with sidebar queue badges)."""
+    pending_rows = list_manager_summary_rows(conn, status="待處理")
+    queue_counts = get_supplier_event_queue_counts(conn)
+    open_action_count = sum(int(row.get("open_action_count") or 0) for row in pending_rows)
     return {
         "pending_anomaly_count": len(pending_rows),
-        "overdue_anomaly_count": overdue_count,
+        "overdue_anomaly_count": queue_counts["overdue_anomaly_count"],
         "open_action_count": open_action_count,
-        "root_cause_pending_count": root_cause_pending,
-        "open_queue_action_count": queue_count,
+        "root_cause_pending_count": queue_counts["root_cause_pending_count"],
+        "open_queue_action_count": queue_counts["open_queue_action_count"],
     }

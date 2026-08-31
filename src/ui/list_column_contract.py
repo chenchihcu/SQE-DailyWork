@@ -45,17 +45,17 @@ EVENT_LIST_COMPACT_FIELDS = frozenset(
     }
 )
 
-HOME_BACKLOG_COLUMNS = (
+CASE_QUEUE_COLUMNS = (
     ColumnSpec("ref_no", "異常單號"),
-    ColumnSpec("supplier_name", "供應商名稱"),
-    ColumnSpec("product_code", "產品料號"),
-    ColumnSpec("product_name", "產品品名"),
-    ColumnSpec("category", "異常類別"),
+    ColumnSpec("supplier_name", "供應商"),
     ColumnSpec("content", "問題/摘要"),
-    ColumnSpec("current_action", "下一步處置"),
-    ColumnSpec("due_date", "到期日"),
-    ColumnSpec("responsible_person", "責任人"),
-    ColumnSpec("status", "狀態"),
+    ColumnSpec("current_action_text", "下一步處置"),
+    ColumnSpec("action_due_date", "到期日"),
+    ColumnSpec("responsible_person", "異常責任人"),
+)
+
+CASE_QUEUE_RCA_COLUMNS = CASE_QUEUE_COLUMNS + (
+    ColumnSpec("root_cause_status", "根本原因"),
 )
 
 SUPPLIER_OVERVIEW_COLUMNS = (
@@ -86,13 +86,13 @@ SUPPLIER_360_ANOMALY_COLUMNS = (
 MANAGER_SUMMARY_COLUMNS = (
     ColumnSpec("ref_no", "異常單號"),
     ColumnSpec("supplier_name", "供應商"),
-    ColumnSpec("content", "異常摘要"),
+    ColumnSpec("content", "問題/摘要"),
     ColumnSpec("status", "狀態"),
     ColumnSpec("current_action_text", "下一步處置"),
     ColumnSpec("action_due_date", "到期日"),
     ColumnSpec("overdue", "逾期"),
     ColumnSpec("root_cause_status", "根本原因"),
-    ColumnSpec("corrective_action_status", "矯正措施"),
+    ColumnSpec("corrective_action_status", "改善措施"),
     ColumnSpec("verification_result", "有效性驗證"),
     ColumnSpec("last_updated", "最後更新"),
 )
@@ -102,7 +102,7 @@ OPERATIONAL_ACTION_QUEUE_COLUMNS = (
     ColumnSpec("supplier_name", "供應商"),
     ColumnSpec("action_type", "處置類型"),
     ColumnSpec("description", "處置內容"),
-    ColumnSpec("owner", "負責人"),
+    ColumnSpec("owner", "處置負責人"),
     ColumnSpec("due_date", "到期日"),
     ColumnSpec("execution_status", "執行狀態"),
     ColumnSpec("overdue", "逾期"),

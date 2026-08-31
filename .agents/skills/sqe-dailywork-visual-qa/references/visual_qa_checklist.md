@@ -17,7 +17,7 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 
 - Read `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `docs/harness/README.md`, and the target `src/ui/` file.
 - Before adding any styling, check `src/ui/theme.py` and `src/ui/layout_constants.py` and reuse shared widgets. Prefer QSS `role` / `variant` and theme tokens over per-widget `setStyleSheet` (AGENTS.md §3–4). Pull layout values from `src/ui/layout_constants.py` (`FORM_MAX_WIDTH`, `GRID_GUTTER`, `ROW_GAP`, `PANEL_MARGINS`) instead of hardcoding pixels — those constants are the single source of truth (pinned by `tests/test_layout_constants.py`).
-- The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (首頁 / 事件管理 scope rows: 單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案 / 異常事件統計 / 不合格品 / 不合格品統計分析 / 基礎資料 / 顯示設定); do not reintroduce an in-page scope tab bar for the consolidated 事件管理 page (see `src/ui/main_window.py` and `README.md`). Keep the home screen operational (no hero/cover panels, 8-column backlog table). Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
+- The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (首頁 / 供應商事件含逾期未結、待根本原因、進行中處置 / 倉庫不合格品 / 供應商管理 / 系統); event scopes remain page-local chips on 事件管理. Keep the home screen operational (queue hub + warehouse shortcuts, no hero/cover panels). Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
 - **單一字體來源 (Single Font Source of Truth)**：CJK 字體 fallback 鏈僅定義於 `src/ui/theme.py`（`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`）；`src/ncr/ui/ui_style.py` 必須引入使用，禁止重新定義。字重策略 (僅限 CJK 400/700) 記錄於 `.claude/rules/visual_evidence_rules.md` §2。
 
 ## Visual Evidence Rule
@@ -112,7 +112,7 @@ A visual claim is "done" only after the relevant dimensions below are checked (s
 12. **工具列按鈕完整性 (Toolbar Button Preservation)** — 確保清單工具列重置按鈕（`btn_reset`，文字為「清除」）、欄位設定切換按鈕（`column_profile_button`）、重新整理按鈕（`refresh_button`）與匯出按鈕均存在且功能正常。
 13. **側欄指令導覽與無障礙標籤 (Sidebar Commands & AccessibleName)** — 側欄「系統」分組下必須包含「顯示設定」（`ACTION_OPEN_APPEARANCE_REDESIGN`），所有 `_NavButton` 必須設定 `accessibleName`。
 14. **緊湊模式 0 水平滾動 (0 Horizontal Overflow)** — 表格在緊湊模式下，選用欄位隱藏，主文字欄位設為 `Stretch`，確保在標準視窗寬度（1024px）下 `horizontalScrollBar().maximum() == 0`。
-15. **首頁 8 欄待辦契約 (Home Backlog 8-Column Contract)** — 首頁待辦表格必須保持 8 欄（`異常單號`、`供應商名稱`、`產品料號`、`產品品名`、`品質異常單要求`、`責任人`、`問題/摘要`、`狀態`），倉庫待處理按鈕保持「委外待處理/原物料待處理/未分流待整理」前綴，無裝飾性外層卡片。
+15. **首頁佇列 Hub 契約** — 首頁顯示三個供應商事件佇列入口（逾期未結／待根本原因／進行中處置，件／筆數與側欄 badge 一致），倉庫待處理按鈕保持「委外待處理/原物料待處理/未分流待整理」前綴，無全頁待辦表格與裝飾性外層卡片。
 
 ## 何時不要觸發
 

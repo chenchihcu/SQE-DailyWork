@@ -29,6 +29,9 @@ _EXPECTED_NAV_LABELS = [
     "新增訪廠",
     "新增異常",
     "事件管理",
+    "逾期未結",
+    "待根本原因",
+    "進行中處置",
     "主管檢視",
     "異常事件統計",
     "建立不合格品",
@@ -101,8 +104,8 @@ class MainWorkflowTabTests(unittest.TestCase):
             ]
             self.assertIn(expected_title, title_labels)
 
-    def test_sidebar_has_fourteen_nav_items_and_create_routes(self) -> None:
-        self.assertEqual(14, len(self.window.sidebar._buttons))
+    def test_sidebar_has_seventeen_nav_items_and_create_routes(self) -> None:
+        self.assertEqual(17, len(self.window.sidebar._buttons))
         self.assertIsNotNone(
             self.window.sidebar.button_for_action(("page", PAGE_EVENT_CREATE_VISIT))
         )

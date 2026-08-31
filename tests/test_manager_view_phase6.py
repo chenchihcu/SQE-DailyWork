@@ -196,12 +196,11 @@ class ManagerViewPageTests(unittest.TestCase):
         self._pages.append(page)
         return page
 
-    def test_page_renders_summary_and_queue_tabs(self) -> None:
+    def test_page_renders_summary_table_only(self) -> None:
         page = self._make_page()
         page.refresh_data()
-        self.assertEqual(2, page._tabs.count())
         self.assertGreaterEqual(page._summary_table.rowCount(), 1)
-        self.assertGreaterEqual(page._queue_table.rowCount(), 0)
+        self.assertFalse(hasattr(page, "_tabs"))
 
     def test_open_summary_row_routes_to_workbench(self) -> None:
         main_window = mock.Mock()

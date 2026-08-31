@@ -1,4 +1,4 @@
-"""Manager summary view and operational action queue."""
+"""Manager summary view (case overview only)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QTabWidget,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -21,11 +20,6 @@ from PySide6.QtWidgets import (
 from services import manager_view_service
 from ui.layout_constants import (
     CONTROL_ROW_SPACING,
-    MANAGER_ACTION_QUEUE_ANOMALY_NO_WIDTH,
-    MANAGER_ACTION_QUEUE_DUE_DATE_WIDTH,
-    MANAGER_ACTION_QUEUE_STATUS_WIDTH,
-    MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-    MANAGER_ACTION_QUEUE_TYPE_WIDTH,
     MANAGER_SUMMARY_ANOMALY_NO_WIDTH,
     MANAGER_SUMMARY_DUE_DATE_WIDTH,
     MANAGER_SUMMARY_QUALITY_WIDTH,
@@ -35,10 +29,7 @@ from ui.layout_constants import (
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
 )
-from ui.list_column_contract import (
-    MANAGER_SUMMARY_COLUMNS,
-    OPERATIONAL_ACTION_QUEUE_COLUMNS,
-)
+from ui.list_column_contract import MANAGER_SUMMARY_COLUMNS
 from ui.theme import TOKENS
 from ui.widgets.common_widgets import (
     EmptyStateWidget,
@@ -57,7 +48,6 @@ class ManagerViewPage(QWidget):
         super().__init__(parent)
         self.main_window = main_window
         self._summary_rows: list[dict] = []
-        self._queue_rows: list[dict] = []
         self._owner_filter_timer = QTimer(self)
         self._owner_filter_timer.setSingleShot(True)
         self._owner_filter_timer.setInterval(300)
@@ -74,9 +64,8 @@ class ManagerViewPage(QWidget):
         controls_layout = QHBoxLayout(controls)
         controls_layout.setContentsMargins(*PANEL_MARGINS)
         controls_layout.addWidget(QLabel("主管檢視"))
-        self._metrics_label = QLabel()
-        self._metrics_label.setProperty("role", "muted")
-        controls_layout.addWidget(self._metrics_label, 1)
+        controls_layout.addWidget(QLabel("案件總覽"))
+        controls_layout.addStretch(1)
         controls_layout.addWidget(QLabel("案件狀態"))
         self._status_combo = QComboBox()
         self._status_combo.addItem("待處理", "待處理")
@@ -86,9 +75,7 @@ class ManagerViewPage(QWidget):
         controls_layout.addWidget(self._status_combo)
         self._owner_filter = QLineEdit()
         self._owner_filter.setPlaceholderText("異常責任人篩選")
-        self._owner_filter.setToolTip(
-            "案件總覽：比對異常責任人與目前處置責任人；作業清單：比對處置責任人。"
-        )
+        self._owner_filter.setToolTip("比對異常責任人與目前處置責任人。")
         self._owner_filter.textChanged.connect(self._schedule_owner_filter_refresh)
         controls_layout.addWidget(self._owner_filter)
         self._overdue_only = QCheckBox("僅顯示逾期")
@@ -104,7 +91,6 @@ class ManagerViewPage(QWidget):
         controls_layout.addWidget(export_btn)
         root.addWidget(controls)
 
-        self._tabs = QTabWidget()
         self._summary_table = self._build_table(
             MANAGER_SUMMARY_COLUMNS,
             (
@@ -125,44 +111,11 @@ class ManagerViewPage(QWidget):
         )
         self._summary_empty = EmptyStateWidget("尚無符合條件的案件")
         self._summary_empty.setVisible(False)
-        summary_tab = QWidget()
-        summary_layout = QVBoxLayout(summary_tab)
-        summary_layout.setContentsMargins(0, 0, 0, 0)
-        summary_layout.addWidget(self._summary_table, 1)
-        summary_layout.addWidget(self._summary_empty)
-        self._tabs.addTab(summary_tab, "案件總覽")
-
-        self._queue_table = self._build_table(
-            OPERATIONAL_ACTION_QUEUE_COLUMNS,
-            (
-                MANAGER_ACTION_QUEUE_ANOMALY_NO_WIDTH,
-                MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-                MANAGER_ACTION_QUEUE_TYPE_WIDTH,
-                None,
-                MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-                MANAGER_ACTION_QUEUE_DUE_DATE_WIDTH,
-                MANAGER_ACTION_QUEUE_STATUS_WIDTH,
-                MANAGER_ACTION_QUEUE_STATUS_WIDTH,
-            ),
-            "OperationalActionQueueTable",
-            "雙擊處置列開啟對應案件工作台",
-        )
-        self._queue_empty = EmptyStateWidget("目前沒有開啟中的處置")
-        self._queue_empty.setVisible(False)
-        queue_tab = QWidget()
-        queue_layout = QVBoxLayout(queue_tab)
-        queue_layout.setContentsMargins(0, 0, 0, 0)
-        queue_layout.addWidget(self._queue_table, 1)
-        queue_layout.addWidget(self._queue_empty)
-        self._tabs.addTab(queue_tab, "作業清單")
-        self._tabs.currentChanged.connect(self._sync_owner_filter_placeholder)
-        root.addWidget(self._tabs, 1)
+        root.addWidget(self._summary_table, 1)
+        root.addWidget(self._summary_empty)
 
         self._summary_table.cellDoubleClicked.connect(
             lambda row, _column: self._open_row(self._summary_table, row)
-        )
-        self._queue_table.cellDoubleClicked.connect(
-            lambda row, _column: self._open_row(self._queue_table, row)
         )
 
     def _build_table(
@@ -195,46 +148,16 @@ class ManagerViewPage(QWidget):
     def _schedule_owner_filter_refresh(self) -> None:
         self._owner_filter_timer.start()
 
-    def _sync_owner_filter_placeholder(self) -> None:
-        if self._tabs.currentIndex() == 0:
-            self._owner_filter.setPlaceholderText("異常責任人篩選")
-        else:
-            self._owner_filter.setPlaceholderText("處置責任人篩選")
-
-    def _filters_active(self) -> bool:
-        status = str(self._status_combo.currentData() or "待處理")
-        return bool(
-            self._owner_filter.text().strip()
-            or self._overdue_only.isChecked()
-            or status != "待處理"
-        )
-
     def refresh_data(self) -> None:
         status = str(self._status_combo.currentData() or "待處理")
         owner = self._owner_filter.text().strip()
         overdue_only = self._overdue_only.isChecked()
-        metrics = manager_view_service.get_manager_operational_metrics()
-        metrics_text = (
-            f"待處理 {metrics.get('pending_anomaly_count', 0)}　"
-            f"逾期 {metrics.get('overdue_anomaly_count', 0)}　"
-            f"開啟處置 {metrics.get('open_action_count', 0)}　"
-            f"根本原因待調查 {metrics.get('root_cause_pending_count', 0)}　"
-            f"作業清單 {metrics.get('open_queue_action_count', 0)}"
-        )
-        if self._filters_active():
-            metrics_text += "　（指標為全域；表格已套用篩選）"
-        self._metrics_label.setText(metrics_text)
         self._summary_rows = manager_view_service.list_manager_summary_rows(
             status=status,
             overdue_only=overdue_only,
             responsible_person=owner,
         )
-        self._queue_rows = manager_view_service.list_operational_action_queue(
-            responsible_person=owner,
-            overdue_only=overdue_only,
-        )
         self._render_summary_rows()
-        self._render_queue_rows()
         self.update()
 
     def _render_summary_rows(self) -> None:
@@ -280,40 +203,6 @@ class ManagerViewPage(QWidget):
                 for column, spec in enumerate(MANAGER_SUMMARY_COLUMNS):
                     self._summary_table.setItem(index, column, values[spec.field])
 
-    def _render_queue_rows(self) -> None:
-        has_rows = bool(self._queue_rows)
-        self._queue_table.setVisible(has_rows)
-        self._queue_empty.setVisible(not has_rows)
-        with preserve_table_sorting(self._queue_table):
-            self._queue_table.setRowCount(0)
-            for row in self._queue_rows:
-                index = self._queue_table.rowCount()
-                self._queue_table.insertRow(index)
-                ref_item = SortableTableWidgetItem(
-                    str(row.get("ref_no") or "—"),
-                    sort_key=str(row.get("ref_no") or ""),
-                )
-                ref_item.setData(
-                    Qt.ItemDataRole.UserRole,
-                    str(row.get("anomaly_id") or ""),
-                )
-                overdue_item = self._overdue_table_item(bool(row.get("overdue")))
-                values = {
-                    "ref_no": ref_item,
-                    "supplier_name": text_table_item(row.get("supplier_name") or "—"),
-                    "action_type": text_table_item(row.get("action_type") or "—"),
-                    "description": text_table_item(row.get("description") or "—"),
-                    "owner": text_table_item(row.get("owner") or "—"),
-                    "due_date": text_table_item(row.get("due_date") or "—"),
-                    "execution_status": create_status_item(
-                        str(row.get("execution_status") or "—"),
-                        sort_key=str(row.get("execution_status") or ""),
-                    ),
-                    "overdue": overdue_item,
-                }
-                for column, spec in enumerate(OPERATIONAL_ACTION_QUEUE_COLUMNS):
-                    self._queue_table.setItem(index, column, values[spec.field])
-
     def _export_excel(self) -> None:
         from datetime import datetime
 
@@ -336,7 +225,6 @@ class ManagerViewPage(QWidget):
         ok, message = manager_export_service.export_manager_view_excel(
             file_path,
             self._summary_rows,
-            self._queue_rows,
         )
         if ok:
             handle_export_completion(file_path, message, self)

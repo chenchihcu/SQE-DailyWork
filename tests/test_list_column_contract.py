@@ -4,9 +4,9 @@ import unittest
 
 from ncr.models.defect import DETAIL_EXPORT_COLUMNS, LIST_FIELD_ORDER
 from ui.list_column_contract import (
-    EVENT_LIST_FIELDS,
+    CASE_QUEUE_COLUMNS,
     EVENT_LIST_COMPACT_FIELDS,
-    HOME_BACKLOG_COLUMNS,
+    EVENT_LIST_FIELDS,
     SUPPLIER_360_ANOMALY_COLUMNS,
     SUPPLIER_OVERVIEW_COLUMNS,
 )
@@ -26,8 +26,8 @@ class ListColumnContractTests(unittest.TestCase):
     def test_process_keywords_hidden_in_compact_view(self) -> None:
         self.assertNotIn("process_keywords", EVENT_LIST_COMPACT_FIELDS)
 
-    def test_home_backlog_and_supplier_overview_end_with_status(self) -> None:
-        self.assertEqual("status", HOME_BACKLOG_COLUMNS[-1].field)
+    def test_case_queue_columns_end_with_responsible_person(self) -> None:
+        self.assertEqual("responsible_person", CASE_QUEUE_COLUMNS[-1].field)
         self.assertEqual("is_active", SUPPLIER_OVERVIEW_COLUMNS[-1].field)
         self.assertLess(
             SUPPLIER_OVERVIEW_COLUMNS.index(next(c for c in SUPPLIER_OVERVIEW_COLUMNS if c.field == "latest_anomaly_category")),

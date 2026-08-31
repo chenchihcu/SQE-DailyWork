@@ -221,7 +221,7 @@ class ExportPhase7Tests(unittest.TestCase):
         self.assertIn("原因假設數:", text)
         self.assertIn("開啟中處置:", text)
 
-    def test_manager_export_two_sheets(self) -> None:
+    def test_manager_export_single_summary_sheet(self) -> None:
         from services import manager_view_service
 
         summary_rows = manager_view_service.list_manager_summary_rows()
@@ -235,7 +235,7 @@ class ExportPhase7Tests(unittest.TestCase):
             )
             self.assertTrue(ok)
             workbook = load_workbook(path)
-            self.assertEqual({"案件總覽", "作業清單"}, set(workbook.sheetnames))
+            self.assertEqual({"案件總覽"}, set(workbook.sheetnames))
             summary_sheet = workbook["案件總覽"]
             overdue_col = next(
                 index + 1

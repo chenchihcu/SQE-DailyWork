@@ -2,23 +2,16 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QColor
-
-logger = logging.getLogger(__name__)
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
-    QHeaderView,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from database import repository
 from database.connection import get_connection
 from ncr.models.defect import (
     PROCESSING_LINE_MATERIAL,
@@ -26,120 +19,79 @@ from ncr.models.defect import (
     PROCESSING_LINE_UNCLASSIFIED,
 )
 from ncr.services import stats_service as warehouse_stats_service
-from services.event import _query_service as event_service
-from ui.layout_constants import (
-    BACKLOG_SUPPLIER_MAX_COL_WIDTH,
-    CONTROL_ROW_SPACING,
-    HOME_BACKLOG_ANOMALY_NO_WIDTH,
-    HOME_BACKLOG_CATEGORY_WIDTH,
-    HOME_BACKLOG_ITEM_NO_WIDTH,
-    HOME_BACKLOG_NEXT_ACTION_WIDTH,
-    HOME_BACKLOG_PRODUCT_WIDTH,
-    HOME_BACKLOG_DUE_DATE_WIDTH,
-    HOME_BACKLOG_RESPONSIBLE_WIDTH,
-    HOME_BACKLOG_STATUS_WIDTH,
-    HOME_BACKLOG_SUPPLIER_WIDTH,
-    PANEL_MARGINS,
-    ROOT_SECTION_SPACING,
+from services import supplier_event_queue_service
+from ui.layout_constants import CONTROL_ROW_SPACING, PANEL_MARGINS, ROOT_SECTION_SPACING
+from ui.sidebar_nav import (
+    PAGE_EVENT_OPEN_ACTIONS,
+    PAGE_EVENT_OVERDUE,
+    PAGE_EVENT_ROOT_CAUSE,
 )
-from ui.widgets.common_widgets import (
-    BrandDivider,
-    EmptyStateWidget,
-    SortableTableWidgetItem,
-    apply_table_action_affordance,
-    create_status_item,
-    preserve_table_sorting,
-    style_table,
-    text_table_item,
-)
-from ui.list_column_contract import HOME_BACKLOG_COLUMNS
-from ui.theme import TOKENS
+from ui.widgets.common_widgets import BrandDivider
+
+logger = logging.getLogger(__name__)
 
 
 class HomeWidget(QWidget):
-    # Daily-cockpit backlog list size (read-only actionable to-do list).
-    _BACKLOG_LIMIT = 8
-
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self._backlog_rows: list[dict] = []
+        self._queue_buttons: dict[str, QPushButton] = {}
         self._setup_ui()
         self.refresh_data()
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(ROOT_SECTION_SPACING)
+        root.addWidget(self._build_hub_panel(), 1)
 
-        # Daily-cockpit backlog: read-only actionable to-do list that fills the
-        # first screen. Reads existing services only; rows route through existing
-        # navigation (no new write paths).
-        root.addWidget(self._build_backlog_panel(), 1)
-
-    def _build_backlog_panel(self) -> QFrame:
+    def _build_hub_panel(self) -> QFrame:
         panel = QFrame()
         outer = QVBoxLayout(panel)
         outer.setContentsMargins(*PANEL_MARGINS)
         outer.setSpacing(CONTROL_ROW_SPACING)
 
-        self._backlog_title = QLabel("待辦事項（待處理異常，逾期優先）")
-        self._backlog_title.setProperty("role", "sectionTitle")
-        outer.addWidget(self._backlog_title)
+        title = QLabel("供應商事件作業佇列")
+        title.setProperty("role", "sectionTitle")
+        outer.addWidget(title)
+
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.addStretch(1)
-        self._manager_view_button = QPushButton("主管檢視 →")
-        self._manager_view_button.setProperty("variant", "secondary")
-        self._manager_view_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._manager_view_button.setToolTip("開啟案件總覽與作業清單")
-        self._manager_view_button.clicked.connect(self._open_manager_view)
-        title_row.addWidget(self._manager_view_button)
+        manager_view_button = QPushButton("主管檢視 →")
+        manager_view_button.setProperty("variant", "secondary")
+        manager_view_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        manager_view_button.setToolTip("開啟案件總覽（含已結案與品質欄位）")
+        manager_view_button.clicked.connect(self._open_manager_view)
+        title_row.addWidget(manager_view_button)
         outer.addLayout(title_row)
         outer.addWidget(BrandDivider())
 
-        self._backlog_table = QTableWidget()
-        self._backlog_table.setObjectName("HomeBacklogTable")
-        self._backlog_table.setColumnCount(len(HOME_BACKLOG_COLUMNS))
-        self._backlog_table.setHorizontalHeaderLabels(
-            [column.label for column in HOME_BACKLOG_COLUMNS]
+        queue_row = QHBoxLayout()
+        queue_row.setContentsMargins(0, 0, 0, 0)
+        queue_row.setSpacing(CONTROL_ROW_SPACING)
+        queue_specs = (
+            ("HomeQueueOverdueLink", "逾期未結：— 件　→", PAGE_EVENT_OVERDUE, "icons/anomaly.svg"),
+            ("HomeQueueRootCauseLink", "待根本原因：— 件　→", PAGE_EVENT_ROOT_CAUSE, None),
+            ("HomeQueueOpenActionsLink", "進行中處置：— 筆　→", PAGE_EVENT_OPEN_ACTIONS, None),
         )
-        style_table(self._backlog_table)
-        apply_table_action_affordance(
-            self._backlog_table,
-            "點擊待辦列開啟事件管理頁，並帶入該供應商的待處理異常篩選",
-        )
-        header = self._backlog_table.horizontalHeader()
-        fixed_widths = (
-            HOME_BACKLOG_ANOMALY_NO_WIDTH,
-            HOME_BACKLOG_SUPPLIER_WIDTH,
-            HOME_BACKLOG_ITEM_NO_WIDTH,
-            HOME_BACKLOG_PRODUCT_WIDTH,
-            HOME_BACKLOG_CATEGORY_WIDTH,
-            None,
-            HOME_BACKLOG_NEXT_ACTION_WIDTH,
-            HOME_BACKLOG_DUE_DATE_WIDTH,
-            HOME_BACKLOG_RESPONSIBLE_WIDTH,
-            HOME_BACKLOG_STATUS_WIDTH,
-        )
-        for index, width in enumerate(fixed_widths):
-            if width is None:
-                header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
-            else:
-                header.setSectionResizeMode(index, QHeaderView.ResizeMode.Fixed)
-                self._backlog_table.setColumnWidth(index, width)
-        self._backlog_table.cellClicked.connect(self._on_backlog_row_clicked)
-        outer.addWidget(self._backlog_table, 1)
+        for object_name, placeholder, page_key, _icon in queue_specs:
+            button = QPushButton(placeholder)
+            button.setObjectName(object_name)
+            button.setProperty("variant", "secondary")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(
+                lambda _checked=False, key=page_key: self._open_queue(key)
+            )
+            self._queue_buttons[page_key] = button
+            queue_row.addWidget(button, 1)
+        outer.addLayout(queue_row)
 
-        self._backlog_empty = EmptyStateWidget(
-            "目前沒有待處理異常",
-            "本月供應商異常均已結案，或尚無待處理項目。",
-            parent=self,
-        )
-        self._backlog_empty.setVisible(False)
-        outer.addWidget(self._backlog_empty)
+        warehouse_title = QLabel("倉庫不合格品")
+        warehouse_title.setProperty("role", "sectionTitle")
+        outer.addWidget(warehouse_title)
+        outer.addWidget(BrandDivider())
 
-        # 倉庫待處理正式雙入口：兩條處理線各自導向對應頁；未分流作為整理入口。
         shortcut_row = QHBoxLayout()
         shortcut_row.setContentsMargins(0, 0, 0, 0)
         shortcut_row.setSpacing(CONTROL_ROW_SPACING)
@@ -168,7 +120,7 @@ class HomeWidget(QWidget):
         ):
             shortcut_row.addWidget(button, 1)
         outer.addLayout(shortcut_row)
-
+        outer.addStretch(1)
         return panel
 
     def _make_warehouse_shortcut(
@@ -196,10 +148,12 @@ class HomeWidget(QWidget):
     def _open_manager_view(self) -> None:
         self._invoke_main("open_manager_view")
 
-    def _month_key(self) -> str:
-        return QDate.currentDate().toString("yyyyMM")
+    def _open_queue(self, page_key: str) -> None:
+        opener = getattr(self.main_window, "open_supplier_event_queue", None)
+        if callable(opener):
+            opener(page_key)
 
-    def refresh_data(self):
+    def refresh_data(self) -> None:
         pending_counts = {
             PROCESSING_LINE_OUTSOURCE: 0,
             PROCESSING_LINE_MATERIAL: 0,
@@ -213,42 +167,29 @@ class HomeWidget(QWidget):
         except Exception:
             logger.exception("讀取不合格品統計失敗")
             if hasattr(self.main_window, "statusBar"):
-                self.main_window.statusBar().showMessage("讀取倉庫待處理統計失敗，請檢查資料庫連線。", 8000)
+                self.main_window.statusBar().showMessage(
+                    "讀取倉庫待處理統計失敗，請檢查資料庫連線。",
+                    8000,
+                )
 
-        self._refresh_backlog(pending_counts)
-
-    def _refresh_backlog(self, pending_counts: dict[str, int]) -> None:
-        """Populate the read-only backlog list from existing services only."""
-        backlog_error: str | None = None
         try:
-            overdue_rows = event_service.list_events(
-                {"event_type": "ANOMALY", "status": "待處理", "overdue_only": True}
+            queue_counts = supplier_event_queue_service.get_supplier_event_queue_counts()
+            self._queue_buttons[PAGE_EVENT_OVERDUE].setText(
+                f"逾期未結：{int(queue_counts.get('overdue_anomaly_count', 0))} 件　→"
+            )
+            self._queue_buttons[PAGE_EVENT_ROOT_CAUSE].setText(
+                f"待根本原因：{int(queue_counts.get('root_cause_pending_count', 0))} 件　→"
+            )
+            self._queue_buttons[PAGE_EVENT_OPEN_ACTIONS].setText(
+                f"進行中處置：{int(queue_counts.get('open_queue_action_count', 0))} 筆　→"
             )
         except Exception:
-            logger.exception("讀取逾期待辦清單失敗")
-            overdue_rows = []
-            backlog_error = "讀取逾期待辦清單失敗，請檢查資料庫連線。"
-        try:
-            pending_rows = event_service.list_events(
-                {"event_type": "ANOMALY", "status": "待處理"}
-            )
-        except Exception:
-            logger.exception("讀取待辦清單失敗")
-            pending_rows = []
-            backlog_error = backlog_error or "讀取待辦清單失敗，請檢查資料庫連線。"
-
-        # 逾期優先，再補其餘待處理；以 event_id 去重。
-        merged: list[dict] = []
-        seen: set[str] = set()
-        for row in [*overdue_rows, *pending_rows]:
-            event_id = row.get("event_id") or row.get("anomaly_id")
-            key = str(event_id or f"{row.get('supplier_name','')}_{row.get('event_date','')}_{row.get('content','')}")
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(row)
-
-        self._render_backlog_rows(merged[: self._BACKLOG_LIMIT], error_message=backlog_error)
+            logger.exception("讀取供應商事件佇列統計失敗")
+            if hasattr(self.main_window, "statusBar"):
+                self.main_window.statusBar().showMessage(
+                    "讀取供應商事件佇列統計失敗，請檢查資料庫連線。",
+                    8000,
+                )
 
         self._warehouse_outsource_btn.setText(
             f"委外待處理：{int(pending_counts.get(PROCESSING_LINE_OUTSOURCE, 0))} 件　→"
@@ -258,84 +199,4 @@ class HomeWidget(QWidget):
         )
         self._warehouse_unclassified_btn.setText(
             f"未分流待整理：{int(pending_counts.get(PROCESSING_LINE_UNCLASSIFIED, 0))} 件　→"
-        )
-
-    def _backlog_cell_items(self, row: dict) -> dict[str, QTableWidgetItem]:
-        no_val = row.get("ref_no") or row.get("anomaly_no") or row.get("event_date") or "—"
-        no_item = SortableTableWidgetItem(str(no_val), sort_key=str(no_val))
-        no_item.setData(Qt.ItemDataRole.UserRole, dict(row))
-
-        supplier_name = str(row.get("supplier_name") or "—")
-        supplier_item = text_table_item(supplier_name)
-        supplier_item.setToolTip(supplier_name)
-
-        item_no = str(row.get("item_no") or row.get("product_code") or "—")
-        product_name = str(row.get("product_name") or "—")
-        action_val = str(row.get("current_action") or row.get("pending_items") or "—").strip() or "—"
-        due_val = str(row.get("due_date") or "—").strip() or "—"
-        due_item = text_table_item(due_val)
-        if row.get("overdue"):
-            due_item.setForeground(QColor(TOKENS["status_danger_fg"]))
-            due_item.setToolTip("已逾期，請優先處理")
-        resp_person = str(row.get("responsible_person") or "未指定").strip() or "未指定"
-        content_val = str(row.get("content") or "—")
-        status_str = str(row.get("status") or "待處理")
-
-        return {
-            "ref_no": no_item,
-            "supplier_name": supplier_item,
-            "product_code": text_table_item(item_no),
-            "product_name": text_table_item(product_name),
-            "category": text_table_item(row.get("category") or "—"),
-            "content": text_table_item(content_val),
-            "current_action": text_table_item(action_val),
-            "due_date": due_item,
-            "responsible_person": text_table_item(resp_person),
-            "status": create_status_item(status_str, sort_key=status_str),
-        }
-
-    def _render_backlog_rows(self, rows: list[dict], *, error_message: str | None = None) -> None:
-        self._backlog_rows = list(rows)
-        has_rows = bool(rows)
-        self._backlog_table.setVisible(has_rows)
-        self._backlog_empty.setVisible(not has_rows)
-        if not has_rows:
-            if error_message:
-                self._backlog_empty.set_message("待辦清單載入失敗", error_message)
-            else:
-                self._backlog_empty.set_message(
-                    "目前沒有待處理異常",
-                    "本月供應商異常均已結案，或尚無待處理項目。",
-                )
-
-        with preserve_table_sorting(self._backlog_table):
-            self._backlog_table.setRowCount(0)
-            for idx, row in enumerate(rows):
-                self._backlog_table.insertRow(idx)
-                values = self._backlog_cell_items(row)
-                for column, spec in enumerate(HOME_BACKLOG_COLUMNS):
-                    self._backlog_table.setItem(idx, column, values[spec.field])
-
-        # Cap supplier column so very long names don't crowd the problem/summary column.
-        actual_w = self._backlog_table.horizontalHeader().sectionSize(1)
-        if actual_w > BACKLOG_SUPPLIER_MAX_COL_WIDTH:
-            self._backlog_table.setColumnWidth(1, BACKLOG_SUPPLIER_MAX_COL_WIDTH)
-
-    def _on_backlog_row_clicked(self, row_idx: int, _column_idx: int) -> None:
-        item = self._backlog_table.item(row_idx, 0)
-        if item is None:
-            return
-        payload = item.data(Qt.ItemDataRole.UserRole)
-        supplier = (
-            str(payload.get("supplier_name") or "") if isinstance(payload, dict) else ""
-        )
-        open_filters = getattr(self.main_window, "open_event_query_with_filters", None)
-        if not callable(open_filters):
-            return
-        open_filters(
-            event_type="ANOMALY",
-            supplier_keyword=supplier,
-            yyyymm=self._month_key(),
-            status="待處理",
-            event_scope=repository.EVENT_SCOPE_ANOMALY_ONLY,
         )

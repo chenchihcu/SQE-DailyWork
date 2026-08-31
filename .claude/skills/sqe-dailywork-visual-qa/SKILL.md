@@ -1,7 +1,7 @@
-﻿---
+---
 name: sqe-dailywork-visual-qa
 version: 2.0.0
-description: 用於 SQE DailyWork 的 PySide6 視覺檢查與功能按鈕審核。包含 Windows Qt 視覺截圖、CJK 中文字體渲染、動態按鈕崩潰測試與回歸審查。
+description: "SQE DailyWork PySide6 視覺檢查：Windows Qt 截圖、CJK 字體、動態按鈕崩潰與回歸審查。Use when 做 native Windows Qt 視覺 QA 或按鈕崩潰測試。Do NOT use for OS 桌面截圖（改用 capture-desktop-screenshot）、Web Playwright（改用 automate-playwright-browser）或通用 Qt theme（改用 configure-qt-layout-theme）。"
 allowed-tools: Read, Grep, Glob, Bash
 ---
 

@@ -196,19 +196,28 @@ shared master-data area.
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
 - The sidebar grouping expresses workflow structure, not data ownership: four
   domain group headers (text labels) — 供應商事件, 倉庫不合格品, 供應商管理, 系統 — organize
-  首頁 plus supplier-event create/query/statistics pages; 倉庫不合格品 holds 建立不合格品 /
+  首頁 plus supplier-event create/query/operational-queue/statistics pages; 倉庫不合格品 holds 建立不合格品 /
   待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 供應商管理 holds 供應商總覽 / 基礎資料;
   系統 holds 顯示設定. The four supplier-event scopes (單獨異常 / 訪廠發現異常 /
   訪廠紀錄 / 已結案) are page-local scope chips on the single 事件管理 page, not
-  first-class sidebar rows.
+  first-class sidebar rows. Three additional supplier-event sidebar rows expose
+  operational queues (逾期未結 / 待根本原因 / 進行中處置) backed by
+  `manager_view_repository.get_supplier_event_queue_counts`; they are case- or
+  action-granularity worklists, not a union of all open anomalies.
 - The sidebar emits `nav_activated(action)` (`("page", PAGE_KEY)` or
   `("scope", EVENT_SCOPE_*)`); `MainWindow._PAGE_KEY_TO_INDEX` maps PAGE_KEY to the
   stack index, so the sidebar stays decoupled from stack indexes.
-- Sidebar page indexes and stack routing are `0 首頁 / 1 事件管理 / 2 異常事件統計
-  / 3 建立不合格品 / 4 待處理委外加工 / 5 待處理原物料 / 6 歷史紀錄 /
-  7 不合格品統計分析 / 8 基礎資料` (NCR offset 3). When indexes change, update the
+- Sidebar page indexes and stack routing append three supplier-event queue pages
+  after `MANAGER_VIEW_PAGE_INDEX` (`逾期未結` / `待根本原因` / `進行中處置`).
+  Earlier indexes (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 …`) are unchanged;
+  `ncr.embed.NCR_PAGE_OFFSET` is not shifted. When indexes change, update the
   index constants, legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`),
   `ncr.embed.NCR_PAGE_OFFSET`, and the affected tests in the same change.
+- Supplier-event sidebar badges: `事件管理` remains the unscoped open-anomaly
+  total; the three queue badges use the same WHERE clauses as their list pages
+  (`count_overdue_open_anomalies`, `count_root_cause_pending_open_anomalies`,
+  `count_open_operational_actions`). Opening the anomaly workbench from a queue
+  row keeps that queue highlighted in the sidebar (`source_page_key`).
 - Warehouse nonconforming-product tracking stays under the embedded `src/ncr/`
   workflow and exposes create, two formal pending processing-line pages, and
   history as first-class shell pages. The old generic pending route may only be

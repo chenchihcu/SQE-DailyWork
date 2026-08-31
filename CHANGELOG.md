@@ -7,6 +7,20 @@ and is shown in the main-window title bar and the startup log (`logs/app.log`).
 Format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses semantic versioning (MAJOR.MINOR.PATCH).
 
+## [Unreleased]
+
+### Added
+- Supplier-event operational queues in the sidebar (`逾期未結` / `待根本原因` /
+  `進行中處置`) with shared COUNT SSOT, `SupplierEventQueuePage`, and home queue hub
+  shortcuts.
+
+### Changed
+- Home removes the read-only backlog table; it now routes to the three queues.
+- Manager view keeps only the case summary table; the operational action tab and
+  duplicate metric strip are removed. Manager Excel exports a single `案件總覽` sheet.
+- `CASE_QUEUE_COLUMNS` / `CASE_QUEUE_RCA_COLUMNS` replace `HOME_BACKLOG_COLUMNS`;
+  operational action queue owner label is `處置負責人`.
+
 ## [1.2.0] - 2026-08-27
 
 Case workbench Phase 7: export/report parity with overview SSOT, manager-view Excel,

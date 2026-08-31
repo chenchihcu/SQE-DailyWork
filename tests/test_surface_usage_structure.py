@@ -50,8 +50,7 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         frames = home.findChildren(QFrame)
         panels = [f for f in frames if f.property("role") == "panel"]
 
-        # Daily cockpit: a direct read-only backlog; KPI cards and decorative
-        # backlog panels are retired.
+        # Daily cockpit: queue hub + warehouse shortcuts; KPI cards retired.
         panel_names = {p.objectName() for p in panels}
         self.assertEqual(0, len(panels))
         self.assertNotIn("HomeKpiPanel", panel_names)
@@ -60,7 +59,7 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         labels = home.findChildren(QLabel)
         texts = [l.text() for l in labels]
         self.assertNotIn("快速入口", texts)
-        self.assertNotIn("逾期未結", texts)
+        self.assertIn("供應商事件作業佇列", texts)
 
         kpi_cards = [f for f in frames if f.property("role") == "kpiCard"]
         self.assertEqual(0, len(kpi_cards))

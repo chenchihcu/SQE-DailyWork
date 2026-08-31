@@ -47,7 +47,10 @@ from ui.page_header_bar import PageHeaderBar
 from ui.sidebar_nav import (
     ACTION_OPEN_APPEARANCE_REDESIGN,
     PAGE_ANOMALY_CREATE,
+    PAGE_EVENT_OPEN_ACTIONS,
+    PAGE_EVENT_OVERDUE,
     PAGE_EVENT_QUERY,
+    PAGE_EVENT_ROOT_CAUSE,
     PAGE_HOME,
     PAGE_MANAGER_VIEW,
     PAGE_MASTER,
@@ -74,6 +77,7 @@ from ui.widgets.lazy_page_widget import LazyPageWidget
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
 from ui.widgets.manager_view_page import ManagerViewPage
 from ui.widgets.supplier_360_page import Supplier360Page
+from ui.widgets.supplier_event_queue_page import SupplierEventQueuePage
 from ui.widgets.supplier_overview_page import SupplierOverviewPage
 
 HOME_PAGE_INDEX = 0
@@ -96,6 +100,9 @@ ANOMALY_MANAGEMENT_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX + 1
 SUPPLIER_OVERVIEW_PAGE_INDEX = ANOMALY_MANAGEMENT_PAGE_INDEX + 1
 SUPPLIER_360_PAGE_INDEX = SUPPLIER_OVERVIEW_PAGE_INDEX + 1
 MANAGER_VIEW_PAGE_INDEX = SUPPLIER_360_PAGE_INDEX + 1
+EVENT_OVERDUE_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 1
+EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 2
+EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 3
 EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
 EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
@@ -110,7 +117,10 @@ _PAGE_TITLES = {
     ANOMALY_MANAGEMENT_PAGE_INDEX: ("異常案件管理", "查看與維護單一供應商異常案件"),
     SUPPLIER_OVERVIEW_PAGE_INDEX: ("供應商總覽", "依供應商查看異常、訪廠與不合格品品質狀況"),
     SUPPLIER_360_PAGE_INDEX: ("供應商檔案", "供應商事件、訪廠與不合格品的唯讀聚合視角"),
-    MANAGER_VIEW_PAGE_INDEX: ("主管檢視", "案件總覽、作業清單與品質狀態營運分析"),
+    MANAGER_VIEW_PAGE_INDEX: ("主管檢視", "案件總覽與品質狀態營運分析"),
+    EVENT_OVERDUE_QUEUE_PAGE_INDEX: ("逾期未結", "待處理且逾期的供應商異常作業佇列"),
+    EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX: ("待根本原因", "根本原因尚未完成的待處理異常"),
+    EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX: ("進行中處置", "待處理異常的已規劃／執行中處置"),
 }
 
 # Compatibility alias kept for external callers
@@ -123,6 +133,9 @@ for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
 _PAGE_KEY_TO_INDEX = {
     PAGE_HOME: HOME_PAGE_INDEX,
     PAGE_EVENT_QUERY: EVENT_PAGE_INDEX,
+    PAGE_EVENT_OVERDUE: EVENT_OVERDUE_QUEUE_PAGE_INDEX,
+    PAGE_EVENT_ROOT_CAUSE: EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX,
+    PAGE_EVENT_OPEN_ACTIONS: EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
     PAGE_MANAGER_VIEW: MANAGER_VIEW_PAGE_INDEX,
     PAGE_SUPPLIER_OVERVIEW: SUPPLIER_OVERVIEW_PAGE_INDEX,
     PAGE_STATS: STATS_PAGE_INDEX,
@@ -137,6 +150,13 @@ _PAGE_KEY_TO_INDEX = {
     PAGE_VISIT_CREATE: VISIT_CREATE_PAGE_INDEX,
     PAGE_ANOMALY_CREATE: ANOMALY_CREATE_PAGE_INDEX,
 }
+_QUEUE_PAGE_KEYS = frozenset(
+    {
+        PAGE_EVENT_OVERDUE,
+        PAGE_EVENT_ROOT_CAUSE,
+        PAGE_EVENT_OPEN_ACTIONS,
+    }
+)
 _PAGE_INDEX_TO_KEY = {index: key for key, index in _PAGE_KEY_TO_INDEX.items()}
 
 
@@ -449,6 +469,22 @@ class MainWindow(QMainWindow):
         self._supplier_overview_page.supplier_selected.connect(self.open_supplier_360)
         self._supplier_360_page = Supplier360Page(self, self)
         self._manager_view_page = ManagerViewPage(self)
+        self._event_overdue_queue_page = SupplierEventQueuePage(
+            self,
+            queue="overdue",
+            page_key=PAGE_EVENT_OVERDUE,
+        )
+        self._event_root_cause_queue_page = SupplierEventQueuePage(
+            self,
+            queue="root_cause",
+            page_key=PAGE_EVENT_ROOT_CAUSE,
+        )
+        self._event_open_actions_queue_page = SupplierEventQueuePage(
+            self,
+            queue="open_actions",
+            page_key=PAGE_EVENT_OPEN_ACTIONS,
+        )
+        self._workbench_source_page_key: str | None = None
 
         self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
         self.stack.insertWidget(EVENT_PAGE_INDEX, self._events_page)
@@ -478,6 +514,12 @@ class MainWindow(QMainWindow):
         self.stack.insertWidget(SUPPLIER_OVERVIEW_PAGE_INDEX, self._supplier_overview_page)
         self.stack.insertWidget(SUPPLIER_360_PAGE_INDEX, self._supplier_360_page)
         self.stack.insertWidget(MANAGER_VIEW_PAGE_INDEX, self._manager_view_page)
+        self.stack.insertWidget(EVENT_OVERDUE_QUEUE_PAGE_INDEX, self._event_overdue_queue_page)
+        self.stack.insertWidget(EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX, self._event_root_cause_queue_page)
+        self.stack.insertWidget(
+            EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
+            self._event_open_actions_queue_page,
+        )
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -543,6 +585,9 @@ class MainWindow(QMainWindow):
                 SUPPLIER_OVERVIEW_PAGE_INDEX,
                 SUPPLIER_360_PAGE_INDEX,
                 MANAGER_VIEW_PAGE_INDEX,
+                EVENT_OVERDUE_QUEUE_PAGE_INDEX,
+                EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX,
+                EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
             ):
                 should_refresh = hasattr(real_widget, "refresh_data")
             elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
@@ -570,12 +615,16 @@ class MainWindow(QMainWindow):
 
     def _sync_sidebar_active(self, page_index: int) -> None:
         """依目前頁面高亮導覽列；事件 scope 由頁內 chips 表示。"""
-        if page_index in (EVENT_PAGE_INDEX, ANOMALY_MANAGEMENT_PAGE_INDEX):
+        if page_index == ANOMALY_MANAGEMENT_PAGE_INDEX:
+            source_key = self._workbench_source_page_key
+            if source_key in _QUEUE_PAGE_KEYS:
+                self.sidebar.set_active(("page", source_key))
+                return
             self.sidebar.set_active(("page", PAGE_EVENT_QUERY))
-        else:
-            key = _PAGE_INDEX_TO_KEY.get(page_index)
-            if key is not None:
-                self.sidebar.set_active(("page", key))
+            return
+        key = _PAGE_INDEX_TO_KEY.get(page_index)
+        if key is not None:
+            self.sidebar.set_active(("page", key))
 
     def _on_nav_activated(self, action) -> None:
         kind, value = action
@@ -682,10 +731,24 @@ class MainWindow(QMainWindow):
         # apply_quick_filters 更新了 scope；側欄維持事件管理頁高亮。
         self._sync_sidebar_active(EVENT_PAGE_INDEX)
 
-    def open_anomaly_management(self, anomaly_id: str, *, edit: bool = False) -> None:
+    def open_anomaly_management(
+        self,
+        anomaly_id: str,
+        *,
+        edit: bool = False,
+        source_page_key: str | None = None,
+    ) -> None:
         """Open an anomaly in the main content area instead of a modal dialog."""
         if self._anomaly_management_page is None:
             return
+        if source_page_key in _QUEUE_PAGE_KEYS:
+            self._workbench_source_page_key = source_page_key
+        elif source_page_key is None:
+            current_key = _PAGE_INDEX_TO_KEY.get(self.stack.currentIndex())
+            if current_key in _QUEUE_PAGE_KEYS:
+                self._workbench_source_page_key = current_key
+            else:
+                self._workbench_source_page_key = None
         try:
             self._anomaly_management_page._source_scope = getattr(
                 self.events_widget,
@@ -814,10 +877,18 @@ class MainWindow(QMainWindow):
         self.master_widget.refresh_data()
         self._supplier_overview_page.refresh_data()
         self._manager_view_page.refresh_data()
+        self._event_overdue_queue_page.refresh_data()
+        self._event_root_cause_queue_page.refresh_data()
+        self._event_open_actions_queue_page.refresh_data()
         self._refresh_sidebar_badge()
 
     def open_manager_view(self) -> None:
         self._switch_primary_page(MANAGER_VIEW_PAGE_INDEX)
+
+    def open_supplier_event_queue(self, page_key: str) -> None:
+        page_index = _PAGE_KEY_TO_INDEX.get(page_key)
+        if page_index is not None:
+            self._switch_primary_page(page_index)
 
     def _refresh_sidebar_badge(self) -> None:
         try:
@@ -838,6 +909,26 @@ class MainWindow(QMainWindow):
             material_count = 0
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_OUTSOURCE), outsource_count)
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_MATERIAL), material_count)
+        try:
+            from services import supplier_event_queue_service
+
+            queue_counts = supplier_event_queue_service.get_supplier_event_queue_counts()
+            self.sidebar.set_badge(
+                ("page", PAGE_EVENT_OVERDUE),
+                int(queue_counts.get("overdue_anomaly_count", 0)),
+            )
+            self.sidebar.set_badge(
+                ("page", PAGE_EVENT_ROOT_CAUSE),
+                int(queue_counts.get("root_cause_pending_count", 0)),
+            )
+            self.sidebar.set_badge(
+                ("page", PAGE_EVENT_OPEN_ACTIONS),
+                int(queue_counts.get("open_queue_action_count", 0)),
+            )
+        except Exception:
+            logger.exception("重新整理供應商事件佇列徽章失敗")
+            for page_key in _QUEUE_PAGE_KEYS:
+                self.sidebar.set_badge(("page", page_key), 0)
 
     def _check_startup_unresolved(self) -> None:
         try:

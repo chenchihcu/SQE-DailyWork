@@ -37,6 +37,9 @@ PAGE_HOME = "HOME"
 PAGE_VISIT_CREATE = "VISIT_CREATE"
 PAGE_ANOMALY_CREATE = "ANOMALY_CREATE"
 PAGE_EVENT_QUERY = "EVENT_QUERY"
+PAGE_EVENT_OVERDUE = "EVENT_OVERDUE"
+PAGE_EVENT_ROOT_CAUSE = "EVENT_ROOT_CAUSE"
+PAGE_EVENT_OPEN_ACTIONS = "EVENT_OPEN_ACTIONS"
 PAGE_MANAGER_VIEW = "MANAGER_VIEW"
 PAGE_SUPPLIER_OVERVIEW = "SUPPLIER_OVERVIEW"
 PAGE_EVENT_CREATE_VISIT = PAGE_VISIT_CREATE
@@ -66,6 +69,9 @@ _NAV_GROUPS = [
         ("新增訪廠", ("page", PAGE_VISIT_CREATE), False, "icons/visit.svg"),
         ("新增異常", ("page", PAGE_ANOMALY_CREATE), False, "icons/anomaly.svg"),
         ("事件管理", ("page", PAGE_EVENT_QUERY), True, "icons/anomaly.svg"),
+        ("逾期未結", ("page", PAGE_EVENT_OVERDUE), True, "icons/anomaly.svg"),
+        ("待根本原因", ("page", PAGE_EVENT_ROOT_CAUSE), True, "icons/anomaly.svg"),
+        ("進行中處置", ("page", PAGE_EVENT_OPEN_ACTIONS), True, "icons/stats.svg"),
         ("主管檢視", ("page", PAGE_MANAGER_VIEW), False, "icons/stats.svg"),
         ("異常事件統計", ("page", PAGE_STATS), False, "icons/stats.svg"),
     ]),

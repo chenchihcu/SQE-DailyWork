@@ -45,18 +45,20 @@ no separate launcher window, and no standalone NCR main window.
 
 ## UI Workbench
 
-- Home is a daily cockpit centered on one read-only backlog (待辦) list
-  (open/overdue anomalies, overdue first). KPI cards stay retired from the
-  visible home layout. The backlog footer exposes warehouse pending shortcuts
-  for `待處理委外加工`, `待處理原物料`, and `未分流待整理`; each shortcut only reads
-  existing services and routes through existing navigation.
+- Home is a daily cockpit with supplier-event queue hub buttons
+  (`逾期未結` / `待根本原因` / `進行中處置`, counts from shared queue COUNT SSOT)
+  plus warehouse pending shortcuts for `待處理委外加工`, `待處理原物料`, and
+  `未分流待整理`. There is no full-page backlog table on home.
 - Sidebar is workflow-first with domain groups: 首頁; 供應商事件 (新增訪廠 /
-  新增異常 / 事件管理 / 異常事件統計); 倉庫不合格品 (建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析); 供應商管理
-  (供應商總覽 / 基礎資料); 系統 (顯示設定). 事件管理頁內以 scope chips 切換
-  單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案；側欄 `事件管理` badge 為全部待處理異常總數。
+  新增異常 / 事件管理 / 逾期未結 / 待根本原因 / 進行中處置 / 主管檢視 /
+  異常事件統計); 倉庫不合格品 (建立不合格品 / 待處理委外加工 / 待處理原物料 /
+  歷史紀錄 / 不合格品統計分析); 供應商管理 (供應商總覽 / 基礎資料); 系統
+  (顯示設定). 事件管理頁內以 scope chips 切換 單獨異常 / 訪廠發現異常 / 訪廠紀錄 /
+  已結案；側欄 `事件管理` badge 為全部待處理異常總數；三個作業佇列各有獨立 badge。
 - Supplier event pending work surfaces on the `事件管理` sidebar badge (all open
-  supplier anomalies). Per-scope counts appear on the event page chips. Warehouse
+  supplier anomalies). Operational queues (`逾期未結`, `待根本原因`, `進行中處置`)
+  are first-class sidebar pages with badge counts aligned to their list queries.
+  Per-scope counts appear on the event page chips. Warehouse
   nonconforming-product pending work surfaces as two separate badges: one for
   `status <> '已結案' AND processing_line = '委外加工'`, and one for
   `status <> '已結案' AND processing_line = '原物料'`. `未分流` is shown as a
@@ -81,12 +83,12 @@ no separate launcher window, and no standalone NCR main window.
 - 重複案件警示（Phase 5）以 `anomaly_repeat_links` 索引同供應商相似歷史異常；
   工作台 `RepeatIssuesPanel` 與 Supplier 360 `repeat_flagged_anomaly_count` 共用
   scoring SSOT，且不納入倉庫 `defect_records`。
-- `主管檢視`（Phase 6）提供案件總覽與作業清單兩個分頁，摘要列 enriched
-  `get_anomaly_overview_card()` 品質欄位；逾期篩選與 KPI 與 case-action 到期日
-  SSOT 一致，不含 NCR 列。
+- `主管檢視`（Phase 6）提供案件總覽（含已結案、品質三欄、匯出）；進行中處置佇列
+  已移至側欄 `進行中處置`。摘要列 enriched `get_anomaly_overview_card()`；
+  逾期篩選與 KPI 與 case-action 到期日 SSOT 一致，不含 NCR 列。
 - 匯出／週報（Phase 7）讓 Excel／PDF／Markdown／PPTX 共用 overview read-model；
   區間 Excel「異常」工作表含追溯欄位與假設樹 PNG（最多 12 案）；主管檢視可匯出
-  雙工作表 Excel。
+  案件總覽 Excel 單一工作表。
 - 案件工作台的「下一步處置」與「改善措施」共用 canonical `case_actions`。
   Action 類型為 `NEXT_ACTION / CONTAINMENT / CORRECTION / CORRECTIVE_ACTION /
   SYSTEMIC_IMPROVEMENT`，執行狀態只使用 `已規劃 / 執行中 / 已完成 / 已取消`；

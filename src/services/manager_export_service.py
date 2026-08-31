@@ -1,14 +1,11 @@
-"""Excel export for manager summary and operational action queue."""
+"""Excel export for manager summary."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from ui.list_column_contract import (
-    MANAGER_SUMMARY_COLUMNS,
-    OPERATIONAL_ACTION_QUEUE_COLUMNS,
-)
+from ui.list_column_contract import MANAGER_SUMMARY_COLUMNS
 
 
 def _overdue_label(value: object) -> str:
@@ -39,8 +36,9 @@ def _append_contract_sheet(
 def export_manager_view_excel(
     file_path: str,
     summary_rows: list[dict],
-    queue_rows: list[dict],
+    queue_rows: list[dict] | None = None,
 ) -> tuple[bool, str]:
+    del queue_rows
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font
@@ -53,14 +51,6 @@ def export_manager_view_excel(
             summary_sheet,
             MANAGER_SUMMARY_COLUMNS,
             summary_rows,
-            bold_font=bold_font,
-        )
-
-        queue_sheet = workbook.create_sheet("作業清單")
-        _append_contract_sheet(
-            queue_sheet,
-            OPERATIONAL_ACTION_QUEUE_COLUMNS,
-            queue_rows,
             bold_font=bold_font,
         )
 

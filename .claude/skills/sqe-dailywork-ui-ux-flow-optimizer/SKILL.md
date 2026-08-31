@@ -1,7 +1,7 @@
-﻿---
+---
 name: sqe-dailywork-ui-ux-flow-optimizer
 version: 2.0.0
-description: 用於 SQE DailyWork 緊湊度、字體、操作動線最佳化、一鍵流、工具列優化、多級 Context 聯動性、Workflow Shell 骨架穩定、跨 Tab 輸入流、Safe Key Fallback、唯讀視圖與 Qt SizePolicy 規範。Use this skill 進行 UI 佈局緊湊、操作動線簡化或視覺優化。
+description: "SQE DailyWork PySide6 緊湊度、字體、操作動線、Workflow Shell、跨 Tab 輸入流與 SizePolicy。Use when 修本專案 UI 佈局緊湊、動線或視覺規範。Do NOT use for 通用 Qt theme（改用 configure-qt-layout-theme）或通用動態參數面板（改用 build-qt-parameter-selector）。"
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
