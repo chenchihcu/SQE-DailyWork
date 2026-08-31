@@ -457,24 +457,11 @@ def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int
     return [_capture_widget(window, output, app)]
 
 
-def _capture_home_window(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    """Capture the actual home workbench rather than the event-management page."""
-    from database.connection import initialize_database
-    from ui.main_window import HOME_PAGE_INDEX, MainWindow
-
-    initialize_database()
-    window = MainWindow()
-    window.resize(*(size or (1100, 740)))
-    window._switch_primary_page(HOME_PAGE_INDEX)
-    return [_capture_widget(window, output, app)]
-
-
 def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    """Capture both full-page supplier-event create flows in the shell."""
+    """Capture the full-page supplier-anomaly create flow in the shell."""
     from database.connection import initialize_database
     from ui.main_window import (
         EVENT_CREATE_ANOMALY_PAGE_INDEX,
-        EVENT_CREATE_VISIT_PAGE_INDEX,
         MainWindow,
     )
 
@@ -483,7 +470,6 @@ def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, in
     window.resize(*(size or (1100, 740)))
     screenshots: list[str] = []
     for suffix, page_index, message in (
-        ("event-create-visit", EVENT_CREATE_VISIT_PAGE_INDEX, "訪廠紀錄已完成"),
         ("event-create-anomaly", EVENT_CREATE_ANOMALY_PAGE_INDEX, "已建立異常單：20260813001"),
     ):
         window._switch_primary_page(page_index)
@@ -817,6 +803,7 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget
     from ui.widgets.event_create_page import EventCreatePage
+    from ui.widgets.new_visit_dialog import NewVisitDialog
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
@@ -842,9 +829,9 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
         )
     )
 
-    visit_page = EventCreatePage(_ProbeHost(), "visit")
+    visit_dialog = NewVisitDialog()
     screenshots.append(
-        _capture_widget(visit_page, _target_output_path(output, "visit-form"), app)
+        _capture_widget(visit_dialog, _target_output_path(output, "visit-form"), app)
     )
 
     supplier_dialog = SupplierFormDialog()
@@ -1183,15 +1170,11 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
 
     from database.connection import initialize_database
     from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
-    from ui.widgets.add_corrective_action_dialog import AddCorrectiveActionDialog
     from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
     from ui.widgets.add_verification_dialog import AddVerificationDialog
     from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
     from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
     from ui.widgets.complete_action_dialog import CompleteActionDialog
-    from ui.widgets.complete_corrective_action_dialog import (
-        CompleteCorrectiveActionDialog,
-    )
 
     initialize_database()
     screenshots: list[str] = []
@@ -1291,18 +1274,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
     )
     _capture_dialog(reopen_dialog, "dialog-density-reopen-anomaly")
 
-    ca_dialog = AddCorrectiveActionDialog("probe-density", parent=None)
-    _fill(
-        ca_dialog,
-        description_input=(
-            "更新模具溫度標準作業書並重新培訓操作員；"
-            "同步導入 SPC 自動監控。"
-        ),
-        responsible_input="供應商製造部／王小明",
-        verify_check=True,
-    )
-    _capture_dialog(ca_dialog, "dialog-density-add-corrective")
-
     complete_action_dialog = CompleteActionDialog(
         "act-density",
         action_summary="要求供應商於 2026/06/25 前提交 8D Rev A 報告",
@@ -1314,15 +1285,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         note_input="供應商已於期限內提交 8D 報告，進入審查階段。",
     )
     _capture_dialog(complete_action_dialog, "dialog-density-complete-action")
-
-    complete_ca_dialog = CompleteCorrectiveActionDialog(
-        "ca-density",
-        description="更新模具溫度 SOP 並重新培訓操作員",
-        verification_required=True,
-        parent=None,
-        actor_name="品保工程師 王小明",
-    )
-    _capture_dialog(complete_ca_dialog, "dialog-density-complete-corrective")
 
     verification_dialog = AddVerificationDialog(
         "ca-density",
@@ -1384,7 +1346,6 @@ def _capture_button_audit(app: "QApplication") -> dict:
 
         from ui.widgets.event_create_page import EventCreatePage
         pages.append(EventCreatePage(_ProbeHost(), "anomaly"))
-        pages.append(EventCreatePage(_ProbeHost(), "visit"))
 
         from ui.widgets.defect_list_widget import EventListWidget
         pages.append(EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False))
@@ -1815,9 +1776,11 @@ def _capture_supplier_360(output: Path, app: "QApplication", size: tuple[int, in
 
 
 def _capture_manager_view(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    from ui.widgets.manager_view_page import ManagerViewPage
+    from ui.sidebar_nav import PAGE_MANAGER_VIEW
+    from ui.widgets.supplier_event_ops_page import SupplierEventOpsPage
 
-    page = ManagerViewPage(None)
+    page = SupplierEventOpsPage(None)
+    page.activate_page_key(PAGE_MANAGER_VIEW)
     page.refresh_data()
     page.resize(*(size or (1360, 860)))
     page.show()
@@ -1885,9 +1848,7 @@ def main() -> int:
     screenshots: list[str] = []
     pdf_info: dict = {}
     if not args.no_screenshot:
-        if args.target == "home":
-            screenshots = _capture_home_window(output, app, size)
-        elif args.target == "stats-stress":
+        if args.target == "stats-stress":
             screenshots = _capture_stats_stress(output, app, size)
         elif args.target == "event-create":
             screenshots = _capture_event_create(output, app, size)

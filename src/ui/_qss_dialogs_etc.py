@@ -151,103 +151,6 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
             color: {TOKENS["text_primary"]};
         }}
 
-        QDialog#VisitDetailDialog {{
-            background: {TOKENS["page_bg"]};
-        }}
-
-        QFrame#VisitDetailHeader {{
-            background: {TOKENS["primary_btn"]};
-            border: none;
-        }}
-
-        QFrame#VisitDetailHeader QLabel {{
-            background: transparent;
-            border: none;
-            color: #FFFFFF;
-        }}
-
-        QFrame#VisitDetailHeader QLabel[role="title"] {{
-            font-size: {TYPOGRAPHY["section_title"]}px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }}
-
-        QFrame#VisitDetailBody {{
-            background: {TOKENS["page_bg"]};
-            border: none;
-        }}
-
-        QFrame#VisitDetailFooter {{
-            background: {TOKENS["page_bg"]};
-            border-top: 1px solid {TOKENS["border_soft"]};
-            border-left: none;
-            border-right: none;
-            border-bottom: none;
-        }}
-
-        QFrame[role="visitDetailCard"] {{
-            background: {TOKENS["panel_bg"]};
-            border: 1px solid {TOKENS["border_soft"]};
-            border-radius: {TOKENS["radius_lg"]}px;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel,
-        QFrame[role="visitDetailCard"] QFrame {{
-            background: transparent;
-            border: none;
-        }}
-
-        QFrame[role="visitDetailCard"] QFrame[role="separator"] {{
-            background: {TOKENS["border_soft"]};
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="meta"] {{
-            color: {TOKENS["text_muted"]};
-            font-size: {TYPOGRAPHY["caption"]}px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="value"] {{
-            color: {TOKENS["text_primary"]};
-            font-size: {TYPOGRAPHY["label_strong"]}px;
-            font-weight: 700;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="summary"] {{
-            color: {TOKENS["text_primary"]};
-            font-size: {TYPOGRAPHY["body"]}px;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techDot"] {{
-            font-size: {TYPOGRAPHY["body_small"]}px;
-            font-weight: 700;
-            color: {TOKENS["text_disabled"]};
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techDot"][state="on"] {{
-            color: {TOKENS["status_success_fg"]};
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techName"] {{
-            color: {TOKENS["text_disabled"]};
-            font-size: {TYPOGRAPHY["body"]}px;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techName"][state="on"] {{
-            color: {TOKENS["text_primary"]};
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techValue"] {{
-            color: {TOKENS["text_disabled"]};
-            font-size: {TYPOGRAPHY["body_small"]}px;
-            font-weight: 400;
-        }}
-
-        QFrame[role="visitDetailCard"] QLabel[role="techValue"][state="on"] {{
-            color: {TOKENS["status_success_fg"]};
-        }}
-
         QLabel[role="statusBadge"] {{
             background: {TOKENS["status_unknown_bg"]};
             color: {TOKENS["status_unknown_fg"]};
@@ -292,21 +195,6 @@ def get_dialogs_etc_qss(checkbox_tick_url: str) -> str:
             background: {TOKENS["status_na_bg"]};
             color: {TOKENS["status_na_fg"]};
             border: 1px solid {TOKENS["status_na_border"]};
-        }}
-
-        QPushButton[role="visitDetailClose"] {{
-            background: {TOKENS["primary_btn"]};
-            border: 1px solid {TOKENS["primary_btn"]};
-            color: #FFFFFF;
-            font-weight: 700;
-            border-radius: {TOKENS["radius_sm"]}px;
-            min-height: 34px;
-            padding: 0 20px;
-        }}
-
-        QPushButton[role="visitDetailClose"]:hover {{
-            background: {TOKENS["primary_btn_hover"]};
-            border-color: {TOKENS["primary_btn_hover"]};
         }}
 
         QFrame[role="emptyState"] {{

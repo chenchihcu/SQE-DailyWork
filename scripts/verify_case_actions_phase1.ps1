@@ -58,8 +58,6 @@ try {
         src/services/event/_anomaly_workbench_service.py `
         src/ui/widgets/anomaly_action_dialog.py `
         src/ui/widgets/complete_action_dialog.py `
-        src/ui/widgets/add_corrective_action_dialog.py `
-        src/ui/widgets/complete_corrective_action_dialog.py `
         src/ui/widgets/add_verification_dialog.py `
         src/ui/widgets/anomaly_management_page.py `
         src/ui/widgets/chart_style.py `

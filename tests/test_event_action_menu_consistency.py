@@ -69,7 +69,6 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
         self.assertEqual(
             [
                 "案件詳情",
-                "編輯異常",
                 "刪除異常",
                 "結案",
                 "關聯訪廠",
@@ -97,7 +96,6 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
         self.assertEqual(
             [
                 "案件詳情",
-                "編輯異常",
                 "刪除異常",
                 "調整結案日期",
                 "重新處理",
@@ -107,6 +105,45 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             ],
             actions,
         )
+
+    def test_event_query_visit_menu_uses_preview_not_detail(self) -> None:
+        visit_row = {
+            "event_id": "visit-001",
+            "event_date": "2026-04-17",
+            "event_type": "VISIT",
+            "ref_no": "",
+            "supplier_name": "供應商-B",
+            "product_name": "產品-B",
+            "product_stage": "量產",
+            "work_order_no": "WO-002",
+            "production_qty": 0,
+            "content": "摘要-1",
+            "status": "已完成",
+            "linked_visit_id": "",
+        }
+        with patch(
+            "ui.widgets.defect_list_widget.event_service.list_events",
+            return_value=[visit_row],
+        ):
+            widget = EventListWidget(self.main_window, mode="query")
+            widget.show()
+            self.app.processEvents()
+            menu, _action_map = build_event_action_menu(widget, visit_row)
+            actions = [action.text() for action in menu.actions()]
+            widget.close()
+            self.app.processEvents()
+
+        self.assertEqual(
+            [
+                "預覽內容",
+                "編輯訪廠",
+                "刪除訪廠",
+                "",
+                "傳送精簡報告至 LINE",
+            ],
+            actions,
+        )
+        self.assertNotIn("明細", actions)
 
     def test_anomaly_details_uses_management_route(self) -> None:
         controller = EventActionsController(self.main_window, self.main_window)

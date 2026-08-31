@@ -16,9 +16,6 @@ from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
 from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
 from ui.widgets.add_verification_dialog import AddVerificationDialog
 from ui.widgets.complete_action_dialog import CompleteActionDialog
-from ui.widgets.complete_corrective_action_dialog import (
-    CompleteCorrectiveActionDialog,
-)
 
 
 class CompleteActionDialogTests(unittest.TestCase):
@@ -49,26 +46,6 @@ class CompleteActionDialogTests(unittest.TestCase):
             dialog._on_submit()
         self.assertEqual(mk.call_args.args[0], "a-2")
         self.assertEqual(mk.call_args.kwargs["cancel_note"], "1. duplicate of #3")
-
-
-class CompleteCorrectiveActionDialogTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.app = QApplication.instance() or QApplication([])
-
-    def test_records_completion_with_audit(self) -> None:
-        dialog = CompleteCorrectiveActionDialog("ca-1", description="更換治具")
-        dialog.evidence_input.setPlainText("更換完成照片")
-        with mock.patch.object(
-            _case_action_service, "complete_case_action"
-        ) as mk:
-            dialog._on_submit()
-        self.assertEqual(
-            mk.call_args.args[0], "ca-1"
-        )
-        self.assertEqual(
-            mk.call_args.kwargs["implementation_evidence"], "1. 更換完成照片"
-        )
 
 
 class AddVerificationDialogTests(unittest.TestCase):

@@ -6,15 +6,13 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QCheckBox
+from PySide6.QtWidgets import QApplication
 
-from scripts.qt_visual_probe import _set_probe_widget_value
-from services.event import _anomaly_workbench_service, _case_action_service
+from services.event import _anomaly_workbench_service
 from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
 from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
 from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
 from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
-from ui.widgets.add_corrective_action_dialog import AddCorrectiveActionDialog
 
 
 class AnomalyNoteDialogTests(unittest.TestCase):
@@ -139,38 +137,6 @@ class ReopenAnomalyDialogTests(unittest.TestCase):
         with mock.patch.object(dialog, "_confirm_discard", return_value=False) as confirm:
             dialog.reject()
         confirm.assert_called_once()
-
-
-class AddCorrectiveActionDialogTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.app = QApplication.instance() or QApplication([])
-
-    def test_requires_description(self) -> None:
-        dialog = AddCorrectiveActionDialog("a-1")
-        self.assertFalse(dialog._save_button.isEnabled())
-        dialog.description_input.setPlainText("更換治具")
-        self.assertTrue(dialog._save_button.isEnabled())
-
-    def test_submit_sends_verification_flag(self) -> None:
-        dialog = AddCorrectiveActionDialog("a-1")
-        dialog.description_input.setPlainText("更換治具")
-        dialog.verify_check.setChecked(True)
-        with mock.patch.object(
-            _case_action_service, "create_case_action", return_value="ca-1"
-        ) as mk:
-            dialog._on_submit()
-        self.assertEqual(mk.call_args.kwargs["action_type"], "CORRECTIVE_ACTION")
-        self.assertTrue(mk.call_args.kwargs["verification_required"])
-        self.assertEqual(mk.call_args.kwargs["description"], "1. 更換治具")
-
-    def test_visual_probe_checks_checkbox_without_replacing_its_label(self) -> None:
-        checkbox = QCheckBox("需進行有效性驗證")
-
-        _set_probe_widget_value(checkbox, True)
-
-        self.assertTrue(checkbox.isChecked())
-        self.assertEqual(checkbox.text(), "需進行有效性驗證")
 
 
 if __name__ == "__main__":

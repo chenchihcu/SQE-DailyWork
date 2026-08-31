@@ -19,7 +19,6 @@ from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.common_widgets import safe_ui_operation
-from ui.widgets.visit_detail_dialog import VisitDetailDialog
 
 ACTION_EDIT_ANOMALY = "edit_anomaly"
 ACTION_DELETE_ANOMALY = "delete_anomaly"
@@ -48,7 +47,6 @@ def build_event_action_menu(
     event_type = str(row.get("event_type") or "").strip().upper()
     if event_type == "ANOMALY":
         _add_action("案件詳情", ACTION_VIEW_ANOMALY_DETAILS)
-        _add_action("編輯異常", ACTION_EDIT_ANOMALY)
         _add_action("刪除異常", ACTION_DELETE_ANOMALY)
         if str(row.get("status") or "").strip() == "待處理":
             _add_action("結案", ACTION_CLOSE_ANOMALY)
@@ -65,7 +63,6 @@ def build_event_action_menu(
         _add_action("預覽內容", ACTION_PREVIEW_VISIT)
         _add_action("編輯訪廠", ACTION_EDIT_VISIT)
         _add_action("刪除訪廠", ACTION_DELETE_VISIT)
-        _add_action("明細", ACTION_VIEW_VISIT_DETAIL)
         menu.addSeparator()
         _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
     return menu, action_map
@@ -266,16 +263,7 @@ class EventActionsController:
         )
 
     def open_visit_detail(self, visit_id: str) -> None:
-        def _op() -> None:
-            visit = _visit_service.get_visit_detail(visit_id)
-            dlg = VisitDetailDialog(visit, self._parent)
-            dlg.exec()
-        safe_ui_operation(
-            self._parent, _op,
-            warning_title="查詢失敗",
-            logger_msg="讀取訪廠失敗",
-            error_msg="讀取訪廠失敗：",
-        )
+        self.open_preview_visit_dialog(visit_id)
 
     def open_preview_visit_dialog(self, visit_id: str) -> None:
         """Open the visit form in read-only mode."""

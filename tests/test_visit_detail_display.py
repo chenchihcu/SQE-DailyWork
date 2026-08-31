@@ -6,12 +6,13 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import qInstallMessageHandler
-from PySide6.QtWidgets import QApplication, QFrame, QLabel
+from PySide6.QtWidgets import QApplication, QLabel
 
 from services.event import _query_service as _query_service_mod, _visit_service as _visit_service_mod
 from ui.theme import apply_app_theme
 from ui.widgets import event_actions
 from ui.widgets.defect_list_widget import EventListWidget
+from ui.widgets.new_visit_dialog import NewVisitDialog
 
 
 class _DummyMainWindow:
@@ -52,15 +53,7 @@ class VisitDetailDisplayTests(unittest.TestCase):
         self.app.processEvents()
         _query_service_mod.list_events = self._original_list_events
 
-    def _visit_detail_item_values(self, dialog: event_actions.VisitDetailDialog) -> dict[str, str]:
-        item_values: dict[str, str] = {}
-        for row in dialog.findChildren(QFrame, "vdItemRow"):
-            texts = [label.text().strip() for label in row.findChildren(QLabel)]
-            if len(texts) >= 3:
-                item_values[texts[1]] = texts[2]
-        return item_values
-
-    def test_visit_detail_stylesheets_do_not_emit_parse_warnings(self) -> None:
+    def test_visit_preview_stylesheets_do_not_emit_parse_warnings(self) -> None:
         messages: list[str] = []
 
         def capture_qt_message(_mode, _context, message) -> None:
@@ -69,14 +62,17 @@ class VisitDetailDisplayTests(unittest.TestCase):
         previous_handler = qInstallMessageHandler(capture_qt_message)
         dialog = None
         try:
-            dialog = event_actions.VisitDetailDialog(
-                {
+            dialog = NewVisitDialog(
+                None,
+                visit_id="visit-001",
+                initial_data={
                     "visit_date": "2026-04-18",
                     "supplier_name": "供應商-A",
                     "work_order_no": "WO-001",
                     "production_qty": 120,
                     "summary": "摘要內容",
-                }
+                },
+                read_only=True,
             )
             self.app.processEvents()
         finally:
@@ -91,7 +87,7 @@ class VisitDetailDisplayTests(unittest.TestCase):
         ]
         self.assertEqual([], stylesheet_warnings, "\n".join(messages))
 
-    def test_open_visit_detail_omits_retired_transfer_section(self) -> None:
+    def test_open_visit_detail_uses_read_only_visit_dialog(self) -> None:
         visit_detail = {
             "visit_date": "2026-04-18",
             "supplier_name": "供應商-A",
@@ -101,29 +97,30 @@ class VisitDetailDisplayTests(unittest.TestCase):
         }
 
         requested_visit_ids: list[str] = []
-        captured_dialogs: list[event_actions.VisitDetailDialog] = []
+        captured_dialogs: list[NewVisitDialog] = []
         original_get_visit_detail = _visit_service_mod.get_visit_detail
-        original_exec = event_actions.VisitDetailDialog.exec
+        original_exec = NewVisitDialog.exec
 
         def fake_get_visit_detail(visit_id: str) -> dict:
             requested_visit_ids.append(visit_id)
             return visit_detail
 
-        def fake_exec(dialog: event_actions.VisitDetailDialog) -> int:
+        def fake_exec(dialog: NewVisitDialog) -> int:
             captured_dialogs.append(dialog)
             return 0
 
         _visit_service_mod.get_visit_detail = fake_get_visit_detail
-        event_actions.VisitDetailDialog.exec = fake_exec
+        event_actions.NewVisitDialog.exec = fake_exec
         try:
             self.widget.open_visit_detail("visit-001")
         finally:
             _visit_service_mod.get_visit_detail = original_get_visit_detail
-            event_actions.VisitDetailDialog.exec = original_exec
+            event_actions.NewVisitDialog.exec = original_exec
 
         self.assertEqual(["visit-001"], requested_visit_ids)
         self.assertEqual(1, len(captured_dialogs))
         dialog = captured_dialogs[0]
+        self.assertTrue(dialog._read_only)
         dialog_texts = [label.text().strip() for label in dialog.findChildren(QLabel)]
         self.assertNotIn("已技轉", dialog_texts)
         self.assertNotIn("技轉狀態", dialog_texts)
