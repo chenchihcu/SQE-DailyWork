@@ -32,7 +32,7 @@ from ui.sidebar_nav import (
     PAGE_NCR_PENDING_OUTSOURCE,
 )
 from ui.theme import apply_app_theme
-from ui.widgets.common_widgets import CreateWorkflowShell
+from ui.widgets.common_widgets import CreateWorkflowShell, QueryWorkflowShell
 
 
 class NcrEmbeddingSmokeTests(unittest.TestCase):
@@ -121,6 +121,23 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
             if frame.property("role") == "panel"
         ]
         self.assertEqual([], panels)
+
+    def test_ncr_list_pages_use_direct_query_shell_without_page_shell(self) -> None:
+        for widget in (
+            self.window.ncr.pending_outsource_widget,
+            self.window.ncr.pending_material_widget,
+            self.window.ncr.trace_widget,
+        ):
+            shell = widget.findChild(QueryWorkflowShell)
+            self.assertIsNotNone(shell)
+            self.assertIs(widget, shell.parentWidget())
+            panels = [
+                frame
+                for frame in widget.findChildren(QFrame)
+                if frame.property("role") == "panel"
+            ]
+            self.assertEqual(1, len(panels))
+            self.assertIs(widget, panels[0].parentWidget())
 
     def test_ncr_list_rejects_unknown_workflow(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported DefectListWidget workflow"):

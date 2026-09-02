@@ -50,7 +50,8 @@ APPEARANCE_CATEGORY_RAIL_WIDTH = 160
 APPEARANCE_TWO_COLUMN_MIN_WIDTH = 760
 
 # 已由工作流程頁容器提供外框的共用殼層，不得再疊加第二層頁面留白。
-# 目前由 NCR 的內嵌建立表單使用；其外層 NcrWorkflowPage 已套用頁面邊距。
+# NCR 建立表單與清單頁的外層 NcrWorkflowPage 已套用 PAGE_OUTER_MARGINS；
+# DefectListWidget / CreateWorkflowShell 內層必須維持 0 邊距。
 WORKFLOW_SHELL_EMBEDDED_MARGINS = (0, 0, 0, 0)
 
 # Section header / hero banner outer frame (shared by NCR headers; not a home hub)

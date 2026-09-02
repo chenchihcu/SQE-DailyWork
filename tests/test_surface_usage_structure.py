@@ -63,8 +63,14 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.assertIsInstance(filter_subpanel, QueryWorkflowShell)
 
         ncr_query = self.window.ncr.pending_outsource_widget
-        ncr_shell = ncr_query.findChild(QueryWorkflowShell)
-        self.assertIsNotNone(ncr_shell)
+        ncr_frames = ncr_query.findChildren(QFrame)
+        ncr_subpanels = [frame for frame in ncr_frames if frame.property("role") == "subpanel"]
+        ncr_panels = [frame for frame in ncr_frames if frame.property("role") == "panel"]
+        self.assertEqual(1, len(ncr_subpanels), "NCR list should have exactly one subpanel")
+        self.assertEqual(1, len(ncr_panels), "NCR list should have exactly one result panel")
+        self.assertIs(ncr_query, ncr_subpanels[0].parentWidget())
+        self.assertIs(ncr_query, ncr_panels[0].parentWidget())
+        self.assertIsInstance(ncr_subpanels[0], QueryWorkflowShell)
 
     def test_create_and_analytics_pages_use_shared_shells(self) -> None:
         self.assertIsInstance(self.window.new_anomaly_page.workflow_shell, CreateWorkflowShell)

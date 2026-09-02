@@ -65,7 +65,6 @@ from ui.widgets.common_widgets import (
 from ncr.ui.ui_style import (
     align_table_header_left,
     apply_form_inputs,
-    create_page_shell,
     make_hint_label,
     make_notice_label,
     set_button_role,
@@ -184,11 +183,12 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         return "倉庫實物不合格品 / 全部紀錄"
 
     def _build_ui(self) -> None:
-        page, content_layout = create_page_shell(show_header=False)
-        content_layout.setSpacing(ROOT_SECTION_SPACING)
+        # NcrWorkflowPage already supplies PAGE_OUTER_MARGINS. Keep the list
+        # topology identical to EventListWidget: QueryWorkflowShell + result
+        # panel as direct children, with no extra page-shell / content wrapper.
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(page)
+        layout.setSpacing(ROOT_SECTION_SPACING)
 
         # Control panel: filters + action toolbar + pagination row (3-tier structure aligned with EventListWidget)
         control_panel = QueryWorkflowShell()
@@ -426,7 +426,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         pagination_row.addWidget(self.pagination, 1)
         control_outer.addLayout(pagination_row)
 
-        content_layout.addWidget(control_panel)
+        layout.addWidget(control_panel)
 
         # Results panel: table(s) 100% full-width
         result_panel = QFrame()
@@ -480,7 +480,7 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         else:
             result_layout.addWidget(self.closed_table, 1)
 
-        content_layout.addWidget(result_panel, 1)
+        layout.addWidget(result_panel, 1)
 
         # Connect after initial construction to avoid currentChanged firing before pagination exists.
         if self.tabs is not None:

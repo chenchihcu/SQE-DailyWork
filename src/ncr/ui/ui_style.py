@@ -38,7 +38,6 @@ from ui.theme import (
 from ui.status_colors import get_status_tone
 from ui.widgets.common_widgets import EMPTY_PLACEHOLDER
 from ui.layout_constants import (
-    HERO_BANNER_MARGINS,
     NCR_PAGE_MARGIN,
     NCR_SECTION_SPACING,
     NCR_FIELD_SPACING_X,
@@ -311,46 +310,6 @@ def apply_input_style(widget: QWidget, *, minimum_width: int | None = None, maxi
 def apply_form_inputs(widgets: Iterable[QWidget]) -> None:
     for widget in widgets:
         apply_input_style(widget)
-
-
-def create_page_shell(
-    title: str = "",
-    subtitle: str = "",
-    *,
-    body: QWidget | None = None,
-    show_header: bool = True,
-) -> tuple[QWidget, QVBoxLayout]:
-    shell = QWidget()
-    outer = QVBoxLayout(shell)
-    outer.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
-    outer.setSpacing(SECTION_SPACING)
-
-    if show_header:
-        header_card = QFrame()
-        header_card.setProperty("role", "panel")
-        header_layout = QVBoxLayout(header_card)
-        header_layout.setContentsMargins(*HERO_BANNER_MARGINS)
-        header_layout.setSpacing(6)
-
-        title_label = QLabel(title)
-        title_label.setProperty("role", "pageTitle")
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setProperty("role", "helperText")
-        subtitle_label.setWordWrap(True)
-
-        header_layout.addWidget(title_label)
-        header_layout.addWidget(subtitle_label)
-        outer.addWidget(header_card)
-
-    content = QWidget()
-    content_layout = QVBoxLayout(content)
-    content_layout.setContentsMargins(0, 0, 0, 0)
-    content_layout.setSpacing(SECTION_SPACING)
-    outer.addWidget(content, 1)
-
-    if body is not None:
-        content_layout.addWidget(body)
-    return shell, content_layout
 
 
 def create_section_card(
