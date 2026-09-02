@@ -330,10 +330,23 @@ def _scale_output(output: Path, scale: str) -> Path:
     return output.with_name(f"{output.stem}@{scale}x{output.suffix or '.png'}")
 
 
+def _prepare_widget_capture(widget, app: "QApplication") -> None:
+    """Remove focus/hover noise before deterministic child-widget captures."""
+    _clear_page_focus(app, widget)
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QCursor
+
+    QCursor.setPos(widget.mapToGlobal(QPoint(8, 8)))
+    _settle_qt_paint(app, delay_ms=80, cycles=2)
+    _clear_widget_hover_state(widget)
+    app.processEvents()
+
+
 def _capture_widget(widget, output_path: Path, app: "QApplication") -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     widget.show()
     app.processEvents()
+    _prepare_widget_capture(widget, app)
     _save_widget_capture(widget, output_path)
     widget.close()
     app.processEvents()
@@ -779,14 +792,7 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
                 widget._sync_action_buttons()
             if hasattr(widget, "query_input"):
                 widget.query_input.clearFocus()
-            _clear_page_focus(app, widget)
-            from PySide6.QtCore import QPoint
-            from PySide6.QtGui import QCursor
-
-            QCursor.setPos(widget.mapToGlobal(QPoint(8, 8)))
-            _settle_qt_paint(app, delay_ms=80, cycles=2)
-            _clear_widget_hover_state(widget)
-            app.processEvents()
+            _prepare_widget_capture(widget, app)
             target = _target_output_path(output, suffix)
             _save_widget_capture(widget, target)
             screenshots.append(str(target))
