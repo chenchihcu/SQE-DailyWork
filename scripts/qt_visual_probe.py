@@ -778,7 +778,14 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
             if hasattr(widget, "_sync_action_buttons"):
                 widget._sync_action_buttons()
             if hasattr(widget, "query_input"):
-                widget.query_input.setFocus()
+                widget.query_input.clearFocus()
+            _clear_page_focus(app, widget)
+            from PySide6.QtCore import QPoint
+            from PySide6.QtGui import QCursor
+
+            QCursor.setPos(widget.mapToGlobal(QPoint(8, 8)))
+            _settle_qt_paint(app, delay_ms=80, cycles=2)
+            _clear_widget_hover_state(widget)
             app.processEvents()
             target = _target_output_path(output, suffix)
             _save_widget_capture(widget, target)

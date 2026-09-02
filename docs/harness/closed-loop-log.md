@@ -408,6 +408,18 @@ Next action: Refresh visit-related visual baselines only if `qt_visual_regress.p
 Harness update needed: yes
 Destination: `src/ui/widgets/new_visit_dialog.py`, `src/ui/layout_constants.py`, `tests/test_form_field_pairing_layout.py`, `tests/test_lightweight_visit_entry_routing.py`, `docs/ui-layout-theme-contract.md`, `README.md`, and this log.
 
+## Repository Facade Split Entry
+
+Date: 2026-09-02
+Task: Deep-refactor split of monolithic `src/database/repository.py` into domain modules plus backward-compatible facade (production-readiness Wave 3.4 completion).
+Changes: Extracted `schema_bootstrap.py`, `supplier_repository.py`, `product_repository.py`, `anomaly_repository.py`, `anomaly_workbench_repository.py`, `visit_legacy_repository.py`, and `event_query_repository.py`; reduced `repository.py` to re-exports (satellite repos unchanged); added `tests/test_repository_facade.py` and mechanical split helper `scripts/split_repository.py`; updated architecture contract and source-baseline membership (`719`).
+Impact: Domain boundaries are explicit without changing SQL/migration contracts, supplier-event vs warehouse query separation, or caller import paths (`from database.repository import …`). Monthly-cache refresh and transaction-boundary tests still patch `repository.refresh_monthly_cache`.
+Verification: Focused unittest bundle 117 OK (migration, visit, master data, anomaly CRUD/workbench, attachments, trace, global search, event scope, monthly stats, architecture contract); facade compat re-exports for `_ensure_*`, `_insert_anomaly_row`, migration meta keys; `tests/test_repository_facade.py`; unittest Full chunk 1+2 OK after facade fix; master-data visual baselines refreshed against formal DB snapshot (supplier category split: raw 23 / outsource 10); probe capture uses `clearFocus()` to reduce pagination caret flake; `scripts/harness_check.ps1` PASS.
+Residual risk: Full `scripts/verify.ps1` should be re-run after master-data baseline refresh; `qt_visual_probe` master-data mocks patch `event_service` only while UI reads `_supplier_service` (harmless because baselines are data-bound to the verify disposable DB).
+Next action: Confirm full verify green; optionally retire `scripts/split_repository.py` after one release cycle if no re-split is needed.
+Harness update needed: yes
+Destination: `docs/architecture-workflow-contract.md`, `docs/harness/source-baseline-manifest.md`, `docs/harness/closed-loop-log.md`, `docs/exec-plans/completed/003-repository-facade-split.md`, split modules under `src/database/`, `tests/test_repository_facade.py`.
+
 ## Code-Simplifier Safe-Pass Entry
 
 Date: 2026-08-22

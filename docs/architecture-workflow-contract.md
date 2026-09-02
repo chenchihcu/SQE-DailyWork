@@ -259,6 +259,16 @@ shared master-data area.
   frozen PyInstaller onedir builds).
 - New source folders require a clear owner that is not already covered by
   `src/ui/`, `src/services/`, `src/database/`, `src/ncr/`, `scripts/`, or `tests/`.
+- SQLite persistence for v2 is split under `src/database/` while keeping
+  `database.repository` as the backward-compatible facade: `schema_bootstrap.py`,
+  `supplier_repository.py`, `product_repository.py`, `anomaly_repository.py`,
+  `anomaly_workbench_repository.py`, `visit_legacy_repository.py`, and
+  `event_query_repository.py`. Services, tests, and scripts must continue to
+  import public APIs from `database.repository` unless a future migration plan
+  explicitly retargets callers. Satellite repos (`case_action_repository`,
+  `anomaly_hypothesis_repository`, `anomaly_repeat_repository`,
+  `manager_view_repository`) remain separate domain modules re-exported by the
+  facade.
 
 ## Statistics Boundary
 
