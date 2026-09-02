@@ -51,7 +51,7 @@ class AnomalyManagementPage(QWidget):
         "處理歷程",
         "異常分析",
         "Supplier 8D",
-        "改善措施",
+        "處置項目",
         "附件",
         "變更紀錄",
     )
@@ -146,6 +146,7 @@ class AnomalyManagementPage(QWidget):
         self._editing = False
         self._remove_edit_form()
         self._render_header()
+        self._sync_back_button_label()
         if self.stage_stepper is not None:
             self.stage_stepper.set_case_state(self._detail, self._overview)
         if hasattr(self, "repeat_issues_panel"):
@@ -343,30 +344,8 @@ class AnomalyManagementPage(QWidget):
                     command_row.addWidget(update_button)
             command_row.addStretch(1)
             action_layout.addLayout(command_row)
-        self._add_action_button(
-            action_layout, "新增 Action", self._open_add_action_dialog, requires_open_case=True
-        )
         layout.addWidget(action_card)
 
-        footer_row = QHBoxLayout()
-        footer_row.setSpacing(CONTROL_ROW_SPACING)
-        create_action = QPushButton("建立處置")
-        create_action.setProperty("variant", "primary")
-        create_action.clicked.connect(self._open_add_action_dialog)
-        create_action.setEnabled(self._allows_case_action_commands())
-        footer_row.addWidget(create_action)
-        close_footer = QPushButton("結案")
-        close_footer.setProperty("variant", "secondary")
-        close_footer.clicked.connect(self._open_close_dialog)
-        close_footer.setEnabled(str(self._detail.get("status") or "") != "已結案")
-        footer_row.addWidget(close_footer)
-        reopen_footer = QPushButton("重新開啟")
-        reopen_footer.setProperty("variant", "secondary")
-        reopen_footer.clicked.connect(self._open_reopen_dialog)
-        reopen_footer.setEnabled(str(self._detail.get("status") or "") == "已結案")
-        footer_row.addWidget(reopen_footer)
-        footer_row.addStretch(1)
-        layout.addLayout(footer_row)
         layout.addStretch(1)
         return tab
 
@@ -876,8 +855,52 @@ class AnomalyManagementPage(QWidget):
         if hasattr(self.main_window, "open_anomaly_management"):
             self.main_window.open_anomaly_management(peer_id)
 
+    def _sync_back_button_label(self) -> None:
+        from ui.sidebar_nav import (
+            PAGE_EVENT_OPEN_ACTIONS,
+            PAGE_EVENT_OPS,
+            PAGE_EVENT_OVERDUE,
+            PAGE_EVENT_ROOT_CAUSE,
+            PAGE_MANAGER_VIEW,
+        )
+
+        ops_keys = {
+            PAGE_EVENT_OPS,
+            PAGE_EVENT_OVERDUE,
+            PAGE_EVENT_ROOT_CAUSE,
+            PAGE_EVENT_OPEN_ACTIONS,
+            PAGE_MANAGER_VIEW,
+        }
+        source_key = getattr(self.main_window, "_workbench_source_page_key", None)
+        if source_key in ops_keys:
+            self.back_button.setText("返回作業佇列")
+            self.back_button.setAccessibleName("返回作業佇列")
+        else:
+            self.back_button.setText("返回異常清單")
+            self.back_button.setAccessibleName("返回異常清單")
+
     def return_to_list(self) -> None:
         if not self.can_leave():
+            return
+        from ui.sidebar_nav import (
+            PAGE_EVENT_OPEN_ACTIONS,
+            PAGE_EVENT_OPS,
+            PAGE_EVENT_OVERDUE,
+            PAGE_EVENT_ROOT_CAUSE,
+            PAGE_MANAGER_VIEW,
+        )
+
+        ops_keys = {
+            PAGE_EVENT_OPS,
+            PAGE_EVENT_OVERDUE,
+            PAGE_EVENT_ROOT_CAUSE,
+            PAGE_EVENT_OPEN_ACTIONS,
+            PAGE_MANAGER_VIEW,
+        }
+        source_key = getattr(self.main_window, "_workbench_source_page_key", None)
+        opener = getattr(self.main_window, "open_supplier_event_ops", None)
+        if source_key in ops_keys and callable(opener):
+            opener(source_key or PAGE_EVENT_OPS)
             return
         self.main_window.open_event_query_with_filters(event_scope=None)
 

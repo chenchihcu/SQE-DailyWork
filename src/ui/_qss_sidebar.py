@@ -96,6 +96,25 @@ def get_sidebar_qss() -> str:
             font-weight: 700;
         }}
 
+        /* 並排緊湊主檔導覽（資料庫設定群組） */
+        QPushButton#NavButton[nav_compact="true"] {{
+            padding: 0px 4px;
+            font-size: 11px;
+            border-left-width: 3px;
+        }}
+
+        QPushButton#NavButton[nav_compact="true"] QLabel {{
+            font-size: 11px;
+        }}
+
+        QPushButton#NavButton[nav_compact="true"][nav_active="true"] {{
+            border-left-width: 3px;
+        }}
+
+        QWidget#NavButtonRow {{
+            background: transparent;
+        }}
+
         QLabel#NavIcon {{
             background: transparent;
             border: none;
@@ -110,6 +129,30 @@ def get_sidebar_qss() -> str:
             padding: 2px 7px;
             min-width: 18px;
             border: 1px solid rgba(255, 255, 255, 0.15);
+        }}
+
+        QWidget#NavMasterSubGroup {{
+            background: transparent;
+        }}
+
+        /* 資料庫設定主檔子群組 pill 標籤（供應商主檔 / 料號主檔） */
+        QLabel#SidebarMasterSubGroupLabel {{
+            color: {TOKENS["sidebar_text"]};
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: {TOKENS["radius_sm"]}px;
+            margin: 0px 12px 0px 12px;
+        }}
+
+        QLabel#SidebarMasterSubGroupLabel[master_subgroup="supplier"] {{
+            background: {TOKENS["sidebar_master_supplier_chip_bg"]};
+            color: {TOKENS["sidebar_text_active"]};
+        }}
+
+        QLabel#SidebarMasterSubGroupLabel[master_subgroup="product"] {{
+            background: {TOKENS["sidebar_master_product_chip_bg"]};
+            color: {TOKENS["sidebar_text_active"]};
         }}
 
         /* 側欄領域分組標題（無底色極簡上標） */

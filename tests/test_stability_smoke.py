@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QApplication
 
 from ui.main_window import (
     EVENT_PAGE_INDEX,
-    HOME_PAGE_INDEX,
     MainWindow,
     STATS_PAGE_INDEX,
 )
@@ -41,7 +40,7 @@ class StabilitySmokeTests(unittest.TestCase):
         self.app.processEvents()
         window._switch_primary_page(STATS_PAGE_INDEX)
         self.app.processEvents()
-        window._switch_primary_page(HOME_PAGE_INDEX)
+        window._switch_primary_page(EVENT_PAGE_INDEX)
         self.app.processEvents()
 
         current = window.stack.currentWidget()

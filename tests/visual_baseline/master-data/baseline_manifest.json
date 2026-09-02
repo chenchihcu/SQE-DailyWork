@@ -6,8 +6,10 @@
     "device_pixel_ratio": 3.0
   },
   "files": [
-    "master-data@1.5x_master-supplier.png",
-    "master-data@1.5x_master-product.png"
+    "master-data@1.5x_master-raw-supplier.png",
+    "master-data@1.5x_master-outsource-supplier.png",
+    "master-data@1.5x_master-raw-material.png",
+    "master-data@1.5x_master-semi-finished.png"
   ],
   "scales": {
     "1.0": {
@@ -18,8 +20,10 @@
         "device_pixel_ratio": 2.0
       },
       "files": [
-        "master-data_master-supplier.png",
-        "master-data_master-product.png"
+        "master-data_master-raw-supplier.png",
+        "master-data_master-outsource-supplier.png",
+        "master-data_master-raw-material.png",
+        "master-data_master-semi-finished.png"
       ]
     },
     "1.25": {
@@ -30,8 +34,10 @@
         "device_pixel_ratio": 2.5
       },
       "files": [
-        "master-data@1.25x_master-supplier.png",
-        "master-data@1.25x_master-product.png"
+        "master-data@1.25x_master-raw-supplier.png",
+        "master-data@1.25x_master-outsource-supplier.png",
+        "master-data@1.25x_master-raw-material.png",
+        "master-data@1.25x_master-semi-finished.png"
       ]
     },
     "1.5": {
@@ -42,8 +48,10 @@
         "device_pixel_ratio": 3.0
       },
       "files": [
-        "master-data@1.5x_master-supplier.png",
-        "master-data@1.5x_master-product.png"
+        "master-data@1.5x_master-raw-supplier.png",
+        "master-data@1.5x_master-outsource-supplier.png",
+        "master-data@1.5x_master-raw-material.png",
+        "master-data@1.5x_master-semi-finished.png"
       ]
     }
   }

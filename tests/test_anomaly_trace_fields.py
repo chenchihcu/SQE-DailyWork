@@ -377,7 +377,7 @@ class NcrToAnomalyHandoffTests(unittest.TestCase):
     @patch("ncr.ui.defect_form.crud.get_defect_by_id")
     def test_convert_payload_maps_shared_category(self, get_defect) -> None:
         from ncr.ui.defect_form import DefectEditDialog
-        from ui.widgets.new_anomaly_dialog import ANOMALY_CATEGORY_OPTIONS
+        from services.anomaly_category_preset_service import is_valid_category
 
         captured: dict = {}
 
@@ -386,7 +386,7 @@ class NcrToAnomalyHandoffTests(unittest.TestCase):
                 captured.update(dict(initial_data or {}))
 
         category = "其他"
-        self.assertIn(category, ANOMALY_CATEGORY_OPTIONS)
+        self.assertTrue(is_valid_category(category))
         get_defect.return_value = {
             "supplier_id": "sup-1",
             "supplier_name": "供應商A",

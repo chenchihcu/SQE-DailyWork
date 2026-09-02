@@ -9,6 +9,7 @@ from database.repository import create_schema
 class Supplier360DataContractTests(unittest.TestCase):
     def test_supplier_relationship_and_ncr_traceability_columns_exist(self) -> None:
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         create_schema(conn)
         defect_columns = {
@@ -28,6 +29,7 @@ class Supplier360DataContractTests(unittest.TestCase):
 
     def test_global_search_returns_source_labels(self) -> None:
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         create_schema(conn)
         conn.execute(

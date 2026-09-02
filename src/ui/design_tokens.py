@@ -58,6 +58,8 @@ PALETTE: dict[str, object] = {
     "sidebar_text_active": "#F8FAFC",
     "sidebar_muted": "#64748B",
     "sidebar_divider": "#1E293B",
+    "sidebar_master_supplier_chip_bg": "#1E3A5F",
+    "sidebar_master_product_chip_bg": "#1A3D32",
 
     # ── Status: pending (amber) ────────────────────────────────────────────────
     "pending_fg": "#8A5A00",

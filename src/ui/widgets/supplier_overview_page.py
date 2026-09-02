@@ -26,7 +26,6 @@ from ui.layout_constants import (
     SUPPLIER_OVERVIEW_COUNT_WIDTH,
     SUPPLIER_OVERVIEW_DATE_WIDTH,
     SUPPLIER_OVERVIEW_DUE_DATE_WIDTH,
-    SUPPLIER_OVERVIEW_LATEST_VISIT_WIDTH,
     SUPPLIER_OVERVIEW_NCR_WIDTH,
     SUPPLIER_OVERVIEW_STATUS_WIDTH,
     SUPPLIER_OVERVIEW_SUMMARY_WIDTH,
@@ -90,7 +89,6 @@ class SupplierOverviewPage(QWidget):
                 SUPPLIER_OVERVIEW_SUMMARY_WIDTH,
                 SUPPLIER_OVERVIEW_DUE_DATE_WIDTH,
                 SUPPLIER_OVERVIEW_NCR_WIDTH,
-                SUPPLIER_OVERVIEW_LATEST_VISIT_WIDTH,
                 SUPPLIER_OVERVIEW_COUNT_WIDTH,
                 SUPPLIER_OVERVIEW_STATUS_WIDTH,
             )
@@ -139,7 +137,6 @@ class SupplierOverviewPage(QWidget):
                     row.get("latest_anomaly_desc") or "—",
                     row.get("latest_anomaly_due_date") or "—",
                     row.get("ncr_90d_count", 0),
-                    row.get("latest_visit_date") or "—",
                     row.get("grade") or "—",
                     "啟用" if row.get("is_active") else "停用",
                 )

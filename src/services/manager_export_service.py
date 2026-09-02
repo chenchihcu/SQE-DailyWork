@@ -36,9 +36,7 @@ def _append_contract_sheet(
 def export_manager_view_excel(
     file_path: str,
     summary_rows: list[dict],
-    queue_rows: list[dict] | None = None,
 ) -> tuple[bool, str]:
-    del queue_rows
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font
@@ -57,6 +55,6 @@ def export_manager_view_excel(
         output_path = Path(file_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         workbook.save(output_path)
-        return True, f"已匯出主管檢視報告：{output_path}"
+        return True, f"已匯出案件總覽報告：{output_path}"
     except Exception as exc:
-        return False, f"主管檢視匯出失敗：{exc}"
+        return False, f"案件總覽匯出失敗：{exc}"

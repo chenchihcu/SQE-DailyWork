@@ -76,6 +76,27 @@ PHASE1_VISUAL_BASELINE_REFRESH = [
     "./scripts/refresh_case_actions_phase1_visual_baselines.ps1",
 ]
 
+MAIN_VISUAL_BASELINE_REFRESH = [
+    "scripts\\refresh_main_visual_baselines.ps1",
+    ".\\scripts\\refresh_main_visual_baselines.ps1",
+    "scripts/refresh_main_visual_baselines.ps1",
+    "./scripts/refresh_main_visual_baselines.ps1",
+]
+
+EVENT_CREATE_VISUAL_BASELINE_REFRESH = [
+    "scripts\\refresh_event_create_visual_baselines.ps1",
+    ".\\scripts\\refresh_event_create_visual_baselines.ps1",
+    "scripts/refresh_event_create_visual_baselines.ps1",
+    "./scripts/refresh_event_create_visual_baselines.ps1",
+]
+
+RELEASE_VISUAL_BASELINE_REFRESH = [
+    "scripts\\refresh_release_visual_baselines.ps1",
+    ".\\scripts\\refresh_release_visual_baselines.ps1",
+    "scripts/refresh_release_visual_baselines.ps1",
+    "./scripts/refresh_release_visual_baselines.ps1",
+]
+
 PHASE1_FORMAL_DB_AUDIT = [
     "scripts\\audit_case_actions_phase1_databases.ps1",
     ".\\scripts\\audit_case_actions_phase1_databases.ps1",
@@ -355,6 +376,63 @@ prefix_rule(
     ],
     not_match = [
         "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_case_actions_phase1_visual_baselines.ps1 -Target main",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        RELEASE_VISUAL_BASELINE_REFRESH,
+    ],
+    decision = "allow",
+    justification = "Refresh only the six inspected release visual targets from a verified disposable database, preserve the formal fingerprint, and read every DPI back.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_release_visual_baselines.ps1",
+    ],
+    not_match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_release_visual_baselines.ps1 -Target main",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        MAIN_VISUAL_BASELINE_REFRESH,
+    ],
+    decision = "allow",
+    justification = "Refresh only the inspected main baselines from a verified disposable database, preserve the formal fingerprint, and read every DPI back.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_main_visual_baselines.ps1",
+    ],
+    not_match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_main_visual_baselines.ps1 -Target stats-stress",
+    ],
+)
+
+prefix_rule(
+    pattern = [
+        POWERSHELL,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        EVENT_CREATE_VISUAL_BASELINE_REFRESH,
+    ],
+    decision = "allow",
+    justification = "Refresh only the inspected deterministic event-create baselines from a verified disposable database, preserve the formal fingerprint, and read every DPI back.",
+    match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_event_create_visual_baselines.ps1",
+    ],
+    not_match = [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh_event_create_visual_baselines.ps1 -Target main",
     ],
 )
 
@@ -737,6 +815,7 @@ prefix_rule(
     match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows.ps1",
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows.ps1 -SkipSmoke",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows.ps1 -SmokeTimeoutSeconds 120",
     ],
     not_match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
@@ -756,6 +835,7 @@ prefix_rule(
     justification = "Portable install smoke unpacks zip and runs frozen exe on scratch DB; review before execution.",
     match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/portable_install_smoke.ps1 -UseExistingDist",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/portable_install_smoke.ps1 -UseExistingDist -SmokeTimeoutSeconds 120",
     ],
     not_match = [
         "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1",

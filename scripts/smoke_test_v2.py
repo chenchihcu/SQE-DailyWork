@@ -97,18 +97,6 @@ def _get_anomaly_row(anomaly_no: str):
         ).fetchone()
 
 
-def _get_visit_row(visit_id: str):
-    with get_connection() as conn:
-        return conn.execute(
-            """
-            SELECT supplier_id, product_id, product_name, summary, work_order_no, production_qty
-            FROM visits
-            WHERE id = ?
-            """,
-            (visit_id,),
-        ).fetchone()
-
-
 def _assert_raises_value_error(fn, expected_keyword: str):
     try:
         fn()
@@ -311,26 +299,22 @@ def main(argv: list[str] | None = None) -> int:
     preview_next_day = event_service.preview_anomaly_no("2026-04-16")
     _assert_anomaly_no_format(preview_next_day)
 
-    linked = event_service.create_anomaly_with_visit_link(
+    anomaly_no = event_service.create_anomaly(
         {
             "anomaly_date": TEST_DATE,
             "supplier_id": supplier_a_id,
             "product_id": supplier_a_product_id,
             "problem_desc": "Smoke anomaly with product",
-            "category": "測試",
+            "category": "其他",
             "anomaly_source": "訪廠／稽核",
             "product_lot_no": "LOT-NEW-001",
             "batch_qty": 321,
-            "sync_visit": True,
-            "visit_summary": "Smoke linked visit",
         }
     )
-    print("linked", linked)
-    _assert_anomaly_no_format(linked["anomaly_no"])
-    if linked["visit_action"] not in {"created", "reused"}:
-        raise RuntimeError("Expected linked visit action")
+    print("anomaly_no", anomaly_no)
+    _assert_anomaly_no_format(anomaly_no)
 
-    anomaly_row = _get_anomaly_row(linked["anomaly_no"])
+    anomaly_row = _get_anomaly_row(anomaly_no)
     if anomaly_row is None:
         raise RuntimeError("Expected anomaly row")
     if anomaly_row["supplier_id"] != supplier_a_id:
@@ -341,33 +325,8 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("Expected anomaly product_name snapshot")
     if int(anomaly_row["batch_qty"]) != 321:
         raise RuntimeError("Expected anomaly batch_qty")
-
-    if linked["visit_id"]:
-        visit_row = _get_visit_row(linked["visit_id"])
-        if visit_row is None:
-            raise RuntimeError("Expected linked visit row")
-        if visit_row["product_id"] != supplier_a_product_id:
-            raise RuntimeError("Expected linked visit product_id")
-        if visit_row["product_name"] != "Supplier A Product":
-            raise RuntimeError("Expected linked visit product_name snapshot")
-
-    visit_with_product_id = event_service.create_visit(
-        {
-            "visit_date": TEST_DATE,
-            "supplier_id": supplier_a_id,
-            "product_id": supplier_a_product_id,
-            "summary": "visit with product",
-            "work_order_no": "WO-NOPRODUCT",
-            "production_qty": 100,
-        }
-    )
-    visit_with_product_row = _get_visit_row(visit_with_product_id)
-    if visit_with_product_row is None:
-        raise RuntimeError("Expected visit row")
-    if visit_with_product_row["product_id"] != supplier_a_product_id:
-        raise RuntimeError("Expected required visit product_id")
-    if visit_with_product_row["product_name"] != "Supplier A Product":
-        raise RuntimeError("Expected required visit product_name snapshot")
+    if anomaly_row["visit_id"]:
+        raise RuntimeError("Expected no visit_id on default anomaly create")
 
     event_service.set_product_active(supplier_a_product_id, False)
     _assert_raises_value_error(
@@ -385,12 +344,12 @@ def main(argv: list[str] | None = None) -> int:
 
     event_service.set_supplier_active(supplier_a_id, False)
     _assert_raises_value_error(
-        lambda: event_service.create_visit(
+        lambda: event_service.create_anomaly(
             {
-                "visit_date": TEST_DATE,
+                "anomaly_date": TEST_DATE,
                 "supplier_id": supplier_a_id,
                 "product_id": supplier_a_product_id,
-                "summary": "inactive supplier should fail",
+                "problem_desc": "inactive supplier should fail",
             }
         ),
         "inactive",
@@ -418,12 +377,14 @@ def main(argv: list[str] | None = None) -> int:
             "supplier_id": delete_blocked_id,
         }
     )
-    event_service.create_visit(
+    event_service.create_anomaly(
         {
-            "visit_date": TEST_DATE,
+            "anomaly_date": TEST_DATE,
             "supplier_id": delete_blocked_id,
             "product_id": delete_blocked_product_id,
-            "summary": "delete blocked reference",
+            "problem_desc": "delete blocked reference",
+            "category": "其他",
+            "anomaly_source": "其他",
         }
     )
     _assert_raises_value_error(

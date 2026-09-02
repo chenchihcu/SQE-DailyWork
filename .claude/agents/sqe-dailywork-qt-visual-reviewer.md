@@ -10,10 +10,10 @@ Rules:
 - Use `scripts/qt_visual_probe.py` for visual, font, CJK, and screenshot evidence. Offscreen Qt is allowed only for structural smoke checks.
 - A `widget.grab()` PNG only proves the main Qt widget tree, at one DPI, in default state, with populated data. Do not stop there.
 - Visual-evidence policy (Playwright / offscreen / what counts as evidence): authority is `.claude/rules/visual_evidence_rules.md` — apply it, do not restate it.
-- Preserve the Slate + Electric Blue internal desktop-tool style and the SidebarNav + QStackedWidget information architecture (the former anomaly / visit / closed lists are now first-class scope rows in the consolidated 事件管理 page).
+- Preserve the Slate + Electric Blue internal desktop-tool style and the SidebarNav + QStackedWidget information architecture (the former anomaly / visit / closed lists are now first-class scope rows in the consolidated 事件查詢 page).
 
 Cover the surfaces with the matching probe targets — do not review only `main`:
-- `main` (shell) · `event-create` (新增異常 / 新增訪廠) · `event-list` (事件管理 table, long-CJK, 4 scope rows) · `master-data` (供應商 / 產品)
+- `main` (shell) · `event-create` (新增異常) · `event-list` (事件查詢 table, long-CJK, 4 scope rows) · `master-data` (供應商 / 產品)
 - `ncr-tracker` (warehouse 建立 / 待處理 / 歷史 list tabs) · `stats-stress` · `ncr-stats`
 - `form-density` (dialogs) · `workbench` / `dialog-density` (anomaly workbench) · `empty-states` (empty + NCR-unavailable placeholder) · `pdf-export` (PDF font report)
 

@@ -97,9 +97,8 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         # ── 頂部控制面板 ─────────────────────────────────────
         self.workflow_shell = AnalyticsWorkflowShell(self)
-        self.workflow_shell.hide()
 
-        top_layout = QHBoxLayout()
+        top_layout = QHBoxLayout(self.workflow_shell)
         top_layout.setContentsMargins(*PANEL_MARGINS)
         top_layout.setSpacing(INLINE_SPACING)
 
@@ -138,7 +137,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         btn_export.clicked.connect(self.export_monthly_excel)
         top_layout.addWidget(btn_export)
 
-        root.addLayout(top_layout)
+        root.addWidget(self.workflow_shell)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
         scroll, scroll_layout = create_stats_scroll_area(
@@ -209,7 +208,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             iso_start, iso_end = range_iso_dates(start_key, end_key)
             # 趨勢圖窗口 = 使用者選定的完整月份區間（服務端上限 12 個月）
             trend_data = _query_service.get_anomaly_trend_by_range(iso_start, iso_end)
-            visit_trend_data = _query_service.get_visit_trend_by_range(iso_start, iso_end)
             partial_failures: set[str] = set()
             try:
                 resp_stats = _query_service.get_responsible_person_stats_by_range(
@@ -251,7 +249,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
             self._render_charts(
                 trend_data=trend_data,
-                visit_trend_data=visit_trend_data,
                 resp_stats=resp_stats,
                 category_pareto_data=category_pareto_data,
                 process_keyword_pareto_data=process_keyword_pareto_data,
@@ -259,7 +256,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._render_charts([], [], [], [], [], error_message=localize_exception(exc))
+            self._render_charts([], [], [], [], error_message=localize_exception(exc))
 
     # ── 圖表協調 ──────────────────────────────────────────
 
@@ -284,7 +281,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
     def _render_charts(
         self,
         trend_data: list[dict],
-        visit_trend_data: list[dict],
         resp_stats: list[dict],
         category_pareto_data: list[dict],
         process_keyword_pareto_data: list[dict] | None = None,
@@ -306,7 +302,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
 
         partial_failures = partial_failures or set()
 
-        # 1. Trend Chart
+        # 1. Supplier trend chart (0, 0)
         if trend_data:
             trend_view = self._build_trend_chart(trend_data)
             if trend_view:
@@ -316,36 +312,26 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         else:
             self.grid_layout.addWidget(EmptyStateWidget("暫無趨勢數據"), 0, 0)
 
-        # 2. Visit Trend Chart
-        if visit_trend_data:
-            visit_view = self._build_visit_trend_chart(visit_trend_data)
-            if visit_view:
-                self.grid_layout.addWidget(visit_view, 0, 1)
-            else:
-                self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
-        else:
-            self.grid_layout.addWidget(EmptyStateWidget("暫無訪廠數據"), 0, 1)
-
-        # 3. Category Pareto Chart
+        # 2. Category Pareto chart (0, 1)
         if "category" in partial_failures:
             self.grid_layout.addWidget(
                 EmptyStateWidget(
                     "異常類別統計暫時無法載入",
                     "請按「重新整理」重試。",
                 ),
-                1,
                 0,
+                1,
             )
         elif category_pareto_data:
             category_view = self._build_category_pareto_chart(category_pareto_data)
             if category_view:
-                self.grid_layout.addWidget(category_view, 1, 0)
+                self.grid_layout.addWidget(category_view, 0, 1)
             else:
-                self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
+                self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 0, 1)
         else:
-            self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 1, 0)
+            self.grid_layout.addWidget(EmptyStateWidget("暫無異常類別數據"), 0, 1)
 
-        # 4. Responsible Person Stacked Chart
+        # 3. Responsible person chart (1, 0)
         if "responsible" in partial_failures:
             self.grid_layout.addWidget(
                 EmptyStateWidget(
@@ -353,16 +339,16 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     "請按「重新整理」重試。",
                 ),
                 1,
-                1,
+                0,
             )
         elif resp_stats:
             resp_view = self._build_responsible_stacked_chart(resp_stats)
             if resp_view:
-                self.grid_layout.addWidget(resp_view, 1, 1)
+                self.grid_layout.addWidget(resp_view, 1, 0)
             else:
-                self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
+                self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 0)
         else:
-            self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 1)
+            self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 0)
 
         if "process_keyword" in partial_failures:
             self.grid_layout.addWidget(
@@ -433,7 +419,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         temp_paths = build_temp_chart_paths(
             temp_dir,
             pid,
-            ["trend", "visit_anomaly", "responsible", "category_pareto", "process_keyword_pareto"],
+            ["trend", "responsible", "category_pareto", "process_keyword_pareto"],
             "temp_evt",
         )
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
@@ -449,7 +435,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         try:
             # 取得這段時間範圍的數據
             trend_data = _query_service.get_anomaly_trend_by_range(start_date, end_date)
-            visit_trend_data = _query_service.get_visit_trend_by_range(start_date, end_date)
             resp_stats = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
             category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(start_date, end_date)
             process_keyword_pareto_data = (
@@ -471,15 +456,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     ):
                         active_temp_paths["trend"] = temp_paths["trend"]
 
-                # 2. Visit anomaly chart
-                if visit_trend_data:
-                    requested_chart_keys.append("visit_anomaly")
-                    if render_chart_to_png(
-                        lambda: self._build_visit_trend_chart(visit_trend_data), temp_paths["visit_anomaly"]
-                    ):
-                        active_temp_paths["visit_anomaly"] = temp_paths["visit_anomaly"]
-
-                # 3. Responsible stacked chart
+                # 2. Responsible stacked chart
                 if resp_stats:
                     requested_chart_keys.append("responsible")
                     if render_chart_to_png(
@@ -487,7 +464,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                     ):
                         active_temp_paths["responsible"] = temp_paths["responsible"]
 
-                # 4. Category Pareto chart
+                # 3. Category Pareto chart
                 if category_pareto_data:
                     requested_chart_keys.append("category_pareto")
                     if render_chart_to_png(
@@ -526,7 +503,6 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                         active_temp_paths,
                         {
                             "trend": "異常趨勢圖",
-                            "visit_anomaly": "訪廠與異常趨勢圖",
                             "responsible": "責任人統計圖",
                             "category_pareto": "異常類別柏拉圖",
                             "process_keyword_pareto": "SMT 製程關鍵詞柏拉圖",

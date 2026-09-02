@@ -84,6 +84,15 @@ from ncr.models.labels import (
 )
 from ncr.services import defect_service, product_service
 from services import event_service
+from database.product_item_category import ITEM_CATEGORY_RAW_MATERIAL
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
+from ui.sidebar_nav import (
+    NAV_LABEL_MASTER_OUTSOURCE,
+    NAV_LABEL_MASTER_RAW_SUPPLIER,
+)
 from services.anomaly_trace_contract import processing_line_source_hint
 from ncr.ui.ui_style import (
     DIALOG_ACTION_BUTTON_MIN_WIDTH,
@@ -104,7 +113,7 @@ from ncr.ui.ui_style import (
 )
 from ui.widgets.common_widgets import RequiredFieldLabel
 from ui.widgets.bullet_list_widget import BulletListWidget
-from ui.widgets.new_anomaly_dialog import ANOMALY_CATEGORY_OPTIONS
+from services.anomaly_category_preset_service import is_valid_category
 from ui.widgets.product_form_dialog import ProductFormDialog
 
 
@@ -247,7 +256,7 @@ class DefectFieldsWidget(QWidget):
         self.outsource_supplier_combo = QComboBox()
         self.outsource_supplier_combo.setEditable(False)
         self.outsource_supplier_combo.setPlaceholderText(PLACEHOLDER_OUTSOURCE_SUPPLIER)
-        self.outsource_supplier_combo.setAccessibleName("委外加工廠名稱")
+        self.outsource_supplier_combo.setAccessibleName("委外加工名稱")
         self.supplier_combo.currentTextChanged.connect(self._on_supplier_changed)
         self.supplier_combo.currentTextChanged.connect(
             self._on_supplier_changed_refresh_products
@@ -555,7 +564,9 @@ class DefectFieldsWidget(QWidget):
         supplier_name = self._get_current_supplier_name()
         if supplier_name:
             products = product_service.list_products_by_supplier_name(
-                self.conn, supplier_name
+                self.conn,
+                supplier_name,
+                processing_line=self.processing_line_combo.currentText(),
             )
         else:
             products = []
@@ -832,11 +843,40 @@ class DefectFieldsWidget(QWidget):
         if not item_no:
             self._sync_quick_add_product_visibility("")
             return False
-        suppliers = event_service.list_active_suppliers()
+
+        processing_line = self.processing_line_combo.currentText().strip()
+        fixed_item_category: str | None = None
+        allow_item_category_choice = False
+        supplier_category: str | None = None
+        supplier_name = ""
+
+        if processing_line == "原物料":
+            fixed_item_category = ITEM_CATEGORY_RAW_MATERIAL
+            supplier_category = SUPPLIER_CATEGORY_RAW_MATERIAL
+            supplier_name = self.supplier_combo.currentText().strip()
+        elif processing_line == "委外加工":
+            allow_item_category_choice = True
+            supplier_category = SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
+            supplier_name = self.outsource_supplier_combo.currentText().strip()
+        else:
+            supplier_name = self.supplier_combo.currentText().strip()
+
+        suppliers = (
+            event_service.list_suppliers(
+                include_inactive=False,
+                category=supplier_category,
+            )
+            if supplier_category
+            else event_service.list_active_suppliers()
+        )
         if not suppliers:
-            self._show_product_master_error("目前沒有可用供應商，請先到基礎資料建立供應商。")
+            if supplier_category == SUPPLIER_CATEGORY_OUTSOURCE_FACTORY:
+                hint = f"目前沒有可用委外加工，請先到「{NAV_LABEL_MASTER_OUTSOURCE}」建立供應商。"
+            else:
+                hint = f"目前沒有可用供應商，請先到「{NAV_LABEL_MASTER_RAW_SUPPLIER}」建立供應商。"
+            self._show_product_master_error(hint)
             return False
-        supplier_name = self.supplier_combo.currentText().strip()
+
         supplier_id = next(
             (
                 str(row.get("id") or "").strip()
@@ -853,6 +893,8 @@ class DefectFieldsWidget(QWidget):
                 "supplier_id": supplier_id,
             },
             is_edit=False,
+            fixed_item_category=fixed_item_category,
+            allow_item_category_choice=allow_item_category_choice,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self._sync_quick_add_product_visibility(self.product_name_input.text())
@@ -1272,7 +1314,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
                 ),
                 "source_defect_no": data.get("defect_no") or "",
             }
-        if ncr_category and ncr_category in ANOMALY_CATEGORY_OPTIONS:
+        if ncr_category and is_valid_category(ncr_category):
             initial_payload["category"] = ncr_category
         main_window.open_new_anomaly_create_page(initial_payload)
         self.accept()

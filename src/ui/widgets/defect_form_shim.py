@@ -2,7 +2,7 @@
 
 The original monolithic defect_form_widget.py was split into
 close_anomaly_dialog.py / anomaly_attachment_editor.py / defect_form_widgets.py /
-new_anomaly_dialog.py / new_visit_dialog.py. This module (renamed from
+new_anomaly_dialog.py. This module (renamed from
 defect_form_widget.py → defect_form_shim.py to clarify it is a backward-
 compatibility shim, not a primary widget module) keeps only the names that
 external callers (tests, scripts/qt_visual_probe.py, event_actions.py) still
@@ -24,6 +24,6 @@ from ui.widgets.defect_form_widgets import (  # noqa: F401
     ANOMALY_CATEGORY_OPTIONS,
     ROOT_CAUSE_PARETO_OPTIONS,
     ProductSectionEditor,
+    get_anomaly_category_options,
 )
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog  # noqa: F401
-from ui.widgets.new_visit_dialog import NewVisitDialog  # noqa: F401

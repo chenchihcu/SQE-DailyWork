@@ -21,6 +21,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from itertools import zip_longest
 from pathlib import Path
 
@@ -30,6 +31,7 @@ DEFAULT_BASELINE_ROOT = REPO_ROOT / "tests" / "visual_baseline"
 TARGET_MANIFEST = REPO_ROOT / "scripts" / "qt_probe_targets.json"
 MANIFEST_NAME = "baseline_manifest.json"
 ENV_KEYS = ("qt_platform", "selected_font", "scale", "device_pixel_ratio")
+TRANSIENT_BASELINE_COPY_WINERRORS = frozenset({32, 33, 1224})
 
 
 def _parse_args() -> argparse.Namespace:
@@ -73,6 +75,30 @@ def _run_probe(args: argparse.Namespace) -> dict:
 
 def _current_env(probe_json: dict) -> dict:
     return {key: probe_json.get(key) for key in ENV_KEYS}
+
+
+def _copy_baseline_with_retry(
+    source: Path,
+    destination: Path,
+    *,
+    attempts: int = 4,
+    delay_seconds: float = 0.25,
+) -> None:
+    """Retry only known transient Windows share/memory-map copy failures."""
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+    for attempt in range(attempts):
+        try:
+            shutil.copy2(source, destination)
+            return
+        except OSError as exc:
+            is_retryable = (
+                getattr(exc, "winerror", None)
+                in TRANSIENT_BASELINE_COPY_WINERRORS
+            )
+            if not is_retryable or attempt + 1 >= attempts:
+                raise
+            time.sleep(delay_seconds)
 
 
 def _byte_diff_ratio(path_a: Path, path_b: Path):
@@ -138,7 +164,7 @@ def main() -> int:
         names = []
         for shot in screenshots:
             dest = baseline_dir / shot.name
-            shutil.copy2(shot, dest)
+            _copy_baseline_with_retry(shot, dest)
             names.append(shot.name)
         existing = {}
         if manifest_path.exists():

@@ -6,9 +6,17 @@ from database import connection as _connection
 from database import repository
 
 
-def list_suppliers(*, include_inactive: bool = True) -> list[dict]:
+def list_suppliers(
+    *,
+    include_inactive: bool = True,
+    category: str | None = None,
+) -> list[dict]:
     with _connection.get_connection() as conn:
-        return repository.list_suppliers(conn, include_inactive=include_inactive)
+        return repository.list_suppliers(
+            conn,
+            include_inactive=include_inactive,
+            category=category,
+        )
 
 
 def create_supplier(payload: dict) -> str:
@@ -20,6 +28,7 @@ def create_supplier(payload: dict) -> str:
             department=payload.get("department", ""),
             phone=payload.get("phone", ""),
             contact_email=payload.get("contact_email", ""),
+            category=(payload.get("category") or "").strip(),
         )
 
 
@@ -33,6 +42,7 @@ def update_supplier(supplier_id: str, payload: dict) -> None:
             department=payload.get("department", ""),
             phone=payload.get("phone", ""),
             contact_email=payload.get("contact_email", ""),
+            category=(payload.get("category") or "").strip() or None,
         )
 
 

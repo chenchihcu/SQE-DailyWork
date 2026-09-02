@@ -91,7 +91,6 @@ from services.event._query_service import (  # noqa: E402, F401
     get_anomaly_category_pareto_by_range,
     get_anomaly_process_keyword_pareto_by_range,
     get_responsible_person_stats_by_range,
-    get_visit_trend_by_range,
     get_anomaly_trend_by_range,
     get_anomaly_closure_activity_by_range,
 )

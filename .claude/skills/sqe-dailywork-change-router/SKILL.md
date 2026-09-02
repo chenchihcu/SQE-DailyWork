@@ -50,13 +50,13 @@ Use when the user asks for behavior-preserving simplification (`/code-simplifier
 | Service DRY | `src/services/event/_query_service.py`, `src/services/*_codec.py`, `src/services/appearance_preferences_service.py` | Preserve public APIs and mock import paths |
 | Confirmed dead code | `src/database/repository.py` private stubs, unused UI helpers | Never delete `event_service.py`, `defect_form_shim.py`, `theme.py` re-exports without migration plan |
 | Zero-Noise stats UI | `src/ui/widgets/stats_view_widget.py`, `src/ui/widgets/ncr_stats_widget.py` | Remove insight/info-banner widgets **and** `_set_insights` / `_generate_insights`; do not `.hide()` only |
-| List contract render | `src/ui/list_column_contract.py`, `src/ui/widgets/home_widget.py`, event/NCR list widgets | Keep ref_no-first / visit date fallback; do not merge event vs NCR column SSOT |
+| List contract render | `src/ui/list_column_contract.py`, event/NCR list widgets | Keep ref_no-first / visit date fallback; do not merge event vs NCR column SSOT |
 
 ### Verification gate (safe-pass)
 
 ```
 □ py_compile on touched modules
-□ Focused unittest: stats, appearance, list-column, home-backlog, shared UI helpers
+□ Focused unittest: stats, appearance, list-column, supplier_event_queues, top_nav_compact_height, shared UI helpers
 □ If stats UI changed: native `scripts/qt_visual_probe.py --target stats-stress` and `--target ncr-stats`
 □ Background `scripts/verify.ps1` — do not block foreground on full suite
 □ Tests after Zero-Noise cleanup: assert EmptyStateWidget / errorText / charts; not hidden insight_label text

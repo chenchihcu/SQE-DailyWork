@@ -71,7 +71,7 @@ class MissingSupplierCreateGateTests(unittest.TestCase):
 class EnsureActiveSuppliersModalTests(unittest.TestCase):
     def _host(self):
         class _Host:
-            def _open_master_data(self) -> None:
+            def open_master_raw_supplier(self) -> None:
                 self.opened_master = True
 
         host = _Host()

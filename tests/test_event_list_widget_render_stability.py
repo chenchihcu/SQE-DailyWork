@@ -166,7 +166,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertIsNone(self.widget.event_scope_tab_bar)
         from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
         self.assertEqual(
-            ["單獨異常", "訪廠發現異常", "訪廠紀錄", "已結案"],
+            ["單獨異常", "已結案"],
             [label for label, _scope, _t in EVENT_QUERY_SCOPE_TABS],
         )
         self.assertEqual(
@@ -178,18 +178,15 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
         self.assertFalse(self.widget.export_pdf_button.isEnabled())
         self.assertIn("請先選取", self.widget.export_pdf_button.toolTip())
-        self.assertIsNotNone(self.widget.source_tag_label)
-        assert self.widget.source_tag_label is not None
-        self.assertEqual("供應商事件 / 單獨異常", self.widget.source_tag_label.text())
 
     def test_switching_query_scope_tab_refreshes_with_scope(self) -> None:
         self._list_events.reset_mock()
-        self.widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY)
+        self.widget.set_event_scope(event_service.EVENT_SCOPE_CLOSED_ONLY)
         self._drain_events()
 
         self._list_events.assert_called_once()
         filters = self._list_events.call_args.args[0]
-        self.assertEqual(event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY, filters["event_scope"])
+        self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, filters["event_scope"])
         self.assertEqual("ANOMALY", filters["event_type"])
 
     def test_export_pdf_button_stays_available_across_query_scope_tabs(self) -> None:
@@ -203,17 +200,11 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             self.assertEqual("輸出PDF", self.widget.export_pdf_button.text())
             self.assertFalse(self.widget.export_pdf_button.isEnabled())
 
-    def test_category_column_hidden_only_in_visit_only_scope(self) -> None:
-        # 訪廠紀錄 scope 沒有異常類別（整欄「—」），該欄應隱藏；
-        # 異常類 scope（單獨異常 / 訪廠發現異常 / 已結案）維持顯示。
-        # 僅隱藏顯示欄位，欄位總數不變（DB 資料與表單不受影響）。
-        visit_hidden_by_scope = {
-            event_service.EVENT_SCOPE_ANOMALY_ONLY: False,
-            event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY: False,
-            event_service.EVENT_SCOPE_CLOSED_ONLY: False,
-            event_service.EVENT_SCOPE_VISIT_ONLY: True,
-        }
-        for scope, should_hide in visit_hidden_by_scope.items():
+    def test_category_column_visible_in_both_query_scopes(self) -> None:
+        for scope in (
+            event_service.EVENT_SCOPE_ANOMALY_ONLY,
+            event_service.EVENT_SCOPE_CLOSED_ONLY,
+        ):
             self.widget.set_event_scope(scope)
             self._drain_events()
             category_col = EVENT_LIST_FIELDS.index("category")
@@ -221,12 +212,8 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
             quality_col = EVENT_LIST_FIELDS.index("quality_report_required")
             with self.subTest(scope=scope):
                 self.assertEqual(len(EVENT_LIST_FIELDS), self.widget.table.columnCount())
-                self.assertEqual(
-                    should_hide, self.widget.table.isColumnHidden(category_col)
-                )
-                self.assertEqual(
-                    should_hide, self.widget.table.isColumnHidden(closed_col)
-                )
+                self.assertFalse(self.widget.table.isColumnHidden(category_col))
+                self.assertFalse(self.widget.table.isColumnHidden(closed_col))
                 self.assertFalse(self.widget.table.isColumnHidden(quality_col))
                 self.assertEqual(
                     "異常類別",
@@ -259,7 +246,7 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
     def test_reset_filters_keeps_current_query_scope(self) -> None:
         assert self.widget.status_combo is not None
         assert self.widget.supplier_filter_input is not None
-        self.widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_ONLY)
+        self.widget.set_event_scope(event_service.EVENT_SCOPE_CLOSED_ONLY)
         self._drain_events()
         self._list_events.reset_mock()
 
@@ -273,9 +260,8 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
 
         self._list_events.assert_called_once()
         filters = self._list_events.call_args.args[0]
-        # reset 後仍維持目前 scope（VISIT_ONLY）。
-        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, self.widget._filter_event_scope)
-        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, filters["event_scope"])
+        self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, self.widget._filter_event_scope)
+        self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, filters["event_scope"])
         self.assertEqual("ALL", filters["status"])
         self.assertEqual("", filters["supplier"])
 
@@ -495,45 +481,6 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertIsNone(self.widget._filter_yyyymm)
         self.assertEqual("待處理", filters["status"])
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, filters["event_scope"])
-
-    def test_apply_quick_filters_overdue_only_sets_lens(self) -> None:
-        self._list_events.reset_mock()
-        self.widget.apply_quick_filters(
-            event_type="ANOMALY",
-            yyyymm="202604",
-            status="待處理",
-            event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-            overdue_only=True,
-        )
-        self._drain_events()
-
-        self._list_events.assert_called_once()
-        filters = self._list_events.call_args.args[0]
-        self.assertIs(True, filters["overdue_only"])
-        self.assertEqual("待處理", filters["status"])
-        self.assertEqual("202604", filters["yyyymm"])
-        self.assertTrue(self.widget._filter_overdue_only)
-        self.assertIn("逾期未結", self.widget.source_tag_label.text())
-
-    def test_manual_filter_change_clears_overdue_lens(self) -> None:
-        self.widget.apply_quick_filters(
-            event_type="ANOMALY",
-            yyyymm="202604",
-            status="待處理",
-            event_scope=event_service.EVENT_SCOPE_ANOMALY_ONLY,
-            overdue_only=True,
-        )
-        self._drain_events()
-        self.assertTrue(self.widget._filter_overdue_only)
-
-        # 手動操作控制列 → 逾期鏡頭解除
-        self.widget._apply_filters_from_ui()
-        self._drain_events()
-
-        self.assertFalse(self.widget._filter_overdue_only)
-        self.assertNotIn("逾期未結", self.widget.source_tag_label.text())
-        filters = self._list_events.call_args.args[0]
-        self.assertNotIn("overdue_only", filters)
 
 
 if __name__ == "__main__":

@@ -6,9 +6,9 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
-from ui.main_window import MainWindow
+from ui.main_window import STATS_PAGE_INDEX, NCR_STATS_PAGE_INDEX, MainWindow
 from ui.theme import apply_app_theme
 from ui.widgets.common_widgets import (
     AnalyticsWorkflowShell,
@@ -45,25 +45,6 @@ class SurfaceUsageStructureTests(unittest.TestCase):
             parent = parent.parentWidget()
         return False
 
-    def test_home_page_contains_flat_workbench_without_panels(self) -> None:
-        home = self.window.home_widget
-        frames = home.findChildren(QFrame)
-        panels = [f for f in frames if f.property("role") == "panel"]
-
-        # Daily cockpit: queue hub + warehouse shortcuts; KPI cards retired.
-        panel_names = {p.objectName() for p in panels}
-        self.assertEqual(0, len(panels))
-        self.assertNotIn("HomeKpiPanel", panel_names)
-        self.assertNotIn("HomeBacklogPanel", panel_names)
-
-        labels = home.findChildren(QLabel)
-        texts = [l.text() for l in labels]
-        self.assertNotIn("快速入口", texts)
-        self.assertIn("供應商事件作業佇列", texts)
-
-        kpi_cards = [f for f in frames if f.property("role") == "kpiCard"]
-        self.assertEqual(0, len(kpi_cards))
-
     def test_query_page_subpanel_structure_and_roles_are_consistent(self) -> None:
         query = self.window.events_widget
         frames = query.findChildren(QFrame)
@@ -86,21 +67,28 @@ class SurfaceUsageStructureTests(unittest.TestCase):
         self.assertIsNotNone(ncr_shell)
 
     def test_create_and_analytics_pages_use_shared_shells(self) -> None:
-        self.assertIsInstance(self.window.new_visit_page.workflow_shell, CreateWorkflowShell)
         self.assertIsInstance(self.window.new_anomaly_page.workflow_shell, CreateWorkflowShell)
-        self.assertIsInstance(
-            self.window.stats_widget.findChild(AnalyticsWorkflowShell),
-            AnalyticsWorkflowShell,
+        self.window._switch_primary_page(STATS_PAGE_INDEX)
+        self.app.processEvents()
+        stats_shell = self.window.stats_widget.workflow_shell
+        self.assertIsInstance(stats_shell, AnalyticsWorkflowShell)
+        self.assertTrue(stats_shell.isVisible())
+        self.window._switch_primary_page(NCR_STATS_PAGE_INDEX)
+        self.app.processEvents()
+        ncr_stats_shell = self.window.ncr_stats_widget.workflow_shell
+        self.assertIsInstance(ncr_stats_shell, AnalyticsWorkflowShell)
+        self.assertTrue(ncr_stats_shell.isVisible())
+        stats_refresh = next(
+            button
+            for button in self.window.stats_widget.findChildren(QPushButton)
+            if button.text() == "重新整理"
         )
-        self.assertIsInstance(
-            self.window.ncr_stats_widget.findChild(AnalyticsWorkflowShell),
-            AnalyticsWorkflowShell,
-        )
+        self.assertTrue(self._is_descendant_of(stats_refresh, stats_shell))
 
     def test_master_data_toolbar_and_tab_host_are_direct_page_siblings(self) -> None:
         master = self.window.master_widget
         self.assertIs(master, master.inline_toolbar.parentWidget())
-        self.assertIs(master, master.tabs.parentWidget())
+        self.assertIs(master, master.content_host.parentWidget())
 
     def test_surface_raised_is_not_used_in_runtime_or_ui_sources(self) -> None:
         raised_widgets = [

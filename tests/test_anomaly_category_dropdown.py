@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 )
 
 import services.event._anomaly_service as _anomaly_service_mod
-import services.event._visit_service as _visit_service_mod
 from services.anomaly_trace_contract import ANOMALY_SOURCE_VISIT_AUDIT
 
 
@@ -63,8 +62,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         )
 
         self.NewAnomalyDialog = self.widget_module.NewAnomalyDialog
-        self.NewVisitDialog = self.widget_module.NewVisitDialog
-        self.category_options = self.widget_module.ANOMALY_CATEGORY_OPTIONS
+        self.category_options = self.widget_module.get_anomaly_category_options()
 
         self._suppliers = [{"id": "sup-1", "supplier_name": "供應商A", "is_active": True}]
 
@@ -110,10 +108,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             patch.object(_anomaly_service_mod, "update_anomaly_closed_at", return_value=None),
             patch.object(_anomaly_service_mod, "update_anomaly", return_value=None),
             patch.object(_anomaly_service_mod, "create_anomaly_with_visit_link", return_value=None),
-            # Sub-module patches for methods called through _visit_service directly
-            patch.object(_visit_service_mod, "get_visit_detail", return_value=None),
-            patch.object(_visit_service_mod, "create_visit", return_value=None),
-            patch.object(_visit_service_mod, "update_visit", return_value=None),
             patch.object(self.widget_module.QMessageBox, "information"),
             patch.object(self.widget_module.QMessageBox, "warning"),
             patch.object(self.widget_module.QMessageBox, "critical"),
@@ -137,12 +131,12 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         self.assertGreaterEqual(idx, 0, msg=f"missing anomaly source option: {source}")
         dialog.anomaly_source_combo.setCurrentIndex(idx)
 
-    def test_category_dropdown_is_editable_and_has_default_options(self) -> None:
+    def test_category_dropdown_is_strict_and_has_default_options(self) -> None:
         dialog = self.NewAnomalyDialog()
         self.addCleanup(dialog.close)
 
         self.assertIsInstance(dialog.category_input, QComboBox)
-        self.assertTrue(dialog.category_input.isEditable())
+        self.assertFalse(dialog.category_input.isEditable())
         options = [
             dialog.category_input.itemText(i) for i in range(dialog.category_input.count())
         ]
@@ -161,19 +155,8 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             if label.property("role") == "sectionTitle"
         }
         self.assertEqual(
-            {"📋 基本資訊", "🔍 問題描述", "📊 風險與參考", "📷 現場照片"},
+            {"📋 基本資訊", "🔍 問題描述", "📷 現場照片"},
             section_titles,
-        )
-
-    def test_sync_visit_hint_is_initialized_with_visible_explanation(self) -> None:
-        dialog = self.NewAnomalyDialog()
-        self.addCleanup(dialog.close)
-
-        visit_date = dialog.date_edit.date().toString("yyyy-MM-dd")
-        self.assertFalse(dialog._sync_visit_hint_label.isHidden())
-        self.assertEqual(
-            f"勾選後將同時建立／重用 {visit_date} 的訪廠紀錄",
-            dialog._sync_visit_hint_label.text(),
         )
 
     def test_quality_report_requirement_must_be_selected_before_submit(self) -> None:
@@ -282,7 +265,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
 
         self.assertEqual("製程參數失控", dialog.category_input.currentText())
 
-    def test_submit_payload_uses_dropdown_or_custom_category_text(self) -> None:
+    def test_submit_payload_rejects_custom_category_text(self) -> None:
         products = [
             {
                 "id": "prd-1",
@@ -291,40 +274,72 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
                 "product_stage": "試產",
             }
         ]
-        for expected in ("外觀不良", "客製分類-XYZ"):
-            captured: dict = {}
+        with patch.object(
+            self.widget_module.event_service,
+            "list_active_products_for_supplier",
+            return_value=products,
+        ):
+            dialog = self.NewAnomalyDialog()
+            self.addCleanup(dialog.close)
+            self._select_supplier(dialog)
+            product_idx = dialog.product_combo.findData("prd-1")
+            self.assertGreaterEqual(product_idx, 0)
+            dialog.product_combo.setCurrentIndex(product_idx)
+            dialog.problem_input.setPlainText("測試問題描述")
+            dialog._populate_category_combo("客製分類-XYZ")
+            self._select_anomaly_source(dialog)
+            dialog.quality_report_no_radio.setChecked(True)
+            _anomaly_service_mod.create_anomaly_with_visit_link.reset_mock()
+            dialog._on_submit()
+        _anomaly_service_mod.create_anomaly_with_visit_link.assert_not_called()
 
-            def _fake_create(payload: dict, _captured: dict = captured) -> dict:
-                _captured.update(payload)
-                return {"anomaly_no": "2026年04月16日 -SN 001", "visit_action": "none"}
+    def test_submit_payload_uses_valid_category_text(self) -> None:
+        products = [
+            {
+                "id": "prd-1",
+                "product_code": "P-001",
+                "product_name": "產品一號",
+                "product_stage": "試產",
+            }
+        ]
+        captured: dict = {}
 
-            with self.subTest(category=expected):
-                with patch.object(
-                    self.widget_module.event_service,
-                    "create_anomaly_with_visit_link",
-                    side_effect=_fake_create,
-                ), patch.object(
-                    _anomaly_service_mod,
-                    "create_anomaly_with_visit_link",
-                    side_effect=_fake_create,
-                ), patch.object(
-                    self.widget_module.event_service,
-                    "list_active_products_for_supplier",
-                    return_value=products,
-                ):
-                    dialog = self.NewAnomalyDialog()
-                    self.addCleanup(dialog.close)
-                    self._select_supplier(dialog)
-                    product_idx = dialog.product_combo.findData("prd-1")
-                    self.assertGreaterEqual(product_idx, 0)
-                    dialog.product_combo.setCurrentIndex(product_idx)
-                    dialog.problem_input.setPlainText("測試問題描述")
-                    dialog.category_input.setCurrentText(expected)
-                    self._select_anomaly_source(dialog)
-                    dialog.quality_report_no_radio.setChecked(True)
-                    dialog._on_submit()
+        def _fake_create(payload: dict, _captured: dict = captured) -> dict:
+            _captured.update(payload)
+            return {"anomaly_no": "2026年04月16日 -SN 001", "visit_action": "none"}
 
-                self.assertEqual(expected, captured.get("category"))
+        with patch.object(
+            self.widget_module.event_service,
+            "create_anomaly_with_visit_link",
+            side_effect=_fake_create,
+        ), patch.object(
+            _anomaly_service_mod,
+            "create_anomaly_with_visit_link",
+            side_effect=_fake_create,
+        ), patch.object(
+            self.widget_module.event_service,
+            "list_active_products_for_supplier",
+            return_value=products,
+        ):
+            dialog = self.NewAnomalyDialog()
+            self.addCleanup(dialog.close)
+            self._select_supplier(dialog)
+            product_idx = dialog.product_combo.findData("prd-1")
+            self.assertGreaterEqual(product_idx, 0)
+            dialog.product_combo.setCurrentIndex(product_idx)
+            dialog.problem_input.setPlainText("測試問題描述")
+            idx = dialog.category_input.findText("外觀不良")
+            if idx < 0:
+                dialog._populate_category_combo("製程參數失控")
+                idx = dialog.category_input.findText("製程參數失控")
+            self.assertGreaterEqual(idx, 0)
+            dialog.category_input.setCurrentIndex(idx)
+            expected = dialog.category_input.currentText()
+            self._select_anomaly_source(dialog)
+            dialog.quality_report_no_radio.setChecked(True)
+            dialog._on_submit()
+
+        self.assertEqual(expected, captured.get("category"))
 
     def test_anomaly_dialog_product_stage_defaults_to_mass_production(self) -> None:
         dialog = self.NewAnomalyDialog()
@@ -413,307 +428,6 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             dialog.problem_input.setPlainText("測試問題描述")
             dialog._on_submit()
         fake_create.assert_not_called()
-
-    def test_anomaly_dialog_prefills_blank_fields_from_same_day_visit(self) -> None:
-        products = [
-            {
-                "id": "prd-1",
-                "product_code": "P-001",
-                "product_name": "產品一號",
-                "product_stage": "試產",
-            }
-        ]
-        same_day_visit = {
-            "id": "visit-1",
-            "visit_date": "2026-04-16",
-            "supplier_id": "sup-1",
-            "product_id": "prd-1",
-            "product_name": "產品一號",
-            "product_stage": "試產",
-            "work_order_no": "WO-200",
-            "production_qty": 200,
-        }
-
-        with patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ), patch.object(
-            self.widget_module.event_service,
-            "get_latest_visit_for_supplier_on_date",
-            return_value=same_day_visit,
-        ), patch.object(
-            _anomaly_service_mod,
-            "get_latest_visit_for_supplier_on_date",
-            return_value=same_day_visit,
-        ):
-            dialog = self.NewAnomalyDialog()
-            self.addCleanup(dialog.close)
-            dialog.date_edit.setDate(QDate(2026, 4, 16))
-            self._select_supplier(dialog)
-
-        self.assertEqual("prd-1", dialog.product_combo.currentData())
-        self.assertEqual("試產", dialog.product_stage_combo.currentText())
-        self.assertEqual("WO-200", dialog.outsource_work_order_input.text())
-        self.assertEqual("200", dialog.batch_qty_input.text())
-        self.assertEqual(
-            "已沿用 2026-04-16 訪廠資料：品名、工單、數量",
-            dialog._same_day_visit_hint_label.text(),
-        )
-        self.assertFalse(dialog._same_day_visit_hint_label.isHidden())
-
-    def test_anomaly_dialog_same_day_prefill_does_not_override_manual_values(self) -> None:
-        products = [
-            {
-                "id": "prd-1",
-                "product_code": "P-001",
-                "product_name": "產品一號",
-                "product_stage": "量產",
-            },
-            {
-                "id": "prd-2",
-                "product_code": "P-002",
-                "product_name": "產品二號",
-                "product_stage": "試產",
-            },
-        ]
-
-        def _same_day_visit(_supplier_id: str, visit_date: str) -> dict:
-            return {
-                "id": f"visit-{visit_date}",
-                "visit_date": visit_date,
-                "supplier_id": "sup-1",
-                "product_id": "prd-1",
-                "product_name": "產品一號",
-                "product_stage": "量產",
-                "work_order_no": f"WO-{visit_date}",
-                "production_qty": 100,
-            }
-
-        with patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ), patch.object(
-            self.widget_module.event_service,
-            "get_latest_visit_for_supplier_on_date",
-            side_effect=_same_day_visit,
-        ):
-            dialog = self.NewAnomalyDialog()
-            self.addCleanup(dialog.close)
-            dialog.date_edit.setDate(QDate(2026, 4, 16))
-            self._select_supplier(dialog)
-            dialog.product_combo.setCurrentIndex(dialog.product_combo.findData("prd-2"))
-            dialog.outsource_work_order_input.setText("WO-MANUAL")
-            dialog.batch_qty_input.setText("333")
-
-            dialog.date_edit.setDate(QDate(2026, 4, 17))
-
-        self.assertEqual("prd-2", dialog.product_combo.currentData())
-        self.assertEqual("試產", dialog.product_stage_combo.currentText())
-        self.assertEqual("WO-MANUAL", dialog.outsource_work_order_input.text())
-        self.assertEqual("333", dialog.batch_qty_input.text())
-
-    def test_anomaly_edit_mode_does_not_trigger_same_day_prefill(self) -> None:
-        with patch.object(
-            self.widget_module.event_service,
-            "get_latest_visit_for_supplier_on_date",
-            return_value={
-                "id": "visit-1",
-                "visit_date": "2026-04-16",
-                "supplier_id": "sup-1",
-                "product_id": "prd-1",
-                "work_order_no": "WO-200",
-                "production_qty": 200,
-            },
-        ) as latest_visit:
-            dialog = self.NewAnomalyDialog(
-                anomaly_id="anomaly-1",
-                initial_data={
-                    "anomaly_no": "20260416001",
-                    "anomaly_date": "2026-04-16",
-                    "supplier_id": "sup-1",
-                    "supplier_name": "供應商A",
-                    "product_id": "",
-                    "outsource_work_order": "",
-                    "batch_qty": 0,
-                },
-            )
-            self.addCleanup(dialog.close)
-
-        latest_visit.assert_not_called()
-
-    def test_visit_dialog_product_stage_defaults_and_submit_payload(self) -> None:
-        captured: dict = {}
-        products = [
-            {
-                "id": "prd-2",
-                "product_code": "V-001",
-                "product_name": "訪廠產品",
-                "product_stage": "試產",
-            }
-        ]
-
-        def _fake_create_visit(payload: dict) -> str:
-            captured.update(payload)
-            return "visit-001"
-
-        with patch.object(
-            self.widget_module.event_service,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            _visit_service_mod,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ):
-            dialog = self.NewVisitDialog()
-            self.addCleanup(dialog.close)
-            self.assertEqual("量產", dialog.product_stage_combo.currentText())
-            self.assertFalse(dialog.product_stage_combo.isEnabled())
-            self._select_supplier(dialog)
-            product_idx = dialog.product_combo.findData("prd-2")
-            self.assertGreaterEqual(product_idx, 0)
-            dialog.product_combo.setCurrentIndex(product_idx)
-            self.assertEqual("試產", dialog.product_stage_combo.currentText())
-            self.assertFalse(dialog.product_stage_combo.isEnabled())
-            dialog._on_submit()
-
-        self.assertEqual("prd-2", captured.get("product_id"))
-        self.assertNotIn("product_stage", captured)
-        self.assertEqual("prd-2", captured["product_sections"][0]["product_id"])
-        self.assertEqual("試產", captured["product_sections"][0]["product_stage"])
-
-    def test_visit_dialog_is_direct_form_without_scroll_or_defect_controls(self) -> None:
-        dialog = self.NewVisitDialog()
-        self.addCleanup(dialog.close)
-
-        self.assertEqual([], dialog.findChildren(QScrollArea))
-        self.assertEqual([], dialog.findChildren(QTabWidget))
-        self.assertFalse(hasattr(dialog, "visit_defect_table"))
-        self.assertFalse(hasattr(dialog, "primary_defect_table"))
-        section_titles = {
-            label.text()
-            for label in dialog.form_content.findChildren(QLabel)
-            if label.property("role") == "sectionTitle"
-        }
-        self.assertEqual(
-            {"📋 基本資訊", "📝 活動摘要"},
-            section_titles,
-        )
-
-    def test_visit_dialog_submits_without_new_defect_notes(self) -> None:
-        captured: dict = {}
-        products = [
-            {
-                "id": "prd-1",
-                "product_code": "P-001",
-                "product_name": "產品一號",
-                "product_stage": "試產",
-            },
-            {
-                "id": "prd-2",
-                "product_code": "P-002",
-                "product_name": "產品二號",
-                "product_stage": "量產",
-            },
-        ]
-
-        def _fake_create_visit(payload: dict) -> str:
-            captured.update(payload)
-            return "visit-001"
-
-        with patch.object(
-            self.widget_module.event_service,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            _visit_service_mod,
-            "create_visit",
-            side_effect=_fake_create_visit,
-        ), patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ):
-            dialog = self.NewVisitDialog()
-            self.addCleanup(dialog.close)
-            self._select_supplier(dialog)
-            product_idx = dialog.product_combo.findData("prd-1")
-            self.assertGreaterEqual(product_idx, 0)
-            dialog.product_combo.setCurrentIndex(product_idx)
-            dialog.time_slot_input.setText("上午")
-            dialog.work_order_input.setText("WO-A")
-            dialog._on_submit()
-
-        self.assertEqual([], captured["defect_notes"])
-        self.assertEqual(1, len(captured["product_sections"]))
-        self.assertEqual("prd-1", captured["product_sections"][0]["product_id"])
-        self.assertEqual("上午", captured["product_sections"][0]["time_slot"])
-        self.assertEqual([], captured["product_sections"][0]["defect_notes"])
-
-    def test_visit_dialog_edit_preserves_hidden_legacy_defect_data(self) -> None:
-        captured: dict = {}
-        products = [
-            {
-                "id": "prd-1",
-                "product_code": "P-001",
-                "product_name": "產品一號",
-                "product_stage": "量產",
-            }
-        ]
-        visit_note = {"id": "note-v", "defect_desc": "訪廠層級歷史缺失"}
-        primary_note = {"id": "note-p", "defect_desc": "主要產品歷史缺失"}
-        extra_section = {
-            "id": "section-2",
-            "product_id": "prd-2",
-            "product_name": "產品二號",
-            "defect_notes": [{"id": "note-e", "defect_desc": "其他產品歷史缺失"}],
-            "sort_order": 1,
-        }
-
-        with patch.object(
-            self.widget_module.event_service,
-            "list_active_products_for_supplier",
-            return_value=products,
-        ), patch.object(
-            _visit_service_mod,
-            "update_visit",
-            side_effect=lambda _visit_id, payload: captured.update(payload),
-        ):
-            dialog = self.NewVisitDialog(
-                visit_id="visit-1",
-                initial_data={
-                    "visit_date": "2026-04-16",
-                    "supplier_id": "sup-1",
-                    "supplier_name": "供應商A",
-                    "product_id": "prd-1",
-                    "product_name": "產品一號",
-                    "product_code": "P-001",
-                    "defect_notes": [visit_note],
-                    "product_sections": [
-                        {
-                            "id": "section-1",
-                            "product_id": "prd-1",
-                            "product_name": "產品一號",
-                            "defect_notes": [primary_note],
-                            "sort_order": 0,
-                        },
-                        extra_section,
-                    ],
-                },
-            )
-            self.addCleanup(dialog.close)
-            dialog.summary_input.set_formatted_text("只更新摘要")
-            dialog._on_submit()
-
-        self.assertEqual([visit_note], captured["defect_notes"])
-        self.assertEqual([primary_note], captured["product_sections"][0]["defect_notes"])
-        self.assertEqual(extra_section, captured["product_sections"][1])
 
     def test_close_anomaly_dialog_preselects_original_category(self) -> None:
         from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog

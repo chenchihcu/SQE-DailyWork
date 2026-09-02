@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from ui.layout_constants import SCROLLBAR_WIDTH
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS, apply_app_theme
-from ui.widgets.common_widgets import EmptyStateWidget
+from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget
 from ui.widgets.stats_view_widget import StatsViewWidget
 
 
@@ -45,7 +45,6 @@ class _DummyMainWindow:
         yyyymm: str | None = None,
         status: str = "ALL",
         event_scope: str | None = None,
-        overdue_only: bool = False,
     ) -> None:
         self.quick_filter_calls.append(
             {
@@ -54,7 +53,6 @@ class _DummyMainWindow:
                 "yyyymm": yyyymm,
                 "status": status,
                 "event_scope": event_scope,
-                "overdue_only": overdue_only,
             }
         )
 
@@ -89,7 +87,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         *,
         month: QDate,
         trend_data: list[dict] | None = None,
-        visit_trend_data: list[dict] | None = None,
         category_pareto_data: list[dict] | None = None,
         main_window: _DummyMainWindow | None = None,
     ) -> tuple[StatsViewWidget, _DummyMainWindow]:
@@ -108,7 +105,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         month_key = month.toString("yyyyMM")
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data or []), \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_trend_data or []), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data or []), \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -221,9 +217,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         trend_data = [
             {"yyyymm": "2026-04", "total_count": 6, "closed_count": 2, "overdue_count": 0, "backlog_count": 4},
         ]
-        visit_data = [
-            {"yyyymm": "2026-04", "visit_count": 2, "visit_anomaly_count": 1},
-        ]
         category_pareto = [
             {"rank": 1, "category": "製程參數失控", "count": 4, "percent": 66.7, "cumulative_percent": 66.7},
             {"rank": 2, "category": "規範文件缺漏", "count": 2, "percent": 33.3, "cumulative_percent": 100.0},
@@ -232,27 +225,32 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             summary,
             month=QDate(2026, 4, 1),
             trend_data=trend_data,
-            visit_trend_data=visit_data,
             category_pareto_data=category_pareto,
         )
 
         self.assertIsNotNone(widget.findChild(QFrame, "StatsFourPhaseChartPanel"))
         self.assertIsNone(widget.findChild(QFrame, "StatsCategoryParetoPanel"))
         self.assertIsNone(widget.findChild(QFrame, "StatsResponsiblePanel"))
-        for row, col in ((0, 0), (0, 1), (1, 0), (1, 1)):
+        for row, col in ((0, 0), (0, 1), (1, 0)):
             item = widget.grid_layout.itemAtPosition(row, col)
             self.assertIsNotNone(item, f"missing phase at {row},{col}")
             assert item is not None
             self.assertIsInstance(item.widget(), QChartView)
+
+        keyword_item = widget.grid_layout.itemAtPosition(2, 0)
+        self.assertIsNotNone(keyword_item)
+        assert keyword_item is not None
+        self.assertIsNotNone(keyword_item.widget())
+        self.assertIsNone(widget.grid_layout.itemAtPosition(1, 1))
 
         titles = {
             chart_view.chart().title()
             for chart_view in widget.findChildren(QChartView)
         }
         self.assertIn("供應商事件處理效率趨勢分析 (2026-04)", titles)
-        self.assertIn("供應商訪廠與訪廠異常趨勢分析 (2026-04)", titles)
         self.assertIn("異常類別柏拉圖分析 (2026-04)", titles)
         self.assertIn("責任人事件統計 (已結案 vs 未結案)", titles)
+        self.assertFalse(any("訪廠" in title for title in titles))
         self.assertFalse(hasattr(widget, "insight_label"))
 
     def test_stats_command_row_is_flat_and_source_scope_is_in_tooltip(self) -> None:
@@ -260,7 +258,10 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         page_layout = widget.layout()
         assert page_layout is not None
         command_item = page_layout.itemAt(0)
-        self.assertIsInstance(command_item.layout(), QHBoxLayout)
+        command_shell = command_item.widget()
+        self.assertIsInstance(command_shell, AnalyticsWorkflowShell)
+        assert command_shell is not None
+        self.assertIsInstance(command_shell.layout(), QHBoxLayout)
         self.assertEqual("供應商事件", widget.source_tag_label.text())
         self.assertIn("已結案紀錄", widget.source_tag_label.toolTip())
 
@@ -529,7 +530,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         with (
             patch("services.event._query_service.get_monthly_stats", return_value=summary),
             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data),
-            patch("services.event._query_service.get_visit_trend_by_range", return_value=[]),
             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats),
             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[
                 {"rank": 1, "category": "超長異常類別名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ", "count": 10, "percent": 50.0, "cumulative_percent": 50.0},
@@ -581,7 +581,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         }
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]) as mock_trend, \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]) as mock_visit, \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]) as mock_resp, \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]) as mock_category, \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -597,7 +596,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
 
         expected_window = ("2025-01-01", "2025-03-31")
         self.assertEqual(expected_window, tuple(mock_trend.call_args.args))
-        self.assertEqual(expected_window, tuple(mock_visit.call_args.args))
         self.assertEqual(("2025-01-01", "2025-03-31"), tuple(mock_resp.call_args.args))
         self.assertEqual(("2025-01-01", "2025-03-31"), tuple(mock_category.call_args.args))
         self.assertEqual("2025-01 至 2025-03", widget._range_text())
@@ -612,7 +610,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         }
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -627,7 +624,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         with (
             patch("services.event._query_service.get_monthly_stats", return_value={}),
             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]),
-            patch("services.event._query_service.get_visit_trend_by_range", return_value=[]),
             patch(
                 "services.event._query_service.get_responsible_person_stats_by_range",
                 side_effect=RuntimeError("service unavailable"),
@@ -655,7 +651,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         }
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -687,7 +682,6 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         }
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -742,7 +736,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
         mock_hide.assert_called_once()
 
     def test_all_chart_builders_adhere_to_typography_hierarchy(self) -> None:
-        """驗證所有統計圖表（責任人、柏拉圖、趨勢圖、訪廠圖）之字型設定均符合階層規範。"""
+        """驗證統計圖表（責任人、柏拉圖、趨勢圖）之字型設定均符合階層規範。"""
         widget, _host = self._build_widget(
             summary={"anomaly_count": 0, "visit_count": 0, "closed_anomaly_count": 0, "open_anomaly_count": 0},
             month=QDate(2026, 10, 1),
@@ -800,22 +794,7 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 self.assertEqual(9, axis.titleFont().pointSize())
                 self.assertTrue(axis.titleFont().bold())
 
-        # 4. 訪廠圖
-        visit_rows = [
-            {"yyyymm": "2026-08", "visit_count": 3, "visit_anomaly_count": 1},
-            {"yyyymm": "2026-09", "visit_count": 4, "visit_anomaly_count": 2},
-        ]
-        visit_view = widget._build_visit_trend_chart(visit_rows)
-        self.assertIsNotNone(visit_view)
-        visit_chart = visit_view.chart()
-        self.assertEqual(11, visit_chart.titleFont().pointSize())
-        self.assertTrue(visit_chart.titleFont().bold())
-        self.assertEqual(8, visit_chart.legend().font().pointSize())
-        for axis in visit_chart.axes():
-            self.assertEqual(9, axis.labelsFont().pointSize())
-            if axis.titleText():
-                self.assertEqual(9, axis.titleFont().pointSize())
-                self.assertTrue(axis.titleFont().bold())
+        self.assertFalse(hasattr(widget, "_build_visit_trend_chart"))
 
 
 if __name__ == "__main__":

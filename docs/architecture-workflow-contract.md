@@ -11,7 +11,7 @@ shared master-data area.
 | Area | Tables | Source | Writes Allowed From | Must Not Write |
 | --- | --- | --- | --- | --- |
 | Shared master data | `suppliers`, `products` | Company product and supplier master data | Manual master-data dialogs; ERP/Excel master import | Supplier events, visit/audit defect notes, warehouse defect records |
-| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `case_actions`, `action_verifications`, `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_hypotheses`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs`; legacy rollback snapshots: `anomaly_actions`, `corrective_actions`, `effectiveness_verifications` | Supplier visits, audits, legacy visit defect notes, and confirmed supplier abnormal events | Visit/audit dialogs for visits; explicit conversion for persisted defect notes; Action writes through `_case_action_service`; remaining workbench CRUD through `_anomaly_workbench_service` | `defect_records`; post-migration writes to legacy Action tables |
+| Supplier event management | `visits`, `visit_product_sections`, `visit_defect_notes`, `anomalies`, `case_actions`, `action_verifications`, `case_action_legacy_map`, `anomaly_analysis_notes`, `anomaly_root_causes`, `anomaly_hypotheses`, `anomaly_attachments`, `anomaly_eight_d_reviews`, `anomaly_audit_logs`; legacy rollback snapshots: `anomaly_actions`, `corrective_actions`, `effectiveness_verifications` | Legacy supplier visits, audits, visit defect notes, and confirmed supplier abnormal events; visit product UI is retired | `NewAnomalyDialog` / `EventCreatePage`; `AnomalyManagementPage` workbench; Action writes through `_case_action_service`; remaining workbench CRUD through `_anomaly_workbench_service`; repository visit CRUD is test/script opt-in only | `defect_records`; post-migration writes to legacy Action tables; product visit dialogs or visit INSERT |
 | Warehouse physical nonconforming-product management | `defect_records` | Physical items in the nonconforming-product warehouse | Embedded warehouse tracker only | `visits`, `visit_defect_notes`, `anomalies` (and all anomaly sub-tables) |
 | Import audit | `import_batches`, `import_batch_rows` | ERP/Excel import runs | Import services | Workflow data rows |
 
@@ -83,33 +83,37 @@ shared master-data area.
     documented in `docs/exec-plans/completed/2026-08-26-phase2-items-14-19-mapping.md`
     (design-derived).
 
-1. `visit_defect_notes` remains a compatible supplier-event store for existing
-   visit or audit notes. The current `NewVisitDialog` preserves those notes on
-   edit but does not expose a new-note editor or a separate `登錄訪廠缺失` entry.
-2. A persisted visit or audit defect becomes a formal supplier abnormal event
-   only through an explicit confirmation path that writes `anomalies.visit_id`.
-3. Visit or audit defects must never be inserted into `defect_records`.
-4. Warehouse nonconforming-product records describe physical inventory items and
+1. **Visit product line retirement (legacy schema only):** `visits`,
+   `visit_product_sections`, `visit_defect_notes`, and nullable `anomalies.visit_id`
+   remain for existing data; `visit_defect_notes` rows are read-only compatible.
+   Product UI does not expose visit create/edit/preview dialogs, defect-note
+   editors, visit event scopes, visit statistics/export paths, Supplier 360 visit
+   tabs, visit linking controls, or a separate `登錄訪廠缺失` entry. Do not infer new
+   visit defect notes from warehouse records. Repository visit CRUD and
+   `sync_visit=True` are test/script opt-in only. See
+   `docs/exec-plans/completed/retire-visit-product-line.md`.
+2. Visit or audit defects must never be inserted into `defect_records`.
+3. Warehouse nonconforming-product records describe physical inventory items and
    must never become supplier events without a separate, explicit event record.
-5. ERP/Excel master imports update only shared master data plus import audit
+4. ERP/Excel master imports update only shared master data plus import audit
    rows. They must not create visits, anomalies, visit defect notes, or warehouse
    defect records.
-6. Warehouse pending workflow split is data-backed by
+5. Warehouse pending workflow split is data-backed by
    `defect_records.processing_line`, not by labels, hidden UI filters,
    `category`, or `return_slip_type`. Runtime values are `原物料`, `委外加工`, and
    migrated/cleanup-only `未分流`. New and edited rows must save as `原物料` or
    `委外加工`; existing rows default to `未分流` until a user classifies them.
-7. `defect_records.supplier_id` is a nullable read-model relationship to the
+6. `defect_records.supplier_id` is a nullable read-model relationship to the
    shared `suppliers.id`. It is backfilled only by exact supplier-name matches;
    unmatched legacy rows remain NULL. This relationship supports supplier 360
    projections but does not merge warehouse records into supplier-event tables,
    statistics, or exports.
-8. Supplier 360 is a read-only aggregation over `anomalies`, `visits`, and
-   `defect_records`. Every projected row keeps its source label and source
-   identifier. The NCR-to-anomaly action is an explicit user action and records
-   `anomalies.source_defect_no` for traceability; it does not mutate or delete
-   the originating warehouse record.
-9. Repeat Issue similarity is supplier-event scoped only. Canonical storage is
+7. Supplier 360 is a read-only aggregation over `anomalies` and
+   `defect_records`. Legacy `visits` rows are not exposed in product UI. Every
+   projected row keeps its source label and source identifier. The NCR-to-anomaly
+   action is an explicit user action and records `anomalies.source_defect_no` for
+   traceability; it does not mutate or delete the originating warehouse record.
+8. Repeat Issue similarity is supplier-event scoped only. Canonical storage is
    `anomaly_repeat_links` (directed `anomaly_id` → `peer_anomaly_id` with
    deterministic `similarity_score` and newline-delimited `match_reasons`).
    Scoring SSOT is `repeat_issue_scoring.py`; refresh runs per supplier on
@@ -117,11 +121,12 @@ shared master-data area.
    workbench `RepeatIssuesPanel` and Supplier 360 `repeat_flagged_anomaly_count`
    are read-only projections over this index. Warehouse `defect_records` are not
    indexed for repeat similarity.
-10. Manager View is a supplier-event operational read model only. Canonical
-   projections are `list_manager_summary_rows()` (overview SSOT quality columns)
-   and `list_operational_action_queue()` (open canonical `case_actions`). The
-   `ManagerViewPage` is separate from event query/list scope chips and does not
-   merge warehouse NCR rows.
+9. Manager View is a supplier-event operational read model only. Canonical
+   projection for the manager summary table is `list_manager_summary_rows()`
+   (overview SSOT quality columns). The open-action operational queue uses
+   `list_operational_action_queue()` on the sidebar `處置項目` page, not inside
+   `ManagerViewPage`. The manager page is separate from event query/list scope
+   chips and does not merge warehouse NCR rows.
 
 ## Supplier Anomaly Quality-Report Requirement
 
@@ -131,17 +136,28 @@ shared master-data area.
   backfilling or guessing historical values.
 - `NewAnomalyDialog` requires an explicit 是／否 selection before a new or
   edited anomaly can be saved. Read-only preview preserves the stored state.
-- `EventListWidget` displays 「品質異常單要求」 for every supplier-event scope:
-  anomaly rows show 是／否／未設定 from `quality_report_required`, while pure
-  visit rows show 不適用 because they do not own a formal anomaly row.
-- Supplier-event Excel detail output is split by the authoritative
-  `event_type`: `VISIT` rows go to `訪廠` and `ANOMALY` rows go to `異常`.
-  The removed combined sheet `異常事件明細` must not be recreated by filtering
-  or relabeling a mixed dataset. The `異常` sheet exports 是／否／未設定 for
-  「品質異常單要求」 and keeps raw 「異常類別」 separate from 「原因分類」;
-  the visit sheet omits anomaly-only fields. This split supports downstream
-  filtering without changing existing charts, summary totals, supplier
-  ranking, or warehouse NCR reports.
+- `EventListWidget` displays 「品質異常單要求」 for supplier-event anomaly rows:
+  是／否／未設定 from `quality_report_required`. Visit product UI is retired; legacy
+  `visits` rows remain in SQLite only.
+- Supplier-event Excel detail output lists anomaly rows only (`類型` = `異常`).
+  Legacy visit rows are not exported through product paths. The `異常` sheet exports
+  是／否／未設定 for 「品質異常單要求」 and keeps raw 「異常類別」 separate from 「原因分類」.
+
+## Supplier Anomaly Category and Source Lexicons
+
+- `ui_settings.supplier_event.anomaly_categories.v1` stores the user-maintainable
+  anomaly category list used by `NewAnomalyDialog`, appearance default category,
+  and service-layer validation. The form is strict: categories must come from the
+  lexicon or remain blank (`未分類` in statistics).
+- `ui_settings.supplier_event.anomaly_sources.v1` stores anomaly source entries
+  with stable `id`, display `label`, and per-source ERP trace visibility/required
+  field sets. `anomalies.anomaly_source` persists the label text.
+- Both lexicons are maintained from **顯示設定 → 表單與業務** alongside the SMT
+  process keyword library. Deleting a lexicon item is blocked when existing
+  `anomalies` rows still reference that label.
+- `anomaly_trace_contract.normalize_anomaly_source()` and trace-field helpers
+  resolve against the saved source lexicon, with legacy label mapping retained for
+  older rows.
 
 ## Supplier Anomaly SMT Process Keywords
 
@@ -155,7 +171,9 @@ shared master-data area.
 
 ## Supplier Anomaly ERP Trace Numbers
 
-- `anomalies.anomaly_source` is one of six persisted values:
+- `anomalies.anomaly_source` persists a label from the user-maintainable source
+  lexicon (`ui_settings.supplier_event.anomaly_sources.v1`). Built-in defaults
+  mirror the former six-value set:
   `原物料進貨（IQC）`、`廠內製令`、`委外加工`、`委外進貨`、`訪廠／稽核`、`其他`.
 - Trace-number columns on `anomalies` are:
   `material_receipt_no`、`internal_work_order_no`、`outsource_work_order`,
@@ -174,10 +192,9 @@ shared master-data area.
 
 - Every successfully created `anomalies` row gets a working folder under
   `Outputs/ncr number file/` named `<供應商名稱><異常單號>`.
-- The same rule applies to standalone anomalies, anomalies linked or
-  synchronized to a visit, and legacy visit defect notes explicitly confirmed
-  as formal supplier anomalies. Creating a visit or a lightweight visit defect
-  note alone does not create this folder.
+- The same rule applies to standalone anomalies and legacy rows that already
+  carry `anomalies.visit_id` from schema history. Creating a visit or visit
+  defect note alone does not create this folder; visit product UI is retired.
 - Folder creation is idempotent. Windows-invalid filename characters in the
   supplier-name component are replaced with `_`; the stored supplier name and
   anomaly number are never changed.
@@ -186,8 +203,9 @@ shared master-data area.
   `src/services/event/_anomaly_markdown.py`; absent scalar values remain as
   empty strings and `attachments` remains an explicit list. Attachment entries
   contain both filename and caption.
-- The service layer overwrites the YAML snapshot after create, edit, visit-link
-  update, close, closure-date adjustment, reopen, and attachment mutations.
+- The service layer overwrites the YAML snapshot after create, edit, legacy
+  `visit_id` linkage updates (repository opt-in only), close, closure-date
+  adjustment, reopen, and attachment mutations.
   SQLite and the attachment store remain authoritative; the Markdown file is a
   synchronized operational snapshot, not a second writable data source.
 
@@ -195,29 +213,35 @@ shared master-data area.
 
 - The app has one daily desktop shell: `main.py` with `src/ui/main_window.py`.
 - The sidebar grouping expresses workflow structure, not data ownership: four
-  domain group headers (text labels) — 供應商事件, 倉庫不合格品, 供應商管理, 系統 — organize
-  首頁 plus supplier-event create/query/operational-queue/statistics pages; 倉庫不合格品 holds 建立不合格品 /
-  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 供應商管理 holds 供應商總覽 / 基礎資料;
-  系統 holds 顯示設定. The four supplier-event scopes (單獨異常 / 訪廠發現異常 /
-  訪廠紀錄 / 已結案) are page-local scope chips on the single 事件管理 page, not
-  first-class sidebar rows. Three additional supplier-event sidebar rows expose
-  operational queues (逾期未結 / 待根本原因 / 進行中處置) backed by
-  `manager_view_repository.get_supplier_event_queue_counts`; they are case- or
-  action-granularity worklists, not a union of all open anomalies.
+  domain group headers (text labels) — 供應商事件, 倉庫不合格品, 資料庫設定, 系統 — organize
+  supplier-event create/query/operational-queue/statistics pages; 倉庫不合格品 holds 建立不合格品 /
+  待處理委外加工 / 待處理原物料 / 歷史紀錄 / 不合格品統計分析; 資料庫設定 holds 供應商總覽 /
+  原物料供應商 / 委外加工 / 原物料 / 半成品/成品（後四項為並排雙欄導覽，分「供應商主檔」「料號主檔」兩組 pill 標籤底色；UI 標籤 SSOT 見 `sidebar_nav.py`）
+  (`PAGE_MASTER_RAW_SUPPLIER` … `PAGE_MASTER_SEMI_FINISHED`; legacy `PAGE_MASTER` → raw supplier);
+  系統 holds 顯示設定 as a lazy-loaded full page in the main content stack. Supplier-event query scopes are page-local chips on the single 事件查詢 page (單獨異常 / 已結案), not
+  first-class sidebar rows. The consolidated **作業佇列** sidebar row hosts four
+  operational chips (逾期案件 / 根因待查 / 處置項目 / 案件總覽) backed by
+  `get_supplier_event_queue_counts` and embedded queue/manager views; legacy
+  PAGE_KEY aliases (`PAGE_EVENT_OVERDUE`, `PAGE_EVENT_ROOT_CAUSE`,
+  `PAGE_EVENT_OPEN_ACTIONS`, `PAGE_MANAGER_VIEW`) route to the same stack index
+  and force the matching chip. The retired home hub and sidebar `首頁` row are not
+  product navigation.
 - The sidebar emits `nav_activated(action)` (`("page", PAGE_KEY)` or
   `("scope", EVENT_SCOPE_*)`); `MainWindow._PAGE_KEY_TO_INDEX` maps PAGE_KEY to the
   stack index, so the sidebar stays decoupled from stack indexes.
-- Sidebar page indexes and stack routing append three supplier-event queue pages
-  after `MANAGER_VIEW_PAGE_INDEX` (`逾期未結` / `待根本原因` / `進行中處置`).
-  Earlier indexes (`0 首頁 / 1 事件管理 / 2 異常事件統計 / 3 建立不合格品 …`) are unchanged;
-  `ncr.embed.NCR_PAGE_OFFSET` is not shifted. When indexes change, update the
-  index constants, legacy aliases (`ANOMALY/VISIT/CLOSED_PAGE_INDEX`),
-  `ncr.embed.NCR_PAGE_OFFSET`, and the affected tests in the same change.
-- Supplier-event sidebar badges: `事件管理` remains the unscoped open-anomaly
-  total; the three queue badges use the same WHERE clauses as their list pages
-  (`count_overdue_open_anomalies`, `count_root_cause_pending_open_anomalies`,
-  `count_open_operational_actions`). Opening the anomaly workbench from a queue
-  row keeps that queue highlighted in the sidebar (`source_page_key`).
+- Stack index `0` remains a retired ghost placeholder; `EVENT_OPS_PAGE_INDEX`
+  follows `SUPPLIER_360_PAGE_INDEX`, and `APPEARANCE_SETTINGS_PAGE_INDEX` is appended
+  after it. Earlier indexes (`1` 事件查詢 / `2` 異常事件統計 / `3` 建立不合格品 …)
+  are unchanged; `ncr.embed.NCR_PAGE_OFFSET` is not shifted.
+  When indexes change, update the index constants, legacy aliases
+  (`EVENT_CREATE_ANOMALY_PAGE_INDEX`), `_PAGE_KEY_TO_INDEX`,
+  `ncr.embed.NCR_PAGE_OFFSET`, and the
+  affected tests in the same change.
+- Supplier-event sidebar badges: `事件查詢` remains the unscoped open-anomaly
+  total. Operational queue counts (`逾期案件`, `根因待查`, `處置項目`) display on
+  **作業佇列** page chips via `get_supplier_event_queue_counts` (COUNT=LIST); the
+  作業佇列 sidebar row has no badge. Opening the anomaly workbench from a queue
+  row keeps the ops page active with the matching chip (`source_page_key`).
 - Warehouse nonconforming-product tracking stays under the embedded `src/ncr/`
   workflow and exposes create, two formal pending processing-line pages, and
   history as first-class shell pages. The old generic pending route may only be
@@ -260,7 +284,7 @@ shared master-data area.
   annotate each anomaly row with the overview card fields so every consumer
   (table, dashboard cards, export) sees the same numbers.
 - Excel 異常 detail sheet appends the parity columns (`逾期`, `目前處置`,
-  `進行中處置數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`,
+  `處置項目數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`,
   `原因假設數`, `已採納假設`, `重複警示`) after the existing legacy fields.
   Range Excel may add a「原因假設」sheet with up to 12 embedded hypothesis-tree
   PNGs when `export_include_charts` is enabled. Event PDF and Markdown snapshots
@@ -268,7 +292,7 @@ shared master-data area.
   `overdue`, not `anomalies.due_date` alone. Manager view Excel and supplier
   quarterly reports are separate supplier-event exports and must not merge NCR rows.
 - VISIT rows are intentionally not enriched; only ANOMALY rows own the workbench
-  sub-tables and the parity rules.
+  sub-tables and the parity rules. Product event query no longer lists VISIT rows.
 - `list_anomaly_analysis_notes` and hypothesis evidence-chain attachment badges
   use live `anomaly_attachments` COUNT by `related_note_id`; do not trust stored
   `anomaly_analysis_notes.attachment_count`.
@@ -344,9 +368,9 @@ After each change, verify:
   The shell writes only `appearance.preferences.v5`, a strict JSON payload with 27 typed fields across 5 domain tabs:
   1. **外觀主題 (Appearance & Theme)**: `density` (`compact` / `standard` / `comfortable`), `sidebar_density` (`compact` / `standard`), `accent_color` (`electric_blue` / `slate_navy` / `emerald` / `amber`), `text_scale` (`standard` / `large`), and `contrast_mode` (`standard` / `high`).
   2. **視覺表格與互動 (Visual, Tables & Interaction)**: `table_density` (`compact` / `standard` / `comfortable`), `alternating_row_colors` (`bool`), `table_grid_lines` (`bool`), `table_page_limit` (`25` / `50` / `100` / `0`), `enable_animations` (`bool`), `table_double_click_action` (`menu` / `preview` / `edit`), `search_mode` (`live` / `manual`), `stats_default_span_months` (`3` / `6` / `12`), and `pareto_show_cutoff_line` (`bool`).
-  3. **表單業務預設 (Form & Business Defaults)**: `default_responsible_person` (`str`), `default_anomaly_category` (`str`), `default_sync_visit` (`bool`), `default_due_days` (`7` / `14` / `30`), and `default_visit_time_slot` (`上午` / `下午` / `全天`).
+  3. **表單業務預設 (Form & Business Defaults)**: `default_responsible_person` (`str`), `default_anomaly_category` (`str`), `default_due_days` (`7` / `14` / `30`). Visit-create preference fields (`default_sync_visit`, `default_visit_type`, `default_visit_time_slot`) were removed in v10; legacy v9 JSON still loads with those keys ignored.
   4. **匯出與報告 (Export & Reports)**: `default_export_dir` (`str`), `export_completion_action` (`open_file` / `open_folder` / `notify_only`), `report_organization_header` (`str`), and `export_include_charts` (`bool`).
-  5. **系統與備份 (System & Backup)**: `default_startup_page` (`home` / `events` / `defects` / `stats`), `auto_backup_prompt` (`bool`), `backup_retention_count` (`5` / `10` / `20` / `30`), and `confirm_on_delete` (`bool`).
+  5. **系統與備份 (System & Backup)**: `default_startup_page` (`events` / `defects` / `stats`; legacy `home` migrates to `events`), `auto_backup_prompt` (`bool`), `backup_retention_count` (`5` / `10` / `20` / `30`), and `confirm_on_delete` (`bool`).
 - Valid legacy `appearance.preferences.v1`, `v2`, `v3`, and `v4` payloads map in memory to v5 defaults for newly added fields; missing, malformed, unknown-key, or unknown-value payloads resolve to the default profile without rewriting stored data.
 - This preference never changes core event, warehouse, statistics, export, or navigation data. Existing NCR keys, including `defect_list_columns`, remain compatibility-owned by the NCR module.
 

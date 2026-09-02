@@ -4,6 +4,7 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -14,6 +15,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OPTIONS,
+    normalize_supplier_category,
+)
 from services.event import _supplier_service as event_service
 from ui.layout_constants import (
     DIALOG_OUTER_MARGINS,
@@ -43,10 +48,14 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         *,
         initial_data: dict | None = None,
         is_edit: bool = False,
+        default_category: str | None = None,
     ):
         super().__init__(parent)
         self._initial_data = initial_data or {}
         self._is_edit = is_edit
+        self._default_category = normalize_supplier_category(
+            default_category or self._initial_data.get("category")
+        )
         self.setModal(True)
         self.setWindowTitle("編輯供應商" if self._is_edit else "新增供應商")
         self.setMinimumWidth(460)
@@ -55,6 +64,7 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         self._apply_initial_data()
         self._init_dirty_tracking([
             self.supplier_name_input.textChanged,
+            self.category_combo.currentIndexChanged,
             self.contact_name_input.textChanged,
             self.department_input.textChanged,
             self.phone_input.textChanged,
@@ -75,6 +85,9 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         self.supplier_name_input = QLineEdit()
         self.supplier_name_input.setPlaceholderText("輸入供應商名稱")
         self.supplier_name_input.setAccessibleName("供應商名稱")
+        self.category_combo = QComboBox()
+        self.category_combo.addItems(list(SUPPLIER_CATEGORY_OPTIONS))
+        self.category_combo.setAccessibleName("供應商類別")
         self.contact_name_input = QLineEdit()
         self.contact_name_input.setPlaceholderText("主聯絡人姓名")
         self.contact_name_input.setAccessibleName("主聯絡人姓名")
@@ -108,6 +121,7 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
             contact_layout.addWidget(self.btn_manage_contacts)
 
         form.addRow(RequiredFieldLabel("供應商名稱"), self.supplier_name_input)
+        form.addRow("供應商類別", self.category_combo)
         form.addRow(
             make_paired_form_row(
                 "SupplierContactDeptRow",
@@ -155,6 +169,12 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
         self.supplier_name_input.setText(
             str(self._initial_data.get("supplier_name") or "")
         )
+        category = normalize_supplier_category(
+            self._initial_data.get("category") or self._default_category
+        )
+        index = self.category_combo.findText(category)
+        if index >= 0:
+            self.category_combo.setCurrentIndex(index)
         self.contact_name_input.setText(str(self._initial_data.get("contact_name") or ""))
         self.department_input.setText(str(self._initial_data.get("department") or ""))
         self.phone_input.setText(str(self._initial_data.get("phone") or ""))
@@ -200,6 +220,7 @@ class SupplierFormDialog(DirtyTrackingMixin, QDialog):
     def payload(self) -> dict:
         return {
             "supplier_name": self.supplier_name_input.text().strip(),
+            "category": normalize_supplier_category(self.category_combo.currentText()),
             "contact_name": self.contact_name_input.text().strip(),
             "department": self.department_input.text().strip(),
             "phone": self.phone_input.text().strip(),

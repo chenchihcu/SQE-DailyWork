@@ -8,7 +8,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from ui.widgets.master_data_widget import MasterDataWidget
+from database.product_item_category import MASTER_SEMI_FINISHED_CATEGORIES
+from database.supplier_category import SUPPLIER_CATEGORY_RAW_MATERIAL
+from ui.widgets.master_data_widget import MasterDataProductPage, MasterDataSupplierPage
 
 
 class _DummyMainWindow:
@@ -20,7 +22,6 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -50,6 +51,7 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
                 "product_code": "P-100",
                 "product_name": "Panel A",
                 "product_stage": "量產",
+                "item_category": "半成品",
                 "supplier_name": "Alpha Electronics",
                 "supplier_id": "sup-1",
                 "secondary_supplier_name": "Beta Tech",
@@ -67,18 +69,32 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
         )
         self._list_suppliers_patch.start()
         self._list_products_patch.start()
-        self.widget = MasterDataWidget(_DummyMainWindow())
-        self.widget.show()
+        host = _DummyMainWindow()
+        self.supplier_widget = MasterDataSupplierPage(
+            host,
+            SUPPLIER_CATEGORY_RAW_MATERIAL,
+            page_label="原物料供應商",
+            lazy_load=False,
+        )
+        self.product_widget = MasterDataProductPage(
+            host,
+            MASTER_SEMI_FINISHED_CATEGORIES,
+            page_label="半成品/成品",
+            lazy_load=False,
+        )
+        self.supplier_widget.show()
+        self.product_widget.show()
         self.app.processEvents()
 
     def tearDown(self) -> None:
-        self.widget.close()
+        self.supplier_widget.close()
+        self.product_widget.close()
         self.app.processEvents()
         self._list_products_patch.stop()
         self._list_suppliers_patch.stop()
 
     def test_toggle_supplier_cancels_when_confirmation_is_no(self) -> None:
-        self.widget._selected_supplier_id = "sup-1"
+        self.supplier_widget._selected_supplier_id = "sup-1"
         with (
             patch(
                 "ui.widgets.master_data_supplier_mixin.QMessageBox.question",
@@ -86,11 +102,11 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
             ),
             patch("ui.widgets.master_data_supplier_mixin.event_service.set_supplier_active") as toggle_mock,
         ):
-            self.widget._toggle_supplier_active()
+            self.supplier_widget._toggle_supplier_active()
         toggle_mock.assert_not_called()
 
     def test_toggle_product_calls_service_after_confirmation(self) -> None:
-        self.widget._selected_product_id = "prd-1"
+        self.product_widget._selected_product_id = "prd-1"
         with (
             patch(
                 "ui.widgets.master_data_product_mixin.QMessageBox.question",
@@ -99,13 +115,13 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
             patch("ui.widgets.master_data_product_mixin.event_service.set_product_active") as toggle_mock,
             patch("ui.widgets.master_data_product_mixin.QMessageBox.information"),
         ):
-            self.widget._toggle_product_active()
+            self.product_widget._toggle_product_active()
         toggle_mock.assert_called_once_with("prd-1", False)
 
     def test_batch_delete_suppliers_requires_delete_keyword(self) -> None:
         with (
             patch.object(
-                self.widget,
+                self.supplier_widget,
                 "_selected_table_ids",
                 return_value=["sup-1", "sup-2"],
             ),
@@ -120,14 +136,14 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
             patch("ui.widgets.master_data_supplier_mixin.event_service.delete_suppliers") as delete_mock,
             patch("ui.widgets.master_data_supplier_mixin.QMessageBox.warning") as warning_mock,
         ):
-            self.widget._delete_selected_suppliers()
+            self.supplier_widget._delete_selected_suppliers()
         delete_mock.assert_not_called()
         warning_mock.assert_called()
 
     def test_batch_delete_suppliers_runs_after_delete_keyword(self) -> None:
         with (
             patch.object(
-                self.widget,
+                self.supplier_widget,
                 "_selected_table_ids",
                 return_value=["sup-1", "sup-2"],
             ),
@@ -145,7 +161,7 @@ class MasterDataSafetyConfirmationsTests(unittest.TestCase):
             ) as delete_mock,
             patch("ui.widgets.master_data_supplier_mixin.QMessageBox.information"),
         ):
-            self.widget._delete_selected_suppliers()
+            self.supplier_widget._delete_selected_suppliers()
         delete_mock.assert_called_once_with(["sup-1", "sup-2"])
 
 

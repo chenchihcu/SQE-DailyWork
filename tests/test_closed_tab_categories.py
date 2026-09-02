@@ -13,8 +13,6 @@ from ui.widgets.defect_list_widget import EventListWidget
 class _DummyMainWindow:
     def refresh_all_views(self) -> None:
         return
-    def open_new_visit_dialog(self) -> None:
-        return
     def open_new_anomaly_dialog(self) -> None:
         return
 
@@ -60,14 +58,12 @@ class ClosedTabCategoriesTests(unittest.TestCase):
 
         self.assertIsNone(widget.event_scope_tab_bar)
 
-        # EVENT_QUERY_SCOPE_TABS 仍是 scope metadata 單一真相（4 個 scope）。
+        # EVENT_QUERY_SCOPE_TABS 仍是 scope metadata 單一真相（2 個 scope）。
         from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
         scopes = [scope for _label, scope, _t in EVENT_QUERY_SCOPE_TABS]
         self.assertEqual(
             [
                 event_service.EVENT_SCOPE_ANOMALY_ONLY,
-                event_service.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-                event_service.EVENT_SCOPE_VISIT_ONLY,
                 event_service.EVENT_SCOPE_CLOSED_ONLY,
             ],
             scopes,
@@ -77,8 +73,6 @@ class ClosedTabCategoriesTests(unittest.TestCase):
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, widget._filter_event_scope)
 
         # set_event_scope 可切到任一 scope（保留既有 supplier / 月份篩選）。
-        widget.set_event_scope(event_service.EVENT_SCOPE_VISIT_ONLY)
-        self.assertEqual(event_service.EVENT_SCOPE_VISIT_ONLY, widget._filter_event_scope)
         widget.set_event_scope(event_service.EVENT_SCOPE_CLOSED_ONLY)
         self.assertEqual(event_service.EVENT_SCOPE_CLOSED_ONLY, widget._filter_event_scope)
         self.assertEqual("已結案", widget._filter_status)

@@ -23,11 +23,11 @@ from ui.layout_constants import (
     CASE_QUEUE_RESPONSIBLE_WIDTH,
     CASE_QUEUE_SUPPLIER_WIDTH,
     CONTROL_ROW_SPACING,
-    MANAGER_ACTION_QUEUE_ANOMALY_NO_WIDTH,
-    MANAGER_ACTION_QUEUE_DUE_DATE_WIDTH,
-    MANAGER_ACTION_QUEUE_STATUS_WIDTH,
-    MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-    MANAGER_ACTION_QUEUE_TYPE_WIDTH,
+    OPERATIONAL_ACTION_QUEUE_ANOMALY_NO_WIDTH,
+    OPERATIONAL_ACTION_QUEUE_DUE_DATE_WIDTH,
+    OPERATIONAL_ACTION_QUEUE_STATUS_WIDTH,
+    OPERATIONAL_ACTION_QUEUE_SUPPLIER_WIDTH,
+    OPERATIONAL_ACTION_QUEUE_TYPE_WIDTH,
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
 )
@@ -51,15 +51,15 @@ from ui.widgets.common_widgets import (
 QueueKind = Literal["overdue", "root_cause", "open_actions"]
 
 _QUEUE_SCOPE_TEXT = {
-    "overdue": "逾期未結（待處理異常，不限月份）",
-    "root_cause": "待根本原因（待處理異常，尚未開始或調查中，不限月份）",
-    "open_actions": "進行中處置（待處理異常的已規劃／執行中處置，不限月份）",
+    "overdue": "逾期案件（待處理異常，處置到期日已過，不限月份）",
+    "root_cause": "根因待查（待處理異常，尚未開始或調查中，不限月份）",
+    "open_actions": "處置項目（待處理異常的已規劃／執行中處置列，不限月份）",
 }
 
 _QUEUE_EMPTY_TEXT = {
-    "overdue": ("目前沒有逾期未結異常", "所有待處理異常皆在期限內，或尚無待處理項目。"),
-    "root_cause": ("目前沒有待調查根本原因", "所有待處理異常皆已完成根本原因調查。"),
-    "open_actions": ("目前沒有進行中處置", "尚無已規劃或執行中的處置項目。"),
+    "overdue": ("目前沒有逾期案件", "所有待處理異常的處置皆在期限內，或尚無待處理項目。"),
+    "root_cause": ("目前沒有根因待查案件", "所有待處理異常皆已完成根本原因調查。"),
+    "open_actions": ("目前沒有處置項目", "尚無已規劃或執行中的處置列。"),
 }
 
 
@@ -70,43 +70,49 @@ class SupplierEventQueuePage(QWidget):
         *,
         queue: QueueKind,
         page_key: str,
+        embedded: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.main_window = main_window
         self.queue = queue
         self.page_key = page_key
+        self._embedded = embedded
         self._rows: list[dict] = []
         self._build_ui()
         self.refresh_data()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(*PAGE_OUTER_MARGINS)
+        if self._embedded:
+            root.setContentsMargins(0, 0, 0, 0)
+        else:
+            root.setContentsMargins(*PAGE_OUTER_MARGINS)
         root.setSpacing(CONTROL_ROW_SPACING)
 
-        shell = QueryWorkflowShell()
-        shell_layout = QVBoxLayout(shell)
-        shell_layout.setContentsMargins(*PANEL_MARGINS)
-        shell_layout.setSpacing(CONTROL_ROW_SPACING)
+        if not self._embedded:
+            shell = QueryWorkflowShell()
+            shell_layout = QVBoxLayout(shell)
+            shell_layout.setContentsMargins(*PANEL_MARGINS)
+            shell_layout.setSpacing(CONTROL_ROW_SPACING)
 
-        self._scope_label = QLabel(f"目前佇列：{_QUEUE_SCOPE_TEXT[self.queue]}")
-        self._scope_label.setProperty("role", "helperText")
-        self._scope_label.setWordWrap(True)
-        shell_layout.addWidget(self._scope_label)
-        root.addWidget(shell)
+            self._scope_label = QLabel(f"目前佇列：{_QUEUE_SCOPE_TEXT[self.queue]}")
+            self._scope_label.setProperty("role", "helperText")
+            self._scope_label.setWordWrap(True)
+            shell_layout.addWidget(self._scope_label)
+            root.addWidget(shell)
 
         if self.queue == "open_actions":
             columns = OPERATIONAL_ACTION_QUEUE_COLUMNS
             widths = (
-                MANAGER_ACTION_QUEUE_ANOMALY_NO_WIDTH,
-                MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-                MANAGER_ACTION_QUEUE_TYPE_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_ANOMALY_NO_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_SUPPLIER_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_TYPE_WIDTH,
                 None,
-                MANAGER_ACTION_QUEUE_SUPPLIER_WIDTH,
-                MANAGER_ACTION_QUEUE_DUE_DATE_WIDTH,
-                MANAGER_ACTION_QUEUE_STATUS_WIDTH,
-                MANAGER_ACTION_QUEUE_STATUS_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_SUPPLIER_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_DUE_DATE_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_STATUS_WIDTH,
+                OPERATIONAL_ACTION_QUEUE_STATUS_WIDTH,
             )
             object_name = "SupplierEventOpenActionsQueueTable"
             affordance = "點擊處置列開啟對應案件工作台"

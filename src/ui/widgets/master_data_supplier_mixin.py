@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from database.supplier_category import normalize_supplier_category
 from services.event import _supplier_service as event_service
 from ui.layout_constants import CONTROL_ROW_SPACING, TAB_CONTENT_TOP_MARGIN
 from ui.popup_i18n import localize_exception, localize_popup_message
@@ -128,9 +129,9 @@ class _MasterDataSupplierMixin:
         layout.setSpacing(8)
 
         self.supplier_table = QTableWidget()
-        self.supplier_table.setColumnCount(6)
+        self.supplier_table.setColumnCount(7)
         self.supplier_table.setHorizontalHeaderLabels(
-            ["供應商", "聯絡人", "部門", "電子郵件", "電話/行動", "狀態"]
+            ["供應商", "供應商類別", "聯絡人", "部門", "電子郵件", "電話/行動", "狀態"]
         )
         style_table(self.supplier_table, single_selection=False)
         _sup_header = self.supplier_table.horizontalHeader()
@@ -140,11 +141,13 @@ class _MasterDataSupplierMixin:
         _sup_header.setSectionResizeMode(2, _sup_header.ResizeMode.Interactive)
         _sup_header.setSectionResizeMode(3, _sup_header.ResizeMode.Interactive)
         _sup_header.setSectionResizeMode(4, _sup_header.ResizeMode.Interactive)
-        _sup_header.setSectionResizeMode(5, _sup_header.ResizeMode.ResizeToContents)
-        self.supplier_table.setColumnWidth(1, 110)
-        self.supplier_table.setColumnWidth(2, 100)
-        self.supplier_table.setColumnWidth(3, 180)
-        self.supplier_table.setColumnWidth(4, 140)
+        _sup_header.setSectionResizeMode(5, _sup_header.ResizeMode.Interactive)
+        _sup_header.setSectionResizeMode(6, _sup_header.ResizeMode.ResizeToContents)
+        self.supplier_table.setColumnWidth(1, 115)
+        self.supplier_table.setColumnWidth(2, 110)
+        self.supplier_table.setColumnWidth(3, 100)
+        self.supplier_table.setColumnWidth(4, 180)
+        self.supplier_table.setColumnWidth(5, 140)
         apply_table_action_affordance(
             self.supplier_table,
             "點擊供應商列開啟管理動作；Ctrl/Shift 可多選後批次刪除",
@@ -195,13 +198,17 @@ class _MasterDataSupplierMixin:
                 self.supplier_table.insertRow(idx)
                 status_text = "啟用" if row["is_active"] else "停用"
                 self.supplier_table.setItem(idx, 0, text_table_item(row["supplier_name"], empty=""))
-                self.supplier_table.setItem(idx, 1, text_table_item(row.get("contact_name", ""), empty=""))
-                self.supplier_table.setItem(idx, 2, text_table_item(row.get("department", ""), empty=""))
-                self.supplier_table.setItem(idx, 3, text_table_item(row.get("contact_email", ""), empty=""))
+                category_text = normalize_supplier_category(row.get("category"))
+                self.supplier_table.setItem(
+                    idx, 1, text_table_item(category_text, empty="", sort_key=category_text)
+                )
+                self.supplier_table.setItem(idx, 2, text_table_item(row.get("contact_name", ""), empty=""))
+                self.supplier_table.setItem(idx, 3, text_table_item(row.get("department", ""), empty=""))
+                self.supplier_table.setItem(idx, 4, text_table_item(row.get("contact_email", ""), empty=""))
                 phone_str = str(row.get("phone", "") or "")
-                self.supplier_table.setItem(idx, 4, text_table_item(phone_str, empty=""))
+                self.supplier_table.setItem(idx, 5, text_table_item(phone_str, empty=""))
                 status_item = create_status_item(status_text, sort_key=status_text)
-                self.supplier_table.setItem(idx, 5, status_item)
+                self.supplier_table.setItem(idx, 6, status_item)
                 self.supplier_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
                 if row["id"] == selected_supplier_id:
                     selected_row_index = idx
@@ -288,7 +295,12 @@ class _MasterDataSupplierMixin:
     def _open_supplier_dialog(
         self, *, initial_data: dict | None, is_edit: bool
     ) -> dict | None:
-        dialog = SupplierFormDialog(self, initial_data=initial_data, is_edit=is_edit)
+        dialog = SupplierFormDialog(
+            self,
+            initial_data=initial_data,
+            is_edit=is_edit,
+            default_category=getattr(self, "_supplier_category", None),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.payload()

@@ -76,18 +76,6 @@ class BriefPdfExportTests(unittest.TestCase):
             "improvement_desc": "",
         }
 
-    def test_brief_visit_html_contains_basic_fields(self) -> None:
-        html = event_pdf_exporter.build_brief_event_pdf_html(
-            self._visit_row(),
-            self._visit_detail(),
-            exported_at=datetime(2026, 5, 30, 10, 30, 0),
-        )
-
-        self.assertIn("供應商訪廠精簡報告", html)
-        self.assertIn("振順豐", html)
-        self.assertIn("SQE_張三", html)
-        self.assertNotIn("技轉項目", html)  # 確保技轉明細表格在精簡版中被移除
-
     def test_brief_anomaly_html_contains_basic_fields(self) -> None:
         html = event_pdf_exporter.build_brief_event_pdf_html(
             self._anomaly_row(),

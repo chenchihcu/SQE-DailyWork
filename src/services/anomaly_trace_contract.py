@@ -72,33 +72,52 @@ LEGACY_ANOMALY_SOURCE_MAP: Final[dict[str, str]] = {
     "訪廠發現": ANOMALY_SOURCE_VISIT_AUDIT,
 }
 
+PROCESSING_LINE_SOURCE_HINT_IDS: Final[dict[str, str]] = {
+    "原物料": "material_incoming",
+    "委外加工": "outsource_processing",
+}
+
+# Backward-compatible static label hints (runtime uses processing_line_source_hint).
 PROCESSING_LINE_SOURCE_HINTS: Final[dict[str, str]] = {
     "原物料": ANOMALY_SOURCE_MATERIAL_INCOMING,
     "委外加工": ANOMALY_SOURCE_OUTSOURCE_PROCESSING,
 }
 
 
+def _preset_service():
+    from services import anomaly_source_preset_service as svc
+
+    return svc
+
+
 def normalize_anomaly_source(value: object) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    if text in ANOMALY_SOURCE_OPTIONS:
-        return text
-    return LEGACY_ANOMALY_SOURCE_MAP.get(text, "")
+    svc = _preset_service()
+    labels = {label.casefold(): label for label in svc.all_source_labels()}
+    direct = labels.get(text.casefold())
+    if direct:
+        return direct
+    legacy = LEGACY_ANOMALY_SOURCE_MAP.get(text, "")
+    if legacy:
+        legacy_match = labels.get(legacy.casefold())
+        return legacy_match or legacy
+    return ""
 
 
 def visible_trace_fields_for_source(source: object) -> frozenset[str]:
     normalized = normalize_anomaly_source(source)
     if not normalized:
         return frozenset()
-    return SOURCE_VISIBLE_TRACE_FIELDS.get(normalized, frozenset())
+    return _preset_service().visible_trace_fields(normalized)
 
 
 def required_trace_fields_for_source(source: object) -> frozenset[str]:
     normalized = normalize_anomaly_source(source)
     if not normalized:
         return frozenset()
-    return SOURCE_REQUIRED_TRACE_FIELDS.get(normalized, frozenset())
+    return _preset_service().required_trace_fields(normalized)
 
 
 def hidden_trace_fields_for_source(source: object) -> frozenset[str]:
@@ -123,4 +142,7 @@ def extract_trace_values(payload: object) -> dict[str, str]:
 
 
 def processing_line_source_hint(processing_line: object) -> str:
-    return PROCESSING_LINE_SOURCE_HINTS.get(str(processing_line or "").strip(), "")
+    source_id = PROCESSING_LINE_SOURCE_HINT_IDS.get(str(processing_line or "").strip(), "")
+    if not source_id:
+        return ""
+    return _preset_service().label_for_source_id(source_id)

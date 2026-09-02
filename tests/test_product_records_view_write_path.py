@@ -247,7 +247,7 @@ class ProductRecordsViewWritePathTests(unittest.TestCase):
         supplier_id = self.conn.execute(
             """
             INSERT INTO suppliers(id, supplier_name, category, is_active, created_at, updated_at)
-            VALUES ('supplier-existing', 'Existing Supplier', '正式供應商', 1, '2026-06-25', '2026-06-25')
+            VALUES ('supplier-existing', 'Existing Supplier', '原物料供應商', 1, '2026-06-25', '2026-06-25')
             RETURNING id
             """
         ).fetchone()["id"]
@@ -274,7 +274,7 @@ class ProductRecordsViewWritePathTests(unittest.TestCase):
         row = self.conn.execute(
             "SELECT category FROM suppliers WHERE id = 'supplier-existing'"
         ).fetchone()
-        self.assertEqual(str(row["category"]), "正式供應商")
+        self.assertEqual(str(row["category"]), "原物料供應商")
 
     def test_inactive_products_hidden_from_view(self) -> None:
         self.conn.execute(

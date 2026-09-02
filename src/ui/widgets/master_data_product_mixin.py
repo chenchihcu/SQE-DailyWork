@@ -141,23 +141,40 @@ class _MasterDataProductMixin:
         layout.setSpacing(8)
 
         self.product_table = QTableWidget()
-        self.product_table.setColumnCount(6)
-        self.product_table.setHorizontalHeaderLabels(
-            ["料號", "品名", "階段", "主供應商", "次要供應商", "狀態"]
-        )
+        show_category = getattr(self, "_show_item_category_column", False)
+        column_count = 7 if show_category else 6
+        headers = ["料號", "品名", "階段", "主供應商", "次要供應商", "狀態"]
+        if show_category:
+            headers = ["料號", "品名", "料號類別", "階段", "主供應商", "次要供應商", "狀態"]
+        self.product_table.setColumnCount(column_count)
+        self.product_table.setHorizontalHeaderLabels(headers)
         style_table(self.product_table)
         _prod_header = self.product_table.horizontalHeader()
         _prod_header.setStretchLastSection(False)
-        _prod_header.setSectionResizeMode(0, _prod_header.ResizeMode.Interactive)
-        _prod_header.setSectionResizeMode(1, _prod_header.ResizeMode.Stretch)
-        _prod_header.setSectionResizeMode(2, _prod_header.ResizeMode.Interactive)
-        _prod_header.setSectionResizeMode(3, _prod_header.ResizeMode.Interactive)
-        _prod_header.setSectionResizeMode(4, _prod_header.ResizeMode.Interactive)
-        _prod_header.setSectionResizeMode(5, _prod_header.ResizeMode.ResizeToContents)
-        self.product_table.setColumnWidth(0, 150)
-        self.product_table.setColumnWidth(2, 70)
-        self.product_table.setColumnWidth(3, 140)
-        self.product_table.setColumnWidth(4, 140)
+        if show_category:
+            _prod_header.setSectionResizeMode(0, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(1, _prod_header.ResizeMode.Stretch)
+            _prod_header.setSectionResizeMode(2, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(3, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(4, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(5, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(6, _prod_header.ResizeMode.ResizeToContents)
+            self.product_table.setColumnWidth(0, 150)
+            self.product_table.setColumnWidth(2, 90)
+            self.product_table.setColumnWidth(3, 70)
+            self.product_table.setColumnWidth(4, 140)
+            self.product_table.setColumnWidth(5, 140)
+        else:
+            _prod_header.setSectionResizeMode(0, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(1, _prod_header.ResizeMode.Stretch)
+            _prod_header.setSectionResizeMode(2, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(3, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(4, _prod_header.ResizeMode.Interactive)
+            _prod_header.setSectionResizeMode(5, _prod_header.ResizeMode.ResizeToContents)
+            self.product_table.setColumnWidth(0, 150)
+            self.product_table.setColumnWidth(2, 70)
+            self.product_table.setColumnWidth(3, 140)
+            self.product_table.setColumnWidth(4, 140)
         apply_table_action_affordance(
             self.product_table,
             "點擊產品列開啟編輯、停用、刪除或階段紀錄動作",
@@ -211,15 +228,43 @@ class _MasterDataProductMixin:
                 self.product_table.insertRow(idx)
                 status_text = "啟用" if row["is_active"] else "停用"
                 product_stage = normalize_product_stage_ui(row.get("product_stage"))
+                item_category = str(row.get("item_category") or "")
                 primary_supplier_text = row.get("supplier_name") or "（未指定）"
                 secondary_supplier_text = row.get("secondary_supplier_name") or "（未指定）"
-                self.product_table.setItem(idx, 0, SortableTableWidgetItem(row["product_code"], sort_key=str(row["product_code"] or "")))
-                self.product_table.setItem(idx, 1, text_table_item(row["product_name"]))
-                self.product_table.setItem(idx, 2, SortableTableWidgetItem(product_stage, sort_key=product_stage))
-                self.product_table.setItem(idx, 3, text_table_item(primary_supplier_text))
-                self.product_table.setItem(idx, 4, text_table_item(secondary_supplier_text))
+                col = 0
+                self.product_table.setItem(
+                    idx,
+                    col,
+                    SortableTableWidgetItem(
+                        row["product_code"],
+                        sort_key=str(row["product_code"] or ""),
+                    ),
+                )
+                col += 1
+                self.product_table.setItem(idx, col, text_table_item(row["product_name"]))
+                col += 1
+                if getattr(self, "_show_item_category_column", False):
+                    self.product_table.setItem(
+                        idx,
+                        col,
+                        SortableTableWidgetItem(
+                            item_category,
+                            sort_key=item_category,
+                        ),
+                    )
+                    col += 1
+                self.product_table.setItem(
+                    idx,
+                    col,
+                    SortableTableWidgetItem(product_stage, sort_key=product_stage),
+                )
+                col += 1
+                self.product_table.setItem(idx, col, text_table_item(primary_supplier_text))
+                col += 1
+                self.product_table.setItem(idx, col, text_table_item(secondary_supplier_text))
+                col += 1
                 status_item = create_status_item(status_text, sort_key=status_text)
-                self.product_table.setItem(idx, 5, status_item)
+                self.product_table.setItem(idx, col, status_item)
                 self.product_table.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row["id"])
                 if row["id"] == selected_product_id:
                     selected_row_index = idx
@@ -303,6 +348,8 @@ class _MasterDataProductMixin:
             self,
             initial_data=initial_data,
             is_edit=is_edit,
+            fixed_item_category=self._fixed_item_category(),
+            allow_item_category_choice=self._allow_item_category_choice(),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None

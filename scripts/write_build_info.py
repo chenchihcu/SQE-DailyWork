@@ -1,7 +1,9 @@
-"""Write src/build_info.py with git commit and build timestamp."""
+"""Write build metadata JSON without mutating tracked application source."""
 
 from __future__ import annotations
 
+import argparse
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -40,37 +42,51 @@ def _dirty_worktree(repo_root: Path) -> bool:
         return False
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Destination build-info.json path inside the staged onedir tree.",
+    )
+    return parser.parse_args(argv)
+
+
+def _package_version(module_name: str) -> str:
+    try:
+        module = __import__(module_name)
+        return str(getattr(module, "__version__", "unknown"))
+    except (ImportError, AttributeError):
+        return "unknown"
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     repo_root = _repo_root()
-    target = repo_root / "src" / "build_info.py"
+    sys.path.insert(0, str(repo_root / "src"))
+    from app_version import __version__
+
     commit = _git_commit(repo_root)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     dirty = _dirty_worktree(repo_root)
 
-    content = f'''"""Build-time metadata for release traceability.
-
-``scripts/write_build_info.py`` regenerates this file during packaging.
-Development checkouts keep the placeholder values below.
-"""
-
-from __future__ import annotations
-
-__git_commit__ = "{commit}"
-__build_timestamp__ = "{timestamp}"
-__dirty_worktree__ = {dirty!r}
-
-
-def build_label() -> str:
-    """Return a compact label suitable for logs and about dialogs."""
-    parts = [__git_commit__]
-    if __build_timestamp__:
-        parts.append(__build_timestamp__)
-    if __dirty_worktree__:
-        parts.append("dirty")
-    return " ".join(part for part in parts if part)
-'''
-    target.write_text(content, encoding="utf-8")
-    print(f"Wrote build metadata: commit={commit} dirty={dirty}")
+    payload = {
+        "version": __version__,
+        "git_commit": commit,
+        "build_timestamp": timestamp,
+        "dirty_worktree": dirty,
+        "python_version": sys.version.split()[0],
+        "pyside6_version": _package_version("PySide6"),
+        "pyinstaller_version": _package_version("PyInstaller"),
+    }
+    target = args.output.resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Wrote build metadata JSON: {target} commit={commit} dirty={dirty}")
     return 0
 
 

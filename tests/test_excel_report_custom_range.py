@@ -219,25 +219,8 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             mock_pareto.assert_called_once_with("2026-06-01", "2026-06-30")
 
             self.assertNotIn("異常事件明細", workbook.sheetnames)
-            self.assertIn("訪廠", workbook.sheetnames)
+            self.assertNotIn("訪廠", workbook.sheetnames)
             self.assertIn("異常", workbook.sheetnames)
-
-            visit_sheet = workbook["訪廠"]
-            self.assertEqual(
-                [
-                    "日期",
-                    "責任人",
-                    "供應商",
-                    "問題/摘要",
-                    "狀態",
-                ],
-                [visit_sheet.cell(row=1, column=col).value for col in range(1, 6)],
-            )
-            self.assertEqual(2, visit_sheet.max_row)
-            self.assertEqual(
-                ["2026-06-15", "未指定", "供應商B", "例行訪廠交流", "已完成"],
-                [visit_sheet.cell(row=2, column=col).value for col in range(1, 6)],
-            )
 
             anomaly_sheet = workbook["異常"]
             self.assertEqual(
@@ -262,7 +245,7 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "改善說明",
                     "逾期",
                     "目前處置",
-                    "進行中處置數",
+                    "處置項目數",
                     "根本原因狀態",
                     "改善措施狀態",
                     "有效性驗證",
@@ -313,10 +296,12 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             )
             self.assertEqual("否", anomaly_sheet.cell(row=3, column=17).value)
             self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=17).value)
-            self.assertEqual(
-                    len(mock_list_events.return_value),
-                    (visit_sheet.max_row - 1) + (anomaly_sheet.max_row - 1),
-                )
+            anomaly_count = sum(
+                1
+                for row in mock_list_events.return_value
+                if row.get("event_type") == "ANOMALY"
+            )
+            self.assertEqual(anomaly_count, anomaly_sheet.max_row - 1)
 
     def test_list_events_by_range_unmocked_db_export(self) -> None:
         base_tmp_dir = Path("scratch")

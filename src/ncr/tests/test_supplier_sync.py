@@ -1,10 +1,13 @@
 import unittest
 import sqlite3
 
-# Run with PYTHONPATH='src;.' (same as tests/ and scripts/verify.ps1) so
-# `import ncr.*` resolves — no manual sys.path patching (audit finding C6).
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
 from ncr.db import database, crud
 from ncr.services import defect_service, product_service, supplier_service
+
 
 class TestSupplierSync(unittest.TestCase):
     def setUp(self):
@@ -45,7 +48,7 @@ class TestSupplierSync(unittest.TestCase):
         defect_service.create_defect(self.conn, defect_data)
         
         # Check if supplier was added to supplier_records
-        suppliers = crud.get_suppliers(self.conn, "正式供應商")
+        suppliers = crud.get_suppliers(self.conn, SUPPLIER_CATEGORY_RAW_MATERIAL)
         names = [s["name"] for s in suppliers]
         self.assertIn("New Supplier A", names)
 
@@ -76,7 +79,7 @@ class TestSupplierSync(unittest.TestCase):
         defect_service.update_defect(self.conn, defect_id, defect_data)
         
         # Check if updated supplier was added
-        suppliers = crud.get_suppliers(self.conn, "正式供應商")
+        suppliers = crud.get_suppliers(self.conn, SUPPLIER_CATEGORY_RAW_MATERIAL)
         names = [s["name"] for s in suppliers]
         self.assertIn("Updated Supplier C", names)
 
@@ -96,11 +99,11 @@ class TestSupplierSync(unittest.TestCase):
         supplier_service.bulk_sync_suppliers_from_all_defects(self.conn)
         
         # Check formal
-        formal = [s["name"] for s in crud.get_suppliers(self.conn, "正式供應商")]
+        formal = [s["name"] for s in crud.get_suppliers(self.conn, SUPPLIER_CATEGORY_RAW_MATERIAL)]
         self.assertIn("Bulk Supplier X", formal)
         
         # Check outsource
-        outsource = [s["name"] for s in crud.get_suppliers(self.conn, "委外供應商")]
+        outsource = [s["name"] for s in crud.get_suppliers(self.conn, SUPPLIER_CATEGORY_OUTSOURCE_FACTORY)]
         self.assertIn("Bulk Outsource Y", outsource)
 
     def test_bulk_product_sync_uses_latest_name_per_item_no(self):

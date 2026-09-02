@@ -12,33 +12,28 @@ logger = logging.getLogger(__name__)
 from services import event_pdf_exporter
 
 from . import _anomaly_service
-from . import _visit_service
+from ._anomaly_markdown import OVERVIEW_FIELDS
 from ._helpers import _month_now
 from . import _query_service
+
+_OVERVIEW_LABELS = dict(OVERVIEW_FIELDS)
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QImage
 
 
-def _event_pdf_payload(row: dict) -> tuple[dict, dict | None]:
+def _event_pdf_payload(row: dict) -> dict:
     event_id = str(row.get("event_id") or "").strip()
     if not event_id:
         raise ValueError("Event id is required")
     event_type = str(row.get("event_type") or "").strip().upper()
-    if event_type == "VISIT":
-        return _visit_service.get_visit_detail(event_id), None
-    if event_type == "ANOMALY":
-        detail = _anomaly_service.get_anomaly_detail(event_id)
-        linked_visit_id = str(
-            row.get("linked_visit_id") or detail.get("visit_id") or ""
-        ).strip()
-        linked_visit = _visit_service.get_visit_detail(linked_visit_id) if linked_visit_id else None
-        return detail, linked_visit
-    raise ValueError("Event type is required")
+    if event_type != "ANOMALY":
+        raise ValueError("Event type is required")
+    return _anomaly_service.get_anomaly_detail(event_id)
 
 
 def default_event_pdf_filename(row: dict) -> str:
-    detail, _linked_visit = _event_pdf_payload(row)
+    detail = _event_pdf_payload(row)
     return event_pdf_exporter.default_event_pdf_filename(row, detail)
 
 
@@ -53,8 +48,8 @@ def _run_event_pdf_export(
     """Shared payload-resolve → delegate → exception-to-(False, msg) wrapper
     for the full/brief PDF export entry points (audit finding D17)."""
     try:
-        detail, linked_visit = _event_pdf_payload(row)
-        return delegate(path, row, detail, linked_visit=linked_visit)
+        detail = _event_pdf_payload(row)
+        return delegate(path, row, detail)
     except Exception as exc:
         logger.exception(failure_log)
         return False, f"{failure_prefix}{exc}"
@@ -83,11 +78,10 @@ def export_brief_event_pdf(path: str, row: dict) -> tuple[bool, str]:
 def render_brief_event_image(row: dict) -> "QImage | None":
     """將精簡報告渲染為 QImage 供 LINE 剪貼簿圖片傳送。"""
     try:
-        detail, linked_visit = _event_pdf_payload(row)
+        detail = _event_pdf_payload(row)
         return event_pdf_exporter.render_brief_event_to_image(
             row,
             detail,
-            linked_visit=linked_visit,
         )
     except Exception:
         logger.exception("渲染精簡報告圖片失敗")
@@ -287,11 +281,9 @@ def export_events_report(
             _query_service.get_anomaly_process_keyword_pareto_by_range(start_date, end_date)
         )
         total_anomalies = totals["total_anomalies"]
-        total_visits = totals["total_visits"]
         closed_anomalies = totals["closed_anomalies"]
         open_anomalies = totals["open_anomalies"]
         close_rate = totals["close_rate"]
-        anomaly_visit_ratio = totals["anomaly_visit_ratio"]
         supplier_coverage = totals["supplier_coverage"]
         closure_activity_count = _query_service.get_anomaly_closure_activity_by_range(
             start_date, end_date
@@ -370,10 +362,9 @@ def export_events_report(
 
         report_sheet.cell(row=5, column=1, value=f"期間新增異常: {total_anomalies} 件").font = STYLE_FONT
         report_sheet.cell(row=5, column=1).alignment = ALIGN_CENTER
-        report_sheet.cell(row=5, column=2, value=f"總訪廠件數: {total_visits} 件").font = STYLE_FONT
+        report_sheet.merge_cells("B5:C5")
+        report_sheet.cell(row=5, column=2, value=f"供應商涵蓋: {supplier_coverage} 家").font = STYLE_FONT
         report_sheet.cell(row=5, column=2).alignment = ALIGN_CENTER
-        report_sheet.cell(row=5, column=3, value=f"異常/訪廠比: {anomaly_visit_ratio:.2f}").font = STYLE_FONT
-        report_sheet.cell(row=5, column=3).alignment = ALIGN_CENTER
 
         # KPI 卡片二 (E4:G5)
         report_sheet.merge_cells("E4:G4")
@@ -397,9 +388,8 @@ def export_events_report(
         if temp_chart_paths and include_charts:
             chart_placements = [
                 ("trend", "A7"),
-                ("visit_anomaly", "I7"),
+                ("category_pareto", "I7"),
                 ("responsible", "A23"),
-                ("category_pareto", "I23"),
                 ("process_keyword_pareto", "A39"),
             ]
             for key, cell in chart_placements:
@@ -513,22 +503,7 @@ def export_events_report(
                 sheet.row_dimensions[r_idx].height = 20
             _auto_fit(sheet)
 
-        visit_rows = [row for row in events if row.get("event_type") == "VISIT"]
         anomaly_rows = [row for row in events if row.get("event_type") == "ANOMALY"]
-
-        _build_event_detail_sheet(
-            "訪廠",
-            ["日期", "責任人", "供應商", "問題/摘要", "狀態"],
-            visit_rows,
-            lambda row: [
-                row.get("event_date", ""),
-                str(row.get("responsible_person") or "").strip() or "未指定",
-                row.get("supplier_name", ""),
-                row.get("content", ""),
-                row.get("status", ""),
-            ],
-            {1, 2},
-        )
 
         def _anomaly_detail_row(row):
             from services.process_keyword_codec import format_process_keywords_display
@@ -602,16 +577,16 @@ def export_events_report(
                 "確認事項 / 待追蹤",
                 "品質異常單要求",
                 "改善說明",
-                "逾期",
-                "目前處置",
-                "進行中處置數",
-                "根本原因狀態",
-                "改善措施狀態",
-                "有效性驗證",
-                "附件數",
-                "原因假設數",
-                "已採納假設",
-                "重複警示",
+                _OVERVIEW_LABELS["overdue"],
+                _OVERVIEW_LABELS["current_action_text"],
+                _OVERVIEW_LABELS["open_action_count"],
+                _OVERVIEW_LABELS["root_cause_status"],
+                _OVERVIEW_LABELS["corrective_action_status"],
+                _OVERVIEW_LABELS["verification_result"],
+                _OVERVIEW_LABELS["attachment_count"],
+                _OVERVIEW_LABELS["hypothesis_count"],
+                _OVERVIEW_LABELS["hypothesis_adopted"],
+                _OVERVIEW_LABELS["repeat_link_count"],
                 "狀態",
                 "結案日期",
             ],
@@ -704,7 +679,7 @@ def export_events_report(
         rank_sheet = workbook.create_sheet("供應商排行榜")
         rank_sheet.views.sheetView[0].showGridLines = True
 
-        rank_headers = ["排名", "供應商", "期間新增異常", "訪廠次數", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
+        rank_headers = ["排名", "供應商", "期間新增異常", "其中目前已結案", "其中目前未結案", "目前結案率(%)"]
         rank_sheet.append(rank_headers)
         for col_idx in range(1, len(rank_headers) + 1):
             cell = rank_sheet.cell(row=1, column=col_idx)
@@ -719,7 +694,6 @@ def export_events_report(
                 r_idx - 1,
                 row.get("supplier_name", ""),
                 row.get("anomaly_count", 0),
-                row.get("visit_count", 0),
                 row.get("closed_anomaly_count", 0),
                 row.get("open_anomaly_count", 0),
                 f"{row.get('close_rate_pct', 0.0):.1f}%"
@@ -748,7 +722,7 @@ def export_events_report(
             rank_sheet.cell(row=total_row_idx, column=1, value="合計").font = STYLE_FONT_BOLD
             rank_sheet.cell(row=total_row_idx, column=1).alignment = ALIGN_CENTER
 
-            for c_idx in (3, 4, 5, 6):
+            for c_idx in (3, 4, 5):
                 col_letter = get_column_letter(c_idx)
                 sum_formula = f"=SUM({col_letter}2:{col_letter}{total_row_idx - 1})"
                 cell = rank_sheet.cell(row=total_row_idx, column=c_idx, value=sum_formula)
@@ -757,10 +731,10 @@ def export_events_report(
                 cell.number_format = "#,##0"
 
             # 總體結案率公式 = 總已結案數 / 總異常件數
-            total_closed_cell = f"E{total_row_idx}"
+            total_closed_cell = f"D{total_row_idx}"
             total_anomaly_cell = f"C{total_row_idx}"
             rate_formula = f"=IF({total_anomaly_cell}>0, {total_closed_cell}/{total_anomaly_cell}, 0)"
-            rate_cell = rank_sheet.cell(row=total_row_idx, column=7, value=rate_formula)
+            rate_cell = rank_sheet.cell(row=total_row_idx, column=6, value=rate_formula)
             rate_cell.font = STYLE_FONT_BOLD
             rate_cell.alignment = ALIGN_RIGHT
             rate_cell.number_format = "0.0%"

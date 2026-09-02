@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -17,6 +18,7 @@ from ncr.models.labels import (
     VALIDATION_REQUIRED,
 )
 from ncr.ui.defect_form import DefectFieldsWidget, DefectFormWidget
+from ui.appearance_preferences import AppearancePreferences
 
 
 class DefectFormFieldResetGroupsTests(unittest.TestCase):
@@ -40,6 +42,12 @@ class DefectFormFieldResetGroupsTests(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         apply_schema(self.conn, with_version=True)
+        self._prefs_patch = patch(
+            "services.appearance_preferences_service.load_application_preferences",
+            return_value=AppearancePreferences(),
+        )
+        self._prefs_patch.start()
+        self.addCleanup(self._prefs_patch.stop)
 
     def tearDown(self) -> None:
         self.conn.close()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,10 +13,37 @@ from scripts import button_audit_report as audit
 
 
 class ButtonAuditReportTests(unittest.TestCase):
+    def test_import_does_not_mutate_database_routing_environment(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        code = (
+            "import os; "
+            "os.environ.pop('SQE_TESTING', None); "
+            "os.environ.pop('SQE_REQUIRE_DISPOSABLE_DB', None); "
+            "import scripts.button_audit_report; "
+            "print(os.environ.get('SQE_TESTING')); "
+            "print(os.environ.get('SQE_REQUIRE_DISPOSABLE_DB'))"
+        )
+
+        completed = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(["None", "None"], completed.stdout.splitlines())
+
     def test_page_registry_keys(self) -> None:
-        self.assertEqual(len(audit.PAGE_KEYS), 10)
+        self.assertEqual(len(audit.PAGE_KEYS), 9)
         self.assertIn("main_window", audit.PAGE_KEYS)
+        self.assertIn("event_create_anomaly", audit.PAGE_KEYS)
         self.assertIn("supplier_form", audit.PAGE_KEYS)
+        self.assertNotIn("event_create_visit", audit.PAGE_KEYS)
 
     def test_is_seh_returncode(self) -> None:
         self.assertTrue(audit.is_seh_returncode(-1073741819))
@@ -41,7 +70,7 @@ class ButtonAuditReportTests(unittest.TestCase):
         self.assertIn("`event_create_anomaly`", markdown)
 
     def test_structural_only_page_keys(self) -> None:
-        self.assertIn("event_create_anomaly", audit.STRUCTURAL_ONLY_PAGE_KEYS)
+        self.assertEqual(frozenset({"event_create_anomaly"}), audit.STRUCTURAL_ONLY_PAGE_KEYS)
 
     def test_build_report_markdown_includes_seh_section(self) -> None:
         markdown = audit.build_report_markdown(

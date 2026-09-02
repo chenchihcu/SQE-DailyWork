@@ -794,3 +794,83 @@ Destination: `AGENTS.md`, `.codex/rules/project.rules`, visual-qa checklist (`.c
 | 6 | Zip SHA256 written to `build-info.json` after `build_windows.ps1` packages zip | `AGENTS.md` §7 + `build_windows.ps1` | `dist/SQE_DailyWork/build-info.json` `zip_sha256` field |
 | 7 | Button audit: `event_create_visit` structural-only alongside `event_create_anomaly` (offscreen SEH) | visual-qa checklist + `button_audit_report.py` | orchestrator exit 0; no unregistered SEH pages |
 
+## Doc Gardening — Ops-Page IA Drift (2026-08-31)
+
+Date: 2026-08-31
+Task: Doc-gardening remediation after supplier-event **作業佇列** consolidation.
+Changes: Aligned `docs/architecture-workflow-contract.md`, `docs/ui-layout-theme-contract.md`, `README.md`, skills (visual-qa, ui-ux spec, change-router in `.claude` + `.agents`), `AGENTS.md` / `CLAUDE.md` probe targets, harness meta (`quality-score`, `ai-rules-compatibility`), `CHANGELOG` historical section, design-framework sidebar note, `risk-ledger` Phase 6 row, and code comments (`sidebar_nav`, `ncr/embed`, `layout_constants`).
+Impact: Agents reading contracts/skills no longer restore three sidebar queue rows, home hub, event-list 新增異常 toolbar, or `--target home`.
+Verification: `scripts\harness_check.ps1`; focused unittest `test_top_nav_compact_height`, `test_lightweight_visit_entry_routing`, `test_supplier_event_queues`.
+Residual risk: Completed exec plans and older closed-loop entries still mention `HomeWidget` / per-sidebar queues as history only; native visual baselines for ops-page may need refresh after UI dedup.
+Next action: Re-run doc gardening after the next IA or navigation change in the same PR as code.
+Harness update needed: yes
+Destination: architecture/ui-layout contracts, skills, `AGENTS.md`, `CLAUDE.md`, `docs/harness/quality-score.md`, `docs/harness/ai-rules-compatibility.md`, this log
+
+## Windows Release Build Isolation and Fail-Closed Evidence (2026-09-01)
+
+Date: 2026-09-01
+Task: `001#全面缺陷修復與發布驗證`
+Changes: Updated three stale UI contract assertions; closed test-owned SQLite/workbook resources; replaced tracked-source build metadata rewriting with staged JSON generation; narrowed the PyInstaller spec; isolated and sanitized the Windows build environment; added dependency/warning audit, bounded frozen/portable smoke, promotion-after-smoke, verified-artifact archive rules, and fail-closed Release summary initialization.
+Impact: A passing candidate can no longer inherit a stale Release PASS, load Codex/Poppler ICU binaries, hang indefinitely during smoke, or overwrite `dist/` before its staged executable is proven runnable. The formal database remains read-only.
+Verification: Focused warning-as-error tests PASS (47 tests); build helper tests PASS (11 tests); current staged build audit, frozen smoke, and portable smoke PASS. Full, Coverage, Soak, and fresh Release reruns remain pending at this entry's creation and must be recorded before completion.
+Residual risk: The previous verified zip whose recorded SHA-256 begins `5912F3` is not present, so application rollback readiness remains `blocked` even if the current candidate gates pass. The working tree is intentionally dirty and the release commit checkpoint remains human-owned.
+Next action: Run harness, Full, Coverage, Soak, fresh Release, existing-dist Release, and formal-DB read-only audit; then stop before commit/push.
+Debug/RCA:
+Observed: Full stopped on three assertions that contradicted current route/shell contracts. A fresh Release build produced a windowed executable that failed before application initialization with `ImportError: PySide6.QtCore` / WinError 127 and no DB or smoke marker.
+Root cause: The assertions predated `PAGE_MANAGER_VIEW` source routing and `AnalyticsWorkflowShell`. The broad PyInstaller collection also copied `icuuc.dll` from a Codex/Poppler PATH entry; that DLL exports version-suffixed ICU symbols while Qt6Core imports the Windows system ICU's unversioned symbols.
+Fix: Align tests with the current contracts; close resources deterministically; rely on PyInstaller Qt hooks and an explicit hidden-import/exclusion policy; sanitize PATH; reject root ICU/Codex runtime/test-module contamination; require bounded smoke before promotion.
+Harness update needed: yes
+Destination: focused regression tests, `scripts/build_windows.ps1`, `scripts/portable_install_smoke.ps1`, `scripts/release_smoke_helpers.ps1`, `scripts/verify.ps1`, PyInstaller spec, release runbook, risk ledger, command policy, and this log
+
+## 顯示設定頁內化 Entry
+
+Date: 2026-09-02
+Task: `001#顯示設定改為頁內式設計`
+Changes: 將側欄「顯示設定」由 modal command 改為尾端追加的正式 `PAGE_APPEARANCE_SETTINGS` lazy page；`AppearancePreferencesPage` 保留五分類、`appearance.preferences.v9`、即時預覽與所有欄位，新增固定頁內 feedback、儲存留頁、放棄變更、未儲存離頁／關閉守衛，以及 760px 門檻的雙欄轉單欄排版；同步 button audit、native visual probe、三倍率 baseline 與 UI／architecture／README 契約。
+Impact: 開啟顯示設定不再建立或執行 modal `QDialog`，主側欄、PageHeaderBar 與狀態列保持可見；必要的資料夾選擇、錯誤與未儲存確認對話框仍保留。既有 stack index 與 `NCR_PAGE_OFFSET` 未移動，SQLite schema、migration、v9 payload、匯出與其他工作頁資料行為未變。
+Verification: appearance-focused bundle 75 tests PASS；`scripts\harness_check.ps1` PASS；button audit exit 0（SEH 0、worker error 0、exception 0）；`scripts\verify.ps1 -Profile Focused` PASS；原生 Windows Qt `appearance-settings` 1024x680 於 1.0/1.25/1.5 DPI 皆 `visual_trustworthy=true`、CJK PASS、QSS unknown warnings 0，人工檢視後更新 baseline，三倍率 pixel regression PASS；native `main` 1.0 minimum-width PASS。Full 已執行但為 `not pass`：chunk 1 為 306 tests PASS，chunk 2 為 490 tests / 3 failures。
+Residual risk: Full 的 3 failures 可由 `tests.test_ncr_defect_form_field_reset_groups` 單獨重現；測試固定期待 disposition index 0，但 `DefectFieldsWidget._apply_default_disposition()` 依既有 v9 `default_defect_disposition` 契約選到 index 1。此 NCR 測試／行為落差不屬本次顯示設定頁內化範圍，因此未連帶修改，整體 release 不宣稱 green。
+Next action: 另案決定 NCR reset 應遵循已儲存預設或永遠清空，對齊測試與產品契約後重跑 Full；本次頁內式顯示設定可依 focused 與專屬 native evidence 驗收。
+Debug/RCA:
+Observed: `SidebarNav` 原以 command action 呼叫 `MainWindow.open_appearance_preferences()`，該方法建立 `AppearancePreferencesDialog` 並執行 `exec()`，因此設定介面必然成為阻塞式頂層視窗。
+Root cause: 顯示設定被建模為一次性 command/dialog，而不是 `QStackedWidget` 的正式頁面；改為非 modal `show()` 仍無法提供主內容路由、active state 與跨頁 dirty guard。
+Fix: 將原控制項樹改為可嵌入 `QWidget`，以 tail-index `LazyPageWidget` 進入主 stack，統一路由與 PageHeaderBar，並以 preference snapshot 實作 save/discard/leave guard；視覺探針改抓完整 MainWindow shell，並移開原生游標以消除 footer hover baseline 雜訊。
+Harness update needed: yes
+Destination: `tests/test_appearance_preferences*.py`, `tests/test_layout_constants.py`, `scripts/qt_visual_probe.py`, `scripts/button_audit_report.py`, `tests/visual_baseline/appearance-settings/`, README、UI/architecture contracts、this log
+
+## 供應商事件辭庫殘餘風險收斂
+
+Date: 2026-09-02
+Task: 辭庫管理（異常來源 + 異常類別）殘餘風險收斂
+Changes: 完成 visit dialog 退役清理（`defect_form_shim` 移除 `NewVisitDialog`、刪除 `test_visit_detail_display.py`）；修復 `test_appearance_preferences_dialog` v10 fixture 漂移並新增辭庫 dialog wiring smoke；以 native Windows Qt 刷新 `appearance-settings` 1.0/1.25/1.5 baseline（forms-tab 含辭庫按鈕）；補註 `remove-visit-create-ui` 被 `retire-visit-product-line` 取代之敘述。
+Impact: 辭庫功能驗證鏈可單獨綠燈；visit 產品 UI 殘留測試不再阻塞 focused gate；顯示設定表單業務分頁具備可審閱的 CJK 視覺證據。
+Verification: focused unittest 48 tests PASS（`test_appearance_preferences_dialog`、`test_anomaly_category_dropdown`、辭庫 service/trace）；`qt_visual_regress.py --target appearance-settings --update` 於 1.0/1.25/1.5 `visual_trustworthy=true`；forms-tab PNG 人工確認「管理異常類別辭庫…」「管理異常來源辭庫…」可見。
+Residual risk: ~~`AGENTS.md` / UI contract 仍提及 `NewVisitDialog` 作為 edit/preview 路徑，需另案與 visit 退役文件同步~~ **已解決**（見下方「Visit 退役敘述收斂」）。Full suite 未重跑。
+Next action: ~~另案更新 `AGENTS.md`、`docs/ui-layout-theme-contract.md` visit 段落，移除已退役 UI 敘述。~~ **已完成**。
+Harness update needed: yes
+Destination: `docs/harness/closed-loop-log.md`（本項）、`docs/harness/source-baseline-manifest.md`、`tests/visual_baseline/appearance-settings/`、`docs/exec-plans/completed/remove-visit-create-ui.md`
+
+## Visit 退役敘述收斂
+
+Date: 2026-09-02
+Task: Visit 退役敘述漂移收斂（AGENTS + UI contract）
+Changes: 更新 `AGENTS.md` §Local Guardrails 與 §2，合併為單一「Visit product line retirement」契約；修正 Supplier 360 不再聚合 `visits` 產品投影。更新 `docs/ui-layout-theme-contract.md`：現行區改用 `EVENT_CREATE_ANOMALY_PAGE_INDEX`；Historical 區加 superseded banner；visit dialog / scope / trend 歷史條目標記 superseded；`Event create/close dialogs` 敘述移除 visit。
+Impact: 文件 SSOT 對齊 `retire-visit-product-line` 完成態，降低 AI/開發者誤復活 visit UI 風險。
+Verification: grep gate（兩檔無未標記的 `NewVisitDialog` / visit dialog 現行敘述）+ `scripts/harness_check.ps1`。
+Residual risk: ~~`docs/architecture-workflow-contract.md` §14、skill `ui_rules_and_spec.md`、死碼 `new_visit_dialog.py` 仍有次要漂移~~ **已解決**（見下方「Visit 殘餘風險收斂」）。
+Next action: ~~可選後續同步 architecture contract 與 skill references；可選刪除 `new_visit_dialog.py` 死碼。~~ **已完成**。
+Harness update needed: yes
+Destination: `docs/harness/closed-loop-log.md`（本項）、`AGENTS.md`、`docs/ui-layout-theme-contract.md`
+
+## Visit 殘餘風險收斂
+
+Date: 2026-09-02
+Task: Visit 殘餘風險收斂（architecture contract + skill references + 死碼確認）
+Changes: 更新 `docs/architecture-workflow-contract.md`（資料矩陣、Flow §1 修復、Supplier 360、Working folders、`EVENT_CREATE_ANOMALY_PAGE_INDEX`、VISIT row 產品敘述）。同步 `.agents` / `.claude` 的 `ui_rules_and_spec.md`（visit 退役 banner、`NewAnomalyDialog`/`CloseAnomalyDialog` 範例、兩 scope chip、grill-me 移除 visit 關聯）。確認 `new_visit_dialog.py` 與 `test_visit_detail_display.py` 已自工作區移除（無 `src/` import）。
+Impact: 關閉 visit 退役文件與死碼殘餘風險；三份 SSOT（AGENTS、UI contract、architecture contract）與 skill 引用一致。
+Verification: grep gate + focused unittest（visit routing guards）+ `scripts/harness_check.ps1`。
+Residual risk: `appearance_preferences_dialog.py` 訪廠 tooltip、design framework 歷史映射表仍有次要用語。
+Next action: 可選清理 appearance preferences 訪廠 tooltip。
+Harness update needed: yes
+Destination: `docs/harness/closed-loop-log.md`（本項）、`docs/architecture-workflow-contract.md`、`.agents`/`.claude` skill references
+

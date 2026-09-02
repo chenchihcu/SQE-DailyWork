@@ -8,7 +8,7 @@ This scorecard tracks whether the repository is legible and verifiable for futur
 | Verification gate | Pass | `scripts/verify.ps1` isolates a verified DB snapshot, supports Focused/Full/Coverage/Soak, and on CI uses schema-only source plus skipped native visual (not visual evidence). Local Full still runs compileall, unittest, offscreen smoke, native three-DPI belt, visual regress, and harness. | Keep focused patterns tied to recurring RCA tests. |
 | Command policy | Pass | `.codex/rules/project.rules` keeps safe checks allowed and migration/apply operations reviewed. | Add rules only for repeated safe commands. |
 | Closed-loop learning | Watch | `docs/harness/closed-loop-log.md` exists; entries must be added after real debugging lessons. | Review during doc gardening. |
-| Documentation freshness | Pass | Live release membership, active-plan lifecycle, do-not-track state, and visual target/baseline mapping are executable harness checks. | Update source docs and manifest in the same change as contract drift. |
+| Documentation freshness | Watch | Live release membership, active-plan lifecycle, do-not-track state, and visual target/baseline mapping are executable harness checks; architecture/ui-layout/skills drifted after 2026-08-31 ops-page consolidation until doc-gardening remediation. | Keep source docs and manifest in the same change as contract drift; re-run doc gardening after IA changes. |
 
 ## Grading Rules
 

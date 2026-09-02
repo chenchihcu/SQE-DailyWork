@@ -70,10 +70,8 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
 
         # ── 頂部控制與日期選取區 ──────────────────────────────
         self.workflow_shell = AnalyticsWorkflowShell(self)
-        self.workflow_shell.hide()
 
-        # ── 頂部控制面板 ─────────────────────────────────────
-        control_row = QHBoxLayout()
+        control_row = QHBoxLayout(self.workflow_shell)
         control_row.setContentsMargins(*PANEL_MARGINS)
         control_row.setSpacing(INLINE_SPACING)
         
@@ -109,7 +107,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
         self.btn_export.clicked.connect(self.export_ncr_excel)
         control_row.addWidget(self.btn_export)
 
-        root.addLayout(control_row)
+        root.addWidget(self.workflow_shell)
 
         # ── 可捲動圖表顯示區 ──────────────────────────────────
         scroll, self.scroll_layout = create_stats_scroll_area(

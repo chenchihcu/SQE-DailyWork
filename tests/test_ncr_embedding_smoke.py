@@ -14,7 +14,9 @@ from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURC
 from ncr.ui.defect_form import DefectFormWidget
 from ncr.ui.defect_list import DefectListWidget
 from ui.main_window import (
-    HOME_PAGE_INDEX,
+    APPEARANCE_SETTINGS_PAGE_INDEX,
+    EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
+    EVENT_PAGE_INDEX,
     NCR_ENTRY_PAGE_INDEX,
     NCR_PENDING_MATERIAL_PAGE_INDEX,
     NCR_PENDING_OUTSOURCE_PAGE_INDEX,
@@ -56,10 +58,11 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         self.app.processEvents()
 
     def test_single_window_hosts_all_pages(self) -> None:
-        # 9 SQE DailyWork 頁（含異常案件管理、主管檢視）+ 4 倉庫不合格品工作頁。
-        self.assertEqual(11 + NCR_PAGE_COUNT, self.window.stack.count())
-        # 側欄按鈕 = 14 固定列；事件 scope 已移入事件管理頁 chips。
-        self.assertEqual(14, len(self.window.sidebar._buttons))
+        # Ghost home slot + supplier-event / stats / NCR / master / create / management /
+        # supplier views / manager / three operational queues.
+        self.assertEqual(APPEARANCE_SETTINGS_PAGE_INDEX + 1, self.window.stack.count())
+        # Sidebar is the sole navigation surface (home row retired).
+        self.assertEqual(15, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)
 
     def test_ncr_widgets_at_expected_indices(self) -> None:
@@ -150,14 +153,14 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
         )
 
     def test_open_warehouse_nonconforming_tracker_navigates_in_window(self) -> None:
-        self.window._switch_primary_page(HOME_PAGE_INDEX)
+        self.window._switch_primary_page(EVENT_PAGE_INDEX)
         result = self.window.open_warehouse_nonconforming_tracker()
         self.app.processEvents()
         self.assertIsNone(result)
         self.assertEqual(NCR_PAGE_INDEX, self.window.stack.currentIndex())
 
     def test_open_warehouse_nonconforming_create_navigates_to_form(self) -> None:
-        self.window._switch_primary_page(HOME_PAGE_INDEX)
+        self.window._switch_primary_page(EVENT_PAGE_INDEX)
         result = self.window.open_warehouse_nonconforming_create()
         self.app.processEvents()
         self.assertIsNone(result)

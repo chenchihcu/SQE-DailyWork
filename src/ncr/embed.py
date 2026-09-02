@@ -16,8 +16,8 @@ from ncr.db.database import initialize_database
 from ncr.models.defect import PROCESSING_LINE_MATERIAL, PROCESSING_LINE_OUTSOURCE
 from ui.layout_constants import PAGE_OUTER_MARGINS
 
-# Host page-stack offset: warehouse defect page sits after the three SQE DailyWork
-# pages (首頁 / 事件管理 / 異常事件統計).
+# Host page-stack offset: warehouse defect pages sit after the two SQE DailyWork
+# supplier-event pages above NCR (retired ghost slot at 0 / 事件查詢 / 異常事件統計).
 NCR_PAGE_OFFSET = 3
 NCR_PAGE_SPECS: list[tuple[str, str, str]] = [
     ("建立不合格品", "建立不合格品", "倉庫實物不合格品連續登錄"),

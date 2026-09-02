@@ -46,6 +46,8 @@ from ncr.models.labels import (
     LABEL_DATA_COUNT,
     LABEL_OPEN_COUNT,
     LABEL_CLOSED_COUNT,
+    LABEL_OUTSOURCE_SUPPLIER_NAME,
+    LABEL_SUPPLIER_NAME,
     MSG_DELETE_CONFIRM,
 )
 from ncr.services import export_service
@@ -210,18 +212,18 @@ class DefectListWidget(_DefectListPagingMixin, QWidget):
         if prefs.search_mode == "live":
             self.item_no_input.textEdited.connect(lambda _: self.refresh_data())
 
-        lbl_supplier = QLabel("正式供應商")
+        lbl_supplier = QLabel(LABEL_SUPPLIER_NAME)
         lbl_supplier.setProperty("role", "helperText")
         self.supplier_combo = QComboBox()
         self.supplier_combo.setEditable(False)
         self.supplier_combo.setAccessibleName("供應商篩選")
         self.supplier_combo.setMinimumWidth(130)
 
-        lbl_outsource = QLabel("委外加工廠")
+        lbl_outsource = QLabel(LABEL_OUTSOURCE_SUPPLIER_NAME)
         lbl_outsource.setProperty("role", "helperText")
         self.outsource_supplier_combo = QComboBox()
         self.outsource_supplier_combo.setEditable(False)
-        self.outsource_supplier_combo.setAccessibleName("委外加工廠篩選")
+        self.outsource_supplier_combo.setAccessibleName("委外加工篩選")
         self.outsource_supplier_combo.setMinimumWidth(130)
 
         self.status_combo = QComboBox()

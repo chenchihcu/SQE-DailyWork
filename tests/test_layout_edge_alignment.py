@@ -93,8 +93,6 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
 
     def test_primary_pages_have_no_extra_root_margins(self) -> None:
         pages: list[QWidget] = [
-            self.window.home_widget,
-            self.window.entry_widget,
             self.window.events_widget,
             self.window.stats_widget,
             self.window.master_widget,
@@ -124,7 +122,7 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         self.assertEqual(1, len(self._top_level_subpanels(page)))
 
     def test_event_management_filter_row_keeps_actions_without_overlap_at_min_width(self) -> None:
-        """事件管理篩選列：篩選控制項同列不重疊（新增按鈕已移至工具列列）。"""
+        """事件查詢篩選列：篩選控制項同列不重疊（新增按鈕已移至工具列列）。"""
         self.window.resize(1100, 740)
         self.window.stack.setCurrentWidget(self.window.events_widget)
         self.app.processEvents()
@@ -151,12 +149,21 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         center_ys = [rect.center().y() for rect in rects]
         self.assertLessEqual(max(center_ys) - min(center_ys), 2)
 
-        # New-event actions remain available on the consolidated page (toolbar row).
-        self.assertIsNotNone(self._find_button(page, "新增訪廠"))
-        self.assertIsNotNone(self._find_button(page, "新增異常"))
+        visit_create_buttons = [
+            button
+            for button in page.findChildren(QPushButton)
+            if button.text() == "新增訪廠"
+        ]
+        self.assertEqual([], visit_create_buttons)
+        anomaly_create_buttons = [
+            button
+            for button in page.findChildren(QPushButton)
+            if button.text() == "新增異常"
+        ]
+        self.assertEqual([], anomaly_create_buttons)
 
     def test_event_management_keeps_pagination_control_contract(self) -> None:
-        """事件管理保留既有分頁列尺寸。"""
+        """事件查詢保留既有分頁列尺寸。"""
         self.window.stack.setCurrentWidget(self.window.events_widget)
         self.app.processEvents()
         query_combo_w = self.window.events_widget.pagination.page_size_combo.width()
@@ -211,8 +218,9 @@ class LayoutEdgeAlignmentTests(unittest.TestCase):
         self.assertLessEqual(query_top_left.x(), 2)
         self.assertLess(query_right, primary_row.width())
 
-        action_top_left = page.action_stack.mapTo(primary_row, page.action_stack.rect().topLeft())
-        action_right = action_top_left.x() + page.action_stack.width()
+        rightmost = page.btn_supplier_clear
+        action_top_left = rightmost.mapTo(primary_row, rightmost.rect().topLeft())
+        action_right = action_top_left.x() + rightmost.width()
         self.assertLessEqual(primary_row.width() - action_right, 2)
 
 

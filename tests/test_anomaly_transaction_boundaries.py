@@ -121,6 +121,37 @@ class AnomalyTransactionBoundaryTests(unittest.TestCase):
         self.assertEqual(0, self.conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0])
         self.assertEqual(0, self.conn.execute("SELECT COUNT(*) FROM visits").fetchone()[0])
 
+    def test_create_anomaly_default_does_not_insert_visit(self) -> None:
+        result = repository.create_anomaly_with_visit_link(
+            self.conn,
+            anomaly_date="2026-06-01",
+            supplier_id=self.supplier_id,
+            product_id=self.product_id,
+            problem_desc="standalone default",
+        )
+        self.assertEqual("none", result["visit_action"])
+        self.assertIsNone(result["visit_id"])
+        self.assertEqual(1, self.conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0])
+        self.assertEqual(0, self.conn.execute("SELECT COUNT(*) FROM visits").fetchone()[0])
+
+    def test_service_create_omitting_sync_visit_does_not_insert_visit(self) -> None:
+        with (
+            patch("database.connection.get_connection", return_value=self.conn),
+            patch.object(_anomaly_service, "write_anomaly_markdown", return_value=None),
+        ):
+            result = _anomaly_service.create_anomaly_with_visit_link(
+                {
+                    "anomaly_date": "2026-06-01",
+                    "supplier_id": self.supplier_id,
+                    "product_id": self.product_id,
+                    "problem_desc": "no visit write",
+                }
+            )
+        self.assertEqual("none", result["visit_action"])
+        self.assertIsNone(result.get("visit_id"))
+        self.assertEqual(1, self.conn.execute("SELECT COUNT(*) FROM anomalies").fetchone()[0])
+        self.assertEqual(0, self.conn.execute("SELECT COUNT(*) FROM visits").fetchone()[0])
+
     def test_snapshot_failure_returns_warning_without_rolling_back_database(self) -> None:
         with (
             patch("database.connection.get_connection", return_value=self.conn),

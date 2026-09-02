@@ -102,10 +102,8 @@ class VisitDefectNotesTests(unittest.TestCase):
         self.assertEqual("已記錄改善", statuses["生產前沒有依規定全檢材料"])
         self.assertEqual("待補改善", statuses["沒有收到原物料規格書"])
 
-        event = repository.list_events(self.conn, event_type="VISIT")[0]
-        self.assertEqual("產品A、產品B", event["product_name"])
-        self.assertEqual("缺失 4 筆 / 待補改善 1 筆", event["defect_note_summary"])
-        self.assertIn("缺失 4 筆 / 待補改善 1 筆", event["content"])
+        visit_events = repository.list_events(self.conn, event_type="VISIT")
+        self.assertEqual([], visit_events)
 
     def test_create_visit_allows_visit_level_defect_without_product_section(self) -> None:
         supplier_id = self._create_supplier("Visit Level Defect Supplier")
@@ -246,7 +244,7 @@ class VisitDefectNotesTests(unittest.TestCase):
                     "anomaly_date": "2026-05-22",
                     "supplier_id": supplier_id,
                     "product_id": product_id,
-                    "category": "訪廠/稽核缺失",
+                    "category": "製程參數失控",
                     "problem_desc": "訪廠稽核發現製程檢查表未即時更新",
                     "pending_items": "供應商需補齊紀錄",
                 }
@@ -266,7 +264,7 @@ class VisitDefectNotesTests(unittest.TestCase):
         self.assertEqual(visit_id, anomaly["visit_id"])
         self.assertEqual(supplier_id, anomaly["supplier_id"])
         self.assertEqual(product_id, anomaly["product_id"])
-        self.assertEqual("訪廠/稽核缺失", anomaly["category"])
+        self.assertEqual("製程參數失控", anomaly["category"])
 
         warehouse_defect_count = self.conn.execute(
             "SELECT COUNT(*) FROM defect_records"

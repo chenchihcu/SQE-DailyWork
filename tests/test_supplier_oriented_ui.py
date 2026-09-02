@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton
 
 from ui.widgets.supplier_360_page import Supplier360Page
 from ui.widgets.defect_list_widget import EVENT_QUERY_SCOPE_TABS
@@ -11,23 +12,28 @@ from ui.widgets.supplier_overview_page import SupplierOverviewPage
 
 
 class SupplierOrientedUiContractTests(unittest.TestCase):
-    def test_event_scope_contract_has_four_page_local_views(self) -> None:
+    def test_event_scope_contract_has_two_page_local_views(self) -> None:
         self.assertEqual(
-            ["單獨異常", "訪廠發現異常", "訪廠紀錄", "已結案"],
+            ["單獨異常", "已結案"],
             [label for label, _scope, _event_type in EVENT_QUERY_SCOPE_TABS],
         )
 
     def test_source_scopes_are_not_navigation_labels(self) -> None:
         from ui.sidebar_nav import _NAV_GROUPS
 
-        labels = [
-            label
-            for _group, entries in _NAV_GROUPS
-            for label, _action, _badge, _icon in entries
-        ]
+        labels: list[str] = []
+        for _group, entries in _NAV_GROUPS:
+            for item in entries:
+                if item[0] == "master_pair":
+                    _subgroup_label, _variant, pair_items = item[1]
+                    for entry in pair_items:
+                        labels.append(entry[0])
+                else:
+                    labels.append(item[0])
         self.assertNotIn("單獨異常", labels)
         self.assertNotIn("訪廠發現異常", labels)
-        self.assertIn("事件管理", labels)
+        self.assertNotIn("訪廠紀錄", labels)
+        self.assertIn("事件查詢", labels)
         self.assertIn("供應商總覽", labels)
 
     def test_supplier_overview_defaults_to_open_anomaly_scope(self) -> None:
@@ -40,15 +46,18 @@ class SupplierOrientedUiContractTests(unittest.TestCase):
         ):
             page = SupplierOverviewPage()
             self.assertEqual("open_anomaly", page.scope_combo.currentData())
-            self.assertEqual(12, page.table.columnCount())
+            self.assertEqual(11, page.table.columnCount())
             self.assertEqual("最新異常單號", page.table.horizontalHeaderItem(3).text())
             self.assertEqual("問題摘要", page.table.horizontalHeaderItem(6).text())
-            self.assertEqual("評級", page.table.horizontalHeaderItem(10).text())
+            self.assertEqual("評級", page.table.horizontalHeaderItem(9).text())
             list_rows.assert_called_with(view_scope="open_anomaly")
 
     def test_supplier_360_refresh_without_supplier_is_safe(self) -> None:
         page = Supplier360Page(main_window=None)
         page.refresh_data()
+        labels = [btn.text() for btn in page.findChildren(QPushButton)]
+        self.assertNotIn("安排訪廠", labels)
+        self.assertIn("新增異常", labels)
 
     def test_supplier_overview_keeps_all_cells_when_sorting_is_enabled(self) -> None:
         rows = [

@@ -68,7 +68,6 @@ SUPPLIER_OVERVIEW_COLUMNS = (
     ColumnSpec("latest_anomaly_desc", "問題摘要"),
     ColumnSpec("latest_anomaly_due_date", "到期日"),
     ColumnSpec("ncr_90d_count", "近 90 日 NCR"),
-    ColumnSpec("latest_visit_date", "最近訪廠"),
     ColumnSpec("grade", "評級"),
     ColumnSpec("is_active", "供應商狀態"),
 )
@@ -106,11 +105,4 @@ OPERATIONAL_ACTION_QUEUE_COLUMNS = (
     ColumnSpec("due_date", "到期日"),
     ColumnSpec("execution_status", "執行狀態"),
     ColumnSpec("overdue", "逾期"),
-)
-
-VISIT_SELECTION_COLUMNS = (
-    ColumnSpec("visit_date", "日期"),
-    ColumnSpec("summary", "摘要"),
-    ColumnSpec("work_order_no", "工單"),
-    ColumnSpec("product_name", "品名"),
 )

@@ -34,7 +34,6 @@ def export_supplier_report(
             ("逾期異常", summary.get("overdue_anomaly_count", 0)),
             ("重複警示", summary.get("repeat_flagged_anomaly_count", 0)),
             ("近 90 日 NCR", summary.get("ncr_90d_count", 0)),
-            ("最近訪廠", summary.get("latest_visit_date", "")),
         ]
         for row in rows:
             overview.append(row)
@@ -58,12 +57,6 @@ def export_supplier_report(
                 "corrective_action_status",
                 "verification_result",
             ),
-        )
-        _append_table(
-            workbook,
-            "訪廠紀錄",
-            supplier_360_service.list_supplier_visits(supplier_id),
-            ("visit_date", "summary", "visitor_name", "status", "work_order_no"),
         )
         _append_table(
             workbook,

@@ -83,8 +83,6 @@ from ui.widgets.event_list_filter_mixin import _EventListFilterMixin
 # drive every sidebar supplier-event scope (including 已結案). Default = 單獨異常.
 EVENT_QUERY_SCOPE_TABS = (
     ("單獨異常", repository.EVENT_SCOPE_ANOMALY_ONLY, "ANOMALY"),
-    ("訪廠發現異常", repository.EVENT_SCOPE_VISIT_WITH_ANOMALY, "ANOMALY"),
-    ("訪廠紀錄", repository.EVENT_SCOPE_VISIT_ONLY, "VISIT"),
     ("已結案", repository.EVENT_SCOPE_CLOSED_ONLY, "ANOMALY"),
 )
 
@@ -120,7 +118,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def __init__(self, main_window, *, mode: str = "query", fixed_scope: str | None = None, fixed_status: str | None = None, lazy_load: bool = False):
         super().__init__()
         self.main_window = main_window
-        self.mode = "entry" if mode == "entry" else "query"
+        self.mode = "query"
         self.fixed_scope = self._normalize_event_scope(fixed_scope) if fixed_scope else None
         self.fixed_status = fixed_status
         self._all_rows: list[dict] = []
@@ -136,20 +134,15 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             else:
                 self._filter_event_type = self._event_type_for_scope(self.fixed_scope)
         else:
-            if self.mode == "query":
-                # Consolidated event page defaults to the first scope tab (單獨異常),
-                # matching the anomaly sidebar badge count.
-                self._filter_event_scope = EVENT_QUERY_SCOPE_TABS[0][1]
-                self._filter_event_type = self._event_type_for_scope(
-                    self._filter_event_scope
-                )
-            else:
-                self._filter_event_scope = None
-                self._filter_event_type = "ALL"
+            # Consolidated event page defaults to the first scope tab (單獨異常),
+            # matching the anomaly sidebar badge count.
+            self._filter_event_scope = EVENT_QUERY_SCOPE_TABS[0][1]
+            self._filter_event_type = self._event_type_for_scope(
+                self._filter_event_scope
+            )
         self._filter_status = fixed_status if fixed_status else "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm: str | None = None
-        self._filter_overdue_only = False
         self.event_type_combo: QComboBox | None = None
         self.event_scope_tab_bar: QTabBar | None = None
         self.scope_chip_buttons: dict[str, QPushButton] = {}
@@ -161,7 +154,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.month_input: QDateEdit | None = None
         self.all_months_checkbox: QCheckBox | None = None
         self.export_pdf_button: QPushButton | None = None
-        self.source_tag_label: QLabel | None = None
         self.column_profile_notice: QLabel | None = None
         self.column_profile_button: QPushButton | None = None
         self._compact_column_profile_override: bool | None = None
@@ -232,7 +224,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self.status_combo.setFixedWidth(FILTER_STATUS_COMBO_WIDTH)
             self.status_combo.addItem("全部", "ALL")
             self.status_combo.addItem("待處理", "待處理")
-            self.status_combo.addItem("已結案", "已結案")
 
             btn_search = QPushButton("查詢")
             btn_search.setProperty("variant", "primary")
@@ -282,18 +273,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
             actions_row.addWidget(btn_search)
             actions_row.addWidget(btn_reset)
-        else:
-            helper = QLabel("點擊列可編輯、刪除或查看明細")
-            helper.setProperty("role", "helperText")
-            actions_row.addWidget(helper)
-            actions_row.addStretch(1)
-
         control_outer.addLayout(actions_row)
 
-        # Row 2 (action bar): source tag (left) + new-event / export actions (right).
-        # The consolidated event page carries both 新增訪廠 and 新增異常; placing
-        # them on the toolbar row (not the filter row) keeps the filter row within
-        # the 1024-wide minimum without overlapping controls.
+        # Row 2 (action bar): export actions (right).
         self.pagination = PaginationBar(
             on_page_changed=self._on_page_changed,
             on_page_size_changed=self._on_page_size_changed,
@@ -302,13 +284,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         toolbar_row = QHBoxLayout()
         toolbar_row.setSpacing(CONTROL_ROW_SPACING)
-
-        if self.mode == "query":
-            self.source_tag_label = QLabel(self._source_tag_text())
-            self.source_tag_label.setProperty("role", "sourceTag")
-            self.source_tag_label.setToolTip("目前列表的資料流程來源")
-            apply_toolbar_label_policy(self.source_tag_label)
-            toolbar_row.addWidget(self.source_tag_label)
 
         self.column_profile_notice = QLabel("")
         self.column_profile_notice.setProperty("role", "helperText")
@@ -323,13 +298,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.column_profile_button.setProperty("variant", "secondary")
         self.column_profile_button.clicked.connect(self._toggle_column_profile)
         toolbar_row.addWidget(self.column_profile_button)
-
-        # Shared new-event actions (deduplicated across modes).
-        btn_new_visit, btn_new_anomaly = self._build_new_event_buttons()
-        if btn_new_visit:
-            toolbar_row.addWidget(btn_new_visit)
-        if btn_new_anomaly:
-            toolbar_row.addWidget(btn_new_anomaly)
 
         if self.mode == "query":
             self.export_pdf_button = QPushButton("輸出PDF")
@@ -406,37 +374,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             self._sync_filter_widgets_from_state()
         self._sync_table_column_profile()
 
-    def _build_new_event_buttons(self) -> tuple[QPushButton | None, QPushButton | None]:
-        """Create the standard 「新增訪廠」/「新增異常」 button pair shared by query and entry modes."""
-        btn_new_visit = None
-        btn_new_anomaly = None
-
-        def _open_visit():
-            if hasattr(self.main_window, "open_new_visit_create_page"):
-                self.main_window.open_new_visit_create_page()
-            elif hasattr(self.main_window, "open_new_visit_dialog"):
-                self.main_window.open_new_visit_dialog()
-
-        def _open_anomaly():
-            if hasattr(self.main_window, "open_new_anomaly_create_page"):
-                self.main_window.open_new_anomaly_create_page()
-            elif hasattr(self.main_window, "open_new_anomaly_dialog"):
-                self.main_window.open_new_anomaly_dialog()
-
-        if not self.fixed_scope or self.fixed_scope == repository.EVENT_SCOPE_VISIT_ONLY:
-            btn_new_visit = QPushButton("新增訪廠")
-            btn_new_visit.setProperty("variant", "secondary")
-            apply_clickable_affordance(btn_new_visit, tooltip="建立新的訪廠紀錄")
-            btn_new_visit.clicked.connect(_open_visit)
-
-        if not self.fixed_scope or self.fixed_scope in (repository.EVENT_SCOPE_ANOMALY_ONLY, repository.EVENT_SCOPE_VISIT_WITH_ANOMALY):
-            btn_new_anomaly = QPushButton("新增異常")
-            btn_new_anomaly.setProperty("variant", "primary")
-            apply_clickable_affordance(btn_new_anomaly, tooltip="建立新的異常單")
-            btn_new_anomaly.clicked.connect(_open_anomaly)
-
-        return btn_new_visit, btn_new_anomaly
-
     def _sync_scope_chip_labels(self) -> None:
         if self.mode != "query" or not self.scope_chip_buttons:
             return
@@ -462,8 +399,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             filters["event_scope"] = self._filter_event_scope
         if self._filter_yyyymm:
             filters["yyyymm"] = self._filter_yyyymm
-        if self._filter_overdue_only:
-            filters["overdue_only"] = True
         try:
             self._all_rows = _query_service.list_events(filters)
             self._set_load_failed(False)
@@ -477,12 +412,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._render_current_page()
 
     def _sync_category_column_visibility(self) -> None:
-        """訪廠紀錄 scope 沒有異常類別/結案日期，故於該 scope 隱藏這些欄位。
-
-        scope 可由側欄 set_event_scope() 或統計下鑽 apply_quick_filters() 動態切換，
-        因此每次 refresh_data() 都依當前 event_type 重新評估，而非只在建構時設定一次。
-        僅隱藏顯示欄位，不影響 DB 資料或表單欄位。
-        """
+        """依當前 scope 同步表格欄位顯示。"""
         self._sync_table_column_profile()
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
@@ -507,10 +437,6 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         compact = self._compact_column_profile_active()
         for column in _EVENT_LIST_COMPACT_OPTIONAL_COLUMNS:
             self.table.setColumnHidden(column, compact)
-        is_visit_only_scope = getattr(self, "_filter_event_type", None) == "VISIT"
-        if is_visit_only_scope:
-            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("category"), True)
-            self.table.setColumnHidden(EVENT_LIST_FIELDS.index("closed_at"), True)
         header = self.table.horizontalHeader()
         if compact:
             for field_name, width in _EVENT_LIST_CORE_WIDTHS.items():
@@ -747,15 +673,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             if row.get("id"):
                 self.open_anomaly_details(str(row["id"]))
                 return
-            if row.get("visit_id"):
-                self.open_preview_visit_dialog(str(row["visit_id"]))
-                return
         elif action == "edit":
             if row.get("id"):
                 self.open_edit_anomaly_dialog(str(row["id"]))
-                return
-            if row.get("visit_id"):
-                self.open_edit_visit_dialog(str(row["visit_id"]))
                 return
 
         menu, action_map = build_event_action_menu(self, row)
@@ -774,11 +694,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             on_edit_anomaly=self.open_edit_anomaly_dialog,
             on_delete_anomaly=self.delete_anomaly,
             on_close_anomaly=self.open_close_dialog,
-            on_edit_visit=self.open_edit_visit_dialog,
-            on_delete_visit=self.delete_visit,
-            on_open_visit_detail=self.open_visit_detail,
             on_view_anomaly_details=self.open_anomaly_details,
-            on_preview_visit=self.open_preview_visit_dialog,
             on_reopen_anomaly=self.reopen_anomaly,
             on_update_closed_at=self.open_update_closed_at_dialog,
             on_send_line=self.send_line_brief_report,
@@ -796,20 +712,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
     def delete_anomaly(self, anomaly_id: str, ref_no: str):
         self._event_actions.delete_anomaly(anomaly_id, ref_no)
 
-    def open_edit_visit_dialog(self, visit_id: str):
-        self._event_actions.open_edit_visit_dialog(visit_id)
-
-    def delete_visit(self, visit_id: str, visit_date: str):
-        self._event_actions.delete_visit(visit_id, visit_date)
-
-    def open_visit_detail(self, visit_id: str):
-        self._event_actions.open_visit_detail(visit_id)
-
     def open_anomaly_details(self, anomaly_id: str):
         self._event_actions.open_anomaly_details(anomaly_id)
-
-    def open_preview_visit_dialog(self, visit_id: str):
-        self._event_actions.open_preview_visit_dialog(visit_id)
 
     def reopen_anomaly(self, anomaly_id: str, ref_no: str):
         self._event_actions.reopen_anomaly(anomaly_id, ref_no)

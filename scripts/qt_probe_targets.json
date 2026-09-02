@@ -2,10 +2,9 @@
   "version": 1,
   "required_scales": ["1.0", "1.25", "1.5"],
   "targets": [
-    {"name": "home", "baseline_required": true, "min_width": true},
     {"name": "main", "baseline_required": true, "min_width": true},
     {"name": "event-create", "baseline_required": true, "min_width": true},
-    {"name": "appearance-settings", "baseline_required": true, "min_width": false},
+    {"name": "appearance-settings", "baseline_required": true, "min_width": true},
     {"name": "form-density", "baseline_required": true, "min_width": false},
     {"name": "combo-popups", "baseline_required": true, "min_width": false},
     {"name": "stats-stress", "baseline_required": true, "min_width": true},

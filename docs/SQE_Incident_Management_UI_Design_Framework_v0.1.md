@@ -167,7 +167,7 @@ Dashboard 與案件清單必須使用同一判定邏輯;元件端以 `caseDetail
 
 ### 2.3 與 DailyWork Sidebar 的對照脈絡
 
-SQE DailyWork 桌面程式採 workflow-first 三群組側欄:供應商事件、倉庫不合格品、系統(另有一無標題的「首頁」群組;來源 `src/ui/sidebar_nav.py:59-83`)。Web 端為扁平 5 項,兩者資訊架構策略不同:DailyWork 以作業類型分群組並掛 badge 計數,Web 以功能頁分項。本文件第 7 章提供完整映射與術語對照,本章僅確立脈絡。
+SQE DailyWork 桌面程式採 workflow-first 四群組側欄:供應商事件、倉庫不合格品、資料庫設定、系統（來源 `src/ui/sidebar_nav.py` `_NAV_GROUPS`）。供應商事件側欄為 `新增異常` / `事件查詢` / `作業佇列` / `異常事件統計`；逾期案件、根因待查、處置項目、案件總覽為 **作業佇列** 頁內 chips，非獨立側欄列。首頁 hub 已退休。Web 端為扁平 5 項,兩者資訊架構策略不同:DailyWork 以作業類型分群組並掛 badge 計數,Web 以功能頁分項。本文件第 7 章提供完整映射與術語對照,本章僅確立脈絡。
 
 ---
 
@@ -1136,8 +1136,8 @@ ATTACHMENT...   (長內容截斷,   (長內容截斷,    ...
 | 2 | 改善措施(CA) | 改善內容 | Web 矯正措施(Corrective Action);DailyWork 結案對話框欄位「改善內容」,出處 `close_anomaly_dialog.py:167` |
 | 3 | 附件 | 現場照片與改善佐證附件 | DailyWork 結案對話框的附件標籤文字,出處 `close_anomaly_dialog.py:174` |
 | 4 | 狀態徽章(status badge) | 狀態項目(status item) | Web badge 系列(第 3 章 3.1);DailyWork `create_status_item` 以 tone palette 前景/背景渲染,出處 `common_widgets.py:358-365` |
-| 5 | 側欄導覽(nav rail) | 側欄(SidebarNav) | Web 扁平側欄(第 2 章);DailyWork `SidebarNav` 三群組,出處 `sidebar_nav.py:59-83、:199-207` |
-| 6 | 待辦清單(to-do list) | 待辦(backlog) | Web 儀表板營運佇列脈絡;DailyWork 首頁 backlog,逾期優先,出處 契約 :127-133 |
+| 5 | 側欄導覽(nav rail) | 側欄(SidebarNav) | Web 扁平側欄(第 2 章);DailyWork 四群組 `_NAV_GROUPS`（供應商事件四列含作業佇列 chips 宿主）,出處 `sidebar_nav.py` |
+| 6 | 待辦清單(to-do list) | 待辦(backlog) | Web 儀表板營運佇列脈絡;DailyWork **作業佇列** chips（逾期案件／根因待查／處置項目／案件總覽）,出處 `ui-layout-theme-contract.md` |
 | 7 | 主檔(master data) | 基礎資料 | DailyWork 側欄「系統」群組下的「基礎資料」,出處 `sidebar_nav.py:80` |
 | 8 | 分頁元件(pagination) | 分頁列(PaginationBar) | 出處 `pagination_bar.py:25` |
 | 9 | 事件檢視切換(tabs/scope) | 事件 scope(一等側欄列) | Web 用 tab 或 filter 切換檢視;DailyWork 以側欄一等項目切換 scope,無頁內 tab bar,出處 `sidebar_nav.py:66-69`、契約 :158-160 |
@@ -1189,7 +1189,7 @@ Web 端三類頁面(建立案件、異常案件查詢、儀表板)與 DailyWork 
 
 | Web 元素 | DailyWork 對應契約特性 | 整合方式 |
 | --- | --- | --- |
-| 扁平 5 項側欄(第 2 章 2.1) | Workflow-first 三群組 + 首頁(sidebar_nav.py:59-83 `_NAV_GROUPS`):供應商事件(新增訪廠/新增異常/單獨異常含 badge/訪廠發現異常/訪廠紀錄/已結案/異常事件統計)、倉庫不合格品(建立不合格品/待處理委外加工含 badge/待處理原物料含 badge/歷史紀錄/不合格品統計分析)、系統(基礎資料/顯示設定) | 案件相關入口依作業類型分群,群組內以作業流程排序 |
+| 扁平 5 項側欄(第 2 章 2.1) | Workflow-first 四群組(`sidebar_nav.py` `_NAV_GROUPS`):供應商事件(新增異常/事件查詢含 badge/作業佇列/異常事件統計;佇列 chips 切換逾期案件/根因待查/處置項目/案件總覽)、倉庫不合格品(建立不合格品/待處理委外加工含 badge/待處理原物料含 badge/歷史紀錄/不合格品統計分析)、資料庫設定(供應商總覽/主檔並排導覽)、系統(顯示設定);事件查詢頁內 chips 切換單獨異常/訪廠發現異常/訪廠紀錄/已結案。首頁 hub 與訪廠建立入口已退休 | 案件相關入口依作業類型分群,群組內以作業流程排序 |
 | 路由與導覽元件解耦 | sidebar 只發 nav_activated(action) signal(sidebar_nav.py:209、:322-325);MainWindow 以 `_PAGE_KEY_TO_INDEX`(:104-118)轉換、`_on_nav_activated`(:527-562)路由 page/scope/command 三種 action(scope 走 set_event_scope :556-559) | 導覽元件不直接操作堆疊,路由集中於主視窗 |
 | 未處理數 badge | badge 對稱性:單獨異常 badge = 未結案異常數、兩個倉庫 badge 各綁 processing_line 計數(`_refresh_sidebar_badge`,main_window.py:704-722;契約 :172-176) | badge 一律綁真實計數來源,同一計數不對稱顯示 |
 | 導覽項幾何 | 導覽項高度 38px 來自 SIDEBAR_NAV_ITEM_HEIGHT(layout_constants.py:56);群組標題為靜態 QLabel(sidebar_nav.py:301-306);無 quick-create footer(契約 :177-179) | 側欄幾何與群組標題維持單一常數來源 |
@@ -1271,7 +1271,7 @@ Web 端三類頁面(建立案件、異常案件查詢、儀表板)與 DailyWork 
     - 套用建議:案件對話框超出螢幕時沿用 shrink-min-size 適配,確保完整可見。
 
 15. **Workflow-first sidebar IA + 導覽與路由解耦 + badge 對稱**
-    - DailyWork 契約特性:_NAV_GROUPS 三群組 + 首頁(sidebar_nav.py:59-83);sidebar 只發 nav_activated signal(:209、:322-325),MainWindow 以 _PAGE_KEY_TO_INDEX(main_window.py:104-118)與 _on_nav_activated(:527-562)路由;badge 對稱綁計數(_refresh_sidebar_badge :704-722)
+    - DailyWork 契約特性（2026-08-31）:`_NAV_GROUPS` 四群組（供應商事件 / 倉庫不合格品 / 資料庫設定 / 系統）;供應商事件側欄四列 + 作業佇列頁 chips（逾期案件 / 根因待查 / 處置項目 / 案件總覽）;sidebar 只發 `nav_activated` signal;`MainWindow._PAGE_KEY_TO_INDEX` 路由;`事件查詢` badge 為未結案異常總數,佇列 chip `(N)` 用 `get_supplier_event_queue_counts`
     - 對應 Web 元素:nav rail IA、router 與導覽元件解耦、未處理數 badge
     - 套用建議:DailyWork 新增案件管理時,案件相關入口以作業類型分群並掛計數 badge,維持導覽與路由解耦。
 

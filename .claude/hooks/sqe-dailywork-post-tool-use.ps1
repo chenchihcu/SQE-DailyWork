@@ -8,7 +8,7 @@ $messages = [System.Collections.Generic.List[string]]::new()
 $kwPath = Join-Path $PSScriptRoot "sqe-dailywork-route-keywords.json"
 $kw = $null
 try {
-    $kw = Get-Content -Raw -LiteralPath $kwPath -ErrorAction Stop | ConvertFrom-Json
+    $kw = Get-Content -Raw -Encoding UTF8 -LiteralPath $kwPath -ErrorAction Stop | ConvertFrom-Json
 } catch {}
 if (-not $kw -or -not $kw.pathReminders) {
     Write-SqeDailyWorkSystemMessage "SQE DailyWork WARNING: sqe-dailywork-route-keywords.json missing or unreadable ($kwPath); post-tool reminders inactive until the data file is fixed."

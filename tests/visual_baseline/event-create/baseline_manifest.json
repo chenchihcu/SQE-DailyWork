@@ -6,8 +6,6 @@
     "device_pixel_ratio": 3.0
   },
   "files": [
-    "event-create@1.5x_event-create-visit.png",
-    "event-create@1.5x_event-create-visit-success.png",
     "event-create@1.5x_event-create-anomaly.png",
     "event-create@1.5x_event-create-anomaly-success.png"
   ],
@@ -20,8 +18,6 @@
         "device_pixel_ratio": 2.0
       },
       "files": [
-        "event-create_event-create-visit.png",
-        "event-create_event-create-visit-success.png",
         "event-create_event-create-anomaly.png",
         "event-create_event-create-anomaly-success.png"
       ]
@@ -34,8 +30,6 @@
         "device_pixel_ratio": 2.5
       },
       "files": [
-        "event-create@1.25x_event-create-visit.png",
-        "event-create@1.25x_event-create-visit-success.png",
         "event-create@1.25x_event-create-anomaly.png",
         "event-create@1.25x_event-create-anomaly-success.png"
       ]
@@ -48,8 +42,6 @@
         "device_pixel_ratio": 3.0
       },
       "files": [
-        "event-create@1.5x_event-create-visit.png",
-        "event-create@1.5x_event-create-visit-success.png",
         "event-create@1.5x_event-create-anomaly.png",
         "event-create@1.5x_event-create-anomaly-success.png"
       ]

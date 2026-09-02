@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
@@ -44,9 +43,10 @@ from ui.widgets.common_widgets import (
 
 
 class ManagerViewPage(QWidget):
-    def __init__(self, main_window, parent=None) -> None:
+    def __init__(self, main_window, parent=None, *, embedded: bool = False) -> None:
         super().__init__(parent)
         self.main_window = main_window
+        self._embedded = embedded
         self._summary_rows: list[dict] = []
         self._owner_filter_timer = QTimer(self)
         self._owner_filter_timer.setSingleShot(True)
@@ -57,14 +57,19 @@ class ManagerViewPage(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(*PAGE_OUTER_MARGINS)
+        if self._embedded:
+            root.setContentsMargins(0, 0, 0, 0)
+        else:
+            root.setContentsMargins(*PAGE_OUTER_MARGINS)
         root.setSpacing(CONTROL_ROW_SPACING)
 
         controls = QueryWorkflowShell()
         controls_layout = QHBoxLayout(controls)
         controls_layout.setContentsMargins(*PANEL_MARGINS)
-        controls_layout.addWidget(QLabel("主管檢視"))
-        controls_layout.addWidget(QLabel("案件總覽"))
+        if not self._embedded:
+            title = QLabel("案件總覽")
+            title.setProperty("role", "sectionTitle")
+            controls_layout.addWidget(title)
         controls_layout.addStretch(1)
         controls_layout.addWidget(QLabel("案件狀態"))
         self._status_combo = QComboBox()
@@ -78,9 +83,6 @@ class ManagerViewPage(QWidget):
         self._owner_filter.setToolTip("比對異常責任人與目前處置責任人。")
         self._owner_filter.textChanged.connect(self._schedule_owner_filter_refresh)
         controls_layout.addWidget(self._owner_filter)
-        self._overdue_only = QCheckBox("僅顯示逾期")
-        self._overdue_only.stateChanged.connect(self.refresh_data)
-        controls_layout.addWidget(self._overdue_only)
         refresh = QPushButton("重新整理")
         refresh.setProperty("variant", "secondary")
         refresh.clicked.connect(self.refresh_data)
@@ -151,10 +153,8 @@ class ManagerViewPage(QWidget):
     def refresh_data(self) -> None:
         status = str(self._status_combo.currentData() or "待處理")
         owner = self._owner_filter.text().strip()
-        overdue_only = self._overdue_only.isChecked()
         self._summary_rows = manager_view_service.list_manager_summary_rows(
             status=status,
-            overdue_only=overdue_only,
             responsible_person=owner,
         )
         self._render_summary_rows()
@@ -216,7 +216,7 @@ class ManagerViewPage(QWidget):
         )
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "匯出主管檢視 Excel",
+            "匯出案件總覽 Excel",
             get_default_export_filepath(default_name),
             "Excel Files (*.xlsx)",
         )
@@ -243,4 +243,6 @@ class ManagerViewPage(QWidget):
             return
         opener = getattr(self.main_window, "open_anomaly_management", None)
         if callable(opener):
-            opener(anomaly_id)
+            from ui.sidebar_nav import PAGE_MANAGER_VIEW
+
+            opener(anomaly_id, source_page_key=PAGE_MANAGER_VIEW)

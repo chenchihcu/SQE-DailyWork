@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OPTIONS,
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
 from ncr.models.labels import (
     HEADER_CASE_COUNT,
     HEADER_EVENT_MONTH,
@@ -31,7 +36,6 @@ RESPONSIBILITY_OPTIONS = ["材損", "製損", "不確定"]
 STATUS_OPTIONS = ["處理中", "已結案"]
 DISPOSITION_OPTIONS = ["重工", "報廢"]
 RETURN_SLIP_TYPE_OPTIONS = ["廠內退料", "託外退料"]
-SUPPLIER_CATEGORY_OPTIONS = ["正式供應商", "委外供應商"]
 PROCESSING_LINE_MATERIAL = "原物料"
 PROCESSING_LINE_OUTSOURCE = "委外加工"
 PROCESSING_LINE_UNCLASSIFIED = "未分流"

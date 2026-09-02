@@ -13,6 +13,7 @@ from services import supplier_report_service
 class SupplierReportExportTests(unittest.TestCase):
     def test_export_creates_source_separated_sheets(self) -> None:
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         create_schema(conn)
         conn.execute(
@@ -20,7 +21,7 @@ class SupplierReportExportTests(unittest.TestCase):
             INSERT INTO suppliers(
                 id, supplier_name, contact_name, department, phone,
                 contact_email, category, is_active
-            ) VALUES ('sup-1', '報告供應商', '', '', '', '', '正式供應商', 1)
+            ) VALUES ('sup-1', '報告供應商', '', '', '', '', '原物料供應商', 1)
             """
         )
         conn.execute(
@@ -28,12 +29,6 @@ class SupplierReportExportTests(unittest.TestCase):
             INSERT INTO anomalies(
                 id, anomaly_no, anomaly_date, supplier_id, problem_desc, status
             ) VALUES ('a-1', '20260801001', '2026-08-01', 'sup-1', '異常', '待處理')
-            """
-        )
-        conn.execute(
-            """
-            INSERT INTO visits(id, visit_date, supplier_id, summary, status)
-            VALUES ('v-1', '2026-08-02', 'sup-1', '訪廠', '已完成')
             """
         )
         conn.execute(
@@ -66,10 +61,11 @@ class SupplierReportExportTests(unittest.TestCase):
                 from openpyxl import load_workbook
 
                 workbook = load_workbook(path)
+                self.addCleanup(workbook.close)
                 titles = set(workbook.sheetnames)
                 self.assertIn("供應商摘要", titles)
                 self.assertIn("異常統計", titles)
-                self.assertIn("訪廠紀錄", titles)
+                self.assertNotIn("訪廠紀錄", titles)
                 self.assertIn("不合格品統計", titles)
                 self.assertIn("評分摘要", titles)
 

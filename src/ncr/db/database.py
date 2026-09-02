@@ -57,7 +57,7 @@ SUPPLIER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS supplier_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE CHECK(TRIM(name) <> ''),
-    category TEXT NOT NULL CHECK(category IN ('正式供應商', '委外供應商')),
+    category TEXT NOT NULL CHECK(category IN ('原物料供應商', '委外加工')),
     created_at TEXT NOT NULL
 );
 """

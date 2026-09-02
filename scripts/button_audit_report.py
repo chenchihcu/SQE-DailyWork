@@ -24,10 +24,6 @@ for path in (SRC_ROOT, REPO_ROOT):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ.setdefault("SQE_TESTING", "1")
-os.environ.setdefault("SQE_REQUIRE_DISPOSABLE_DB", "1")
-
 SEH_RETURN_CODES = frozenset(
     {
         -1073741819,
@@ -39,7 +35,6 @@ SEH_RETURN_CODES = frozenset(
 PAGE_KEYS: tuple[str, ...] = (
     "main_window",
     "event_create_anomaly",
-    "event_create_visit",
     "event_list",
     "master_data",
     "supplier_form",
@@ -50,7 +45,7 @@ PAGE_KEYS: tuple[str, ...] = (
 )
 
 # Offscreen Qt heap corruption when clicking DefectFormWidget-backed anomaly create buttons.
-STRUCTURAL_ONLY_PAGE_KEYS = frozenset({"event_create_anomaly", "event_create_visit"})
+STRUCTURAL_ONLY_PAGE_KEYS = frozenset({"event_create_anomaly"})
 
 
 class _ProbeHost:
@@ -67,7 +62,15 @@ class _ProbeHost:
         pass
 
 
+def _configure_audit_environment() -> None:
+    """Set process flags only when the button audit is actually executed."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("SQE_TESTING", "1")
+    os.environ.setdefault("SQE_REQUIRE_DISPOSABLE_DB", "1")
+
+
 def _prepare_disposable_database() -> str:
+    _configure_audit_environment()
     from database.backup import backup_sqlite_database
     import atexit
     import tempfile
@@ -118,18 +121,20 @@ def create_page(page_key: str) -> Any:
         from ui.widgets.event_create_page import EventCreatePage
 
         return EventCreatePage(host, "anomaly", lazy_load=False)
-    if page_key == "event_create_visit":
-        from ui.widgets.event_create_page import EventCreatePage
-
-        return EventCreatePage(host, "visit", lazy_load=False)
     if page_key == "event_list":
         from ui.widgets.defect_list_widget import EventListWidget
 
         return EventListWidget(host, mode="query", fixed_scope=None, lazy_load=False)
     if page_key == "master_data":
-        from ui.widgets.master_data_widget import MasterDataWidget
+        from ui.widgets.master_data_widget import MasterDataSupplierPage
+        from database.supplier_category import SUPPLIER_CATEGORY_RAW_MATERIAL
 
-        return MasterDataWidget(host, lazy_load=False)
+        return MasterDataSupplierPage(
+            host,
+            SUPPLIER_CATEGORY_RAW_MATERIAL,
+            page_label="原物料供應商",
+            lazy_load=False,
+        )
     if page_key == "supplier_form":
         from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
@@ -139,9 +144,9 @@ def create_page(page_key: str) -> Any:
 
         return ProductFormDialog([{"id": "supplier-1", "supplier_name": "測試供應商"}])
     if page_key == "appearance_prefs":
-        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
+        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesPage
 
-        return AppearancePreferencesDialog()
+        return AppearancePreferencesPage()
     if page_key == "ncr_defect_form":
         from ncr.ui.defect_form import DefectFormWidget
 
@@ -314,6 +319,7 @@ def run_worker(page_key: str, *, child_process: bool = False) -> dict[str, Any]:
     if page_key not in PAGE_KEYS:
         raise KeyError(f"Unknown page key: {page_key}")
 
+    _configure_audit_environment()
     if not child_process and not os.environ.get("SQE_DB_PATH"):
         _prepare_disposable_database()
 

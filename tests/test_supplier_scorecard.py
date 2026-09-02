@@ -25,6 +25,7 @@ class SupplierScorecardTests(unittest.TestCase):
 
     def test_scorecard_uses_grade_helper(self) -> None:
         conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.row_factory = sqlite3.Row
         create_schema(conn)
         conn.execute(
@@ -32,7 +33,7 @@ class SupplierScorecardTests(unittest.TestCase):
             INSERT INTO suppliers(
                 id, supplier_name, contact_name, department, phone,
                 contact_email, category, is_active
-            ) VALUES ('sup-1', '評級供應商', '', '', '', '', '正式供應商', 1)
+            ) VALUES ('sup-1', '評級供應商', '', '', '', '', '原物料供應商', 1)
             """
         )
         conn.execute(

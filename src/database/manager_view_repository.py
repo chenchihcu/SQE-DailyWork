@@ -14,6 +14,8 @@ from database.repo_helpers import (
 from database.repository import (
     count_overdue_open_anomalies,
     get_anomaly_overview_card,
+    get_current_case_action,
+    is_case_action_overdue,
     list_events,
 )
 
@@ -28,6 +30,28 @@ def _matches_owner_filter(owner_filter: str, *candidates: object) -> bool:
         if needle in haystack:
             return True
     return False
+
+
+def _case_queue_display_fields(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    *,
+    fallback_due_date: str = "",
+) -> dict[str, Any]:
+    current = get_current_case_action(conn, anomaly_id)
+    overdue = is_case_action_overdue(conn, anomaly_id)
+    return {
+        "current_action": current,
+        "current_action_text": format_current_action_text(
+            current,
+            empty_fallback="—",
+        ),
+        "action_due_date": format_current_action_due_date(
+            current,
+            fallback=fallback_due_date,
+        ),
+        "overdue": overdue,
+    }
 
 
 def list_manager_summary_rows(
@@ -187,19 +211,89 @@ def count_root_cause_pending_open_anomalies(conn: sqlite3.Connection) -> int:
 
 
 def list_overdue_case_queue_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    return list_manager_summary_rows(conn, status="待處理", overdue_only=True)
+    rows: list[dict[str, Any]] = []
+    for row in conn.execute(
+        """
+        SELECT
+            a.id AS anomaly_id,
+            a.anomaly_no AS ref_no,
+            a.problem_desc AS content,
+            a.responsible_person,
+            a.due_date,
+            s.supplier_name
+        FROM anomalies AS a
+        JOIN suppliers AS s ON s.id = a.supplier_id
+        WHERE a.status = '待處理'
+        ORDER BY a.anomaly_no ASC
+        """
+    ).fetchall():
+        anomaly_id = str(row["anomaly_id"])
+        if not is_case_action_overdue(conn, anomaly_id):
+            continue
+        item = dict(row)
+        item.update(
+            _case_queue_display_fields(
+                conn,
+                anomaly_id,
+                fallback_due_date=str(item.get("due_date") or ""),
+            )
+        )
+        rows.append(item)
+    rows.sort(
+        key=lambda item: (
+            str(item.get("action_due_date") or "9999-99-99"),
+            str(item.get("ref_no") or ""),
+        )
+    )
+    return rows
 
 
 def list_root_cause_pending_case_queue_rows(
     conn: sqlite3.Connection,
 ) -> list[dict[str, Any]]:
-    pending = list_manager_summary_rows(conn, status="待處理")
-    return [
-        row
-        for row in pending
-        if str(row.get("root_cause_status") or "")
-        in {ANOMALY_ROOT_CAUSE_NOT_STARTED, ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION}
-    ]
+    rows: list[dict[str, Any]] = []
+    for row in conn.execute(
+        """
+        SELECT
+            a.id AS anomaly_id,
+            a.anomaly_no AS ref_no,
+            a.problem_desc AS content,
+            a.responsible_person,
+            a.due_date,
+            s.supplier_name,
+            COALESCE(rc.status, ?) AS root_cause_status
+        FROM anomalies AS a
+        JOIN suppliers AS s ON s.id = a.supplier_id
+        LEFT JOIN anomaly_root_causes AS rc ON rc.anomaly_id = a.id
+        WHERE a.status = '待處理'
+          AND COALESCE(rc.status, ?) IN (?, ?)
+        ORDER BY a.anomaly_no ASC
+        """,
+        (
+            ANOMALY_ROOT_CAUSE_NOT_STARTED,
+            ANOMALY_ROOT_CAUSE_NOT_STARTED,
+            ANOMALY_ROOT_CAUSE_NOT_STARTED,
+            ANOMALY_ROOT_CAUSE_UNDER_INVESTIGATION,
+        ),
+    ).fetchall():
+        item = dict(row)
+        anomaly_id = str(item["anomaly_id"])
+        item.update(
+            _case_queue_display_fields(
+                conn,
+                anomaly_id,
+                fallback_due_date=str(item.get("due_date") or ""),
+            )
+        )
+        rows.append(item)
+    rows.sort(
+        key=lambda item: (
+            0 if item.get("overdue") else 1,
+            str(item.get("action_due_date") or "9999-99-99"),
+            str(item.get("ref_no") or ""),
+        )
+    )
+    return rows
 
 
 def count_open_operational_actions(conn: sqlite3.Connection) -> int:
@@ -220,18 +314,4 @@ def get_supplier_event_queue_counts(conn: sqlite3.Connection) -> dict[str, int]:
         "overdue_anomaly_count": count_overdue_open_anomalies(conn),
         "root_cause_pending_count": count_root_cause_pending_open_anomalies(conn),
         "open_queue_action_count": count_open_operational_actions(conn),
-    }
-
-
-def get_manager_operational_metrics(conn: sqlite3.Connection) -> dict[str, int]:
-    """Compact operational counters (shared with sidebar queue badges)."""
-    pending_rows = list_manager_summary_rows(conn, status="待處理")
-    queue_counts = get_supplier_event_queue_counts(conn)
-    open_action_count = sum(int(row.get("open_action_count") or 0) for row in pending_rows)
-    return {
-        "pending_anomaly_count": len(pending_rows),
-        "overdue_anomaly_count": queue_counts["overdue_anomaly_count"],
-        "open_action_count": open_action_count,
-        "root_cause_pending_count": queue_counts["root_cause_pending_count"],
-        "open_queue_action_count": queue_counts["open_queue_action_count"],
     }

@@ -70,10 +70,6 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             {"yyyymm": "2026-01", "total_count": 1, "closed_count": 1, "backlog_count": 0},
             {"yyyymm": "2026-02", "total_count": 2, "closed_count": 1, "backlog_count": 1},
         ]
-        visit_trend_data = [
-            {"yyyymm": "2026-01", "visit_count": 1, "visit_anomaly_count": 0},
-            {"yyyymm": "2026-02", "visit_count": 2, "visit_anomaly_count": 1},
-        ]
         resp_data = [
             {
                 "responsible_person": "SQE_Alpha",
@@ -91,7 +87,6 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
         with (
             patch("services.event._query_service.get_monthly_stats", return_value=summary),
             patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data),
-            patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_trend_data),
             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_data),
             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data),
             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
@@ -133,7 +128,7 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
 
             # 檢查產生的圖表元件是否皆為 StableChartView
             chart_views = widget.findChildren(QChartView)
-            self.assertEqual(4, len(chart_views))
+            self.assertEqual(3, len(chart_views))
             for view in chart_views:
                 self.assertIsInstance(view, StableChartView)
 

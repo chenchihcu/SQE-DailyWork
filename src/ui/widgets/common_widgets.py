@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QBrush, QColor
 
+from database.product_item_category import SUPPLIER_EVENT_PRODUCT_CATEGORIES
 from ui.layout_constants import (
     BRAND_DIVIDER_MARGINS,
     BRAND_DIVIDER_SPACING,
@@ -623,7 +624,10 @@ class SupplierProductFormMixin:
     def _on_supplier_changed(self) -> None:
         import services.event_service as _event_service
         supplier_id = (self.supplier_combo.currentData() or "").strip()
-        products = _event_service.list_active_products_for_supplier(supplier_id)
+        products = _event_service.list_active_products_for_supplier(
+            supplier_id,
+            item_categories=SUPPLIER_EVENT_PRODUCT_CATEGORIES,
+        )
         self._product_stage_by_id = {}
         self._product_code_by_id = {}
         self.product_combo.clear()

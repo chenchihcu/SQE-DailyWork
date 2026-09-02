@@ -1,4 +1,4 @@
-"""Commercial-style, reversible display preference, business defaults and system settings dialog."""
+"""Reversible full-page display, business-default and system preferences surface."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -31,29 +31,28 @@ from services.appearance_preferences_service import (
     save_application_preferences,
 )
 from ui.appearance_preferences import AppearancePreferences
-from ui.layout_constants import PANEL_MARGINS, ROW_GAP
+from ui.layout_constants import (
+    APPEARANCE_CATEGORY_RAIL_WIDTH,
+    APPEARANCE_TWO_COLUMN_MIN_WIDTH,
+    GRID_GUTTER,
+    PAGE_OUTER_MARGINS,
+    ROW_GAP,
+)
+from ui.runtime_mode import is_automated_runtime
 from ui.theme import apply_app_theme
-from ui.window_sizing import fit_dialog_to_available_screen
-from ui.widgets.common_widgets import apply_clickable_affordance
+from ui.widgets.common_widgets import apply_clickable_affordance, repolish
+from services.anomaly_category_preset_service import all_category_labels
+from services.anomaly_source_preset_service import all_source_labels
 from services.anomaly_trace_contract import (
-    ANOMALY_SOURCE_OPTIONS as TRACE_ANOMALY_SOURCE_OPTIONS,
     TRACE_FIELD_LABELS,
     TRACE_FIELD_PATTERN_KEYS,
     normalize_anomaly_source,
 )
 from services.anomaly_trace_validator import validate_trace_pattern_text
-from ui.widgets.defect_form_widgets import ANOMALY_CATEGORY_OPTIONS
+from ui.widgets.anomaly_category_presets_dialog import AnomalyCategoryPresetsDialog
+from ui.widgets.anomaly_source_presets_dialog import AnomalySourcePresetsDialog
 from ui.widgets.process_keyword_presets_dialog import ProcessKeywordPresetsDialog
 
-
-ANOMALY_SOURCE_OPTIONS = [""] + list(TRACE_ANOMALY_SOURCE_OPTIONS)
-
-VISIT_TYPE_OPTIONS = [
-    "例行訪廠",
-    "品質輔導",
-    "年度稽核",
-    "新產品導入輔導",
-]
 
 DEFECT_DISPOSITION_OPTIONS = [
     "",
@@ -81,21 +80,67 @@ CATEGORY_DISPLAY_TITLES = [
 ]
 
 
+class _ResponsivePreferenceColumns(QWidget):
+    """Reflow a preference category from two columns to one readable column."""
+
+    def __init__(
+        self,
+        left_layout: QVBoxLayout,
+        right_layout: QVBoxLayout,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._left_host = QWidget(self)
+        self._left_host.setLayout(left_layout)
+        self._right_host = QWidget(self)
+        self._right_host.setLayout(right_layout)
+        for host in (self._left_host, self._right_host):
+            host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setHorizontalSpacing(GRID_GUTTER)
+        self._grid.setVerticalSpacing(ROW_GAP)
+        self._is_stacked: bool | None = None
+        self._apply_layout(self.width() < APPEARANCE_TWO_COLUMN_MIN_WIDTH)
+
+    def _apply_layout(self, stacked: bool) -> None:
+        if stacked == self._is_stacked:
+            return
+        self._grid.removeWidget(self._left_host)
+        self._grid.removeWidget(self._right_host)
+        if stacked:
+            self._grid.addWidget(self._left_host, 0, 0)
+            self._grid.addWidget(self._right_host, 1, 0)
+            self._grid.setColumnStretch(0, 1)
+            self._grid.setColumnStretch(1, 0)
+        else:
+            self._grid.addWidget(self._left_host, 0, 0)
+            self._grid.addWidget(self._right_host, 0, 1)
+            self._grid.setColumnStretch(0, 1)
+            self._grid.setColumnStretch(1, 1)
+        self._is_stacked = stacked
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        self._apply_layout(event.size().width() < APPEARANCE_TWO_COLUMN_MIN_WIDTH)
+        super().resizeEvent(event)
+
+
 class _PreferenceTabsAdapter:
     """Compatibility wrapper providing standard QTabWidget API over category list & stacked widget."""
 
-    def __init__(self, dialog: "AppearancePreferencesDialog") -> None:
-        self._dialog = dialog
+    def __init__(self, page: "AppearancePreferencesPage") -> None:
+        self._page = page
 
     def setCurrentIndex(self, index: int) -> None:
-        if 0 <= index < self._dialog._stacked_widget.count():
-            self._dialog._category_list.setCurrentRow(index)
+        if 0 <= index < self._page._stacked_widget.count():
+            self._page._category_list.setCurrentRow(index)
 
     def currentIndex(self) -> int:
-        return self._dialog._stacked_widget.currentIndex()
+        return self._page._stacked_widget.currentIndex()
 
     def count(self) -> int:
-        return self._dialog._stacked_widget.count()
+        return self._page._stacked_widget.count()
 
     def tabText(self, index: int) -> str:
         if 0 <= index < len(CATEGORY_TAB_NAMES):
@@ -103,26 +148,18 @@ class _PreferenceTabsAdapter:
         return ""
 
 
-class AppearancePreferencesDialog(QDialog):
-    """Preview, save, or discard global display, business and system default preferences."""
+class AppearancePreferencesPage(QWidget):
+    """Preview, save, or discard global display, business and system preferences."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("AppearancePreferencesDialog")
-        self.setWindowTitle("系統與顯示設定")
-        self.setModal(True)
+        self.setObjectName("AppearancePreferencesPage")
         self._initial_preferences = load_application_preferences()
+        self._retained_overdue_reminder_days = self._initial_preferences.overdue_reminder_days
+        self._retained_highlight_overdue_rows = self._initial_preferences.highlight_overdue_rows
         self._build_ui()
         self.preference_tabs = _PreferenceTabsAdapter(self)
         self._set_preferences(self._initial_preferences, preview=False)
-        fit_dialog_to_available_screen(
-            self,
-            preferred_width=980,
-            preferred_height=660,
-            minimum_width=840,
-            minimum_height=520,
-            maximum_width=1100,
-        )
 
     def _create_scrollable_tab(self, content_widget: QWidget) -> QScrollArea:
         """Wrap a tab page in a borderless, transparent scroll area for responsive viewport protection."""
@@ -141,22 +178,16 @@ class AppearancePreferencesDialog(QDialog):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(*PANEL_MARGINS)
+        root.setContentsMargins(*PAGE_OUTER_MARGINS)
         root.setSpacing(ROW_GAP)
 
-        title = QLabel("系統與顯示設定")
-        title.setProperty("role", "sectionTitle")
-        title.setToolTip("調整本機介面外觀、業務預設、匯出報告與系統偏好；不影響既有品質資料與資料庫架構。")
-        title.setAccessibleDescription("調整本機介面外觀、業務預設、匯出報告與系統偏好；不影響既有品質資料與資料庫架構。")
-        root.addWidget(title)
-
         body_layout = QHBoxLayout()
-        body_layout.setSpacing(12)
+        body_layout.setSpacing(GRID_GUTTER)
 
         # ── Left Navigation Category Sidebar ──
         self._category_list = QListWidget()
         self._category_list.setObjectName("PreferenceCategoryList")
-        self._category_list.setFixedWidth(160)
+        self._category_list.setFixedWidth(APPEARANCE_CATEGORY_RAIL_WIDTH)
         self._category_list.setFocusPolicy(Qt.TabFocus)
         self._category_list.setAccessibleName("偏好設定分類清單")
         self._category_list.setStyleSheet(
@@ -203,8 +234,8 @@ class AppearancePreferencesDialog(QDialog):
         # ── Tab 0: 外觀主題 (Appearance & Theme) ──
         theme_page = QWidget()
         theme_grid = QGridLayout(theme_page)
-        theme_grid.setContentsMargins(4, 4, 4, 4)
-        theme_grid.setSpacing(12)
+        theme_grid.setContentsMargins(0, 0, 0, 0)
+        theme_grid.setSpacing(0)
 
         # Tab 0 - Left: 版面密度與視窗啟動
         left_theme_col = QVBoxLayout()
@@ -422,15 +453,18 @@ class AppearancePreferencesDialog(QDialog):
         right_theme_col.addWidget(typography_group)
         right_theme_col.addStretch(1)
 
-        theme_grid.addLayout(left_theme_col, 0, 0)
-        theme_grid.addLayout(right_theme_col, 0, 1)
+        theme_grid.addWidget(
+            _ResponsivePreferenceColumns(left_theme_col, right_theme_col),
+            0,
+            0,
+        )
         self._stacked_widget.addWidget(self._create_scrollable_tab(theme_page))
 
         # ── Tab 1: 視覺表格與互動 (Visual & Tables) ──
         table_page = QWidget()
         table_grid = QGridLayout(table_page)
-        table_grid.setContentsMargins(4, 4, 4, 4)
-        table_grid.setSpacing(12)
+        table_grid.setContentsMargins(0, 0, 0, 0)
+        table_grid.setSpacing(0)
 
         # Tab 1 - Left: 表格密度、分頁與排序
         left_table_col = QVBoxLayout()
@@ -613,12 +647,6 @@ class AppearancePreferencesDialog(QDialog):
         self._hover_highlight_checkbox.setAccessibleDescription("滑鼠游標移過資料列時顯示平滑背景反白強調。")
         visual_helper_layout.addWidget(self._hover_highlight_checkbox)
 
-        self._highlight_overdue_checkbox = QCheckBox("逾期未結案項目醒目警示")
-        self._highlight_overdue_checkbox.setAccessibleName("逾期未結案項目醒目警示")
-        self._highlight_overdue_checkbox.setToolTip("以淺紅色背景醒目標示已逾期之未結案異常與待辦事件。")
-        self._highlight_overdue_checkbox.setAccessibleDescription("以淺紅色背景醒目標示已逾期之未結案異常與待辦事件。")
-        visual_helper_layout.addWidget(self._highlight_overdue_checkbox)
-
         self._auto_scroll_top_checkbox = QCheckBox("搜尋或換頁時自動捲動至頂部")
         self._auto_scroll_top_checkbox.setAccessibleName("搜尋或換頁自動捲動至頂部")
         self._auto_scroll_top_checkbox.setToolTip("在篩選或切換分頁後自動將表格垂直捲動桿重置回頂部。")
@@ -658,15 +686,18 @@ class AppearancePreferencesDialog(QDialog):
         right_table_col.addWidget(visual_helper_group)
         right_table_col.addStretch(1)
 
-        table_grid.addLayout(left_table_col, 0, 0)
-        table_grid.addLayout(right_table_col, 0, 1)
+        table_grid.addWidget(
+            _ResponsivePreferenceColumns(left_table_col, right_table_col),
+            0,
+            0,
+        )
         self._stacked_widget.addWidget(self._create_scrollable_tab(table_page))
 
         # ── Tab 2: 表單業務預設 (Form & Business Defaults) ──
         form_page = QWidget()
         form_grid = QGridLayout(form_page)
-        form_grid.setContentsMargins(4, 4, 4, 4)
-        form_grid.setSpacing(12)
+        form_grid.setContentsMargins(0, 0, 0, 0)
+        form_grid.setSpacing(0)
 
         # Tab 2 - Left: 異常事件表單預設
         left_form_col = QVBoxLayout()
@@ -692,10 +723,19 @@ class AppearancePreferencesDialog(QDialog):
 
         anomaly_default_layout.addWidget(QLabel("預設異常類別"))
         self._anomaly_category_combo = QComboBox()
-        self._anomaly_category_combo.addItems([""] + ANOMALY_CATEGORY_OPTIONS)
+        self._reload_anomaly_category_combo()
         self._anomaly_category_combo.setAccessibleName("預設異常類別")
         self._anomaly_category_combo.setToolTip("新建異常事件時預設選取的異常類別。")
         anomaly_default_layout.addWidget(self._anomaly_category_combo)
+
+        self._anomaly_category_presets_button = QPushButton("管理異常類別辭庫…")
+        self._anomaly_category_presets_button.setProperty("variant", "secondary")
+        self._anomaly_category_presets_button.setAccessibleName("管理異常類別辭庫")
+        self._anomaly_category_presets_button.setToolTip(
+            "維護供應商異常表單可選的異常類別清單。"
+        )
+        self._anomaly_category_presets_button.clicked.connect(self._open_anomaly_category_presets)
+        anomaly_default_layout.addWidget(self._anomaly_category_presets_button)
 
         self._process_keyword_presets_button = QPushButton("管理 SMT 製程關鍵詞庫…")
         self._process_keyword_presets_button.setProperty("variant", "secondary")
@@ -708,10 +748,19 @@ class AppearancePreferencesDialog(QDialog):
 
         anomaly_default_layout.addWidget(QLabel("預設異常來源"))
         self._anomaly_source_combo = QComboBox()
-        self._anomaly_source_combo.addItems(ANOMALY_SOURCE_OPTIONS)
+        self._reload_anomaly_source_combo()
         self._anomaly_source_combo.setAccessibleName("預設異常來源")
         self._anomaly_source_combo.setToolTip("新建異常事件時預設選取的異常發現來源。")
         anomaly_default_layout.addWidget(self._anomaly_source_combo)
+
+        self._anomaly_source_presets_button = QPushButton("管理異常來源辭庫…")
+        self._anomaly_source_presets_button.setProperty("variant", "secondary")
+        self._anomaly_source_presets_button.setAccessibleName("管理異常來源辭庫")
+        self._anomaly_source_presets_button.setToolTip(
+            "維護供應商異常表單可選的異常來源與追溯欄位規則。"
+        )
+        self._anomaly_source_presets_button.clicked.connect(self._open_anomaly_source_presets)
+        anomaly_default_layout.addWidget(self._anomaly_source_presets_button)
 
         self._erp_pattern_inputs: dict[str, QLineEdit] = {}
         erp_group = QGroupBox("ERP 追溯單號格式規則")
@@ -749,12 +798,6 @@ class AppearancePreferencesDialog(QDialog):
             severity_row.addWidget(radio)
         anomaly_default_layout.addLayout(severity_row)
 
-        self._sync_visit_checkbox = QCheckBox("新建異常時預設勾選「同步建立訪廠紀錄」")
-        self._sync_visit_checkbox.setAccessibleName("新建異常預設同步建立訪廠紀錄")
-        self._sync_visit_checkbox.setToolTip("開啟新增異常表單時，預設自動勾選同步產生同日訪廠紀錄。")
-        self._sync_visit_checkbox.setAccessibleDescription("開啟新增異常表單時，預設自動勾選同步產生同日訪廠紀錄。")
-        anomaly_default_layout.addWidget(self._sync_visit_checkbox)
-
         self._auto_anomaly_no_checkbox = QCheckBox("切換日期時自動重新預覽 11 碼單號")
         self._auto_anomaly_no_checkbox.setAccessibleName("切換日期自動重算單號")
         self._auto_anomaly_no_checkbox.setToolTip("修改發生日期時，自動依據新日期重新生成 YYYYMMDDNNN 單號預覽。")
@@ -775,11 +818,11 @@ class AppearancePreferencesDialog(QDialog):
         left_form_col.addWidget(anomaly_default_group)
         left_form_col.addStretch(1)
 
-        # Tab 2 - Right: 訪廠與處置預設
+        # Tab 2 - Right: 改善回覆與倉庫預設
         right_form_col = QVBoxLayout()
         right_form_col.setSpacing(ROW_GAP)
 
-        visit_default_group = QGroupBox("訪廠與改善回覆預設")
+        visit_default_group = QGroupBox("改善回覆預設")
         visit_default_layout = QVBoxLayout(visit_default_group)
         visit_default_layout.setSpacing(ROW_GAP)
 
@@ -799,30 +842,6 @@ class AppearancePreferencesDialog(QDialog):
             self._due_days_buttons[value] = radio
             due_days_row.addWidget(radio)
         visit_default_layout.addLayout(due_days_row)
-
-        visit_default_layout.addWidget(QLabel("預設訪廠性質"))
-        self._visit_type_combo = QComboBox()
-        self._visit_type_combo.addItems(VISIT_TYPE_OPTIONS)
-        self._visit_type_combo.setAccessibleName("預設訪廠性質")
-        self._visit_type_combo.setToolTip("新建訪廠紀錄時預設選取的訪廠性質。")
-        visit_default_layout.addWidget(self._visit_type_combo)
-
-        visit_default_layout.addWidget(QLabel("預設訪廠時段"))
-        self._visit_time_slot_group = QButtonGroup(self)
-        self._visit_time_slot_buttons = {}
-        time_slot_row = QHBoxLayout()
-        for value, label, description in (
-            ("上午", "上午", "新建訪廠時預設選取上午時段。"),
-            ("下午", "下午 (預設)", "新建訪廠時預設選取下午時段。"),
-            ("全天", "全天", "新建訪廠時預設選取全天時段。"),
-        ):
-            radio = QRadioButton(label)
-            radio.setAccessibleName(f"預設訪廠時段：{label}")
-            radio.setToolTip(description)
-            self._visit_time_slot_group.addButton(radio)
-            self._visit_time_slot_buttons[value] = radio
-            time_slot_row.addWidget(radio)
-        visit_default_layout.addLayout(time_slot_row)
         right_form_col.addWidget(visit_default_group)
 
         defect_default_group = QGroupBox("倉庫不良品處置與抽樣預設")
@@ -856,15 +875,18 @@ class AppearancePreferencesDialog(QDialog):
         right_form_col.addWidget(defect_default_group)
         right_form_col.addStretch(1)
 
-        form_grid.addLayout(left_form_col, 0, 0)
-        form_grid.addLayout(right_form_col, 0, 1)
+        form_grid.addWidget(
+            _ResponsivePreferenceColumns(left_form_col, right_form_col),
+            0,
+            0,
+        )
         self._stacked_widget.addWidget(self._create_scrollable_tab(form_page))
 
         # ── Tab 3: 匯出與報告 (Export & Reports) ──
         export_page = QWidget()
         export_grid = QGridLayout(export_page)
-        export_grid.setContentsMargins(4, 4, 4, 4)
-        export_grid.setSpacing(12)
+        export_grid.setContentsMargins(0, 0, 0, 0)
+        export_grid.setSpacing(0)
 
         # Tab 3 - Left: 匯出目錄與檔案行為
         left_export_col = QVBoxLayout()
@@ -1024,15 +1046,18 @@ class AppearancePreferencesDialog(QDialog):
         right_export_col.addWidget(report_style_group)
         right_export_col.addStretch(1)
 
-        export_grid.addLayout(left_export_col, 0, 0)
-        export_grid.addLayout(right_export_col, 0, 1)
+        export_grid.addWidget(
+            _ResponsivePreferenceColumns(left_export_col, right_export_col),
+            0,
+            0,
+        )
         self._stacked_widget.addWidget(self._create_scrollable_tab(export_page))
 
         # ── Tab 4: 系統、通知與備份 (System, Notifications & Backup) ──
         system_page = QWidget()
         system_grid = QGridLayout(system_page)
-        system_grid.setContentsMargins(4, 4, 4, 4)
-        system_grid.setSpacing(12)
+        system_grid.setContentsMargins(0, 0, 0, 0)
+        system_grid.setSpacing(0)
 
         # Tab 4 - Left: 啟動頁面、日誌與安全操作
         left_sys_col = QVBoxLayout()
@@ -1047,7 +1072,6 @@ class AppearancePreferencesDialog(QDialog):
         self._startup_page_buttons = {}
         startup_grid = QGridLayout()
         pages = [
-            ("home", "首頁儀表板", "開啟應用程式時預設顯示首頁與待辦面板。"),
             ("events", "訪廠與異常事件", "開啟應用程式時預設進入供應商訪廠與品質異常清單。"),
             ("defects", "倉庫不良品紀錄", "開啟應用程式時預設進入實體不良品倉庫清單。"),
             ("stats", "品質統計分析", "開啟應用程式時預設進入品質 Pareto 與統計圖表。"),
@@ -1129,33 +1153,9 @@ class AppearancePreferencesDialog(QDialog):
         left_sys_col.addWidget(startup_group)
         left_sys_col.addStretch(1)
 
-        # Tab 4 - Right: 逾期預警與資料庫備份
+        # Tab 4 - Right: 資料庫備份
         right_sys_col = QVBoxLayout()
         right_sys_col.setSpacing(ROW_GAP)
-
-        overdue_group = QGroupBox("待辦事項逾期預警")
-        overdue_layout = QVBoxLayout(overdue_group)
-        overdue_layout.setSpacing(ROW_GAP)
-
-        overdue_layout.addWidget(QLabel("首頁待辦逾期預警天數閾值"))
-        self._overdue_days_group = QButtonGroup(self)
-        self._overdue_days_buttons = {}
-        overdue_grid = QGridLayout()
-        overdue_options = [
-            (3, "3 天內即將到期", "距改善截止日不足 3 天時於待辦清單中顯示警示。"),
-            (7, "7 天內即將到期 (預設)", "距改善截止日不足 7 天時顯示警示。"),
-            (14, "14 天內即將到期", "距改善截止日不足 14 天時顯示警示。"),
-            (0, "關閉預警提示", "不進行即將到期之提前警示提示。"),
-        ]
-        for idx, (value, label, description) in enumerate(overdue_options):
-            radio = QRadioButton(label)
-            radio.setAccessibleName(f"逾期預警天數：{label}")
-            radio.setToolTip(description)
-            self._overdue_days_group.addButton(radio)
-            self._overdue_days_buttons[value] = radio
-            overdue_grid.addWidget(radio, idx // 2, idx % 2)
-        overdue_layout.addLayout(overdue_grid)
-        right_sys_col.addWidget(overdue_group)
 
         backup_group = QGroupBox("資料庫自動備份與維護")
         backup_layout = QVBoxLayout(backup_group)
@@ -1195,8 +1195,11 @@ class AppearancePreferencesDialog(QDialog):
         right_sys_col.addWidget(backup_group)
         right_sys_col.addStretch(1)
 
-        system_grid.addLayout(left_sys_col, 0, 0)
-        system_grid.addLayout(right_sys_col, 0, 1)
+        system_grid.addWidget(
+            _ResponsivePreferenceColumns(left_sys_col, right_sys_col),
+            0,
+            0,
+        )
         self._stacked_widget.addWidget(self._create_scrollable_tab(system_page))
 
         # Default select the first category
@@ -1211,26 +1214,82 @@ class AppearancePreferencesDialog(QDialog):
         apply_clickable_affordance(self.reset_button, tooltip="預覽所有介面與系統偏好的預設值；尚未儲存")
         self.reset_button.clicked.connect(self._reset_defaults)
         footer.addWidget(self.reset_button)
-        footer.addStretch(1)
+
+        self.feedback_label = QLabel()
+        self.feedback_label.setObjectName("AppearancePreferencesFeedback")
+        self.feedback_label.setProperty("role", "messageText")
+        self.feedback_label.setWordWrap(True)
+        self.feedback_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.feedback_label.setAccessibleName("顯示設定操作結果")
+        self.feedback_label.hide()
+        footer.addWidget(self.feedback_label, 1)
+
         self.save_button = QPushButton("儲存並套用")
         self.save_button.setProperty("variant", "primary")
         self.save_button.setCursor(Qt.PointingHandCursor)
         self.save_button.setAccessibleName("儲存並套用介面與系統預設值")
         apply_clickable_affordance(self.save_button, tooltip="儲存此電腦的介面與系統偏好")
-        self.save_button.clicked.connect(self._save_and_accept)
+        self.save_button.clicked.connect(self._save_and_apply)
         footer.addWidget(self.save_button)
-        self.cancel_button = QPushButton("取消")
+        self.cancel_button = QPushButton("放棄變更")
         self.cancel_button.setProperty("variant", "secondary")
         self.cancel_button.setCursor(Qt.PointingHandCursor)
-        self.cancel_button.setAccessibleName("取消介面變更")
+        self.cancel_button.setAccessibleName("放棄尚未儲存的介面變更")
         apply_clickable_affordance(self.cancel_button, tooltip="放棄本次預覽並還原原先的偏好")
-        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button.clicked.connect(lambda: self._discard_changes())
         footer.addWidget(self.cancel_button)
         root.addLayout(footer)
 
     def _open_process_keyword_presets(self) -> None:
         dialog = ProcessKeywordPresetsDialog(self)
         dialog.exec()
+
+    def _open_anomaly_source_presets(self) -> None:
+        current_source = self._anomaly_source_combo.currentText().strip()
+        dialog = AnomalySourcePresetsDialog(self)
+        if dialog.exec():
+            self._reload_anomaly_source_combo(current_source)
+
+    def _open_anomaly_category_presets(self) -> None:
+        current_category = self._anomaly_category_combo.currentText().strip()
+        dialog = AnomalyCategoryPresetsDialog(self)
+        if dialog.exec():
+            self._reload_anomaly_category_combo(current_category)
+
+    def _reload_anomaly_source_combo(self, preferred: str = "") -> None:
+        labels = all_source_labels()
+        with QSignalBlocker(self._anomaly_source_combo):
+            self._anomaly_source_combo.clear()
+            self._anomaly_source_combo.addItem("")
+            self._anomaly_source_combo.addItems(labels)
+            selected = normalize_anomaly_source(preferred)
+            if selected:
+                idx = self._anomaly_source_combo.findText(selected)
+                if idx >= 0:
+                    self._anomaly_source_combo.setCurrentIndex(idx)
+                else:
+                    self._anomaly_source_combo.setCurrentIndex(0)
+            else:
+                self._anomaly_source_combo.setCurrentIndex(0)
+
+    def _reload_anomaly_category_combo(self, preferred: str = "") -> None:
+        labels = all_category_labels()
+        with QSignalBlocker(self._anomaly_category_combo):
+            self._anomaly_category_combo.clear()
+            self._anomaly_category_combo.addItem("")
+            self._anomaly_category_combo.addItems(labels)
+            selected = str(preferred or "").strip()
+            if selected:
+                idx = self._anomaly_category_combo.findText(selected)
+                if idx >= 0:
+                    self._anomaly_category_combo.setCurrentIndex(idx)
+                else:
+                    self._anomaly_category_combo.setCurrentIndex(0)
+            else:
+                self._anomaly_category_combo.setCurrentIndex(0)
 
     def _on_browse_export_dir(self) -> None:
         selected_dir = QFileDialog.getExistingDirectory(
@@ -1266,7 +1325,6 @@ class AppearancePreferencesDialog(QDialog):
 
         # Tab 2: 表單與業務
         due_days = next(val for val, btn in self._due_days_buttons.items() if btn.isChecked())
-        visit_time_slot = next(val for val, btn in self._visit_time_slot_buttons.items() if btn.isChecked())
         severity_level = next(val for val, btn in self._severity_level_buttons.items() if btn.isChecked())
         sample_size = next(val for val, btn in self._defect_sample_size_buttons.items() if btn.isChecked())
 
@@ -1280,7 +1338,6 @@ class AppearancePreferencesDialog(QDialog):
         # Tab 4: 系統與維護
         startup_page = next(val for val, btn in self._startup_page_buttons.items() if btn.isChecked())
         retention_count = next(val for val, btn in self._retention_count_buttons.items() if btn.isChecked())
-        overdue_days = next(val for val, btn in self._overdue_days_buttons.items() if btn.isChecked())
         log_level = next(val for val, btn in self._log_level_buttons.items() if btn.isChecked())
         import_conflict = next(val for val, btn in self._import_conflict_buttons.items() if btn.isChecked())
 
@@ -1304,7 +1361,7 @@ class AppearancePreferencesDialog(QDialog):
             search_mode=search_mode,
             stats_default_span_months=stats_span,
             pareto_show_cutoff_line=self._pareto_cutoff_checkbox.isChecked(),
-            highlight_overdue_rows=self._highlight_overdue_checkbox.isChecked(),
+            highlight_overdue_rows=self._retained_highlight_overdue_rows,
             date_format_display=date_format,
             table_auto_scroll_to_top=self._auto_scroll_top_checkbox.isChecked(),
             table_hover_highlight=self._hover_highlight_checkbox.isChecked(),
@@ -1314,14 +1371,11 @@ class AppearancePreferencesDialog(QDialog):
             quick_filter_case_sensitive=self._quick_filter_case_checkbox.isChecked(),
             default_responsible_person=self._responsible_person_input.text().strip(),
             default_anomaly_category=self._anomaly_category_combo.currentText().strip(),
-            default_sync_visit=self._sync_visit_checkbox.isChecked(),
             default_due_days=due_days,
-            default_visit_time_slot=visit_time_slot,
             default_anomaly_source=normalize_anomaly_source(
                 self._anomaly_source_combo.currentText().strip()
             ),
             default_severity_level=severity_level,
-            default_visit_type=self._visit_type_combo.currentText().strip() or "例行訪廠",
             auto_fill_anomaly_no_on_date_change=self._auto_anomaly_no_checkbox.isChecked(),
             default_closer_name=self._closer_name_input.text().strip(),
             default_defect_disposition=self._defect_disposition_combo.currentText().strip(),
@@ -1350,7 +1404,7 @@ class AppearancePreferencesDialog(QDialog):
             auto_backup_prompt=self._auto_backup_checkbox.isChecked(),
             backup_retention_count=retention_count,
             confirm_on_delete=self._confirm_delete_checkbox.isChecked(),
-            overdue_reminder_days=overdue_days,
+            overdue_reminder_days=self._retained_overdue_reminder_days,
             auto_check_unresolved_on_startup=self._auto_check_unresolved_checkbox.isChecked(),
             clean_temp_files_on_exit=self._clean_temp_checkbox.isChecked(),
             log_level=log_level,
@@ -1361,6 +1415,8 @@ class AppearancePreferencesDialog(QDialog):
         )
 
     def _set_preferences(self, preferences: AppearancePreferences, *, preview: bool) -> None:
+        self._retained_overdue_reminder_days = preferences.overdue_reminder_days
+        self._retained_highlight_overdue_rows = preferences.highlight_overdue_rows
         blockers = [
             *[QSignalBlocker(btn) for btn in self._density_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._sidebar_density_buttons.values()],
@@ -1377,7 +1433,6 @@ class AppearancePreferencesDialog(QDialog):
             *[QSignalBlocker(btn) for btn in self._page_limit_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._date_format_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._due_days_buttons.values()],
-            *[QSignalBlocker(btn) for btn in self._visit_time_slot_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._severity_level_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._defect_sample_size_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._export_action_buttons.values()],
@@ -1386,7 +1441,6 @@ class AppearancePreferencesDialog(QDialog):
             *[QSignalBlocker(btn) for btn in self._excel_theme_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._pdf_density_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._retention_count_buttons.values()],
-            *[QSignalBlocker(btn) for btn in self._overdue_days_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._double_click_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._search_mode_buttons.values()],
             *[QSignalBlocker(btn) for btn in self._stats_span_buttons.values()],
@@ -1397,14 +1451,12 @@ class AppearancePreferencesDialog(QDialog):
             QSignalBlocker(self._alt_row_checkbox),
             QSignalBlocker(self._grid_lines_checkbox),
             QSignalBlocker(self._hover_highlight_checkbox),
-            QSignalBlocker(self._highlight_overdue_checkbox),
             QSignalBlocker(self._auto_scroll_top_checkbox),
             QSignalBlocker(self._animations_checkbox),
             QSignalBlocker(self._table_show_row_numbers_checkbox),
             QSignalBlocker(self._quick_filter_case_checkbox),
             QSignalBlocker(self._auto_backup_checkbox),
             QSignalBlocker(self._auto_compact_db_checkbox),
-            QSignalBlocker(self._sync_visit_checkbox),
             QSignalBlocker(self._auto_anomaly_no_checkbox),
             QSignalBlocker(self._auto_uppercase_checkbox),
             QSignalBlocker(self._require_defect_photos_checkbox),
@@ -1423,7 +1475,6 @@ class AppearancePreferencesDialog(QDialog):
             QSignalBlocker(self._closer_name_input),
             QSignalBlocker(self._anomaly_category_combo),
             QSignalBlocker(self._anomaly_source_combo),
-            QSignalBlocker(self._visit_type_combo),
             QSignalBlocker(self._defect_disposition_combo),
             QSignalBlocker(self._export_dir_input),
             QSignalBlocker(self._report_header_input),
@@ -1456,7 +1507,6 @@ class AppearancePreferencesDialog(QDialog):
         self._alt_row_checkbox.setChecked(preferences.alternating_row_colors)
         self._grid_lines_checkbox.setChecked(preferences.table_grid_lines)
         self._hover_highlight_checkbox.setChecked(preferences.table_hover_highlight)
-        self._highlight_overdue_checkbox.setChecked(preferences.highlight_overdue_rows)
         self._auto_scroll_top_checkbox.setChecked(preferences.table_auto_scroll_to_top)
         self._animations_checkbox.setChecked(preferences.enable_animations)
         self._table_show_row_numbers_checkbox.setChecked(preferences.table_show_row_numbers)
@@ -1489,20 +1539,14 @@ class AppearancePreferencesDialog(QDialog):
             self._erp_pattern_inputs[pattern_key].setText(getattr(preferences, pattern_key))
         if preferences.default_severity_level in self._severity_level_buttons:
             self._severity_level_buttons[preferences.default_severity_level].setChecked(True)
-        self._sync_visit_checkbox.setChecked(preferences.default_sync_visit)
         self._auto_anomaly_no_checkbox.setChecked(preferences.auto_fill_anomaly_no_on_date_change)
         self._auto_uppercase_checkbox.setChecked(preferences.auto_uppercase_part_no)
         self._require_defect_photos_checkbox.setChecked(preferences.require_defect_photos)
         if preferences.default_due_days in self._due_days_buttons:
             self._due_days_buttons[preferences.default_due_days].setChecked(True)
-        visit_type_idx = self._visit_type_combo.findText(preferences.default_visit_type)
-        if visit_type_idx >= 0:
-            self._visit_type_combo.setCurrentIndex(visit_type_idx)
         disp_idx = self._defect_disposition_combo.findText(preferences.default_defect_disposition)
         if disp_idx >= 0:
             self._defect_disposition_combo.setCurrentIndex(disp_idx)
-        if preferences.default_visit_time_slot in self._visit_time_slot_buttons:
-            self._visit_time_slot_buttons[preferences.default_visit_time_slot].setChecked(True)
         if preferences.default_defect_sample_size in self._defect_sample_size_buttons:
             self._defect_sample_size_buttons[preferences.default_defect_sample_size].setChecked(True)
 
@@ -1533,8 +1577,6 @@ class AppearancePreferencesDialog(QDialog):
         self._auto_save_drafts_checkbox.setChecked(preferences.auto_save_drafts)
         self._clean_temp_checkbox.setChecked(preferences.clean_temp_files_on_exit)
         self._session_restore_filters_checkbox.setChecked(preferences.session_restore_last_filters)
-        if preferences.overdue_reminder_days in self._overdue_days_buttons:
-            self._overdue_days_buttons[preferences.overdue_reminder_days].setChecked(True)
         self._auto_backup_checkbox.setChecked(preferences.auto_backup_prompt)
         self._auto_compact_db_checkbox.setChecked(preferences.auto_compact_db_on_exit)
         if preferences.backup_retention_count in self._retention_count_buttons:
@@ -1560,9 +1602,19 @@ class AppearancePreferencesDialog(QDialog):
             apply_app_theme(target_app, preferences)
 
     def _reset_defaults(self) -> None:
+        self._show_feedback("")
         self._set_preferences(AppearancePreferences.default(), preview=True)
 
-    def _save_and_accept(self) -> None:
+    def _show_feedback(self, message: str, *, tone: str | None = None) -> None:
+        self.feedback_label.setText(message)
+        self.feedback_label.setProperty("tone", tone)
+        repolish(self.feedback_label)
+        self.feedback_label.setVisible(bool(message))
+
+    def has_unsaved_changes(self) -> bool:
+        return self._current_preferences() != self._initial_preferences
+
+    def _save_and_apply(self) -> None:
         try:
             for widget in self._erp_pattern_inputs.values():
                 validate_trace_pattern_text(widget.text())
@@ -1576,8 +1628,29 @@ class AppearancePreferencesDialog(QDialog):
             QMessageBox.warning(self, "無法儲存", f"無法儲存介面與系統偏好：{exc}")
             return
         self._initial_preferences = preferences
-        self.accept()
+        self._apply_preview(preferences)
+        self._show_feedback("設定已儲存並套用", tone="success")
 
-    def reject(self) -> None:
-        self._apply_preview(self._initial_preferences)
-        super().reject()
+    def _discard_changes(self, *, show_feedback: bool = True) -> None:
+        self._set_preferences(self._initial_preferences, preview=True)
+        if show_feedback:
+            self._show_feedback("已放棄尚未儲存的變更")
+        else:
+            self._show_feedback("")
+
+    def can_leave(self) -> bool:
+        if not self.has_unsaved_changes():
+            return True
+        if is_automated_runtime():
+            self._discard_changes(show_feedback=False)
+            return True
+        should_discard = QMessageBox.question(
+            self,
+            "未儲存變更",
+            "顯示設定有未儲存的變更，確定要放棄嗎？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+        if should_discard:
+            self._discard_changes(show_feedback=False)
+        return should_discard

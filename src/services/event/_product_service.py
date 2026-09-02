@@ -6,9 +6,17 @@ from database import connection as _connection
 from database import repository
 
 
-def list_products(*, include_inactive: bool = True) -> list[dict]:
+def list_products(
+    *,
+    include_inactive: bool = True,
+    item_categories: tuple[str, ...] | None = None,
+) -> list[dict]:
     with _connection.get_connection() as conn:
-        return repository.list_products(conn, include_inactive=include_inactive)
+        return repository.list_products(
+            conn,
+            include_inactive=include_inactive,
+            item_categories=item_categories,
+        )
 
 
 def create_product(payload: dict) -> str:
@@ -23,6 +31,7 @@ def create_product(payload: dict) -> str:
                 payload.get("secondary_supplier_id") or ""
             ).strip()
             or None,
+            item_category=(payload.get("item_category") or "").strip(),
         )
 
 
@@ -40,6 +49,7 @@ def update_product(product_id: str, payload: dict) -> None:
             ).strip()
             or None,
             stage_change_reason=(payload.get("stage_change_reason") or "").strip(),
+            item_category=(payload.get("item_category") or "").strip() or None,
         )
 
 
@@ -53,9 +63,17 @@ def delete_product(product_id: str) -> None:
         repository.delete_product_record(conn, product_id)
 
 
-def list_active_products_for_supplier(supplier_id: str | None) -> list[dict]:
+def list_active_products_for_supplier(
+    supplier_id: str | None,
+    *,
+    item_categories: tuple[str, ...] | None = None,
+) -> list[dict]:
     with _connection.get_connection() as conn:
-        return repository.list_active_products_for_supplier(conn, supplier_id)
+        return repository.list_active_products_for_supplier(
+            conn,
+            supplier_id,
+            item_categories=item_categories,
+        )
 
 
 def has_active_suppliers() -> bool:

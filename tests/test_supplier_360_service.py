@@ -19,7 +19,7 @@ class Supplier360ServiceTests(unittest.TestCase):
             INSERT INTO suppliers(
                 id, supplier_name, contact_name, department, phone,
                 contact_email, category, is_active
-            ) VALUES (?, ?, '', '', '', '', '正式供應商', ?)
+            ) VALUES (?, ?, '', '', '', '', '原物料供應商', ?)
             """,
             [
                 ("open", "有未結異常", 1),

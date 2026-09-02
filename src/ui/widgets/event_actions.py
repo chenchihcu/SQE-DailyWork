@@ -12,23 +12,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from services.event import _anomaly_service, _visit_service
+from services.event import _anomaly_service
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.defect_form_shim import CloseAnomalyDialog
 from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.common_widgets import safe_ui_operation
 
 ACTION_EDIT_ANOMALY = "edit_anomaly"
 ACTION_DELETE_ANOMALY = "delete_anomaly"
 ACTION_CLOSE_ANOMALY = "close_anomaly"
-ACTION_VIEW_LINKED_VISIT = "view_linked_visit"
-ACTION_EDIT_VISIT = "edit_visit"
-ACTION_DELETE_VISIT = "delete_visit"
-ACTION_VIEW_VISIT_DETAIL = "view_visit_detail"
 ACTION_VIEW_ANOMALY_DETAILS = "view_anomaly_details"
-ACTION_PREVIEW_VISIT = "preview_visit"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
 ACTION_UPDATE_CLOSED_AT = "update_closed_at"
 ACTION_SEND_LINE = "send_line"
@@ -45,26 +39,18 @@ def build_event_action_menu(
         action_map[menu.addAction(label)] = key
 
     event_type = str(row.get("event_type") or "").strip().upper()
-    if event_type == "ANOMALY":
-        _add_action("案件詳情", ACTION_VIEW_ANOMALY_DETAILS)
-        _add_action("刪除異常", ACTION_DELETE_ANOMALY)
-        if str(row.get("status") or "").strip() == "待處理":
-            _add_action("結案", ACTION_CLOSE_ANOMALY)
-        if str(row.get("status") or "").strip() == "已結案":
-            _add_action("調整結案日期", ACTION_UPDATE_CLOSED_AT)
-            _add_action("重新處理", ACTION_REOPEN_ANOMALY)
-        if str(row.get("linked_visit_id") or "").strip():
-            _add_action("關聯訪廠", ACTION_VIEW_LINKED_VISIT)
-        menu.addSeparator()
-        _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
+    if event_type != "ANOMALY":
         return menu, action_map
 
-    if event_type == "VISIT":
-        _add_action("預覽內容", ACTION_PREVIEW_VISIT)
-        _add_action("編輯訪廠", ACTION_EDIT_VISIT)
-        _add_action("刪除訪廠", ACTION_DELETE_VISIT)
-        menu.addSeparator()
-        _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
+    _add_action("案件詳情", ACTION_VIEW_ANOMALY_DETAILS)
+    _add_action("刪除異常", ACTION_DELETE_ANOMALY)
+    if str(row.get("status") or "").strip() == "待處理":
+        _add_action("結案", ACTION_CLOSE_ANOMALY)
+    if str(row.get("status") or "").strip() == "已結案":
+        _add_action("調整結案日期", ACTION_UPDATE_CLOSED_AT)
+        _add_action("重新處理", ACTION_REOPEN_ANOMALY)
+    menu.addSeparator()
+    _add_action("傳送精簡報告至 LINE", ACTION_SEND_LINE)
     return menu, action_map
 
 
@@ -115,11 +101,7 @@ def dispatch_event_action(
     on_edit_anomaly: Callable[[str], None],
     on_delete_anomaly: Callable[[str, str], None],
     on_close_anomaly: Callable[[str, str], None],
-    on_edit_visit: Callable[[str], None],
-    on_delete_visit: Callable[[str, str], None],
-    on_open_visit_detail: Callable[[str], None],
     on_view_anomaly_details: Callable[[str], None] | None = None,
-    on_preview_visit: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
     on_update_closed_at: Callable[[str, str], None] | None = None,
     on_send_line: Callable[[dict], None] | None = None,
@@ -144,23 +126,6 @@ def dispatch_event_action(
         return
     if action_key == ACTION_UPDATE_CLOSED_AT and on_update_closed_at:
         on_update_closed_at(event_id, str(row.get("content") or ""))
-        return
-    if action_key == ACTION_VIEW_LINKED_VISIT:
-        linked_visit_id = str(row.get("linked_visit_id") or "").strip()
-        if linked_visit_id:
-            on_open_visit_detail(linked_visit_id)
-        return
-    if action_key == ACTION_EDIT_VISIT:
-        on_edit_visit(event_id)
-        return
-    if action_key == ACTION_DELETE_VISIT:
-        on_delete_visit(event_id, str(row.get("event_date") or ""))
-        return
-    if action_key == ACTION_VIEW_VISIT_DETAIL:
-        on_open_visit_detail(event_id)
-        return
-    if action_key == ACTION_PREVIEW_VISIT and on_preview_visit:
-        on_preview_visit(event_id)
         return
     if action_key == ACTION_SEND_LINE and on_send_line:
         on_send_line(row)
@@ -235,54 +200,6 @@ class EventActionsController:
             lambda: _anomaly_service.delete_anomaly(anomaly_id),
             self._refresh_all_views,
         )
-
-    def open_edit_visit_dialog(self, visit_id: str) -> None:
-        def _op() -> None:
-            detail = _visit_service.get_visit_detail(visit_id)
-            dialog = NewVisitDialog(
-                self._parent,
-                visit_id=visit_id,
-                initial_data=detail,
-            )
-            if dialog.exec():
-                self._refresh_all_views()
-        safe_ui_operation(
-            self._parent,
-            _op,
-            warning_title="編輯失敗",
-            logger_msg="編輯訪廠失敗",
-            error_msg="開啟訪廠編輯失敗：",
-        )
-
-    def delete_visit(self, visit_id: str, visit_date: str) -> None:
-        date_text = visit_date.strip() or visit_id
-        _confirm_and_delete(
-            self._parent, "訪廠紀錄", date_text,
-            lambda: _visit_service.delete_visit(visit_id),
-            self._refresh_all_views,
-        )
-
-    def open_visit_detail(self, visit_id: str) -> None:
-        self.open_preview_visit_dialog(visit_id)
-
-    def open_preview_visit_dialog(self, visit_id: str) -> None:
-        """Open the visit form in read-only mode."""
-        try:
-            detail = _visit_service.get_visit_detail(visit_id)
-            dialog = NewVisitDialog(
-                self._parent,
-                visit_id=visit_id,
-                initial_data=detail,
-                read_only=True,
-            )
-            dialog.exec()
-        except Exception as exc:
-            logger.exception("開啟訪廠預覽失敗")
-            QMessageBox.critical(
-                self._parent,
-                "錯誤",
-                localize_popup_message(f"開啟預覽失敗：{localize_exception(exc)}"),
-            )
 
     def reopen_anomaly(self, anomaly_id: str, ref_no: str) -> None:
         dialog = ReopenAnomalyDialog(anomaly_id, ref_no, self._parent)

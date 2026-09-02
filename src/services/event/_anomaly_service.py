@@ -13,6 +13,7 @@ from database.repo_helpers import (
 )
 
 from services.appearance_preferences_service import load_application_preferences
+from services.anomaly_category_preset_service import is_valid_category
 from services.anomaly_trace_contract import normalize_anomaly_source
 from services.anomaly_trace_validator import (
     build_trace_patterns,
@@ -36,6 +37,12 @@ def _resolve_process_keywords(payload: dict) -> str:
     if "process_keywords" not in payload:
         return ""
     return validate_process_keywords(payload.get("process_keywords", ""))
+
+
+def _validate_anomaly_category(payload: dict) -> None:
+    category = str(payload.get("category") or "").strip()
+    if category and not is_valid_category(category):
+        raise ValueError("異常類別不在辭庫中，請選擇有效選項。")
 
 
 def _resolve_trace_fields(
@@ -121,6 +128,7 @@ def create_anomaly(payload: dict) -> str:
     problem_desc = (payload.get("problem_desc") or "").strip()
     if not problem_desc:
         raise ValueError("Problem description is required")
+    _validate_anomaly_category(payload)
 
     supplier_id = (payload.get("supplier_id") or "").strip()
     product_id = _require_product_id(payload)
@@ -170,12 +178,13 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
     problem_desc = (payload.get("problem_desc") or "").strip()
     if not problem_desc:
         raise ValueError("Problem description is required")
+    _validate_anomaly_category(payload)
 
     supplier_id = (payload.get("supplier_id") or "").strip()
     product_id = _require_product_id(payload)
     anomaly_date = payload.get("anomaly_date") or date.today().isoformat()
     visit_id = (payload.get("visit_id") or "").strip() or None
-    sync_visit = bool(payload.get("sync_visit", True))
+    sync_visit = bool(payload.get("sync_visit", False))
     visit_summary = payload.get("visit_summary", "")
 
     with _connection.get_connection() as conn:
@@ -245,6 +254,7 @@ def update_anomaly(anomaly_id: str, payload: dict) -> dict:
     problem_desc = (payload.get("problem_desc") or "").strip()
     if not problem_desc:
         raise ValueError("Problem description is required")
+    _validate_anomaly_category(payload)
 
     with _connection.get_connection() as conn:
         existing = repository.get_anomaly_detail(conn, anomaly_key)

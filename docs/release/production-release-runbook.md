@@ -129,7 +129,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Profile 
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1 -Profile Release -UseExistingDist
 ```
 
-**PASS：** exit 0 + `scratch/release-gate-summary.json`；**不取代**本地 `-Profile Full` native visual gate。
+**PASS：** exit 0 + 當次執行的 `scratch/release-gate-summary.json` 內 `passed: true`；**不取代**本地 `-Profile Full` native visual gate。Release runner 在第一個 gate 前即先寫入 `passed: false`，並把前一份摘要保留為 `scratch/release-gate-summary.previous.json`，所以中斷或失敗不得沿用舊 PASS。
 
 ### 2.5 Workflow smoke（建議；Release profile 已含）
 
@@ -158,12 +158,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\portable_install_smoke.ps1 -UseExistingDist
 ```
 
+建置流程固定使用 `scratch/release-build/` 隔離 staging，並將 PATH 限縮到受控 Python／venv 與 Windows 系統目錄，避免桌面 Agent、Poppler 或其他工具鏈 DLL 汙染 Qt runtime。PyInstaller 的 dependency/warning 稽核寫入 `scratch/release-build/pyinstaller-warning-audit.json`。候選 exe 必須在 120 秒上限內完成 frozen smoke，才可 promotion 到 `dist/`；`-SkipSmoke` 僅供檢查 staged output，不得覆蓋正式產物。
+
 **PASS：**
 
 - `dist/SQE_DailyWork/SQE_DailyWork.exe` 存在
-- `dist/SQE_DailyWork/build-info.json` 含 version / git_commit / build_timestamp
+- `dist/SQE_DailyWork/build-info.json` 含 version / git_commit / build_timestamp / dirty_worktree / Python、PySide6、PyInstaller 版本
 - `dist/SQE_DailyWork-win64.zip` 存在
-- frozen `--smoke-exit`：exit 0 + scratch DB 建立 + `logs/smoke_exit.ok` 非空
+- dependency audit：無 Codex runtime 路徑、無 bundled root `icuuc.dll`、無 test modules、無未分類 Qt/ICU/first-party missing dependency
+- frozen `--smoke-exit`：120 秒內 exit 0 + scratch DB 建立 + `logs/smoke_exit.ok` 非空
+- portable smoke：含空格的暫存解壓路徑中，120 秒內 exit 0 + scratch DB + 非空 marker
 
 **記錄發布證據：**
 
@@ -171,6 +175,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\portable_install_smo
 (Get-FileHash dist\SQE_DailyWork-win64.zip -Algorithm SHA256).Hash
 Get-Content dist\SQE_DailyWork\build-info.json
 ```
+
+`build-info.json` 的 `zip_sha256` 必須等於實際 zip hash。只有「前一份成功 Release summary 的 SHA-256 與現存 zip 相符」時，建置腳本才可將它複製到 `Outputs/release-archive/<timestamp>-<commit>/`。若沒有相符的前一版產物，當次候選套件即使 PASS，rollback readiness 仍為 **blocked**，不可宣稱 production cut 完整就緒。
 
 ---
 
@@ -206,6 +212,8 @@ flowchart TD
 | 部分 schema 問題 | **禁止** partial reverse SQL；整檔還原 |
 
 Promotion 備份命名：`sqe_v2_backup_<phase>_<timestamp>.db`（見 risk-ledger）。
+
+應用層回滾只接受前一份已驗證完整 zip；成功摘要、commit 或 hash 字串本身不是可執行 rollback artifact。若前一版 zip 缺失，release readiness 必須標成 `blocked`，先取得原始套件或在該 commit 的隔離 checkout 重建並完成 frozen／portable smoke；不得拿目前候選套件冒充前一版。
 
 ---
 

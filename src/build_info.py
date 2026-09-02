@@ -1,14 +1,31 @@
-"""Build-time metadata for release traceability.
-
-``scripts/write_build_info.py`` regenerates this file during packaging.
-Development checkouts keep the placeholder values below.
-"""
+"""Build-time metadata loader with development-safe fallback values."""
 
 from __future__ import annotations
 
-__git_commit__ = "d8cf432"
-__build_timestamp__ = "2026-08-29T02:53:13Z"
-__dirty_worktree__ = True
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+
+def _load_build_metadata(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _runtime_build_metadata() -> dict[str, Any]:
+    if not getattr(sys, "frozen", False):
+        return {}
+    return _load_build_metadata(Path(sys.executable).resolve().parent / "build-info.json")
+
+
+_METADATA = _runtime_build_metadata()
+__git_commit__ = str(_METADATA.get("git_commit") or "development")
+__build_timestamp__ = str(_METADATA.get("build_timestamp") or "")
+__dirty_worktree__ = bool(_METADATA.get("dirty_worktree", False))
 
 
 def build_label() -> str:

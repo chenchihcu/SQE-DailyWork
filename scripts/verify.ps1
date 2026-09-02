@@ -457,6 +457,50 @@ try {
         if (-not (Test-Path -LiteralPath $scratchDir -PathType Container)) {
             New-Item -ItemType Directory -Path $scratchDir -Force | Out-Null
         }
+        $summaryPath = Join-Path $scratchDir "release-gate-summary.json"
+        $previousSummaryPath = Join-Path $scratchDir "release-gate-summary.previous.json"
+        if (Test-Path -LiteralPath $summaryPath -PathType Leaf) {
+            Copy-Item -LiteralPath $summaryPath -Destination $previousSummaryPath -Force
+        }
+
+        function Write-ReleaseSummary {
+            param(
+                [bool]$Passed,
+                [string]$Status
+            )
+
+            $zipPath = Join-Path $repoRoot "dist\SQE_DailyWork-win64.zip"
+            $buildInfoPath = Join-Path $repoRoot "dist\SQE_DailyWork\build-info.json"
+            $buildInfo = $null
+            if (Test-Path -LiteralPath $buildInfoPath -PathType Leaf) {
+                try {
+                    $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
+                } catch {
+                    $buildInfo = $null
+                }
+            }
+            $zipSha = ""
+            if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
+                $zipSha = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+            }
+
+            $summary = [ordered]@{
+                profile = "Release"
+                passed = $Passed
+                status = $Status
+                generated_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+                steps = @($script:releaseSteps)
+                artifacts = [ordered]@{
+                    zip_path = $zipPath
+                    zip_sha256 = $zipSha
+                    build_info_path = $buildInfoPath
+                    build_info = $buildInfo
+                }
+            }
+            $tempSummaryPath = "$script:summaryPath.tmp"
+            ($summary | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $tempSummaryPath -Encoding UTF8
+            Move-Item -LiteralPath $tempSummaryPath -Destination $script:summaryPath -Force
+        }
 
         function Add-ReleaseStep {
             param(
@@ -469,7 +513,12 @@ try {
                 exit_code = $ExitCode
                 detail = $Detail
             }) | Out-Null
+            Write-ReleaseSummary -Passed $false -Status "failed"
         }
+
+        # Fail closed before the first step so an interrupted or failed run can
+        # never leave an older PASS summary as current evidence.
+        Write-ReleaseSummary -Passed $false -Status "failed"
 
         Write-Host ""
         Write-Host "[1/5] scripts\harness_check.ps1"
@@ -527,30 +576,7 @@ try {
             throw "portable_install_smoke failed with exit code $LASTEXITCODE"
         }
 
-        $zipPath = Join-Path $repoRoot "dist\SQE_DailyWork-win64.zip"
-        $buildInfoPath = Join-Path $repoRoot "dist\SQE_DailyWork\build-info.json"
-        $buildInfo = $null
-        if (Test-Path -LiteralPath $buildInfoPath -PathType Leaf) {
-            $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
-        }
-        $zipSha = ""
-        if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
-            $zipSha = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-        }
-
-        $summary = [ordered]@{
-            profile = "Release"
-            passed = $true
-            steps = @($releaseSteps)
-            artifacts = [ordered]@{
-                zip_path = $zipPath
-                zip_sha256 = $zipSha
-                build_info_path = $buildInfoPath
-                build_info = $buildInfo
-            }
-        }
-        $summaryPath = Join-Path $scratchDir "release-gate-summary.json"
-        ($summary | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+        Write-ReleaseSummary -Passed $true -Status "passed"
         Write-Host "Release gate summary: $summaryPath"
         Write-Host ""
         Write-Host "Release verification passed."

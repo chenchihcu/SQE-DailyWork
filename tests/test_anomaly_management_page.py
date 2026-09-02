@@ -15,6 +15,7 @@ from services.event import (
     _case_action_service,
 )
 from services import repeat_issue_service
+from ui.sidebar_nav import PAGE_EVENT_OVERDUE
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
 
 
@@ -255,6 +256,44 @@ class AnomalyManagementPageTests(unittest.TestCase):
             corrective_tab = page.tabs.widget(4)
             buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
             self.assertNotIn("新增有效性驗證", buttons)
+
+    def test_corrective_tab_is_named_disposition_items(self) -> None:
+        page = self._make_page()
+        self.assertEqual("處置項目", page.TAB_NAMES[4])
+        self.assertEqual("處置項目", page.tabs.tabText(4))
+
+    def test_footer_command_row_has_only_save_and_cancel(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        command_row = page.layout().itemAt(4).layout()
+        footer_buttons = [
+            command_row.itemAt(index).widget()
+            for index in range(command_row.count())
+            if command_row.itemAt(index).widget() is not None
+        ]
+        self.assertEqual([page.save_button, page.cancel_button], footer_buttons)
+        close_buttons = [
+            button for button in page.findChildren(QPushButton) if button.text() == "結案"
+        ]
+        reopen_buttons = [
+            button
+            for button in page.findChildren(QPushButton)
+            if button.text() == "重新開啟"
+        ]
+        self.assertEqual(1, len(close_buttons))
+        self.assertEqual(1, len(reopen_buttons))
+        self.assertIs(close_buttons[0], page.close_button)
+        self.assertIs(reopen_buttons[0], page.reopen_button)
+
+    def test_return_to_list_opens_ops_queue_when_source_is_ops_family(self) -> None:
+        main_window = mock.Mock()
+        main_window._workbench_source_page_key = PAGE_EVENT_OVERDUE
+        page = AnomalyManagementPage(main_window)
+        self._pages.append(page)
+        page.load_anomaly("anomaly-1")
+        self.assertEqual("返回作業佇列", page.back_button.text())
+        page.return_to_list()
+        main_window.open_supplier_event_ops.assert_called_once_with(PAGE_EVENT_OVERDUE)
 
     def test_repeat_issues_panel_survives_runtime_error(self) -> None:
         with mock.patch.object(

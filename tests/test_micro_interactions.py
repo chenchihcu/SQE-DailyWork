@@ -116,8 +116,6 @@ class MicroInteractionTests(unittest.TestCase):
             for text, tooltip in {
                 "查詢": "套用篩選條件",
                 "清除": "清除目前篩選條件",
-                "新增訪廠": "建立新的訪廠紀錄",
-                "新增異常": "建立新的異常單",
             }.items():
                 self.assertIn(text, buttons)
                 button = buttons[text]

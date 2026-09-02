@@ -11,8 +11,27 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from database.product_item_category import (
+    ITEM_CATEGORY_SEMI_FINISHED,
+    ITEM_CATEGORY_OPTIONS,
+    PRODUCT_ITEM_CATEGORY_META_KEY,
+    PRODUCT_ITEM_CATEGORY_V2_META_KEY,
+    infer_item_category_from_product_code,
+    normalize_item_category,
+)
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
+)
+from database.supplier_category import (
+    LEGACY_SUPPLIER_CATEGORY_FORMAL,
+    LEGACY_SUPPLIER_CATEGORY_OUTSOURCE,
+    LEGACY_SUPPLIER_CATEGORY_OUTSOURCE_FACTORY_V1,
+    LEGACY_SUPPLIER_CATEGORY_RAW_MATERIAL_V1,
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+    SUPPLIER_CATEGORY_RENAME_META_KEY,
+    SUPPLIER_CATEGORY_RENAME_V2_META_KEY,
+    normalize_supplier_category,
 )
 from database.repo_helpers import (
     # ── Constants (keep in sync with source) ──
@@ -168,6 +187,98 @@ def require_repeat_links_schema(conn: sqlite3.Connection) -> None:
 logger = logging.getLogger(__name__)
 
 
+def _ensure_supplier_category_rename_v1(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, SUPPLIER_CATEGORY_RENAME_META_KEY) == "1":
+        return
+    conn.execute(
+        "UPDATE suppliers SET category = ? WHERE category = ?",
+        (SUPPLIER_CATEGORY_RAW_MATERIAL, LEGACY_SUPPLIER_CATEGORY_FORMAL),
+    )
+    conn.execute(
+        "UPDATE suppliers SET category = ? WHERE category = ?",
+        (
+            normalize_supplier_category(LEGACY_SUPPLIER_CATEGORY_OUTSOURCE),
+            LEGACY_SUPPLIER_CATEGORY_OUTSOURCE,
+        ),
+    )
+    upsert_migration_meta(conn, SUPPLIER_CATEGORY_RENAME_META_KEY, "1")
+
+
+def _ensure_supplier_category_rename_v2(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, SUPPLIER_CATEGORY_RENAME_V2_META_KEY) == "1":
+        return
+    conn.execute(
+        "UPDATE suppliers SET category = ? WHERE category = ?",
+        (SUPPLIER_CATEGORY_RAW_MATERIAL, LEGACY_SUPPLIER_CATEGORY_RAW_MATERIAL_V1),
+    )
+    conn.execute(
+        "UPDATE suppliers SET category = ? WHERE category = ?",
+        (
+            SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+            LEGACY_SUPPLIER_CATEGORY_OUTSOURCE_FACTORY_V1,
+        ),
+    )
+    upsert_migration_meta(conn, SUPPLIER_CATEGORY_RENAME_V2_META_KEY, "1")
+
+
+def _ensure_product_item_category_v1(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, PRODUCT_ITEM_CATEGORY_META_KEY) == "1":
+        return
+    _ensure_column(
+        conn,
+        "products",
+        "item_category",
+        f"TEXT NOT NULL DEFAULT '{ITEM_CATEGORY_SEMI_FINISHED}'",
+    )
+    if _table_exists(conn, "defect_records"):
+        rows = conn.execute(
+            """
+            SELECT item_no, category, COUNT(*) AS cnt
+            FROM defect_records
+            WHERE TRIM(category) IN ('原物料', '半成品', '成品')
+              AND TRIM(item_no) <> ''
+            GROUP BY item_no, category
+            ORDER BY item_no, cnt DESC
+            """
+        ).fetchall()
+        best: dict[str, str] = {}
+        for row in rows:
+            item_no = str(row["item_no"] or "").strip()
+            category = str(row["category"] or "").strip()
+            if not item_no or item_no in best:
+                continue
+            best[item_no] = normalize_item_category(category)
+        for item_no, category in best.items():
+            conn.execute(
+                "UPDATE products SET item_category = ? WHERE product_code = ?",
+                (category, item_no),
+            )
+    upsert_migration_meta(conn, PRODUCT_ITEM_CATEGORY_META_KEY, "1")
+
+
+def _ensure_product_item_category_v2(conn: sqlite3.Connection) -> None:
+    if get_migration_meta(conn, PRODUCT_ITEM_CATEGORY_V2_META_KEY) == "1":
+        return
+    if not _has_column(conn, "products", "item_category"):
+        upsert_migration_meta(conn, PRODUCT_ITEM_CATEGORY_V2_META_KEY, "1")
+        return
+    rows = conn.execute(
+        "SELECT id, product_code, item_category FROM products"
+    ).fetchall()
+    for row in rows:
+        product_id = str(row["id"] or "").strip()
+        product_code = str(row["product_code"] or "").strip()
+        if not product_id or not product_code:
+            continue
+        current = str(row["item_category"] or "").strip()
+        category = infer_item_category_from_product_code(product_code, current=current)
+        conn.execute(
+            "UPDATE products SET item_category = ? WHERE id = ?",
+            (category, product_id),
+        )
+    upsert_migration_meta(conn, PRODUCT_ITEM_CATEGORY_V2_META_KEY, "1")
+
+
 def create_schema(conn: sqlite3.Connection) -> None:
     fresh_install = not _table_exists(conn, "anomalies")
     conn.executescript(
@@ -179,7 +290,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             department TEXT NOT NULL DEFAULT '',
             phone TEXT NOT NULL DEFAULT '',
             contact_email TEXT NOT NULL DEFAULT '',
-            category TEXT NOT NULL DEFAULT '正式供應商',
+            category TEXT NOT NULL DEFAULT '原物料供應商',
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -606,7 +717,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         """
     )
     _ensure_column(
-        conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '正式供應商'"
+        conn, "suppliers", "category", "TEXT NOT NULL DEFAULT '原物料供應商'"
     )
     _ensure_column(
         conn,
@@ -648,11 +759,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS trg_product_records_insert
         INSTEAD OF INSERT ON product_records
         BEGIN
-            INSERT INTO products (id, product_code, product_name, created_at, updated_at, is_active)
+            INSERT INTO products (id, product_code, product_name, item_category, created_at, updated_at, is_active)
             VALUES (
                 COALESCE(NEW.id, hex(randomblob(16))),
                 NEW.item_no,
                 NEW.product_name,
+                '半成品',
                 COALESCE(NEW.created_at, datetime('now', 'localtime')),
                 datetime('now', 'localtime'),
                 1
@@ -692,7 +804,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             VALUES (
                 COALESCE(NEW.id, hex(randomblob(16))),
                 NEW.name,
-                COALESCE(NEW.category, '正式供應商'),
+                COALESCE(NEW.category, '原物料供應商'),
                 COALESCE(NEW.created_at, datetime('now', 'localtime')),
                 datetime('now', 'localtime'),
                 1
@@ -817,6 +929,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
         WHERE secondary_supplier_id = supplier_id
         """
     )
+    _ensure_supplier_category_rename_v1(conn)
+    _ensure_supplier_category_rename_v2(conn)
+    _ensure_product_item_category_v1(conn)
+    _ensure_product_item_category_v2(conn)
     conn.commit()
     # The canonical Action migration is intentionally not an automatic upgrade
     # for an existing production database. Fresh databases receive the current
@@ -2286,15 +2402,28 @@ def _iter_text_columns(conn: sqlite3.Connection) -> list[tuple[str, str]]:
     return columns
 
 
-def list_suppliers(conn: sqlite3.Connection, *, include_inactive: bool = True) -> list[dict]:
+def list_suppliers(
+    conn: sqlite3.Connection,
+    *,
+    include_inactive: bool = True,
+    category: str | None = None,
+) -> list[dict]:
     sql = """
-        SELECT id, supplier_name, contact_name, department, phone, contact_email, is_active, created_at, updated_at
+        SELECT id, supplier_name, contact_name, department, phone, contact_email,
+               category, is_active, created_at, updated_at
         FROM suppliers
     """
+    conditions: list[str] = []
+    params: list[Any] = []
     if not include_inactive:
-        sql += " WHERE is_active = 1"
+        conditions.append("is_active = 1")
+    if category:
+        conditions.append("category = ?")
+        params.append(normalize_supplier_category(category))
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY supplier_name COLLATE NOCASE, created_at"
-    rows = conn.execute(sql).fetchall()
+    rows = conn.execute(sql, params).fetchall()
     items: list[dict] = []
     for row in rows:
         item = dict(row)
@@ -2309,7 +2438,8 @@ def get_supplier(conn: sqlite3.Connection, supplier_id: str) -> dict | None:
         return None
     row = conn.execute(
         """
-        SELECT id, supplier_name, contact_name, department, phone, contact_email, is_active, created_at, updated_at
+        SELECT id, supplier_name, contact_name, department, phone, contact_email,
+               category, is_active, created_at, updated_at
         FROM suppliers
         WHERE id = ?
         LIMIT 1
@@ -2331,17 +2461,20 @@ def create_supplier_record(
     department: str = "",
     phone: str = "",
     contact_email: str = "",
+    category: str = SUPPLIER_CATEGORY_RAW_MATERIAL,
 ) -> str:
     normalized_name = _normalize_supplier_name_for_storage(supplier_name)
     if not normalized_name:
         raise ValueError("Supplier name is required")
+    normalized_category = normalize_supplier_category(category)
     supplier_id = _gen_id()
     try:
         conn.execute(
             """
             INSERT INTO suppliers(
-                id, supplier_name, contact_name, department, phone, contact_email, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                id, supplier_name, contact_name, department, phone, contact_email,
+                category, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """,
             (
                 supplier_id,
@@ -2350,6 +2483,7 @@ def create_supplier_record(
                 (department or "").strip(),
                 (phone or "").strip(),
                 (contact_email or "").strip(),
+                normalized_category,
                 _now_iso(),
                 _now_iso(),
             ),
@@ -2387,6 +2521,7 @@ def update_supplier_record(
     department: str = "",
     phone: str = "",
     contact_email: str = "",
+    category: str | None = None,
 ) -> None:
     supplier_key = (supplier_id or "").strip()
     if not supplier_key:
@@ -2394,23 +2529,47 @@ def update_supplier_record(
     normalized_name = _normalize_supplier_name_for_storage(supplier_name)
     if not normalized_name:
         raise ValueError("Supplier name is required")
+    normalized_category: str | None = None
+    if category is not None:
+        normalized_category = normalize_supplier_category(category)
     try:
-        cur = conn.execute(
-            """
-            UPDATE suppliers
-            SET supplier_name = ?, contact_name = ?, department = ?, phone = ?, contact_email = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                normalized_name,
-                (contact_name or "").strip(),
-                (department or "").strip(),
-                (phone or "").strip(),
-                (contact_email or "").strip(),
-                _now_iso(),
-                supplier_key,
-            ),
-        )
+        if normalized_category is not None:
+            cur = conn.execute(
+                """
+                UPDATE suppliers
+                SET supplier_name = ?, contact_name = ?, department = ?, phone = ?,
+                    contact_email = ?, category = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    normalized_name,
+                    (contact_name or "").strip(),
+                    (department or "").strip(),
+                    (phone or "").strip(),
+                    (contact_email or "").strip(),
+                    normalized_category,
+                    _now_iso(),
+                    supplier_key,
+                ),
+            )
+        else:
+            cur = conn.execute(
+                """
+                UPDATE suppliers
+                SET supplier_name = ?, contact_name = ?, department = ?, phone = ?,
+                    contact_email = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    normalized_name,
+                    (contact_name or "").strip(),
+                    (department or "").strip(),
+                    (phone or "").strip(),
+                    (contact_email or "").strip(),
+                    _now_iso(),
+                    supplier_key,
+                ),
+            )
     except sqlite3.IntegrityError as exc:
         raise ValueError("Supplier name already exists") from exc
     if cur.rowcount == 0:
@@ -3138,8 +3297,12 @@ def _product_select_fragments(conn: sqlite3.Connection) -> dict[str, Any]:
         else "'量產'"
     )
     has_secondary = _has_column(conn, "products", "secondary_supplier_id")
+    has_item_category = _has_column(conn, "products", "item_category")
     secondary_select_sql = "p.secondary_supplier_id" if has_secondary else "NULL"
     secondary_name_sql = "ss.supplier_name" if has_secondary else "NULL"
+    item_category_sql = (
+        "p.item_category" if has_item_category else f"'{ITEM_CATEGORY_SEMI_FINISHED}'"
+    )
     join_sql = (
         " LEFT JOIN suppliers ss ON ss.id = p.secondary_supplier_id"
         if has_secondary
@@ -3148,13 +3311,20 @@ def _product_select_fragments(conn: sqlite3.Connection) -> dict[str, Any]:
     return {
         "stage_sql": stage_sql,
         "has_secondary": has_secondary,
+        "has_item_category": has_item_category,
         "secondary_select_sql": secondary_select_sql,
         "secondary_name_sql": secondary_name_sql,
+        "item_category_sql": item_category_sql,
         "join_sql": join_sql,
     }
 
 
-def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) -> list[dict]:
+def list_products(
+    conn: sqlite3.Connection,
+    *,
+    include_inactive: bool = True,
+    item_categories: tuple[str, ...] | None = None,
+) -> list[dict]:
     frag = _product_select_fragments(conn)
     sql = """
         SELECT
@@ -3163,6 +3333,7 @@ def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) ->
             p.product_name AS product_name,
             """
     sql += f"{frag['stage_sql']} AS product_stage,"
+    sql += f"{frag['item_category_sql']} AS item_category,"
     sql += """
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
@@ -3179,9 +3350,19 @@ def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) ->
         LEFT JOIN suppliers s ON s.id = p.supplier_id
     """
     sql += frag["join_sql"]
+    conditions: list[str] = []
     params: list[Any] = []
     if not include_inactive:
-        sql += " WHERE p.is_active = 1"
+        conditions.append("p.is_active = 1")
+    if item_categories:
+        normalized_categories = [
+            normalize_item_category(value) for value in item_categories
+        ]
+        placeholders = ", ".join("?" for _ in normalized_categories)
+        conditions.append(f"p.item_category IN ({placeholders})")
+        params.extend(normalized_categories)
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY p.product_name COLLATE NOCASE, p.product_code COLLATE NOCASE"
     rows = conn.execute(sql, params).fetchall()
     items: list[dict] = []
@@ -3191,6 +3372,8 @@ def list_products(conn: sqlite3.Connection, *, include_inactive: bool = True) ->
         item["product_stage"] = _normalize_product_stage_for_read(
             item.get("product_stage")
         )
+        if "item_category" in item:
+            item["item_category"] = normalize_item_category(item.get("item_category"))
         items.append(item)
     return items
 
@@ -3207,6 +3390,7 @@ def get_product(conn: sqlite3.Connection, product_id: str) -> dict | None:
             p.product_code AS product_code,
             p.product_name AS product_name,
             {frag['stage_sql']} AS product_stage,
+            {frag['item_category_sql']} AS item_category,
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
             {frag['secondary_select_sql']} AS secondary_supplier_id,
@@ -3285,10 +3469,16 @@ def create_product_record(
     product_stage: str = PRODUCT_STAGE_MASS_PRODUCTION,
     supplier_id: str,
     secondary_supplier_id: str | None = None,
+    item_category: str = ITEM_CATEGORY_SEMI_FINISHED,
 ) -> str:
     normalized_code = (product_code or "").strip()
     normalized_name = (product_name or "").strip()
     normalized_product_stage = _normalize_product_stage(product_stage)
+    normalized_item_category = normalize_item_category(
+        infer_item_category_from_product_code(normalized_code, current=item_category)
+    )
+    if normalized_item_category not in ITEM_CATEGORY_OPTIONS:
+        raise ValueError("Invalid item category")
     if not normalized_code:
         raise ValueError("Product code is required")
     if not normalized_name:
@@ -3360,6 +3550,11 @@ def create_product_record(
             )
     except sqlite3.IntegrityError as exc:
         raise ValueError("Product code already exists") from exc
+    if _has_column(conn, "products", "item_category"):
+        conn.execute(
+            "UPDATE products SET item_category = ? WHERE id = ?",
+            (normalized_item_category, product_id),
+        )
     conn.commit()
     return product_id
 
@@ -3375,6 +3570,7 @@ def update_product_record(
     secondary_supplier_id: str | None = None,
     stage_change_reason: str = "",
     changed_by: str = DEFAULT_STAGE_CHANGED_BY,
+    item_category: str | None = None,
 ) -> None:
     product_key = (product_id or "").strip()
     normalized_code = (product_code or "").strip()
@@ -3473,6 +3669,24 @@ def update_product_record(
         raise ValueError("Product code already exists") from exc
     if cur.rowcount == 0:
         raise ValueError("Product not found")
+    if _has_column(conn, "products", "item_category"):
+        current_category = (
+            str(item_category or "").strip()
+            if item_category is not None
+            else str(existing.get("item_category") or "").strip()
+        )
+        normalized_item_category = normalize_item_category(
+            infer_item_category_from_product_code(
+                normalized_code,
+                current=current_category,
+            )
+        )
+        if normalized_item_category not in ITEM_CATEGORY_OPTIONS:
+            raise ValueError("Invalid item category")
+        conn.execute(
+            "UPDATE products SET item_category = ? WHERE id = ?",
+            (normalized_item_category, product_key),
+        )
     sync_report = sync_product_stage_to_events(conn, product_key)
     if existing_stage != normalized_product_stage:
         _insert_product_stage_change_log(
@@ -3544,7 +3758,10 @@ def list_active_suppliers(conn: sqlite3.Connection) -> list[dict]:
 
 
 def list_active_products_for_supplier(
-    conn: sqlite3.Connection, supplier_id: str | None
+    conn: sqlite3.Connection,
+    supplier_id: str | None,
+    *,
+    item_categories: tuple[str, ...] | None = None,
 ) -> list[dict]:
     normalized_supplier_id = (supplier_id or "").strip()
     if not normalized_supplier_id:
@@ -3558,6 +3775,7 @@ def list_active_products_for_supplier(
             p.product_name AS product_name,
             """
     sql += f"{frag['stage_sql']} AS product_stage,"
+    sql += f"{frag['item_category_sql']} AS item_category,"
     sql += """
             p.supplier_id AS supplier_id,
             s.supplier_name AS supplier_name,
@@ -3581,6 +3799,13 @@ def list_active_products_for_supplier(
         # 不包含 supplier_id IS NULL 的老料號（嚴格模式）。
         sql += " AND p.supplier_id = ?"
         params.append(normalized_supplier_id)
+    if item_categories and frag.get("has_item_category"):
+        normalized_categories = [
+            normalize_item_category(value) for value in item_categories
+        ]
+        placeholders = ", ".join("?" for _ in normalized_categories)
+        sql += f" AND p.item_category IN ({placeholders})"
+        params.extend(normalized_categories)
     sql += " ORDER BY p.product_name COLLATE NOCASE, p.product_code COLLATE NOCASE"
     rows = conn.execute(sql, params).fetchall()
     items: list[dict] = []
@@ -5770,7 +5995,7 @@ def create_anomaly_with_visit_link(
     outsource_receipt_no: str = "",
     batch_qty: int = 0,
     visit_id: str | None = None,
-    sync_visit: bool = True,
+    sync_visit: bool = False,
     visit_summary: str = "",
     pending_items: str = "",
     responsible_person: str = "",
@@ -6016,13 +6241,32 @@ def search_global(
             "供應商",
             """
             SELECT id, supplier_name AS ref_no, supplier_name AS title,
-                   contact_name AS subtitle, updated_at AS event_date
+                   contact_name AS subtitle, updated_at AS event_date, category
             FROM suppliers
             WHERE is_active = 1 AND supplier_name LIKE ?
             ORDER BY supplier_name
             LIMIT ?
             """,
             (pattern, per_source_limit),
+        ),
+        (
+            "產品",
+            """
+            SELECT p.id, p.product_code AS ref_no, p.product_name AS title,
+                   COALESCE(s.supplier_name, '') AS subtitle,
+                   p.updated_at AS event_date, p.item_category
+            FROM products p
+            LEFT JOIN suppliers s ON s.id = p.supplier_id
+            WHERE p.is_active = 1
+              AND (
+                  p.product_code LIKE ?
+                  OR p.product_name LIKE ?
+                  OR s.supplier_name LIKE ?
+              )
+            ORDER BY p.product_code
+            LIMIT ?
+            """,
+            (pattern, pattern, pattern, per_source_limit),
         ),
         (
             "異常",
@@ -6037,23 +6281,6 @@ def search_global(
                OR a.product_name LIKE ?
                OR s.supplier_name LIKE ?
             ORDER BY a.anomaly_date DESC, a.created_at DESC
-            LIMIT ?
-            """,
-            (pattern, pattern, pattern, pattern, per_source_limit),
-        ),
-        (
-            "訪廠",
-            """
-            SELECT v.id, '' AS ref_no, v.summary AS title,
-                   s.supplier_name AS subtitle, v.visit_date AS event_date,
-                   v.supplier_id
-            FROM visits v
-            JOIN suppliers s ON s.id = v.supplier_id
-            WHERE v.summary LIKE ?
-               OR v.product_name LIKE ?
-               OR v.work_order_no LIKE ?
-               OR s.supplier_name LIKE ?
-            ORDER BY v.visit_date DESC, v.created_at DESC
             LIMIT ?
             """,
             (pattern, pattern, pattern, pattern, per_source_limit),
@@ -6102,29 +6329,23 @@ def list_events(
         "a.anomaly_date",
         yyyymm,
     )
-    visit_period_sql, visit_period_params = _event_period_filter(
-        "v.visit_date",
-        yyyymm,
-    )
     event_type_key = str(event_type or "ALL").strip().upper()
     scope = str(event_scope or "").strip().upper()
+    if scope in {EVENT_SCOPE_VISIT_ONLY, EVENT_SCOPE_VISIT_WITH_ANOMALY}:
+        scope = ""
     if scope not in EVENT_SCOPE_VALUES:
         scope = ""
 
     if scope:
         include_anomalies = scope in {
-            EVENT_SCOPE_VISIT_WITH_ANOMALY,
             EVENT_SCOPE_ANOMALY_ONLY,
             EVENT_SCOPE_CLOSED_ONLY,
         }
-        include_visits = scope == EVENT_SCOPE_VISIT_ONLY
     else:
         include_anomalies = event_type_key in {"ALL", "ANOMALY"}
-        include_visits = event_type_key in {"ALL", "VISIT"}
 
     if overdue_only:
-        # Overdue is a due_date condition on anomalies; visits have no due_date.
-        include_visits = False
+        include_anomalies = True
 
     if include_anomalies:
         pending_items_expr = (
@@ -6175,18 +6396,13 @@ def list_events(
             WHERE 1=1
         """
         anomaly_params: list[Any] = []
-        if scope == EVENT_SCOPE_VISIT_WITH_ANOMALY:
-            anomaly_sql += " AND NULLIF(a.visit_id, '') IS NOT NULL"
-        elif scope == EVENT_SCOPE_ANOMALY_ONLY:
-            anomaly_sql += " AND NULLIF(a.visit_id, '') IS NULL"
+        if scope == EVENT_SCOPE_ANOMALY_ONLY:
+            anomaly_sql += " AND a.status != '已結案'"
         elif scope == EVENT_SCOPE_CLOSED_ONLY:
             anomaly_sql += " AND a.status = '已結案'"
         if status != "ALL":
             anomaly_sql += " AND a.status = ?"
             anomaly_params.append(status)
-        elif scope in (EVENT_SCOPE_VISIT_WITH_ANOMALY, EVENT_SCOPE_ANOMALY_ONLY):
-            # Move closed events to dedicated tab: exclude them from active tabs by default.
-            anomaly_sql += " AND a.status != '已結案'"
 
         if keyword:
             kw = f"%{keyword.lower()}%"
@@ -6207,83 +6423,6 @@ def list_events(
                 for event in events
                 if is_case_action_overdue(conn, str(event.get("event_id") or ""))
             ]
-
-    if include_visits:
-        visit_sql = """
-            SELECT
-                v.id AS event_id,
-                '' AS ref_no,
-                v.visit_date AS event_date,
-                'VISIT' AS event_type,
-                s.supplier_name AS supplier_name,
-                v.summary AS content,
-                v.status AS status,
-                '' AS category,
-                NULL AS linked_visit_id,
-                NULL AS linked_visit_date,
-                v.product_id AS product_id,
-                p.product_code AS product_code,
-                '' AS product_lot_no,
-                v.product_name AS product_name,
-                v.product_stage AS product_stage,
-                v.work_order_no AS work_order_no,
-                v.production_qty AS production_qty,
-                '' AS outsource_work_order,
-                0 AS batch_qty,
-                '' AS improvement_desc,
-                '' AS pending_items,
-                v.visitor_name AS responsible_person,
-                NULL AS closed_at,
-                NULL AS quality_report_required
-            FROM visits v
-            JOIN suppliers s ON s.id = v.supplier_id
-            LEFT JOIN products p ON p.id = v.product_id
-            WHERE 1=1
-        """
-        visit_params: list[Any] = []
-        if scope == EVENT_SCOPE_VISIT_ONLY:
-            visit_sql += """
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM anomalies a_link
-                    WHERE a_link.visit_id = v.id
-                )
-            """
-        elif scope == EVENT_SCOPE_VISIT_WITH_ANOMALY:
-            visit_sql += """
-                AND EXISTS (
-                    SELECT 1
-                    FROM anomalies a_link
-                    WHERE a_link.visit_id = v.id
-                )
-            """
-        if status != "ALL":
-            visit_sql += " AND v.status = ?"
-            visit_params.append(status)
-        if keyword:
-            kw = f"%{keyword.lower()}%"
-            if keyword.strip() == "未指定":
-                visit_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(v.visitor_name) LIKE ? OR TRIM(COALESCE(v.visitor_name, '')) = '')"
-                visit_params.extend([kw, kw])
-            else:
-                visit_sql += " AND (lower(s.supplier_name) LIKE ? OR lower(v.visitor_name) LIKE ?)"
-                visit_params.extend([kw, kw])
-        visit_sql += visit_period_sql
-        visit_params.extend(visit_period_params)
-        for row in conn.execute(visit_sql, visit_params).fetchall():
-            visit_row = dict(row)
-            visit_id = str(visit_row.get("event_id") or "").strip()
-            visit_row["product_sections"] = list_visit_product_sections(conn, visit_id)
-            visit_row["defect_notes"] = list_visit_defect_notes(conn, visit_id)
-            _apply_visit_rollup(visit_row)
-            if visit_row.get("defect_note_summary"):
-                content = str(visit_row.get("content") or "").strip()
-                visit_row["content"] = (
-                    f"{content}\n{visit_row['defect_note_summary']}"
-                    if content
-                    else visit_row["defect_note_summary"]
-                )
-            events.append(visit_row)
 
     events.sort(
         key=lambda item: (
@@ -8025,11 +8164,12 @@ WHERE is_active = 1;
 CREATE TRIGGER IF NOT EXISTS trg_product_records_insert
 INSTEAD OF INSERT ON product_records
 BEGIN
-    INSERT INTO products (id, product_code, product_name, created_at, updated_at, is_active)
+    INSERT INTO products (id, product_code, product_name, item_category, created_at, updated_at, is_active)
     VALUES (
         COALESCE(NEW.id, hex(randomblob(16))),
         NEW.item_no,
         NEW.product_name,
+        '半成品',
         COALESCE(NEW.created_at, datetime('now', 'localtime')),
         datetime('now', 'localtime'),
         1

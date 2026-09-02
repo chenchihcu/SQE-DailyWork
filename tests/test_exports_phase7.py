@@ -225,13 +225,11 @@ class ExportPhase7Tests(unittest.TestCase):
         from services import manager_view_service
 
         summary_rows = manager_view_service.list_manager_summary_rows()
-        queue_rows = manager_view_service.list_operational_action_queue()
         with tempfile.TemporaryDirectory() as tmp:
             path = str(Path(tmp) / "manager.xlsx")
             ok, _message = manager_export_service.export_manager_view_excel(
                 path,
                 summary_rows,
-                queue_rows,
             )
             self.assertTrue(ok)
             workbook = load_workbook(path)

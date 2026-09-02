@@ -6,6 +6,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
+
 
 TABLE_COLUMNS = (
     "defect_no",
@@ -335,15 +340,18 @@ def get_unique_suppliers_from_defects(conn: sqlite3.Connection) -> list[dict[str
     Retrieves unique supplier names and their categories (Formal vs Outsource) from defect_records.
     """
     query = """
-        SELECT DISTINCT supplier_name as name, '正式供應商' as category
+        SELECT DISTINCT supplier_name as name, ? as category
         FROM defect_records
         WHERE supplier_name IS NOT NULL AND TRIM(supplier_name) <> '' AND TRIM(supplier_name) <> 'N/A'
         UNION
-        SELECT DISTINCT outsource_supplier_name as name, '委外供應商' as category
+        SELECT DISTINCT outsource_supplier_name as name, ? as category
         FROM defect_records
         WHERE outsource_supplier_name IS NOT NULL AND TRIM(outsource_supplier_name) <> '' AND TRIM(outsource_supplier_name) <> 'N/A'
     """
-    cursor = conn.execute(query)
+    cursor = conn.execute(
+        query,
+        (SUPPLIER_CATEGORY_RAW_MATERIAL, SUPPLIER_CATEGORY_OUTSOURCE_FACTORY),
+    )
     return [{"name": row["name"], "category": row["category"]} for row in cursor.fetchall()]
 
 
@@ -481,7 +489,10 @@ def get_products(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def get_products_by_supplier_name(
-    conn: sqlite3.Connection, supplier_name: str
+    conn: sqlite3.Connection,
+    supplier_name: str,
+    *,
+    item_categories: tuple[str, ...] | None = None,
 ) -> list[sqlite3.Row]:
     """依供應商名稱篩選料號（嚴格模式）。
 
@@ -507,18 +518,24 @@ def get_products_by_supplier_name(
     ).fetchone() is not None
     if not has_products or not has_suppliers:
         return []
-    cursor = conn.execute(
-        """
+    sql = """
         SELECT DISTINCT p.product_code AS item_no, p.product_name
         FROM products p
         JOIN suppliers s ON (s.id = p.supplier_id OR s.id = p.secondary_supplier_id)
         WHERE s.supplier_name = ?
           AND p.is_active = 1
           AND p.supplier_id IS NOT NULL
-        ORDER BY p.product_code COLLATE NOCASE
-        """,
-        (normalized,),
-    )
+    """
+    params: list[Any] = [normalized]
+    has_item_category = conn.execute(
+        "SELECT 1 FROM pragma_table_info('products') WHERE name = 'item_category'"
+    ).fetchone() is not None
+    if item_categories and has_item_category:
+        placeholders = ", ".join("?" for _ in item_categories)
+        sql += f" AND p.item_category IN ({placeholders})"
+        params.extend(item_categories)
+    sql += " ORDER BY p.product_code COLLATE NOCASE"
+    cursor = conn.execute(sql, params)
     return list(cursor.fetchall())
 
 

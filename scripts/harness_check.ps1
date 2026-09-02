@@ -94,9 +94,65 @@ function Require-Json {
     }
 
     try {
-        Get-Content -LiteralPath $path -Raw | ConvertFrom-Json | Out-Null
+        Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json | Out-Null
     } catch {
         Add-Failure "Invalid JSON in ${RelativePath}: $($_.Exception.Message)"
+    }
+}
+
+function Require-RouteKeywordContract {
+    param([string]$RelativePath)
+
+    $path = Join-RepoPath $RelativePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Add-Failure "Cannot validate route keyword contract; missing file: $RelativePath"
+        return
+    }
+
+    try {
+        $config = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        Add-Failure "Invalid UTF-8 route keyword JSON in ${RelativePath}: $($_.Exception.Message)"
+        return
+    }
+
+    foreach ($section in @("promptReminders", "pathReminders")) {
+        $property = $config.PSObject.Properties[$section]
+        if ($null -eq $property -or $null -eq $property.Value) {
+            Add-Failure "Route keyword JSON missing section ${section}: $RelativePath"
+            continue
+        }
+
+        $items = @($property.Value)
+        if ($items.Count -eq 0) {
+            Add-Failure "Route keyword JSON section ${section} is empty: $RelativePath"
+            continue
+        }
+
+        $keys = [System.Collections.Generic.List[string]]::new()
+        foreach ($item in $items) {
+            if ($null -eq $item.key -or [string]::IsNullOrWhiteSpace([string]$item.key)) {
+                Add-Failure "Route keyword ${section} item has no key: $RelativePath"
+            } else {
+                $keys.Add([string]$item.key) | Out-Null
+            }
+            if ($null -eq $item.regex -or [string]::IsNullOrWhiteSpace([string]$item.regex)) {
+                Add-Failure "Route keyword ${section} item has no regex: $RelativePath"
+            } else {
+                try {
+                    [regex]::new([string]$item.regex) | Out-Null
+                } catch {
+                    Add-Failure "Route keyword ${section} has invalid regex '$($item.regex)': $RelativePath"
+                }
+            }
+            if ($null -eq $item.message -or [string]::IsNullOrWhiteSpace([string]$item.message)) {
+                Add-Failure "Route keyword ${section} item has no message: $RelativePath"
+            }
+        }
+
+        if ((@($keys | Sort-Object -Unique)).Count -ne $keys.Count) {
+            Add-Failure "Route keyword ${section} contains duplicate keys: $RelativePath"
+        }
     }
 }
 
@@ -211,6 +267,27 @@ function Require-VisualTargetBaselines {
             if ($declaredScales -notcontains $scale) {
                 Add-Failure "Visual target baseline is missing required scale: $($target.name)@$scale"
             }
+        }
+    }
+}
+
+function Require-NoOrphanVisualBaselines {
+    $manifestPath = Join-RepoPath "scripts\qt_probe_targets.json"
+    try {
+        $targetManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    } catch {
+        Add-Failure "Cannot check orphan visual baselines: $($_.Exception.Message)"
+        return
+    }
+    $allowedTargets = @($targetManifest.targets | ForEach-Object { [string]$_.name })
+    $baselineRoot = Join-RepoPath "tests\visual_baseline"
+    if (-not (Test-Path -LiteralPath $baselineRoot -PathType Container)) {
+        return
+    }
+    Get-ChildItem -LiteralPath $baselineRoot -Directory | ForEach-Object {
+        $name = [string]$_.Name
+        if ($allowedTargets -notcontains $name) {
+            Add-Failure "Orphan visual baseline directory not listed in qt_probe_targets.json: $name"
         }
     }
 }
@@ -502,6 +579,7 @@ Require-LiveReleaseMembership "docs\harness\source-baseline-manifest.md"
 Require-DoNotTrackBoundary
 Require-ActivePlanLifecycle
 Require-VisualTargetBaselines
+Require-NoOrphanVisualBaselines
 Require-NoStaleVisualPolicyPath
 Require-Text "docs\harness\quality-score.md" "Knowledge map" "quality score knowledge row"
 Require-Text "docs\harness\doc-gardening.md" "Report only" "report-first automation rule"

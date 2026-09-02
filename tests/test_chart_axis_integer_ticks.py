@@ -120,11 +120,6 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
         trend_data = [
             {"yyyymm": "2026-04", "total_count": 13, "closed_count": 8, "overdue_count": 0, "backlog_count": 18},
         ]
-        # max=4:修復前會產生 0,1,3,4,6 的不等距標籤(截圖重現資料)
-        visit_data = [
-            {"yyyymm": "2026-03", "visit_count": 2, "visit_anomaly_count": 2},
-            {"yyyymm": "2026-04", "visit_count": 4, "visit_anomaly_count": 1},
-        ]
         category_pareto = [
             {"rank": 1, "category": "製程參數失控", "count": 5, "percent": 45.5, "cumulative_percent": 45.5},
             {"rank": 2, "category": "規範文件缺漏", "count": 4, "percent": 36.4, "cumulative_percent": 81.9},
@@ -134,7 +129,6 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
         host = _DummyMainWindow()
         with patch("services.event._query_service.get_monthly_stats", return_value=summary), \
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data), \
-             patch("services.event._query_service.get_visit_trend_by_range", return_value=visit_data), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto), \
              patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
@@ -153,9 +147,9 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
                 if isinstance(axis, QValueAxis) and axis.labelFormat() in COUNT_LABEL_FORMATS:
                     count_axes.append(axis)
 
-        # 四張圖各一條件數軸(責任人/柏拉圖/事件趨勢/訪廠趨勢);柏拉圖的
+        # 三張圖各一條件數軸(責任人/柏拉圖/事件趨勢);柏拉圖的
         # 累積佔比軸(%.0f%%)不在此列。
-        self.assertGreaterEqual(len(count_axes), 4)
+        self.assertGreaterEqual(len(count_axes), 3)
         for axis in count_axes:
             with self.subTest(axis=axis.titleText() or axis.labelFormat()):
                 self.assertEqual(QValueAxis.TickType.TicksDynamic, axis.tickType())

@@ -1,6 +1,6 @@
 """Reusable full-page entry surface for supplier-event creation.
 
-The existing dialog classes remain the owner of form fields, validation and
+The existing dialog class remains the owner of form fields, validation and
 service calls.  This page embeds a new-record instance so the create workflow
 can live in the shell without duplicating business logic or styling.
 """
@@ -19,34 +19,31 @@ from ui.layout_constants import (
 )
 from ui.widgets.common_widgets import CreateWorkflowShell
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
 
 
-CreateKind = Literal["anomaly", "visit"]
+CreateKind = Literal["anomaly"]
 
 
 class EventCreatePage(QWidget):
-    """Full-page create flow with an explicit success decision and dirty guard."""
+    """Full-page anomaly create flow with an explicit success decision and dirty guard."""
 
     def __init__(
         self,
         main_window,
-        kind: CreateKind,
+        kind: CreateKind = "anomaly",
         parent: QWidget | None = None,
         *,
         lazy_load: bool = True,
         initial_data: dict | None = None,
     ) -> None:
         super().__init__(parent)
+        if kind != "anomaly":
+            raise ValueError("EventCreatePage only supports anomaly create")
         self.main_window = main_window
         self.kind = kind
         self.initial_data = dict(initial_data or {})
-        self.target_scope = (
-            repository.EVENT_SCOPE_ANOMALY_ONLY
-            if kind == "anomaly"
-            else repository.EVENT_SCOPE_VISIT_ONLY
-        )
-        self.setObjectName(f"EventCreate{kind.title()}Page")
+        self.target_scope = repository.EVENT_SCOPE_ANOMALY_ONLY
+        self.setObjectName("EventCreateAnomalyPage")
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -125,20 +122,12 @@ class EventCreatePage(QWidget):
             self._install_form()
 
     def _install_form(self) -> None:
-        if self.kind == "anomaly":
-            form = NewAnomalyDialog(
-                self.workflow_shell,
-                embedded=True,
-                page_mode=True,
-                initial_data=self.initial_data,
-            )
-        else:
-            form = NewVisitDialog(
-                self.workflow_shell,
-                embedded=True,
-                page_mode=True,
-                initial_data=self.initial_data,
-            )
+        form = NewAnomalyDialog(
+            self.workflow_shell,
+            embedded=True,
+            page_mode=True,
+            initial_data=self.initial_data,
+        )
         form.setObjectName("EventCreateForm")
         form.form_saved.connect(self._on_form_saved)
         page_content = getattr(form, "page_content", None)

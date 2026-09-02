@@ -31,16 +31,17 @@ from database.product_stage import (
     PRODUCT_STAGE_OPTIONS,
     normalize_product_stage_ui,
 )
+from services.anomaly_category_preset_service import all_category_labels, is_valid_category
+from services.anomaly_source_preset_service import all_source_labels
 from services.appearance_preferences_service import load_application_preferences
 from services.anomaly_trace_contract import (
-    ANOMALY_SOURCE_OPTIONS,
     TRACE_FIELD_LABELS,
     TRACE_FIELD_OUTSOURCE_WORK_ORDER,
     normalize_anomaly_source,
     required_trace_fields_for_source,
     visible_trace_fields_for_source,
 )
-from services.event import _anomaly_service, _visit_service
+from services.event import _anomaly_service
 from ui.layout_constants import (
     ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
@@ -53,6 +54,7 @@ from ui.layout_constants import (
     INLINE_SPACING,
     ROW_GAP,
 )
+from ui.sidebar_nav import NAV_LABEL_MASTER_SEMI_FINISHED
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.bullet_list_widget import BulletListWidget
@@ -63,9 +65,7 @@ from ui.widgets.common_widgets import (
     RequiredFieldLabel,
     SupplierProductFormMixin,
 )
-from ui.widgets.anomaly_visit_sync_mixin import _AnomalyVisitSyncMixin
 from ui.widgets.defect_form_widgets import (
-    ANOMALY_CATEGORY_OPTIONS,
     apply_dialog_layout,
     set_combo_current_text,
     set_tone,
@@ -75,7 +75,7 @@ from ui.widgets.defect_form_widgets import (
 logger = logging.getLogger(__name__)
 
 
-class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _AnomalyVisitSyncMixin):
+class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
     form_saved = Signal(str)
 
     def __init__(
@@ -102,11 +102,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._fixed_anomaly_no = str(self._initial_data.get("anomaly_no") or "").strip()
         self._product_stage_by_id: dict[str, str] = {}
         self._product_code_by_id: dict[str, str] = {}
-        self._same_day_visit_autofill: dict[str, object] = {
-            "product_id": "",
-            "work_order_no": "",
-            "batch_qty": None,
-        }
         self.setWindowTitle("預覽異常" if self._read_only else ("編輯異常" if self._is_edit else "新增異常"))
         self.setMinimumWidth(760)
         self.setMaximumWidth(FORM_MAX_WIDTH)
@@ -149,8 +144,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.product_code_input.setPlaceholderText("選取產品後自動帶入")
 
         self.anomaly_source_combo = QComboBox()
-        self.anomaly_source_combo.addItem("")
-        self.anomaly_source_combo.addItems(list(ANOMALY_SOURCE_OPTIONS))
+        self._populate_anomaly_source_combo()
         if not self._is_edit and not self._initial_data and prefs.default_anomaly_source:
             set_combo_current_text(
                 self.anomaly_source_combo,
@@ -205,8 +199,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.quality_report_required_group.addButton(self.quality_report_yes_radio, 1)
         self.quality_report_required_group.addButton(self.quality_report_no_radio, 0)
         self.category_input = QComboBox()
-        self.category_input.setEditable(True)
-        self.category_input.addItems(ANOMALY_CATEGORY_OPTIONS)
+        self.category_input.setEditable(False)
+        self._populate_category_combo()
         if not self._is_edit and not self._initial_data and prefs.default_anomaly_category:
             set_combo_current_text(self.category_input, prefs.default_anomaly_category)
 
@@ -220,17 +214,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.problem_input = BulletListWidget(placeholder="輸入不良現象...")
         self.pending_items_input = BulletListWidget(placeholder="輸入確認事項 / 待追蹤...")
         self.process_keywords_input = TagInputWidget()
-
-        self.sync_visit_check = QCheckBox("同步建立訪廠紀錄")
-        initial_sync_visit = prefs.default_sync_visit if not self._is_edit and not self._initial_data else True
-        self.sync_visit_check.setChecked(initial_sync_visit)
-        self.sync_visit_check.setVisible(not self._is_edit)
-        self._sync_visit_hint_label = QLabel("")
-        self._sync_visit_hint_label.setProperty("role", "messageText")
-        self._sync_visit_hint_label.setProperty("tone", "info")
-        self._sync_visit_hint_label.setVisible(not self._is_edit)
-        self.sync_visit_check.toggled.connect(self._update_sync_visit_hint)
-        self.date_edit.dateChanged.connect(lambda _d: self._update_sync_visit_hint())
 
         # 2. 單一可捲動頁面；底部按鈕列由 apply_dialog_layout 固定在外層。
         self.form_scroll = QScrollArea()
@@ -316,15 +299,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self._lbl_order = self._trace_labels[TRACE_FIELD_OUTSOURCE_WORK_ORDER]
 
         content_layout.addLayout(grid)
-        content_layout.addWidget(self.sync_visit_check)
-        content_layout.addWidget(self._sync_visit_hint_label)
-
-        self._same_day_visit_hint_label = QLabel("")
-        self._same_day_visit_hint_label.setProperty("role", "messageText")
-        self._same_day_visit_hint_label.setProperty("tone", "info")
-        self._same_day_visit_hint_label.setWordWrap(True)
-        self._same_day_visit_hint_label.setVisible(False)
-        content_layout.addWidget(self._same_day_visit_hint_label)
 
         desc_title = QLabel("🔍 問題描述")
         desc_title.setProperty("role", "sectionTitle")
@@ -336,32 +310,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         content_layout.addWidget(QLabel("📌 確認事項 / 待追蹤"))
         content_layout.addWidget(self.pending_items_input)
 
-        ref_title = QLabel("📊 風險與參考")
-        ref_title.setProperty("role", "sectionTitle")
-        content_layout.addWidget(ref_title)
-
-        self._ref_group = QGroupBox("⚙️ 訪廠關聯")
-        ref_layout = QVBoxLayout(self._ref_group)
-        ref_layout.setContentsMargins(*GROUPBOX_CONTENT_MARGINS)
-        self._linked_visit_label = QLabel("")
-        self._linked_visit_label.setProperty("role", "messageText")
-        self._linked_visit_label.setWordWrap(True)
-        self._linked_visit_label.setVisible(False)
-        self.link_visit_button = QPushButton("關聯 / 變更訪廠紀錄…")
-        self.link_visit_button.clicked.connect(self._on_link_visit_clicked)
-        self.unlink_visit_button = QPushButton("取消連結")
-        self.unlink_visit_button.setProperty("tone", "warning")
-        self.unlink_visit_button.setVisible(False)
-        self.unlink_visit_button.clicked.connect(self._on_unlink_visit_clicked)
-        link_row = QHBoxLayout()
-        link_row.addWidget(self.link_visit_button, 3)
-        link_row.addWidget(self.unlink_visit_button, 1)
-        ref_layout.addWidget(self._linked_visit_label)
-        ref_layout.addLayout(link_row)
-
-        content_layout.addWidget(self._ref_group)
-
-        # 風險調查
         self._rc_group = QGroupBox("📊 風險控管調查")
         rc_layout = QGridLayout(self._rc_group)
         rc_layout.setContentsMargins(*GROUPBOX_CONTENT_MARGINS)
@@ -422,8 +370,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             )
             self.form_scroll.verticalScrollBar().setValue(0)
         self._update_anomaly_no_preview()
-        if not self._is_edit:
-            self._update_sync_visit_hint()
         self.product_stage_combo.currentTextChanged.connect(
             lambda _: self._update_trace_row_visibility()
         )
@@ -451,9 +397,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self.process_keywords_input,
             self.problem_input,
             self.pending_items_input,
-            self.sync_visit_check,
-            self.link_visit_button,
-            self.unlink_visit_button,
             self.rc_supplier_inv_combo,
             self.rc_supplier_wip_combo,
             self.rc_in_transit_combo,
@@ -471,6 +414,41 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         valid_widgets = [w for w in order if w is not None]
         for earlier, later in zip(valid_widgets, valid_widgets[1:], strict=False):
             self.setTabOrder(earlier, later)
+
+    def _populate_anomaly_source_combo(self, orphan: str = "") -> None:
+        labels = all_source_labels()
+        self.anomaly_source_combo.clear()
+        self.anomaly_source_combo.addItem("")
+        self.anomaly_source_combo.addItems(labels)
+        self._ensure_combo_value(self.anomaly_source_combo, orphan)
+
+    def _populate_category_combo(self, orphan: str = "") -> None:
+        labels = all_category_labels()
+        self.category_input.clear()
+        self.category_input.addItem("")
+        self.category_input.addItems(labels)
+        self._ensure_combo_value(self.category_input, orphan)
+
+    @staticmethod
+    def _ensure_combo_value(combo: QComboBox, value: str) -> None:
+        text = str(value or "").strip()
+        if not text:
+            combo.setCurrentIndex(0)
+            return
+        idx = combo.findText(text)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            return
+        combo.insertItem(1, text)
+        combo.setCurrentIndex(1)
+
+    def _combo_value_is_orphan(self, combo: QComboBox, value: str) -> bool:
+        text = str(value or "").strip()
+        if not text:
+            return False
+        labels = [combo.itemText(index) for index in range(combo.count())]
+        preset_labels = {label.casefold() for label in labels if label}
+        return text.casefold() not in preset_labels
 
     def _update_trace_row_visibility(self) -> None:
         """Show trace-number rows based on anomaly source and legacy compatibility."""
@@ -518,12 +496,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         self.rc_in_transit_combo.setEnabled(False)
         self.rc_internal_inv_combo.setEnabled(False)
 
-        self.sync_visit_check.setVisible(False)
-        self._sync_visit_hint_label.setVisible(False)
-
-        self.link_visit_button.setEnabled(False)
-        self.unlink_visit_button.setEnabled(False)
-
         self.attachment_editor.set_read_only(True)
 
         # Change Save button to Close and hide Cancel (redundant in read-only mode)
@@ -558,14 +530,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self.rc_supplier_wip_combo.currentTextChanged,
             self.rc_in_transit_combo.currentTextChanged,
             self.rc_internal_inv_combo.currentTextChanged,
-            self.sync_visit_check.toggled,
             self.attachment_editor.add_button.clicked,
             self.attachment_editor.remove_button.clicked,
         ])
 
     def _on_date_changed(self, _date: QDate | None = None) -> None:
         self._update_anomaly_no_preview()
-        self._apply_same_day_visit_defaults()
 
     def _update_anomaly_no_preview(self, _date: QDate | None = None):
         anomaly_date = self.date_edit.date().toString("yyyy-MM-dd")
@@ -583,7 +553,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
 
     def _on_supplier_changed_post(self, supplier_id: str, products: list[dict]) -> None:
         self._refresh_submit_state()
-        self._apply_same_day_visit_defaults()
 
     def _on_product_changed_post(self) -> None:
         self._refresh_submit_state()
@@ -603,7 +572,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         if not supplier_id:
             message = "請先選擇供應商。"
         elif not has_products and not product_id:
-            message = "此供應商尚未建立產品，請先到基礎資料新增產品。"
+            message = f"此供應商尚未建立產品，請先到「{NAV_LABEL_MASTER_SEMI_FINISHED}」新增產品。"
             tone = "warning"
         elif not product_id:
             message = "請選擇產品後再儲存。"
@@ -647,13 +616,15 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         source_value = normalize_anomaly_source(
             self._initial_data.get("anomaly_source", self._initial_data.get("default_anomaly_source"))
         )
-        if source_value:
-            set_combo_current_text(self.anomaly_source_combo, source_value)
-        elif self._initial_data.get("anomaly_source_hint"):
-            set_combo_current_text(
-                self.anomaly_source_combo,
-                normalize_anomaly_source(self._initial_data.get("anomaly_source_hint")),
-            )
+        if not source_value and self._initial_data.get("anomaly_source_hint"):
+            source_value = normalize_anomaly_source(self._initial_data.get("anomaly_source_hint"))
+        raw_source = str(
+            self._initial_data.get("anomaly_source", self._initial_data.get("default_anomaly_source", ""))
+            or ""
+        ).strip()
+        if not source_value and raw_source:
+            source_value = raw_source
+        self._populate_anomaly_source_combo(source_value)
 
         for field, widget in self._trace_inputs.items():
             widget.setText(str(self._initial_data.get(field) or ""))
@@ -663,8 +634,10 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             self._initial_data.get("process_keywords", "")
         )
         # 載入原始 category
-        category_value = self._initial_data.get("category_raw", self._initial_data.get("category"))
-        set_combo_current_text(self.category_input, str(category_value or ""))
+        category_value = str(
+            self._initial_data.get("category_raw", self._initial_data.get("category")) or ""
+        )
+        self._populate_category_combo(category_value)
         self.responsible_person_input.setText(
             str(self._initial_data.get("responsible_person") or "")
         )
@@ -697,28 +670,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
         set_combo_current_text(self.rc_supplier_wip_combo, _get_rc_val("rc_supplier_wip"))
         set_combo_current_text(self.rc_in_transit_combo, _get_rc_val("rc_in_transit"))
         set_combo_current_text(self.rc_internal_inv_combo, _get_rc_val("rc_internal_inventory"))
-
-        self._linked_visit_label.setVisible(False)
-        self._linked_visit_label.setText("")
-
-        visit_id = str(self._initial_data.get("visit_id") or "").strip()
-        if visit_id:
-            self._rc_group.setTitle("風險控管調查 (已關聯訪廠)")
-            try:
-                v_detail = _visit_service.get_visit_detail(visit_id)
-                v_date = v_detail.get("visit_date") or "?"
-                v_summary = (v_detail.get("summary") or "").strip() or "(無摘要)"
-                self._linked_visit_label.setText(
-                    f"【本單已關聯訪廠紀錄】\n日期：{v_date}\n摘要：{v_summary}"
-                )
-                self._linked_visit_label.setVisible(True)
-                self.unlink_visit_button.setVisible(True)
-            except Exception:
-                logger.exception("Failed to load linked visit %s", visit_id)
-                self._linked_visit_label.setText("【本單已關聯訪廠紀錄】(無法載入詳細資訊)")
-                self._linked_visit_label.setVisible(True)
-        else:
-            self._rc_group.setTitle("風險控管調查 (單獨異常 / 無訪廠紀錄適用)")
 
         self._refresh_submit_state()
         if self._is_edit:
@@ -761,8 +712,24 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             QMessageBox.warning(self, "驗證失敗", "不良現象描述為必填（請至少新增並填寫一條項目）")
             return
         anomaly_source = normalize_anomaly_source(self.anomaly_source_combo.currentText())
+        raw_source = self.anomaly_source_combo.currentText().strip()
+        if not anomaly_source and raw_source:
+            QMessageBox.warning(
+                self,
+                "驗證失敗",
+                "異常來源已不在辭庫中，請改選有效選項後再儲存。",
+            )
+            return
         if not anomaly_source and not self._is_edit:
             QMessageBox.warning(self, "驗證失敗", "請選擇異常來源")
+            return
+        category = self.category_input.currentText().strip()
+        if category and not is_valid_category(category):
+            QMessageBox.warning(
+                self,
+                "驗證失敗",
+                "異常類別已不在辭庫中，請改選有效選項後再儲存。",
+            )
             return
         payload = {
             "anomaly_no": anomaly_no_val,
@@ -770,7 +737,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             "supplier_id": (self.supplier_combo.currentData() or "").strip(),
             "product_id": product_id,
             "problem_desc": self.problem_input.get_formatted_text(),
-            "category": self.category_input.currentText().strip(),
+            "category": category,
             "process_keywords": self.process_keywords_input.get_delimited_text(),
             "anomaly_source": anomaly_source,
             **{
@@ -781,8 +748,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
             "responsible_person": self.responsible_person_input.text().strip(),
             "due_date": due_date_value,
             "pending_items": self.pending_items_input.get_formatted_text(),
-            "sync_visit": self.sync_visit_check.isChecked(),
-            "visit_summary": "由新增異常流程同步建立。",
+            "sync_visit": False,
             "rc_supplier_inventory": self.rc_supplier_inv_combo.currentText(),
             "rc_supplier_wip": self.rc_supplier_wip_combo.currentText(),
             "rc_in_transit": self.rc_in_transit_combo.currentText(),
@@ -802,14 +768,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin, _A
                 if anomaly_id:
                     self.attachment_editor.save_to_anomaly(anomaly_id)
                     self._warn_if_attachment_rename_failures()
-                visit_action = result.get("visit_action", "none")
-                if visit_action == "created":
-                    visit_text = "訪廠已新建"
-                elif visit_action == "reused":
-                    visit_text = "訪廠已重用（同供應商同日期）"
-                else:
-                    visit_text = "未同步訪廠"
-                completion_text = f"已建立異常單：{result['anomaly_no']}\n{visit_text}"
+                completion_text = f"已建立異常單：{result['anomaly_no']}"
             warnings = (
                 list(result.get("warnings") or [])
                 if isinstance(result, dict)

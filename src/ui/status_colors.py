@@ -74,6 +74,7 @@ _STATUS_TONE_MAP = {
     "N/A": "na",
     "NA": "na",
     "逾期未結": "danger",
+    "逾期案件": "danger",
     "單獨異常": "pending",
     "訪廠發現異常": "info",
 }

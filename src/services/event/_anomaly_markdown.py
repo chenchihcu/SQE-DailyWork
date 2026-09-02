@@ -53,7 +53,7 @@ ANOMALY_FIELDS: tuple[tuple[str, str], ...] = (
 OVERVIEW_FIELDS: tuple[tuple[str, str], ...] = (
     ("overdue", "逾期"),
     ("current_action_text", "目前處置"),
-    ("open_action_count", "進行中處置數"),
+    ("open_action_count", "處置項目數"),
     ("root_cause_status", "根本原因狀態"),
     ("corrective_action_status", "改善措施狀態"),
     ("verification_result", "有效性驗證"),

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import QApplication, QTextEdit
 from ui.widgets.bullet_list_widget import BulletListWidget, BulletListItemRow
 from ui.widgets.defect_form_widgets import set_text_edit_visible_rows
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
 
 
 class BulletListWidgetTests(unittest.TestCase):
@@ -98,19 +97,6 @@ class BulletListWidgetTests(unittest.TestCase):
         loaded_items = dialog.problem_input.get_items()
         self.assertEqual(len(loaded_items), 7)
         self.assertIn("下批進板取爽板開立鋼板(待追蹤)", loaded_items[0])
-
-    def test_new_visit_dialog_summary_round_trip(self) -> None:
-        legacy_summary = "上午討論鋼網開孔\n下午確認 SPI 參數"
-        dialog = NewVisitDialog(
-            visit_id="visit-test-1",
-            initial_data={"summary": legacy_summary},
-            read_only=True,
-        )
-        self.assertEqual(len(dialog.summary_input.get_items()), 2)
-        self.assertEqual(
-            dialog.summary_input.get_formatted_text(),
-            "1. 上午討論鋼網開孔\n2. 下午確認 SPI 參數",
-        )
 
     def test_set_text_edit_visible_rows_safety(self) -> None:
         # 對 QTextEdit 設定行高：正常運作

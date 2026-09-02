@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from database.product_item_category import ITEM_CATEGORY_RAW_MATERIAL
+from database.supplier_category import SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
 from services import global_search_service
 from ui.layout_constants import (
     GLOBAL_SEARCH_DIALOG_MARGINS,
@@ -39,7 +41,7 @@ class GlobalSearchDialog(QDialog):
         layout.setContentsMargins(*GLOBAL_SEARCH_DIALOG_MARGINS)
         layout.setSpacing(GLOBAL_SEARCH_DIALOG_SPACING)
 
-        hint = QLabel("搜尋異常單號、供應商、料號、訪廠摘要或不合格品單號")
+        hint = QLabel("搜尋異常單號、供應商、產品料號或不合格品單號")
         hint.setProperty("role", "helperText")
         layout.addWidget(hint)
 
@@ -95,15 +97,20 @@ class GlobalSearchDialog(QDialog):
         source = row.get("source")
         if source == "異常":
             self.main_window.open_anomaly_management(str(row.get("id") or ""))
-        elif source == "訪廠":
-            self.main_window.open_event_query_with_filters(
-                event_type="VISIT",
-                supplier_keyword=str(row.get("subtitle") or ""),
-                yyyymm=str(row.get("event_date") or "").replace("-", "")[:6] or None,
-                event_scope="VISIT_ONLY",
-            )
         elif source == "供應商":
-            self.main_window.open_master_supplier_search(str(row.get("ref_no") or ""))
+            supplier_name = str(row.get("ref_no") or "")
+            category = str(row.get("category") or "").strip()
+            if category == SUPPLIER_CATEGORY_OUTSOURCE_FACTORY:
+                self.main_window.open_master_outsource_supplier(supplier_name)
+            else:
+                self.main_window.open_master_raw_supplier(supplier_name)
+        elif source == "產品":
+            keyword = str(row.get("ref_no") or row.get("title") or "")
+            item_category = str(row.get("item_category") or "").strip()
+            if item_category == ITEM_CATEGORY_RAW_MATERIAL:
+                self.main_window.open_master_raw_material(keyword)
+            else:
+                self.main_window.open_master_semi_finished(keyword)
         elif source == "不合格品":
             status = str(row.get("status") or "").strip()
             processing_line = str(row.get("processing_line") or "").strip()

@@ -22,7 +22,6 @@ from database import connection as database_connection
 from ui.widgets.common_widgets import DirtyTrackingMixin, set_field_invalid
 from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.product_form_dialog import ProductFormDialog
 from ui.widgets.supplier_form_dialog import SupplierFormDialog
 from ui.widgets.supplier_contact_manager_dialog import SupplierContactManagerDialog
@@ -62,7 +61,7 @@ class InlineValidationAndDirtyTests(unittest.TestCase):
         self.assertFalse(bool(line.property("invalid")))
 
     def test_event_dialogs_use_shared_dirty_tracking_mixin(self) -> None:
-        for dialog_cls in (NewAnomalyDialog, NewVisitDialog, CloseAnomalyDialog):
+        for dialog_cls in (NewAnomalyDialog, CloseAnomalyDialog):
             self.assertTrue(issubclass(dialog_cls, DirtyTrackingMixin))
 
     # ── ProductFormDialog ────────────────────────────────────────────────

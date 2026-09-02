@@ -110,8 +110,7 @@ class OverviewParityTests(unittest.TestCase):
         self.assertTrue(standalone["overdue"])
         self.assertEqual(standalone["open_action_count"], 1)
 
-    def test_list_events_visits_have_no_overview_fields(self) -> None:
-        # Create a standalone visit so the list has at least one VISIT row.
+    def test_list_events_excludes_retired_visit_rows(self) -> None:
         with _connection.get_connection() as conn:
             repository.create_visit(
                 conn,
@@ -121,11 +120,7 @@ class OverviewParityTests(unittest.TestCase):
             )
         rows = _query_service.list_events({})
         visit_rows = [r for r in rows if r.get("event_type") == "VISIT"]
-        self.assertTrue(visit_rows)
-        for row in visit_rows:
-            self.assertNotIn("overdue", row)
-            self.assertNotIn("open_action_count", row)
-            self.assertNotIn("current_action", row)
+        self.assertEqual([], visit_rows)
 
     def test_list_events_by_range_enriches_anomaly_with_overview(self) -> None:
         action_id = _case_action_service.create_case_action(

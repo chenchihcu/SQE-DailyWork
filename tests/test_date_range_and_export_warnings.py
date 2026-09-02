@@ -15,7 +15,6 @@ class DateRangeAndExportWarningTests(unittest.TestCase):
             _query_service.list_events_by_range,
             _query_service.get_anomaly_category_pareto_by_range,
             _query_service.get_responsible_person_stats_by_range,
-            _query_service.get_visit_trend_by_range,
             _query_service.get_anomaly_trend_by_range,
             _query_service.get_anomaly_closure_activity_by_range,
         )

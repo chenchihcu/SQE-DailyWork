@@ -25,6 +25,10 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(12, lc.GRID_GUTTER)
         self.assertEqual(8, lc.ROW_GAP)
 
+    def test_appearance_settings_page_contract(self) -> None:
+        self.assertEqual(160, lc.APPEARANCE_CATEGORY_RAIL_WIDTH)
+        self.assertEqual(760, lc.APPEARANCE_TWO_COLUMN_MIN_WIDTH)
+
     def test_flat_page_command_row_rhythm(self) -> None:
         self.assertEqual(6, lc.COMPACT_PAGE_SPACING)
         self.assertEqual((12, 6, 12, 6), lc.COMPACT_COMMAND_ROW_MARGINS)
@@ -45,13 +49,15 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(120, lc.NCR_LIST_CORE_ITEM_NO_WIDTH)
         self.assertEqual(180, lc.NCR_LIST_CORE_PRODUCT_WIDTH)
         self.assertEqual(78, lc.NCR_LIST_CORE_STATUS_WIDTH)
-        self.assertEqual(115, lc.HOME_BACKLOG_CATEGORY_WIDTH)
 
     def test_sidebar_compact_create_navigation_rhythm(self) -> None:
         self.assertEqual(38, lc.SIDEBAR_NAV_ITEM_HEIGHT)
         self.assertEqual(10, lc.SIDEBAR_NAV_GROUP_GAP)
         self.assertEqual(4, lc.SIDEBAR_NAV_TOP_SPACING)
         self.assertEqual(6, lc.SIDEBAR_LOGO_TO_NAV_SPACING)
+        self.assertEqual(4, lc.SIDEBAR_MASTER_SUBGROUP_TOP_SPACING)
+        self.assertEqual(2, lc.SIDEBAR_MASTER_SUBGROUP_LABEL_BOTTOM_SPACING)
+        self.assertEqual(6, lc.SIDEBAR_MASTER_SUBGROUP_GAP)
 
     # -- 新增常數回歸測試 -------------------------------------------------
 
@@ -111,21 +117,6 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_master_search_width_constants(self) -> None:
         self.assertEqual(220, lc.MASTER_SEARCH_MIN_WIDTH)
         self.assertEqual(340, lc.MASTER_SEARCH_MAX_WIDTH)
-
-    def test_home_backlog_column_widths(self) -> None:
-        self.assertEqual(120, lc.HOME_BACKLOG_ANOMALY_NO_WIDTH)
-        self.assertEqual(110, lc.HOME_BACKLOG_SUPPLIER_WIDTH)
-        self.assertEqual(130, lc.HOME_BACKLOG_ITEM_NO_WIDTH)
-        self.assertEqual(130, lc.HOME_BACKLOG_PRODUCT_WIDTH)
-        self.assertEqual(150, lc.HOME_BACKLOG_NEXT_ACTION_WIDTH)
-        self.assertEqual(104, lc.HOME_BACKLOG_DUE_DATE_WIDTH)
-        self.assertEqual(115, lc.HOME_BACKLOG_RESPONSIBLE_WIDTH)
-        self.assertEqual(70, lc.HOME_BACKLOG_STATUS_WIDTH)
-
-    def test_visit_form_layout_constants(self) -> None:
-        self.assertEqual(6, lc.VISIT_FORM_CONTENT_SPACING)
-        self.assertEqual(6, lc.VISIT_FORM_VERTICAL_SPACING)
-
 
 if __name__ == "__main__":
     unittest.main()

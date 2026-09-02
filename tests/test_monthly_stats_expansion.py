@@ -249,8 +249,8 @@ class MonthlyStatsExpansionRepositoryTests(unittest.TestCase):
             detail_df = pd.read_excel(workbook, sheet_name="明細")
 
         self.assertEqual("全期項目", summary_df.loc[0, "月份"])
-        self.assertEqual(2, len(detail_df))
-        self.assertEqual({"異常", "訪廠"}, set(detail_df["類型"]))
+        self.assertEqual(1, len(detail_df))
+        self.assertEqual({"異常"}, set(detail_df["類型"]))
 
 
 class MonthlyStatsExpansionExportTests(unittest.TestCase):

@@ -4,6 +4,11 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from database.product_item_category import (
+    ITEM_CATEGORY_RAW_MATERIAL,
+    MASTER_SEMI_FINISHED_CATEGORIES,
+    item_category_for_defect_record,
+)
 from ncr.db import crud
 from ncr.models.labels import VALIDATION_REQUIRED, LABEL_ITEM_NO, LABEL_PRODUCT_NAME
 from ncr.services.service_helpers import unique_violation_as_value_error
@@ -59,19 +64,30 @@ def list_products(conn: sqlite3.Connection) -> list[dict[str, str]]:
 
 
 def list_products_by_supplier_name(
-    conn: sqlite3.Connection, supplier_name: str
+    conn: sqlite3.Connection,
+    supplier_name: str,
+    *,
+    processing_line: str = "",
 ) -> list[dict[str, str]]:
     """依供應商名稱篩選有效料號（嚴格模式）。
 
     空 supplier_name 時傳回空串列。
     結果只含 supplier_id IS NOT NULL 且主供/次供之一符合的料號。
     """
+    if processing_line == ITEM_CATEGORY_RAW_MATERIAL:
+        item_categories = (ITEM_CATEGORY_RAW_MATERIAL,)
+    else:
+        item_categories = MASTER_SEMI_FINISHED_CATEGORIES
     return [
         {
             "item_no": str(row["item_no"] or ""),
             "product_name": str(row["product_name"] or ""),
         }
-        for row in crud.get_products_by_supplier_name(conn, supplier_name)
+        for row in crud.get_products_by_supplier_name(
+            conn,
+            supplier_name,
+            item_categories=item_categories,
+        )
     ]
 
 
@@ -93,7 +109,28 @@ def sync_product_from_defect(conn: sqlite3.Connection, data: dict[str, Any]) -> 
         ],
     )
     if inserted_count:
-        conn.commit()
+        has_products = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name='products'"
+        ).fetchone() is not None
+        has_item_category = False
+        if has_products:
+            has_item_category = conn.execute(
+                "SELECT 1 FROM pragma_table_info('products') WHERE name = 'item_category'"
+            ).fetchone() is not None
+        if has_products and has_item_category:
+            item_category = item_category_for_defect_record(
+                defect_category=str(data.get("category") or ""),
+                processing_line=str(data.get("processing_line") or ""),
+            )
+            conn.execute(
+                """
+                UPDATE products
+                SET item_category = ?
+                WHERE product_code = ?
+                """,
+                (item_category, item_no),
+            )
+    conn.commit()
 
 
 def bulk_sync_products_from_all_defects(conn: sqlite3.Connection) -> int:

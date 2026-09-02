@@ -4,6 +4,10 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
 from ncr.db import crud
 from ncr.models.defect import SUPPLIER_CATEGORY_OPTIONS
 from ncr.models.labels import VALIDATION_OPTION_INVALID, VALIDATION_REQUIRED, LABEL_SUPPLIER_NAME, LABEL_SUPPLIER_TYPE
@@ -56,11 +60,15 @@ def sync_supplier_from_defect(conn: sqlite3.Connection, data: dict[str, Any]) ->
     
     formal = str(data.get("supplier_name", "")).strip()
     if formal and formal.upper() != "N/A":
-        suppliers_to_sync.append({"name": formal, "category": "正式供應商"})
+        suppliers_to_sync.append(
+            {"name": formal, "category": SUPPLIER_CATEGORY_RAW_MATERIAL}
+        )
         
     outsource = str(data.get("outsource_supplier_name", "")).strip()
     if outsource and outsource.upper() != "N/A":
-        suppliers_to_sync.append({"name": outsource, "category": "委外供應商"})
+        suppliers_to_sync.append(
+            {"name": outsource, "category": SUPPLIER_CATEGORY_OUTSOURCE_FACTORY}
+        )
         
     now = datetime.now().isoformat(timespec="seconds")
     for s in suppliers_to_sync:

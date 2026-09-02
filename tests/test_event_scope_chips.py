@@ -31,19 +31,17 @@ class EventScopeChipTests(unittest.TestCase):
     def test_set_event_scope_updates_checked_chip(self) -> None:
         widget = EventListWidget(main_window=None, mode="query", fixed_scope=None)
         with patch.object(widget, "refresh_data"):
-            widget.set_event_scope(repository.EVENT_SCOPE_VISIT_ONLY)
+            widget.set_event_scope(repository.EVENT_SCOPE_CLOSED_ONLY)
         self.assertEqual(
-            repository.EVENT_SCOPE_VISIT_ONLY,
+            repository.EVENT_SCOPE_CLOSED_ONLY,
             widget._filter_event_scope,
         )
         self.assertTrue(
-            widget.scope_chip_buttons[repository.EVENT_SCOPE_VISIT_ONLY].isChecked()
+            widget.scope_chip_buttons[repository.EVENT_SCOPE_CLOSED_ONLY].isChecked()
         )
 
     @patch("services.event._query_service.get_event_scope_counts", return_value={
         repository.EVENT_SCOPE_ANOMALY_ONLY: 3,
-        repository.EVENT_SCOPE_VISIT_WITH_ANOMALY: 2,
-        repository.EVENT_SCOPE_VISIT_ONLY: 4,
         repository.EVENT_SCOPE_CLOSED_ONLY: 9,
     })
     def test_chip_labels_include_scope_counts(self, _mock_counts) -> None:

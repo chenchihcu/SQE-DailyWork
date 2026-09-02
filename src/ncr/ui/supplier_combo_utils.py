@@ -15,12 +15,16 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
 from PySide6.QtWidgets import QComboBox, QLabel
 
 from ncr.models.labels import HINT_OUTSOURCE_LOCKED, HINT_SUPPLIER_LOCKED
 
-SUPPLIER_CATEGORY_FORMAL = "正式供應商"
-SUPPLIER_CATEGORY_OUTSOURCE = "委外供應商"
+SUPPLIER_CATEGORY_FORMAL = SUPPLIER_CATEGORY_RAW_MATERIAL
+SUPPLIER_CATEGORY_OUTSOURCE = SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
 
 
 @contextmanager

@@ -8,7 +8,6 @@
   "files": [
     "form-density@1.5x_anomaly-form.png",
     "form-density@1.5x_anomaly-calendar.png",
-    "form-density@1.5x_visit-form.png",
     "form-density@1.5x_supplier-form.png",
     "form-density@1.5x_product-form.png",
     "form-density@1.5x_warehouse-form.png"
@@ -24,7 +23,6 @@
       "files": [
         "form-density_anomaly-form.png",
         "form-density_anomaly-calendar.png",
-        "form-density_visit-form.png",
         "form-density_supplier-form.png",
         "form-density_product-form.png",
         "form-density_warehouse-form.png"
@@ -40,7 +38,6 @@
       "files": [
         "form-density@1.25x_anomaly-form.png",
         "form-density@1.25x_anomaly-calendar.png",
-        "form-density@1.25x_visit-form.png",
         "form-density@1.25x_supplier-form.png",
         "form-density@1.25x_product-form.png",
         "form-density@1.25x_warehouse-form.png"
@@ -56,7 +53,6 @@
       "files": [
         "form-density@1.5x_anomaly-form.png",
         "form-density@1.5x_anomaly-calendar.png",
-        "form-density@1.5x_visit-form.png",
         "form-density@1.5x_supplier-form.png",
         "form-density@1.5x_product-form.png",
         "form-density@1.5x_warehouse-form.png"

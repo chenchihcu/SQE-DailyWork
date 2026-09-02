@@ -186,55 +186,6 @@ class AnomalyTrendByRangeTests(unittest.TestCase):
         # prior work, but do not include future same-month rows after end_date.
         self.assertEqual(2, row["backlog_count"])
 
-    def test_partial_month_visit_trend_filters_visits_and_visit_anomalies_by_exact_dates(self) -> None:
-        outside_visit = repository.create_visit(
-            self.conn,
-            visit_date="2026-06-01",
-            supplier_id=self.supplier_id,
-            summary="outside start",
-        )
-        inside_visit = repository.create_visit(
-            self.conn,
-            visit_date="2026-06-15",
-            supplier_id=self.supplier_id,
-            summary="inside",
-        )
-        future_visit = repository.create_visit(
-            self.conn,
-            visit_date="2026-06-30",
-            supplier_id=self.supplier_id,
-            summary="outside end",
-        )
-        repository.create_anomaly(
-            self.conn,
-            anomaly_date="2026-06-01",
-            supplier_id=self.supplier_id,
-            problem_desc="outside linked anomaly",
-            visit_id=outside_visit,
-        )
-        repository.create_anomaly(
-            self.conn,
-            anomaly_date="2026-06-15",
-            supplier_id=self.supplier_id,
-            problem_desc="inside linked anomaly",
-            visit_id=inside_visit,
-        )
-        repository.create_anomaly(
-            self.conn,
-            anomaly_date="2026-06-30",
-            supplier_id=self.supplier_id,
-            problem_desc="future linked anomaly",
-            visit_id=future_visit,
-        )
-
-        with patch("database.connection.get_connection", return_value=self.conn):
-            trend = event_service.get_visit_trend_by_range("2026-06-10", "2026-06-20")
-
-        self.assertEqual(
-            [{"yyyymm": "2026-06", "visit_count": 1, "visit_anomaly_count": 1}],
-            trend,
-        )
-
     def test_invalid_date_range_returns_empty_list(self) -> None:
         with patch("database.connection.get_connection", return_value=self.conn):
             trend = event_service.get_anomaly_trend_by_range("not-a-date", "also-not-a-date")

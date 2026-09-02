@@ -34,7 +34,7 @@ class DefectSupplierIdMigrationTests(unittest.TestCase):
             INSERT INTO suppliers(
                 id, supplier_name, contact_name, department, phone,
                 contact_email, category, is_active
-            ) VALUES ('sup-1', '甲供應商', '', '', '', '', '正式供應商', 1)
+            ) VALUES ('sup-1', '甲供應商', '', '', '', '', '原物料供應商', 1)
             """
         )
         _insert_defect(conn, "NCR-10001", "甲供應商")
@@ -70,7 +70,7 @@ class DefectSupplierIdMigrationTests(unittest.TestCase):
             INSERT INTO suppliers(
                 id, supplier_name, contact_name, department, phone,
                 contact_email, category, is_active
-            ) VALUES ('sup-late', '晚加入供應商', '', '', '', '', '正式供應商', 1)
+            ) VALUES ('sup-late', '晚加入供應商', '', '', '', '', '原物料供應商', 1)
             """
         )
         conn.commit()

@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy
 from PySide6.QtCharts import QChartView, QPieSlice
 
-from ui.widgets.common_widgets import EmptyStateWidget
+from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget
 from ui.widgets.ncr_stats_widget import NcrStatsWidget
 
 
@@ -127,7 +127,10 @@ class NcrStatsGridDashboardTests(unittest.TestCase):
         widget = self._build_widget()
         page_layout = widget.layout()
         assert page_layout is not None
-        self.assertIsInstance(page_layout.itemAt(0).layout(), QHBoxLayout)
+        command_shell = page_layout.itemAt(0).widget()
+        self.assertIsInstance(command_shell, AnalyticsWorkflowShell)
+        assert command_shell is not None
+        self.assertIsInstance(command_shell.layout(), QHBoxLayout)
 
     def test_donut_chart_uses_qpieslice_label_outside(self) -> None:
         scrap_rework = [

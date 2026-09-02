@@ -148,6 +148,8 @@ TOKENS = {
     "sidebar_text_active": _P["sidebar_text_active"],
     "sidebar_muted": _P["sidebar_muted"],
     "sidebar_divider": _P["sidebar_divider"],
+    "sidebar_master_supplier_chip_bg": _P["sidebar_master_supplier_chip_bg"],
+    "sidebar_master_product_chip_bg": _P["sidebar_master_product_chip_bg"],
     # 頁面頂部標題列
     "page_header_bg": _P["surface"],
     "page_header_shadow": _P["border_soft"],

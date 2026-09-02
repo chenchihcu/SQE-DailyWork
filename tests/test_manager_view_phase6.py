@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from database.repo_helpers import CASE_ACTION_TYPE_NEXT_ACTION
 from database import manager_view_repository
 from database import repository
+from ui.sidebar_nav import PAGE_MANAGER_VIEW
 from ui.widgets.manager_view_page import ManagerViewPage
 
 
@@ -96,10 +97,14 @@ class ManagerViewRepositoryTests(unittest.TestCase):
         self.assertNotIn(self.anomaly_b, summary_ids)
         self.assertNotIn(self.anomaly_b, queue_ids)
 
-    def test_operational_metrics_counts_pending_and_queue(self) -> None:
-        metrics = manager_view_repository.get_manager_operational_metrics(self.conn)
-        self.assertGreaterEqual(metrics["pending_anomaly_count"], 2)
-        self.assertGreaterEqual(metrics["open_queue_action_count"], 1)
+    def test_operational_metrics_use_queue_count_ssot(self) -> None:
+        summary_rows = manager_view_repository.list_manager_summary_rows(
+            self.conn,
+            status="待處理",
+        )
+        queue_counts = manager_view_repository.get_supplier_event_queue_counts(self.conn)
+        self.assertGreaterEqual(len(summary_rows), 2)
+        self.assertGreaterEqual(queue_counts["open_queue_action_count"], 1)
 
     def test_manager_summary_excludes_defect_records(self) -> None:
         """Warehouse defect_records must never appear in manager summary rows."""
@@ -126,13 +131,14 @@ class ManagerViewRepositoryTests(unittest.TestCase):
             status="待處理",
         )
         queue_rows = manager_view_repository.list_operational_action_queue(self.conn)
-        metrics = manager_view_repository.get_manager_operational_metrics(self.conn)
+        queue_counts = manager_view_repository.get_supplier_event_queue_counts(self.conn)
 
         anomaly_ids = {row["anomaly_id"] for row in summary_rows}
         self.assertIn(self.anomaly_a, anomaly_ids)
         self.assertIn(self.anomaly_b, anomaly_ids)
         self.assertEqual(2, len({row["anomaly_id"] for row in summary_rows}))
-        self.assertEqual(2, metrics["pending_anomaly_count"])
+        self.assertEqual(2, len(summary_rows))
+        self.assertGreaterEqual(queue_counts["open_queue_action_count"], 1)
         self.assertTrue(
             all(
                 str(row.get("event_type") or row.get("anomaly_status") or "")
@@ -207,4 +213,7 @@ class ManagerViewPageTests(unittest.TestCase):
         page = self._make_page(main_window)
         page.refresh_data()
         page._open_anomaly(self.anomaly_id)
-        main_window.open_anomaly_management.assert_called_once_with(self.anomaly_id)
+        main_window.open_anomaly_management.assert_called_once_with(
+            self.anomaly_id,
+            source_page_key=PAGE_MANAGER_VIEW,
+        )

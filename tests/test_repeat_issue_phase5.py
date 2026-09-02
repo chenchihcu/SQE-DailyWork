@@ -240,7 +240,7 @@ class RepeatIssuePhase5ServiceTests(unittest.TestCase):
             {
                 "supplier_id": self.supplier_id,
                 "product_id": self.product_id,
-                "category": "尺寸",
+                "category": "製程參數失控",
                 "problem_desc": "尺寸超差第三件",
                 "anomaly_date": "2026-08-26",
                 "anomaly_no": "20260826001",

@@ -8,7 +8,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from ui.widgets.master_data_widget import MasterDataWidget
+from database.product_item_category import (
+    ITEM_CATEGORY_RAW_MATERIAL,
+    MASTER_SEMI_FINISHED_CATEGORIES,
+)
+from database.supplier_category import SUPPLIER_CATEGORY_RAW_MATERIAL
+from ui.widgets.master_data_widget import MasterDataProductPage, MasterDataSupplierPage
 
 
 class _DummyMainWindow:
@@ -27,7 +32,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             pass  # do not terminate shared QApplication singleton in test runner
 
     def setUp(self) -> None:
-        suppliers = [
+        self.suppliers = [
             {
                 "id": "sup-1",
                 "supplier_name": "Alpha Electronics",
@@ -50,12 +55,13 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
                 "is_active": True,
             },
         ]
-        products = [
+        self.products = [
             {
                 "id": "prd-1",
                 "product_code": "P-100",
                 "product_name": "Panel A",
                 "product_stage": "量產",
+                "item_category": "半成品",
                 "supplier_name": "Alpha Electronics",
                 "supplier_id": "sup-1",
                 "secondary_supplier_name": "Gamma Source",
@@ -67,6 +73,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
                 "product_code": "B-200",
                 "product_name": "Board B",
                 "product_stage": "試產",
+                "item_category": "成品",
                 "supplier_name": "Beta Tech",
                 "supplier_id": "sup-2",
                 "secondary_supplier_name": "Alpha Electronics",
@@ -76,20 +83,33 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         ]
         self._list_suppliers_patch = patch(
             "ui.widgets.master_data_widget._supplier_service.list_suppliers",
-            return_value=suppliers,
+            return_value=self.suppliers,
         )
         self._list_products_patch = patch(
             "ui.widgets.master_data_widget._product_service.list_products",
-            return_value=products,
+            return_value=self.products,
         )
         self.list_suppliers_mock = self._list_suppliers_patch.start()
         self.list_products_mock = self._list_products_patch.start()
-        self.widget = MasterDataWidget(_DummyMainWindow())
-        self.widget.show()
+        self.supplier_widget = MasterDataSupplierPage(
+            _DummyMainWindow(),
+            SUPPLIER_CATEGORY_RAW_MATERIAL,
+            page_label="原物料供應商",
+            lazy_load=False,
+        )
+        self.product_widget = MasterDataProductPage(
+            _DummyMainWindow(),
+            MASTER_SEMI_FINISHED_CATEGORIES,
+            page_label="半成品/成品",
+            lazy_load=False,
+        )
+        self.supplier_widget.show()
+        self.product_widget.show()
         self.app.processEvents()
 
     def tearDown(self) -> None:
-        self.widget.close()
+        self.supplier_widget.close()
+        self.product_widget.close()
         self.app.processEvents()
         self._list_products_patch.stop()
         self._list_suppliers_patch.stop()
@@ -98,54 +118,49 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         initial_supplier_calls = self.list_suppliers_mock.call_count
         initial_product_calls = self.list_products_mock.call_count
 
-        self.widget.tabs.setCurrentIndex(0)
-        self.app.processEvents()
-        self.widget.query_input.setText("alpha")
-        self.widget.query_input.returnPressed.emit()
+        self.supplier_widget.query_input.setText("alpha")
+        self.supplier_widget.query_input.returnPressed.emit()
         self.app.processEvents()
 
-        self.assertEqual(1, self.widget.supplier_table.rowCount())
-        self.assertEqual("Alpha Electronics", self.widget.supplier_table.item(0, 0).text())
-        self.assertEqual("王大明", self.widget.supplier_table.item(0, 1).text())
-        self.assertEqual("alpha", self.widget._supplier_query_keyword)
+        self.assertEqual(1, self.supplier_widget.supplier_table.rowCount())
+        self.assertEqual(
+            "Alpha Electronics",
+            self.supplier_widget.supplier_table.item(0, 0).text(),
+        )
+        self.assertEqual("王大明", self.supplier_widget.supplier_table.item(0, 2).text())
+        self.assertEqual("alpha", self.supplier_widget._supplier_query_keyword)
         self.assertEqual(initial_supplier_calls, self.list_suppliers_mock.call_count)
         self.assertEqual(initial_product_calls, self.list_products_mock.call_count)
 
     def test_product_enter_filters_by_primary_secondary_and_stage_fields(self) -> None:
-        self.widget.tabs.setCurrentIndex(1)
-        self.app.processEvents()
-        self.widget.query_input.setText("gamma")
-        self.widget.query_input.returnPressed.emit()
+        self.product_widget.query_input.setText("gamma")
+        self.product_widget.query_input.returnPressed.emit()
         self.app.processEvents()
 
-        self.assertEqual(1, self.widget.product_table.rowCount())
-        self.assertEqual("P-100", self.widget.product_table.item(0, 0).text())
-        self.assertEqual("Gamma Source", self.widget.product_table.item(0, 4).text())
-        self.assertEqual("gamma", self.widget._product_query_keyword)
+        self.assertEqual(1, self.product_widget.product_table.rowCount())
+        self.assertEqual("P-100", self.product_widget.product_table.item(0, 0).text())
+        self.assertEqual("gamma", self.product_widget._product_query_keyword)
 
-        self.widget.query_input.setText("B-200")
-        self.widget.query_input.returnPressed.emit()
+        self.product_widget.query_input.setText("B-200")
+        self.product_widget.query_input.returnPressed.emit()
         self.app.processEvents()
-        self.assertEqual(1, self.widget.product_table.rowCount())
-        self.assertEqual("B-200", self.widget.product_table.item(0, 0).text())
+        self.assertEqual(1, self.product_widget.product_table.rowCount())
+        self.assertEqual("B-200", self.product_widget.product_table.item(0, 0).text())
 
-        self.widget.query_input.setText("試產")
-        self.widget.query_input.returnPressed.emit()
+        self.product_widget.query_input.setText("試產")
+        self.product_widget.query_input.returnPressed.emit()
         self.app.processEvents()
-        self.assertEqual(1, self.widget.product_table.rowCount())
-        self.assertEqual("B-200", self.widget.product_table.item(0, 0).text())
-        self.assertEqual("試產", self.widget.product_table.item(0, 2).text())
+        self.assertEqual(1, self.product_widget.product_table.rowCount())
+        self.assertEqual("B-200", self.product_widget.product_table.item(0, 0).text())
 
-    def test_product_table_headers_include_secondary_supplier_column(self) -> None:
-        self.widget.tabs.setCurrentIndex(1)
-        self.app.processEvents()
-        self.assertEqual(6, self.widget.product_table.columnCount())
+    def test_product_table_headers_include_category_and_secondary_supplier(self) -> None:
+        self.assertEqual(7, self.product_widget.product_table.columnCount())
         headers = [
-            self.widget.product_table.horizontalHeaderItem(i).text()
-            for i in range(self.widget.product_table.columnCount())
+            self.product_widget.product_table.horizontalHeaderItem(i).text()
+            for i in range(self.product_widget.product_table.columnCount())
         ]
         self.assertEqual(
-            ["料號", "品名", "階段", "主供應商", "次要供應商", "狀態"],
+            ["料號", "品名", "料號類別", "階段", "主供應商", "次要供應商", "狀態"],
             headers,
         )
 
@@ -154,6 +169,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             "product_code": "NEW-001",
             "product_name": "New Product",
             "product_stage": "試產",
+            "item_category": "半成品",
             "supplier_id": "sup-1",
             "secondary_supplier_id": "sup-3",
         }
@@ -163,11 +179,9 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         ) as create_mock, patch(
             "ui.widgets.master_data_product_mixin.QMessageBox.information"
         ), patch.object(
-            self.widget, "_open_product_dialog", return_value=payload
+            self.product_widget, "_open_product_dialog", return_value=payload
         ) as open_dialog_mock:
-            self.widget.tabs.setCurrentIndex(1)
-            self.app.processEvents()
-            self.widget._create_product()
+            self.product_widget._create_product()
 
         open_dialog_mock.assert_called_once_with(initial_data=None, is_edit=False)
         create_mock.assert_called_once_with(payload)
@@ -177,6 +191,7 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
             "product_code": "P-100",
             "product_name": "Panel A-Updated",
             "product_stage": "試產",
+            "item_category": "半成品",
             "supplier_id": "sup-1",
             "secondary_supplier_id": "sup-2",
         }
@@ -185,54 +200,29 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         ) as update_mock, patch(
             "ui.widgets.master_data_product_mixin.QMessageBox.information"
         ), patch.object(
-            self.widget, "_open_product_dialog", return_value=payload
+            self.product_widget, "_open_product_dialog", return_value=payload
         ):
-            self.widget.tabs.setCurrentIndex(1)
-            self.app.processEvents()
-            self.widget._selected_product_id = "prd-1"
-            self.widget._update_product()
+            self.product_widget._selected_product_id = "prd-1"
+            self.product_widget._update_product()
 
         update_mock.assert_called_once_with("prd-1", payload)
-
-    def test_tab_switch_keeps_independent_query_keywords(self) -> None:
-        self.widget.tabs.setCurrentIndex(0)
-        self.app.processEvents()
-        self.widget.query_input.setText("alpha")
-        self.widget.query_input.returnPressed.emit()
-        self.app.processEvents()
-        self.assertEqual("alpha", self.widget._supplier_query_keyword)
-
-        self.widget.tabs.setCurrentIndex(1)
-        self.app.processEvents()
-        self.assertEqual("", self.widget.query_input.text())
-        self.widget.query_input.setText("beta")
-        self.widget.query_input.returnPressed.emit()
-        self.app.processEvents()
-        self.assertEqual("beta", self.widget._product_query_keyword)
-
-        self.widget.tabs.setCurrentIndex(0)
-        self.app.processEvents()
-        self.assertEqual("alpha", self.widget.query_input.text())
-
-        self.widget.tabs.setCurrentIndex(1)
-        self.app.processEvents()
-        self.assertEqual("beta", self.widget.query_input.text())
 
     def test_update_supplier_uses_dialog_payload(self) -> None:
         payload = {
             "supplier_name": "Alpha Electronics (Renamed)",
+            "category": "原物料供應商",
             "contact_name": "王大明",
             "phone": "02-1111-1111",
         }
-        self.widget._selected_supplier_id = "sup-1"
+        self.supplier_widget._selected_supplier_id = "sup-1"
         with (
             patch(
                 "ui.widgets.master_data_widget._supplier_service.update_supplier"
             ) as update_supplier_mock,
             patch("ui.widgets.master_data_supplier_mixin.QMessageBox.information"),
-            patch.object(self.widget, "_open_supplier_dialog", return_value=payload),
+            patch.object(self.supplier_widget, "_open_supplier_dialog", return_value=payload),
         ):
-            self.widget._update_supplier()
+            self.supplier_widget._update_supplier()
 
         update_supplier_mock.assert_called_once_with("sup-1", payload)
 

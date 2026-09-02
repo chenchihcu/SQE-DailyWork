@@ -26,7 +26,6 @@ from ui.layout_constants import (
 from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
-from ui.widgets.new_visit_dialog import NewVisitDialog
 from ui.widgets.master_data_dialogs import ProductFormDialog, SupplierFormDialog
 from ui.theme import apply_app_theme
 
@@ -109,71 +108,6 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         for row in paired_rows:
             self.assertFalse(row.isAncestorOf(dialog.supplier_combo))
             self.assertFalse(row.isAncestorOf(dialog.product_combo))
-
-    def test_visit_dialog_pairs_only_good_candidate_fields(self) -> None:
-        dialog = self._show_dialog(NewVisitDialog())
-
-        basic_row = self._row(dialog, "VisitBasicDateTimeSlotRow")
-        self._assert_row_contains(basic_row, dialog.date_edit, dialog.time_slot_input)
-        self.assertFalse(basic_row.isAncestorOf(dialog.supplier_combo))
-        self.assertFalse(basic_row.isAncestorOf(dialog.product_combo))
-        self.assertFalse(basic_row.isAncestorOf(dialog.product_code_input))
-
-        code_order_row = self._row(dialog, "VisitProductCodeWorkOrderRow")
-        self._assert_row_contains(
-            code_order_row,
-            dialog.product_code_input,
-            dialog.work_order_input,
-        )
-
-        self._assert_bullet_list_field(dialog.summary_input)
-
-    def test_visit_dialog_uses_vertical_section_cards(self) -> None:
-        dialog = self._show_dialog(NewVisitDialog())
-
-        basic_card = dialog.findChild(QFrame, "VisitBasicInfoCard")
-        summary_card = dialog.findChild(QFrame, "VisitSummaryCard")
-        self.assertIsNotNone(basic_card)
-        self.assertIsNotNone(summary_card)
-        assert basic_card is not None
-        assert summary_card is not None
-        self.assertEqual("panel", basic_card.property("role"))
-        self.assertEqual("panel", summary_card.property("role"))
-        self.assertTrue(basic_card.isAncestorOf(dialog.date_edit))
-        self.assertTrue(summary_card.isAncestorOf(dialog.summary_input))
-
-        content_layout = dialog.form_content.layout()
-        assert content_layout is not None
-        card_indices = [
-            content_layout.indexOf(widget)
-            for widget in (basic_card, summary_card)
-            if widget is not None
-        ]
-        self.assertEqual(sorted(card_indices), card_indices)
-
-    def test_visit_page_mode_uses_bullet_list_summary(self) -> None:
-        dialog = NewVisitDialog(embedded=True, page_mode=True)
-        self.addCleanup(dialog.close)
-        dialog.show()
-        self.app.processEvents()
-
-        modal_dialog = NewVisitDialog()
-        self.addCleanup(modal_dialog.close)
-        modal_dialog.show()
-        self.app.processEvents()
-
-        self._assert_bullet_list_field(dialog.summary_input)
-        self._assert_bullet_list_field(modal_dialog.summary_input)
-        self.assertEqual([], dialog.findChildren(QScrollArea))
-
-    def test_visit_dialog_matches_anomaly_dialog_working_size(self) -> None:
-        anomaly_dialog = self._show_dialog(NewAnomalyDialog())
-        visit_dialog = self._show_dialog(NewVisitDialog())
-
-        self.assertEqual(anomaly_dialog.size(), visit_dialog.size())
-        self.assertLessEqual(visit_dialog.width(), ANOMALY_DIALOG_PREFERRED_WIDTH)
-        self.assertLessEqual(visit_dialog.height(), ANOMALY_DIALOG_PREFERRED_HEIGHT)
-        self.assertEqual([], visit_dialog.findChildren(QScrollArea))
 
     def test_product_section_pairs_time_and_work_order_only(self) -> None:
         editor = ProductSectionEditor("產品區段")

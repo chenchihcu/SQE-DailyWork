@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -71,12 +72,9 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             auto_backup_prompt=False,
             default_responsible_person="王小明",
             default_anomaly_category="零件缺件",
-            default_sync_visit=False,
             default_due_days=14,
-            default_visit_time_slot="上午",
             default_anomaly_source="進料檢驗 (IQC)",
             default_severity_level="重大",
-            default_visit_type="品質輔導",
             auto_fill_anomaly_no_on_date_change=False,
             default_closer_name="陳主管",
             default_defect_disposition="特採",
@@ -125,7 +123,11 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
         )
         self.conn.commit()
 
-        self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
+        with self.assertLogs("services.appearance_preferences_service", level="WARNING") as logs:
+            self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
+        self.assertTrue(
+            any("忽略格式無效的介面與系統 v10 偏好" in message for message in logs.output)
+        )
         persisted = self.conn.execute(
             "SELECT setting_value FROM ui_settings WHERE setting_key = ?",
             (APPEARANCE_PREFERENCES_KEY,),
@@ -144,7 +146,11 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
                     (APPEARANCE_PREFERENCES_KEY, payload),
                 )
                 self.conn.commit()
-                self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
+                with self.assertLogs("services.appearance_preferences_service", level="WARNING") as logs:
+                    self.assertEqual(AppearancePreferences.default(), load_preferences(self.conn))
+                self.assertTrue(
+                    any("忽略格式無效的介面與系統 v10 偏好" in message for message in logs.output)
+                )
 
     def test_v1_to_v7_payloads_are_upgraded_in_memory(self) -> None:
         legacy_v1 = '{"density":"compact","text_scale":"large"}'
@@ -178,8 +184,8 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             '"pareto_show_cutoff_line":false,"highlight_overdue_rows":false,"date_format_display":"YYYY/MM/DD",'
             '"table_auto_scroll_to_top":false,"table_hover_highlight":false,"table_text_wrapping":"wrap",'
             '"default_list_sort_field":"date_desc","default_responsible_person":"王大明","default_anomaly_category":"零件缺件",'
-            '"default_sync_visit":false,"default_due_days":14,"default_visit_time_slot":"上午","default_anomaly_source":"進料檢驗 (IQC)",'
-            '"default_severity_level":"重大","default_visit_type":"品質輔導","auto_fill_anomaly_no_on_date_change":false,'
+            '"default_due_days":14,"default_anomaly_source":"進料檢驗 (IQC)",'
+            '"default_severity_level":"重大","auto_fill_anomaly_no_on_date_change":false,'
             '"default_closer_name":"陳主管","default_defect_disposition":"特採","auto_uppercase_part_no":false,'
             '"default_export_dir":"D:/Reports","export_completion_action":"open_folder","report_organization_header":"品保部",'
             '"export_include_charts":false,"export_file_naming_rule":"detailed","pdf_page_orientation":"landscape",'
@@ -223,12 +229,9 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
                 default_list_sort_field="date_desc",
                 default_responsible_person="王大明",
                 default_anomaly_category="零件缺件",
-                default_sync_visit=False,
                 default_due_days=14,
-                default_visit_time_slot="上午",
                 default_anomaly_source="進料檢驗 (IQC)",
                 default_severity_level="重大",
-                default_visit_type="品質輔導",
                 auto_fill_anomaly_no_on_date_change=False,
                 default_closer_name="陳主管",
                 default_defect_disposition="特採",
@@ -257,6 +260,68 @@ class AppearancePreferencesServiceTests(unittest.TestCase):
             ),
             load_preferences(self.conn),
         )
+
+    def test_legacy_home_startup_page_migrates_to_events(self) -> None:
+        mapping = AppearancePreferences.default().to_mapping()
+        mapping["default_startup_page"] = "home"
+        mapping["density"] = "compact"
+        mapping["enable_animations"] = False
+        prefs = AppearancePreferences.from_mapping(mapping)
+        self.assertEqual("events", prefs.default_startup_page)
+        self.assertEqual("compact", prefs.density)
+        self.assertFalse(prefs.enable_animations)
+
+    def _legacy_home_v9_mapping(self) -> dict[str, object]:
+        mapping = AppearancePreferences.default().to_mapping()
+        mapping["default_startup_page"] = "home"
+        mapping["density"] = "compact"
+        mapping["enable_animations"] = False
+        return mapping
+
+    def test_legacy_home_v9_payload_loads_without_invalid_warning(self) -> None:
+        mapping = self._legacy_home_v9_mapping()
+        payload = json.dumps(mapping, ensure_ascii=False, separators=(",", ":"))
+        self.conn.execute(
+            "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
+            (APPEARANCE_PREFERENCES_KEY, payload),
+        )
+        self.conn.commit()
+
+        with self.assertNoLogs("services.appearance_preferences_service", level="WARNING"):
+            loaded = load_preferences(self.conn)
+
+        self.assertEqual(
+            AppearancePreferences(
+                density="compact",
+                enable_animations=False,
+            ),
+            loaded,
+        )
+        persisted = self.conn.execute(
+            "SELECT setting_value FROM ui_settings WHERE setting_key = ?",
+            (APPEARANCE_PREFERENCES_KEY,),
+        ).fetchone()[0]
+        self.assertIn('"home"', persisted)
+
+    def test_legacy_home_only_default_v9_payload_loads_without_invalid_warning(self) -> None:
+        mapping = AppearancePreferences.default().to_mapping()
+        mapping["default_startup_page"] = "home"
+        payload = json.dumps(mapping, ensure_ascii=False, separators=(",", ":"))
+        self.conn.execute(
+            "INSERT INTO ui_settings (setting_key, setting_value) VALUES (?, ?)",
+            (APPEARANCE_PREFERENCES_KEY, payload),
+        )
+        self.conn.commit()
+
+        with self.assertNoLogs("services.appearance_preferences_service", level="WARNING"):
+            loaded = load_preferences(self.conn)
+
+        self.assertEqual(AppearancePreferences.default(), loaded)
+        persisted = self.conn.execute(
+            "SELECT setting_value FROM ui_settings WHERE setting_key = ?",
+            (APPEARANCE_PREFERENCES_KEY,),
+        ).fetchone()[0]
+        self.assertIn('"home"', persisted)
 
     def test_save_rejects_an_invalid_in_memory_preference(self) -> None:
         invalid = AppearancePreferences(density="invalid", text_scale="standard")
@@ -288,7 +353,7 @@ class AppearanceThemeTests(unittest.TestCase):
         self.assertIn("background: #000000", app.styleSheet())
 
         sidebar = SidebarNav()
-        self.assertEqual(34, sidebar.button_for_action(("page", "HOME")).height())
+        self.assertEqual(34, sidebar.button_for_action(("page", "EVENT_QUERY")).height())
         table = QTableWidget(2, 2)
         table.setParent(sidebar)
         style_table(table)

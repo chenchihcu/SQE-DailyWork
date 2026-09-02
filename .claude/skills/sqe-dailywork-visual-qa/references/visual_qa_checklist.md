@@ -17,7 +17,7 @@ For a broad multi-surface sweep (main shell + forms + every stats page), delegat
 
 - Read `AGENTS.md`, `.cursor/rules/agents_gateway.mdc`, `docs/harness/README.md`, and the target `src/ui/` file.
 - Before adding any styling, check `src/ui/theme.py` and `src/ui/layout_constants.py` and reuse shared widgets. Prefer QSS `role` / `variant` and theme tokens over per-widget `setStyleSheet` (AGENTS.md §3–4). Pull layout values from `src/ui/layout_constants.py` (`FORM_MAX_WIDTH`, `GRID_GUTTER`, `ROW_GAP`, `PANEL_MARGINS`) instead of hardcoding pixels — those constants are the single source of truth (pinned by `tests/test_layout_constants.py`).
-- The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (首頁 / 供應商事件含逾期未結、待根本原因、進行中處置 / 倉庫不合格品 / 供應商管理 / 系統); event scopes remain page-local chips on 事件管理. Keep the home screen operational (queue hub + warehouse shortcuts, no hero/cover panels). Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
+- The shell is a `SidebarNav` + `QStackedWidget` architecture, NOT a tab bar. Preserve the sidebar information architecture (供應商事件：新增異常 / 事件查詢 / 作業佇列 / 異常事件統計；倉庫不合格品 / 資料庫設定 / 系統); event scopes remain page-local chips on 事件查詢; operational queues (逾期案件 / 根因待查 / 處置項目 / 案件總覽) are chips on 作業佇列. Default startup is 事件查詢. Keep SQE DailyWork terminology aligned with `README.md` and `src/ui/popup_i18n.py`.
 - **單一字體來源 (Single Font Source of Truth)**：CJK 字體 fallback 鏈僅定義於 `src/ui/theme.py`（`PREFERRED_CJK_FONT_FAMILIES` / `CJK_FONT_FAMILY_CSS`）；`src/ncr/ui/ui_style.py` 必須引入使用，禁止重新定義。字重策略 (僅限 CJK 400/700) 記錄於 `.claude/rules/visual_evidence_rules.md` §2。
 
 ## Visual Evidence Rule
@@ -38,8 +38,8 @@ Interpreter: `.venv\Scripts\python.exe` (Python 3.14.3) — not the `.uv-python/
 ```
 
 - `--target` covers every surface family. Non-`main` targets write several suffixed PNGs:
-  - `main` — shell (lands on the 事件管理 page) · `event-create` — anomaly / visit create pages · `form-density` — visit / supplier / product / warehouse / quick-product dialogs
-  - `event-list` — consolidated 事件管理 table, long-CJK stress, all 4 scope tabs · `master-data` — 供應商 / 產品 master tables
+  - `main` — shell (lands on the 事件查詢 page) · `event-create` — anomaly create page · `form-density` — visit edit dialog / supplier / product / warehouse / quick-product dialogs
+  - `event-list` — consolidated 事件查詢 table, long-CJK stress, all 4 scope tabs · `master-data` — 供應商 / 產品 master tables
   - `ncr-tracker` — warehouse 建立 / 待處理 / 歷史 tabs (list views, not just the create form)
   - `stats-stress` — 4 異常統計 charts with long-name stress · `ncr-stats` — NCR 2×2 grid
   - `appearance-settings` — appearance preferences dialog (default & comfortable large) · `workbench` — anomaly management workbench · `dialog-density` — dense workbench write dialogs
@@ -71,7 +71,7 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 ```
 
 - **適用時機**：大規模重構、移除屬性或重新佈局表單後，做為比視覺檢查更深一層的功能性防崩潰保證。
-- **已知限制（2026-08-29，已緩解）**：Orchestrator 以 subprocess-per-page 隔離。`event_create_anomaly` 與 `event_create_visit` 在 offscreen 點擊按鍵仍會 SEH，改為結構驗證（略過按鍵點擊）；報告 `## 結構驗證頁面` 會列出。其他頁若仍 SEH，見 `## SEH 崩潰頁面`。
+- **已知限制（2026-08-29，已緩解）**：Orchestrator 以 subprocess-per-page 隔離。`event_create_anomaly` 在 offscreen 點擊按鍵仍會 SEH，改為結構驗證（略過按鍵點擊）；報告 `## 結構驗證頁面` 會列出。其他頁若仍 SEH，見 `## SEH 崩潰頁面`。
 - **報告輸出**：執行完畢後會產生 `scratch/button_audit_report.md` 報表，請檢視該報表以確認是否有任何按鈕拋出例外錯誤 (Exceptions)。
 
 ## 定義通過條件 (Passing Conditions)
@@ -90,7 +90,7 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
    - `Worker 錯誤頁面數` 必須為 `0`；若有 `## Worker 錯誤頁面` 或 `## SEH 崩潰頁面`（未登錄頁面）視為 **not verified**。
    - `scratch/button_audit_report.md` 報表中的異常數量必須為 `0`。
    - 總覽須顯示 `隔離模式: subprocess-per-page`。
-   - `## 結構驗證頁面` 僅允許已登錄的 offscreen SEH 頁（`event_create_anomaly`、`event_create_visit`）；不得擴充為規避其他頁面失敗。
+   - `## 結構驗證頁面` 僅允許已登錄的 offscreen SEH 頁（`event_create_anomaly`）；不得擴充為規避其他頁面失敗。
    - 任何拋出 Exceptions 的按鍵都必須修復完成，才可視為通過。
    - 證據鏈：`scratch/button-audit-*-final.log` 結尾 `EXIT:0` **且** 報告無 FAILED banner。
 
@@ -112,7 +112,7 @@ A visual claim is "done" only after the relevant dimensions below are checked (s
 12. **工具列按鈕完整性 (Toolbar Button Preservation)** — 確保清單工具列重置按鈕（`btn_reset`，文字為「清除」）、欄位設定切換按鈕（`column_profile_button`）、重新整理按鈕（`refresh_button`）與匯出按鈕均存在且功能正常。
 13. **側欄指令導覽與無障礙標籤 (Sidebar Commands & AccessibleName)** — 側欄「系統」分組下必須包含「顯示設定」（`ACTION_OPEN_APPEARANCE_REDESIGN`），所有 `_NavButton` 必須設定 `accessibleName`。
 14. **緊湊模式 0 水平滾動 (0 Horizontal Overflow)** — 表格在緊湊模式下，選用欄位隱藏，主文字欄位設為 `Stretch`，確保在標準視窗寬度（1024px）下 `horizontalScrollBar().maximum() == 0`。
-15. **首頁佇列 Hub 契約** — 首頁顯示三個供應商事件佇列入口（逾期未結／待根本原因／進行中處置，件／筆數與側欄 badge 一致），倉庫待處理按鈕保持「委外待處理/原物料待處理/未分流待整理」前綴，無全頁待辦表格與裝飾性外層卡片。
+15. **作業佇列 chip 契約** — 作業佇列頁 chips `逾期案件`／`根因待查`／`處置項目` 的 `(N)` 與各自 list COUNT 一致（`get_supplier_event_queue_counts`）；`案件總覽` chip 無計數；側欄 `作業佇列` 列無 badge；`事件查詢` badge 為全部待處理異常總數（非三佇列加總）。
 
 ## 何時不要觸發
 

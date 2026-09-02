@@ -1,6 +1,9 @@
 param(
     [switch]$SkipBuild,
-    [switch]$UseExistingDist
+    [switch]$UseExistingDist,
+
+    [ValidateRange(10, 600)]
+    [int]$SmokeTimeoutSeconds = 120
 )
 
 Set-StrictMode -Version Latest
@@ -11,9 +14,19 @@ $pythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $distDir = Join-Path $repoRoot "dist\SQE_DailyWork"
 $zipPath = Join-Path $repoRoot "dist\SQE_DailyWork-win64.zip"
 $buildScript = Join-Path $repoRoot "scripts\build_windows.ps1"
+$smokeHelper = Join-Path $repoRoot "scripts\release_smoke_helpers.ps1"
 
 if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
     throw "Missing venv python: $pythonExe"
+}
+if (-not (Test-Path -LiteralPath $smokeHelper -PathType Leaf)) {
+    throw "Missing frozen smoke helper: $smokeHelper"
+}
+. $smokeHelper
+
+$environmentSnapshot = @{}
+foreach ($name in @("SQE_DB_PATH", "SQE_REQUIRE_DISPOSABLE_DB", "QT_QPA_PLATFORM", "SQE_TESTING")) {
+    $environmentSnapshot[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
 }
 
 Push-Location $repoRoot
@@ -23,7 +36,7 @@ try {
             throw "SkipBuild requires UseExistingDist when dist/ is missing."
         }
         Write-Host "[1/4] Build Windows onedir + portable zip"
-        & $buildScript
+        & $buildScript -SmokeTimeoutSeconds $SmokeTimeoutSeconds
         if ($LASTEXITCODE -ne 0) {
             throw "build_windows.ps1 failed"
         }
@@ -91,22 +104,21 @@ try {
 
     Push-Location $portableAppDir
     try {
-        $process = Start-Process `
-            -FilePath $exePath `
-            -ArgumentList "--smoke-exit" `
+        Invoke-FrozenSmokeProcess `
+            -ExePath $exePath `
             -WorkingDirectory $portableAppDir `
-            -PassThru `
-            -Wait
-        if ($null -eq $process -or $process.ExitCode -ne 0) {
-            $code = if ($null -eq $process) { "unknown" } else { $process.ExitCode }
-            throw "Portable frozen smoke failed with exit code $code"
-        }
+            -TimeoutSeconds $SmokeTimeoutSeconds `
+            -FailureLabel "Portable frozen smoke" | Out-Null
         if (-not (Test-Path -LiteralPath $scratchDb -PathType Leaf)) {
             throw "Portable smoke did not create scratch database"
         }
         $markerPath = Join-Path $portableAppDir "logs\smoke_exit.ok"
         if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
             throw "Portable smoke marker missing: $markerPath"
+        }
+        $markerValue = Get-Content -LiteralPath $markerPath -Raw
+        if ([string]::IsNullOrWhiteSpace($markerValue)) {
+            throw "Portable smoke marker was empty"
         }
     } finally {
         Pop-Location
@@ -116,8 +128,12 @@ try {
     Write-Host "[4/4] Portable install smoke passed: $portableAppDir"
 } finally {
     Pop-Location
-    Remove-Item Env:SQE_DB_PATH -ErrorAction SilentlyContinue
-    Remove-Item Env:SQE_REQUIRE_DISPOSABLE_DB -ErrorAction SilentlyContinue
-    Remove-Item Env:QT_QPA_PLATFORM -ErrorAction SilentlyContinue
-    Remove-Item Env:SQE_TESTING -ErrorAction SilentlyContinue
+    foreach ($name in $environmentSnapshot.Keys) {
+        $value = $environmentSnapshot[$name]
+        if ($null -eq $value) {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+        } else {
+            [Environment]::SetEnvironmentVariable($name, [string]$value, "Process")
+        }
+    }
 }

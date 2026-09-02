@@ -6,26 +6,17 @@ logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFrame,
     QHBoxLayout,
-    QHeaderView,
-    QLabel,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
-    QTableWidget,
-    QTableWidgetItem,
 )
 
-from services.event import _visit_service as event_service
-from ui.list_column_contract import VISIT_SELECTION_COLUMNS
 from ui.layout_constants import (
     DIALOG_MIN_HEIGHT,
     DIALOG_OUTER_MARGINS,
@@ -36,8 +27,6 @@ from ui.layout_constants import (
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.widgets.common_widgets import (
     mark_button_variant as _mark_button_variant,
-    style_table,
-    text_table_item,
 )
 
 
@@ -58,6 +47,13 @@ ROOT_CAUSE_PARETO_OPTIONS = [
 ]
 
 ANOMALY_CATEGORY_OPTIONS = ROOT_CAUSE_PARETO_OPTIONS
+
+
+def get_anomaly_category_options() -> list[str]:
+    """Return dynamic anomaly category labels from ui_settings preset library."""
+    from services.anomaly_category_preset_service import all_category_labels
+
+    return [""] + all_category_labels()
 
 VISIT_TIME_SLOT_OPTIONS = ["上午", "下午", "全天"]
 
@@ -152,75 +148,5 @@ def apply_dialog_layout(
 
 
 # ── Shared Widget Classes ──────────────────────────────────────────────────────
-
-
-class VisitSelectionDialog(QDialog):
-    def __init__(self, supplier_id: str, supplier_name: str, parent=None):
-        super().__init__(parent)
-        self.setModal(True)
-        self.setWindowTitle(f"選擇訪廠紀錄 - {supplier_name}")
-        self.setMinimumSize(640, 400)
-        self.selected_visit_id: str | None = None
-        self.selected_visit_date: str | None = None
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*DIALOG_OUTER_MARGINS)
-
-        self.table = QTableWidget()
-        self.table.setAccessibleName("選擇訪廠紀錄表格")
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(
-            [column.label for column in VISIT_SELECTION_COLUMNS]
-        )
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        style_table(self.table)
-
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-
-        layout.addWidget(self.table)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-        self._load_visits(supplier_id)
-        if self.table.rowCount() > 0:
-            self.table.selectRow(0)
-        fit_dialog_to_available_screen(self, preferred_width=720, preferred_height=480)
-
-    def _load_visits(self, supplier_id: str):
-        visits = event_service.list_visits_for_supplier(supplier_id)
-        self.table.setRowCount(len(visits))
-        for idx, v in enumerate(visits):
-            v_date = v.get("visit_date") or "-"
-            date_item = QTableWidgetItem(v_date)
-            date_item.setData(Qt.ItemDataRole.UserRole, v["id"])
-            self.table.setItem(idx, 0, date_item)
-            values = {
-                "visit_date": date_item,
-                "summary": text_table_item(v.get("summary"), empty="-"),
-                "work_order_no": QTableWidgetItem(v.get("work_order_no") or "-"),
-                "product_name": text_table_item(v.get("product_name"), empty="-"),
-            }
-            for column, spec in enumerate(VISIT_SELECTION_COLUMNS):
-                self.table.setItem(idx, column, values[spec.field])
-
-    def _on_accept(self):
-        selected = self.table.selectedItems()
-        if not selected:
-            QMessageBox.warning(self, "提示", "請選取一個訪廠紀錄")
-            return
-        row = selected[0].row()
-        self.selected_visit_id = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-        self.selected_visit_date = self.table.item(row, 0).text()
-        self.accept()
-
 
 from ui.widgets.defect_note_form_widgets import DefectNoteTable, ProductSectionEditor  # noqa: F401

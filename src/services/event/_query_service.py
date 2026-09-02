@@ -73,8 +73,6 @@ def get_event_scope_counts() -> dict[str, int]:
     """Per-scope event counts aligned with EVENT_QUERY_SCOPE_TABS filters."""
     scopes = (
         repository.EVENT_SCOPE_ANOMALY_ONLY,
-        repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-        repository.EVENT_SCOPE_VISIT_ONLY,
         repository.EVENT_SCOPE_CLOSED_ONLY,
     )
     with _connection.get_connection() as conn:
@@ -104,7 +102,7 @@ def get_responsible_person_stats(yyyymm: str | None = None) -> list[dict]:
 
 
 def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
-    """取得指定日期範圍內的所有異常事件與訪廠事件。"""
+    """取得指定日期範圍內的所有異常事件。"""
     try:
         start_date, end_date = validate_date_range(start_date, end_date)
     except DateRangeFormatError:
@@ -143,29 +141,9 @@ def list_events_by_range(start_date: str, end_date: str) -> list[dict]:
         LEFT JOIN products p ON p.id = a.product_id
         WHERE a.anomaly_date BETWEEN ? AND ?
     """
-    visit_sql = """
-        SELECT
-            v.id AS event_id,
-            '' AS ref_no,
-            v.visit_date AS event_date,
-            'VISIT' AS event_type,
-            s.supplier_name AS supplier_name,
-            v.summary AS content,
-            '已完成' AS status,
-            '' AS category,
-            '' AS improvement_desc,
-            v.visitor_name AS responsible_person,
-            NULL AS closed_at,
-            NULL AS quality_report_required
-        FROM visits v
-        JOIN suppliers s ON s.id = v.supplier_id
-        WHERE v.visit_date BETWEEN ? AND ?
-    """
     events = []
     with _connection.get_connection() as conn:
         for row in conn.execute(anomaly_sql, (start_date, end_date)).fetchall():
-            events.append(dict(row))
-        for row in conn.execute(visit_sql, (start_date, end_date)).fetchall():
             events.append(dict(row))
         _enrich_events_with_overview(conn, events)
     events.sort(key=lambda x: (x["event_date"], x["event_id"]), reverse=True)
@@ -183,20 +161,17 @@ def summarize_range_events(events: list[dict]) -> tuple[dict, list[dict]]:
     from collections import defaultdict
 
     total_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY'])
-    total_visits = len([e for e in events if e['event_type'] == 'VISIT'])
     closed_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '已結案'])
     open_anomalies = len([e for e in events if e['event_type'] == 'ANOMALY' and e['status'] == '待處理'])
     totals = {
         "total_anomalies": total_anomalies,
-        "total_visits": total_visits,
         "closed_anomalies": closed_anomalies,
         "open_anomalies": open_anomalies,
         "close_rate": (closed_anomalies / total_anomalies * 100) if total_anomalies > 0 else 0.0,
-        "anomaly_visit_ratio": (total_anomalies / total_visits) if total_visits > 0 else 0.0,
         "supplier_coverage": len(set(e['supplier_name'] for e in events if e.get('supplier_name'))),
     }
 
-    supplier_stats = defaultdict(lambda: {"anomaly_count": 0, "visit_count": 0, "closed_count": 0, "open_count": 0})
+    supplier_stats = defaultdict(lambda: {"anomaly_count": 0, "closed_count": 0, "open_count": 0})
     for e in events:
         sname = e.get("supplier_name")
         if not sname:
@@ -207,8 +182,6 @@ def summarize_range_events(events: list[dict]) -> tuple[dict, list[dict]]:
                 supplier_stats[sname]["closed_count"] += 1
             else:
                 supplier_stats[sname]["open_count"] += 1
-        elif e["event_type"] == "VISIT":
-            supplier_stats[sname]["visit_count"] += 1
 
     ranking_rows = []
     for sname, s in supplier_stats.items():
@@ -218,7 +191,6 @@ def summarize_range_events(events: list[dict]) -> tuple[dict, list[dict]]:
         ranking_rows.append({
             "supplier_name": sname,
             "anomaly_count": tot_anom,
-            "visit_count": s["visit_count"],
             "closed_anomaly_count": cls_anom,
             "open_anomaly_count": s["open_count"],
             "close_rate_pct": rate
@@ -438,46 +410,6 @@ def _enumerate_month_keys(start_date: str, end_date: str) -> list[str]:
         months_list = months_list[-12:]
     return months_list
 
-
-def get_visit_trend_by_range(start_date: str, end_date: str) -> list[dict]:
-    """計算指定日期範圍內各月份的訪廠數與訪廠發現的異常數（最多限制 12 個月）。"""
-    try:
-        start_date, end_date = validate_date_range(start_date, end_date)
-    except DateRangeFormatError:
-        return []
-    months_list = _enumerate_month_keys(start_date, end_date)
-
-    with _connection.get_connection() as conn:
-        visit_rows = conn.execute(
-            """
-            SELECT substr(visit_date, 1, 7) AS yyyymm, COUNT(*) AS visit_count
-            FROM visits
-            WHERE visit_date BETWEEN ? AND ?
-            GROUP BY yyyymm
-            """,
-            (start_date, end_date)
-        ).fetchall()
-        visits_by_month = {r["yyyymm"]: int(r["visit_count"] or 0) for r in visit_rows}
-
-        anomaly_rows = conn.execute(
-            """
-            SELECT substr(anomaly_date, 1, 7) AS yyyymm, COUNT(*) AS anomaly_count
-            FROM anomalies
-            WHERE NULLIF(visit_id, '') IS NOT NULL AND anomaly_date BETWEEN ? AND ?
-            GROUP BY yyyymm
-            """,
-            (start_date, end_date)
-        ).fetchall()
-        anomalies_by_month = {r["yyyymm"]: int(r["anomaly_count"] or 0) for r in anomaly_rows}
-
-    results = []
-    for yyyymm in months_list:
-        results.append({
-            "yyyymm": yyyymm,
-            "visit_count": visits_by_month.get(yyyymm, 0),
-            "visit_anomaly_count": anomalies_by_month.get(yyyymm, 0)
-        })
-    return results
 
 
 def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:

@@ -5,15 +5,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
-
 repo_root = Path(SPECPATH).resolve().parent
 src_root = repo_root / "src"
 
-pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all("PySide6")
-
-datas = list(pyside6_datas)
-datas += [
+datas = [
     (str(src_root / "ui" / "assets"), "ui/assets"),
     (str(src_root / "ncr" / "ui" / "assets"), "ncr/ui/assets"),
 ]
@@ -21,19 +16,14 @@ services_assets = src_root / "services" / "assets"
 if services_assets.exists():
     datas.append((str(services_assets), "services/assets"))
 
-hiddenimports = list(pyside6_hiddenimports)
-hiddenimports += collect_submodules("database")
-hiddenimports += collect_submodules("services")
-hiddenimports += collect_submodules("ui")
-hiddenimports += collect_submodules("ncr")
-hiddenimports += [
+hiddenimports = [
     "app_version",
     "app_paths",
     "build_info",
     "PySide6.QtCharts",
+    "PySide6.QtSvg",
     "openpyxl",
     "reportlab",
-    "matplotlib",
     "PIL",
     "pptx",
     "xhtml2pdf",
@@ -44,13 +34,28 @@ hiddenimports += [
 a = Analysis(
     [str(repo_root / "main.py")],
     pathex=[str(repo_root), str(src_root)],
-    binaries=list(pyside6_binaries),
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "tests",
+        "ncr.tests",
+        "pytest",
+        "_pytest",
+        "numpy.testing",
+        "pandas._testing",
+        "pandas.plotting",
+        "pandas.io.sql",
+        "sqlalchemy",
+        "psycopg2",
+        "botocore",
+        "matplotlib",
+        "jinja2",
+        "PySide6.scripts",
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=None,

@@ -94,6 +94,7 @@ class ProductSpecRemovalTests(unittest.TestCase):
                 "product_stage",
                 "supplier_id",
                 "secondary_supplier_id",
+                "item_category",
                 "is_active",
                 "created_at",
                 "updated_at",

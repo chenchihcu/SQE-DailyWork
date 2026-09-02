@@ -7,10 +7,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from database.product_item_category import (
+    ITEM_CATEGORY_SEMI_FINISHED,
+    infer_item_category_from_product_code,
+)
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     normalize_product_stage_ui,
 )
+from database.supplier_category import SUPPLIER_CATEGORY_RAW_MATERIAL
+from ui.sidebar_nav import NAV_LABEL_MASTER_RAW_SUPPLIER
 from services.excel_import_helpers import (
     find_excel_column_index,
     normalize_excel_cell,
@@ -312,7 +318,7 @@ def preview_product_master_import(
                     product_stage,
                     "",
                     supplier_name,
-                    "主供應商已停用，請先在基礎資料啟用或更正 ERP 匯出資料。",
+                    f"主供應商已停用，請先在「{NAV_LABEL_MASTER_RAW_SUPPLIER}」啟用或更正 ERP 匯出資料。",
                 )
             )
             continue
@@ -563,10 +569,16 @@ def _ensure_supplier(conn: sqlite3.Connection, supplier_name: str, now: str) -> 
         """
         INSERT INTO suppliers(
             id, supplier_name, contact_name, department, phone, contact_email,
-            is_active, created_at, updated_at
-        ) VALUES (?, ?, '', '', '', '', 1, ?, ?)
+            category, is_active, created_at, updated_at
+        ) VALUES (?, ?, '', '', '', '', ?, 1, ?, ?)
         """,
-        (supplier_id, supplier_name, now, now),
+        (
+            supplier_id,
+            supplier_name,
+            SUPPLIER_CATEGORY_RAW_MATERIAL,
+            now,
+            now,
+        ),
     )
     return supplier_id, True
 
@@ -616,8 +628,8 @@ def apply_product_master_import(
                     """
                     INSERT INTO products(
                         id, product_code, product_name, product_stage, supplier_id,
-                        secondary_supplier_id, is_active, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)
+                        secondary_supplier_id, item_category, is_active, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, NULL, ?, 1, ?, ?)
                     """,
                     (
                         uuid.uuid4().hex,
@@ -625,6 +637,7 @@ def apply_product_master_import(
                         row.product_name,
                         row.product_stage or PRODUCT_STAGE_MASS_PRODUCTION,
                         supplier_id,
+                        infer_item_category_from_product_code(row.product_code),
                         now,
                         now,
                     ),

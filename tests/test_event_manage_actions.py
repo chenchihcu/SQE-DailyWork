@@ -499,19 +499,13 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual(120, detail["production_qty"])
         self.assertEqual("已完成", detail["status"])
 
-    def test_list_events_includes_product_stage_work_order_and_qty_for_both_types(self) -> None:
+    def test_list_events_includes_product_stage_work_order_and_qty_for_anomalies(self) -> None:
         supplier_id = self._create_supplier("List Fields Supplier")
         anomaly_product_id = self._create_product(
             supplier_id,
             code="P-LIST-001",
             name="List Fields Product",
             product_stage=PRODUCT_STAGE_TRIAL_PRODUCTION,
-        )
-        visit_product_id = self._create_product(
-            supplier_id,
-            code="P-LIST-002",
-            name="List Fields Product V",
-            product_stage="量產",
         )
         repository.create_anomaly(
             self.conn,
@@ -523,20 +517,9 @@ class EventManageActionsTests(unittest.TestCase):
             outsource_work_order="AN-WO-001",
             batch_qty=88,
         )
-        repository.create_visit(
-            self.conn,
-            visit_date="2026-04-15",
-            supplier_id=supplier_id,
-            product_id=visit_product_id,
-            product_stage="試產",
-            summary="visit with fields",
-            work_order_no="V-WO-001",
-            production_qty=120,
-        )
 
         events = repository.list_events(self.conn, event_type="ALL")
         anomaly_row = next(row for row in events if row["event_type"] == "ANOMALY")
-        visit_row = next(row for row in events if row["event_type"] == "VISIT")
 
         self.assertEqual("List Fields Product", anomaly_row["product_name"])
         self.assertEqual("試產", anomaly_row["product_stage"])
@@ -545,21 +528,8 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual("AN-WO-001", anomaly_row["outsource_work_order"])
         self.assertEqual(88, anomaly_row["batch_qty"])
 
-        self.assertEqual("List Fields Product V", visit_row["product_name"])
-        self.assertEqual("量產", visit_row["product_stage"])
-        self.assertEqual("V-WO-001", visit_row["work_order_no"])
-        self.assertEqual(120, visit_row["production_qty"])
-        self.assertEqual("", visit_row["outsource_work_order"])
-        self.assertEqual(0, visit_row["batch_qty"])
-
-    def test_list_events_splits_query_scopes_without_overlap(self) -> None:
+    def test_list_events_open_scope_includes_visit_linked_anomalies(self) -> None:
         supplier_id = self._create_supplier("Scoped List Supplier")
-        unlinked_visit_id = repository.create_visit(
-            self.conn,
-            visit_date="2026-04-10",
-            supplier_id=supplier_id,
-            summary="unlinked visit",
-        )
         linked_visit_id = repository.create_visit(
             self.conn,
             visit_date="2026-04-11",
@@ -582,48 +552,28 @@ class EventManageActionsTests(unittest.TestCase):
         linked_anomaly_id = self._find_anomaly_id(linked_anomaly_no)
         pure_anomaly_id = self._find_anomaly_id(pure_anomaly_no)
 
-        visit_only = repository.list_events(
-            self.conn,
-            event_scope=repository.EVENT_SCOPE_VISIT_ONLY,
-        )
-        visit_with_anomaly = repository.list_events(
-            self.conn,
-            event_scope=repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-        )
-        anomaly_only = repository.list_events(
+        open_rows = repository.list_events(
             self.conn,
             event_scope=repository.EVENT_SCOPE_ANOMALY_ONLY,
         )
-
-        self.assertEqual([unlinked_visit_id], [row["event_id"] for row in visit_only])
-        self.assertEqual(["VISIT"], [row["event_type"] for row in visit_only])
-        self.assertEqual(
-            [linked_anomaly_id],
-            [row["event_id"] for row in visit_with_anomaly],
-        )
-        self.assertEqual(
-            ["ANOMALY"],
-            [row["event_type"] for row in visit_with_anomaly],
-        )
+        open_ids = {row["event_id"] for row in open_rows}
+        self.assertEqual({linked_anomaly_id, pure_anomaly_id}, open_ids)
         self.assertEqual(
             [linked_visit_id],
-            [row["linked_visit_id"] for row in visit_with_anomaly],
+            [row["linked_visit_id"] for row in open_rows if row["event_id"] == linked_anomaly_id],
         )
-        self.assertEqual([pure_anomaly_id], [row["event_id"] for row in anomaly_only])
-        self.assertEqual(["ANOMALY"], [row["event_type"] for row in anomaly_only])
-        scoped_ids = [
-            row["event_id"]
-            for rows in (visit_only, visit_with_anomaly, anomaly_only)
-            for row in rows
-        ]
-        self.assertEqual(len(scoped_ids), len(set(scoped_ids)))
 
-        pending_linked_rows = repository.list_events(
+        repository.close_anomaly(
             self.conn,
-            status="待處理",
-            event_scope=repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
+            anomaly_id=pure_anomaly_id,
+            improvement_desc="done",
+            closed_at="2026-04-14",
         )
-        self.assertEqual([linked_anomaly_id], [row["event_id"] for row in pending_linked_rows])
+        closed_rows = repository.list_events(
+            self.conn,
+            event_scope=repository.EVENT_SCOPE_CLOSED_ONLY,
+        )
+        self.assertEqual([pure_anomaly_id], [row["event_id"] for row in closed_rows])
 
     def test_latest_visit_for_supplier_on_date_returns_latest_visit_defaults(self) -> None:
         supplier_id = self._create_supplier("Same Day Visit Supplier")

@@ -16,9 +16,9 @@ class _EventListFilterMixin:
       - Instance attributes: self.mode | self.fixed_scope | self.fixed_status
       - Filter attributes: self._filter_event_scope | self._filter_event_type |
         self._filter_status | self._filter_supplier | self._filter_yyyymm |
-        self._filter_overdue_only | self._sort_col | self._sort_asc |
+        self._sort_col | self._sort_asc |
         self._all_rows | self._load_failed (bool; default False)
-      - UI widget attributes: self.source_tag_label | self.status_combo |
+      - UI widget attributes: self.status_combo |
         self.event_scope_tab_bar | self.supplier_filter_input |
         self.all_months_checkbox | self.month_input | self.export_pdf_button |
         self.empty_state | self.table | self.pagination
@@ -30,28 +30,7 @@ class _EventListFilterMixin:
       reads this flag via ``getattr`` so hosts that do not set it still work.
     """
 
-    # -- Scope / source helpers -----------------------------------------------
-
-    def _source_tag_text(self) -> str:
-        scope = self.fixed_scope or self._filter_event_scope
-        if scope == repository.EVENT_SCOPE_VISIT_ONLY:
-            base = "供應商事件 / 訪廠紀錄"
-        elif scope == repository.EVENT_SCOPE_VISIT_WITH_ANOMALY:
-            base = "供應商事件 / 訪廠發現異常"
-        elif scope == repository.EVENT_SCOPE_CLOSED_ONLY:
-            base = "供應商事件 / 已結案"
-        elif scope == repository.EVENT_SCOPE_ANOMALY_ONLY:
-            base = "供應商事件 / 單獨異常"
-        else:
-            base = "供應商事件"
-        if self._filter_overdue_only:
-            return f"{base} / 逾期未結"
-        return base
-
-    def _sync_source_tag(self) -> None:
-        if self.source_tag_label is None:
-            return
-        self.source_tag_label.setText(self._source_tag_text())
+    # -- Scope / filter state helpers -----------------------------------------
 
     def _sync_export_pdf_state(self) -> None:
         if self.export_pdf_button is None:
@@ -64,8 +43,6 @@ class _EventListFilterMixin:
         else:
             self.export_pdf_button.setToolTip("請先選取一筆事件以輸出 PDF")
             self.export_pdf_button.setStatusTip("請先選取一筆事件以輸出 PDF")
-
-    # -- Scope / filter state helpers -----------------------------------------
 
     def _combo_set_current_data(self, combo, value: str) -> None:
         idx = combo.findData(value)
@@ -106,7 +83,6 @@ class _EventListFilterMixin:
     def _sync_filter_widgets_from_state(self) -> None:
         if self.mode != "query" or self.status_combo is None:
             return
-        self._sync_source_tag()
         for scope, button in getattr(self, "scope_chip_buttons", {}).items():
             button.blockSignals(True)
             try:
@@ -167,8 +143,6 @@ class _EventListFilterMixin:
         scope = self._normalize_event_scope(event_scope)
         if scope is None:
             return
-        # 切換 scope 會離開 KPI 逾期下鑽 lens。
-        self._filter_overdue_only = False
         self._filter_event_scope = scope
         self._filter_event_type = self._event_type_for_scope(scope)
         if scope == repository.EVENT_SCOPE_CLOSED_ONLY:
@@ -178,14 +152,11 @@ class _EventListFilterMixin:
             # 離開已結案時，已結案狀態不再適用於進行中 scope。
             self._filter_status = "ALL"
         self._sync_filter_widgets_from_state()
-        self._sync_source_tag()
         self.refresh_data()
 
     def _apply_filters_from_ui(self) -> None:
         if self.mode != "query" or self.status_combo is None:
             return
-        # Manual filter interaction exits the KPI overdue drill-down lens.
-        self._filter_overdue_only = False
         self._filter_status = str(self.status_combo.currentData() or "ALL")
         self._filter_supplier = (
             self.supplier_filter_input.text().strip() if self.supplier_filter_input else ""
@@ -194,14 +165,11 @@ class _EventListFilterMixin:
             self._filter_yyyymm = self.month_input.date().toString("yyyyMM")
         else:
             self._filter_yyyymm = None
-        # Drop the "逾期未結" source tag now that the overdue lens is cleared.
-        self._sync_source_tag()
         self.refresh_data()
 
     def _reset_filters_ui(self) -> None:
         if self.mode != "query":
             return
-        self._filter_overdue_only = False
         self._filter_status = "ALL"
         self._filter_supplier = ""
         self._filter_yyyymm = None
@@ -213,17 +181,14 @@ class _EventListFilterMixin:
             self._filter_status != "ALL"
             or bool(str(self._filter_supplier or "").strip())
             or self._filter_yyyymm is not None
-            or self._filter_overdue_only
         )
 
     def _default_empty_message(self) -> str:
-        if self.fixed_scope == repository.EVENT_SCOPE_VISIT_ONLY:
-            return "目前沒有訪廠紀錄，請先新增訪廠。"
         if self.fixed_scope == repository.EVENT_SCOPE_ANOMALY_ONLY:
             return "目前沒有異常事件，請先新增異常。"
         if self.fixed_scope == repository.EVENT_SCOPE_CLOSED_ONLY:
             return "目前沒有已結案紀錄。"
-        return "目前沒有事件資料，請先新增訪廠或異常。"
+        return "目前沒有事件資料，請先新增異常。"
 
     def _update_empty_state(self) -> None:
         has_rows = len(self._all_rows) > 0
@@ -290,7 +255,6 @@ class _EventListFilterMixin:
         yyyymm: str | None = None,
         status: str = "ALL",
         event_scope: str | None = None,
-        overdue_only: bool = False,
     ):
         event_type_key = str(event_type or "").strip().upper()
         scope_key = self._normalize_event_scope(event_scope)
@@ -303,16 +267,11 @@ class _EventListFilterMixin:
             elif event_type_key == "ANOMALY":
                 self._filter_event_scope = repository.EVENT_SCOPE_ANOMALY_ONLY
                 self._filter_event_type = "ANOMALY"
-            elif event_type_key == "VISIT":
-                self._filter_event_scope = repository.EVENT_SCOPE_VISIT_ONLY
-                self._filter_event_type = "VISIT"
             else:
                 self._filter_event_type = "ALL"
         else:
             if event_type_key == "ANOMALY":
                 self._filter_event_type = "ANOMALY"
-            elif event_type_key == "VISIT":
-                self._filter_event_type = "VISIT"
             else:
                 self._filter_event_type = "ALL"
 
@@ -327,7 +286,6 @@ class _EventListFilterMixin:
         if self.mode == "query" and self._filter_status not in ("ALL", "待處理", "已結案"):
             self._filter_status = "ALL"
         self._filter_supplier = str(supplier_keyword or "").strip()
-        self._filter_overdue_only = bool(overdue_only)
         self._filter_yyyymm = self._normalize_month_filter(yyyymm)
 
         self._sync_filter_widgets_from_state()

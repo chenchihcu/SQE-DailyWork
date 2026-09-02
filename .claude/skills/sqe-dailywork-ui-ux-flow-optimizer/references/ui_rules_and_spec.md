@@ -9,6 +9,8 @@ allowed-tools: Read, Grep, Glob, Bash
 
 本技能專門指導 SQE DailyWork 桌面應用程式之 UI/UX 空間利用率、表單排版密度、操作動線連貫性、架構外殼（Workflow Shell）結構合規、消除切頁摩擦之單一連續表單模式與 Qt 版面引擎避坑規範。
 
+**Visit 產品 UI 已退役**（`docs/exec-plans/completed/retire-visit-product-line.md`）。勿復活 visit dialog、visit scope 或 Supplier 360 visit 分頁。
+
 ---
 
 ## 1. 表單排版與欄位配對原則 (Form Density & Pairing)
@@ -55,7 +57,7 @@ allowed-tools: Read, Grep, Glob, Bash
 2. **語意標題層級一致性**：
    - `QLabel[role="sectionTitle"]` 僅用於一級區塊分界（例如：基本資訊、技轉）。二級欄位標籤使用一般 `QLabel`，避免破壞主題階層與測試斷言。
 3. **消除無效空白佔位框**：
-   - 彈出視窗頂部（如 `VisitDetailDialog`）不可留置全空的 Frame，應設定為具備 `QLabel[role="title"]` 的 `DIALOG_HEADER_HEIGHT = 44` 緊湊主題 Header。
+   - 彈出視窗頂部（如 `NewAnomalyDialog` / `CloseAnomalyDialog`）不可留置全空的 Frame，應設定為具備 `QLabel[role="title"]` 的 `DIALOG_HEADER_HEIGHT = 44` 緊湊主題 Header。
 
 ---
 
@@ -77,7 +79,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 1. **Workflow Shell 架構角色標誌**：
    - 系統包含三大工作流外殼標誌類別：
-     - `QueryWorkflowShell`：用於事件管理清單與 NCR 追蹤清單。
+     - `QueryWorkflowShell`：用於事件查詢清單與 NCR 追蹤清單。
      - `CreateWorkflowShell`：用於事件建立與 NCR 建立表單。
      - `AnalyticsWorkflowShell`：用於統計分析頁面。
    - 這些外殼類別是 `test_surface_usage_structure.py` 與系統層級契約定位頁面角色的依據（透過 `findChild(WorkflowShell)` 驗證）。
@@ -146,17 +148,17 @@ allowed-tools: Read, Grep, Glob, Bash
 
 ## 9. 導覽與表單建立入口守衛 (Navigation & Create Entrypoint Guard)
 
-1. **嚴禁無意抑制工具列建立按鈕**：
-   - 清單工具列中的建立按鈕（例如 `DefectListWidget._build_new_event_buttons()`）不得因 `mode == "query"` 或其他常態查詢模式而直接回傳 `None, None`。
-   - 工具列按鈕應完整提供「新增訪廠」（次要按鈕 `variant="secondary"`）與「新增異常」（主要按鈕 `variant="primary"`），並正確連接至主視窗的導覽或開啟回呼。
+1. **建立入口守衛**：
+   - 供應商事件「新增異常」僅由側欄 `新增異常` 進入全頁 `EventCreatePage`；事件查詢工具列不得恢復冗餘 `新增異常` 或「新增訪廠」按鈕。
+   - 若清單工具列仍有建立按鈕 helper（例如 `DefectListWidget._build_new_event_buttons()`），不得因 `mode == "query"` 而無意回傳 `None, None` 導致其他模式回歸。
 2. **四重對齊導覽契約 (Quadruple Navigation Contract)**：
    - 新增或恢復頁面導覽時，必須同時完成以下四處對齊，缺一不可：
      1. **側欄定義**：在 `sidebar_nav._NAV_GROUPS` 中宣告語意鍵與圖示。
      2. **堆疊掛載**：在 `main_window.py` 定義明確的堆疊常數索引並透過 `stack.addWidget()` 掛載。
      3. **標題與防護**：在 `_switch_primary_page` 標題字典與 `_check_page_leave_dirty_guard` 納入防護。
-     4. **跳轉方法**：實作 `open_new_*_page()` 等導覽方法並串接側欄點擊與工具列按鈕信號。
+     4. **跳轉方法**：實作 `open_new_*_page()` 或 `open_supplier_event_ops()` 等導覽方法並串接側欄點擊信號。
 3. **表單送出有效性契約 (`can_submit` Protocol)**：
-   - 凡嵌入至 `EventCreatePage` 或 `CreateWorkflowShell` 的表單組件（如 `NewAnomalyDialog`, `NewVisitDialog`），必須實作 `can_submit(self) -> bool`。
+   - 凡嵌入至 `EventCreatePage` 或 `CreateWorkflowShell` 的表單組件（如 `NewAnomalyDialog`），必須實作 `can_submit(self) -> bool`。
    - `can_submit()` 應檢查關鍵必填資料（如 `supplier_id` 與 `product_id`），讓外殼的儲存按鈕能在表單無效或初始未選擇時精準維持禁用狀態。
 
 ---
@@ -167,7 +169,7 @@ allowed-tools: Read, Grep, Glob, Bash
 1. **入口層級與位置**：確認是要恢復左側側欄一等導覽列（全域快速切換）、清單頂部工具列按鈕（情境工作流入口）、抑或是兩者同步提供？
 2. **工作流呈現形式**：確認建立表單應採用全頁式外殼（`EventCreatePage`，適合深度輸入與大表單）或彈出式對話框（Modal Dialog，適合快速填寫）？
 3. **切頁摩擦與分頁結構**：確認對話框是否包含多個關聯維度（如改善 + 附件照片），優先推薦單一連續垂直滾動流（避免 QTabWidget 分割操作動線）。
-4. **連帶連動契約**：確認是否需要支援關聯資料同步（如訪廠發現異常自動關聯）、未儲存離開防護（Dirty Guard）與送出後跳轉清單行為？
+4. **連帶連動契約**：確認是否需要支援未儲存離開防護（Dirty Guard）與送出後跳轉清單行為？Visit 產品線已退役，勿設計 visit 關聯同步。
 
 ---
 
@@ -181,7 +183,7 @@ allowed-tools: Read, Grep, Glob, Bash
 5. **微互動與按鈕測試**：`python -m unittest tests/test_micro_interactions.py`
 6. **佈局密度測試**：`python -m unittest tests/test_form_field_pairing_layout.py`
 7. **月度統計匯出測試**：`python -m unittest tests/test_monthly_stats_expansion.py`
-8. **首頁待辦與導覽測試**：`python -m unittest tests/test_home_recent_events_panel.py tests/test_appearance_preferences_navigation.py`
+8. **導覽與啟動頁測試**：`python -m unittest tests/test_top_nav_compact_height.py tests/test_appearance_preferences_navigation.py`
 9. **原生視覺探針**：`python scripts/qt_visual_probe.py --target form-density` 與 `python scripts/qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width`
 10. **檢查探針指標**：`visual_trustworthy == True` 且 `qss_unknown_property_warnings == 0`。
 
@@ -199,7 +201,7 @@ allowed-tools: Read, Grep, Glob, Bash
    - 異常事件統計與 NCR 統計頁面僅保留「篩選區間」、「重新整理」、「匯出 Excel」以及核心統計圖表（月度趨勢圖、柏拉圖等）。
    - 移除或隱藏所有自動生成的大段文字分析與診斷摘要區塊（`insight_panel` / `info_banner`），維持乾淨直觀的視覺看板體驗。
 4. **Guard-Horizontal-Subtabs (橫向子標籤與無捲軸排版守衛)**：
-   - 事件管理頁以 `EVENT_QUERY_SCOPE_TABS` 四個水平 scope chip（單獨異常 / 訪廠發現異常 / 訪廠紀錄 / 已結案）切換資料範圍，並以狀態 `QComboBox`（全部 / 待處理 / 已結案）篩選；已結案 chip 鎖定狀態為已結案。
+   - 事件查詢頁以 `EVENT_QUERY_SCOPE_TABS` 兩個水平 scope chip（單獨異常 / 已結案）切換資料範圍，並以狀態 `QComboBox`（全部 / 待處理 / 已結案）篩選；已結案 chip 鎖定狀態為已結案。
    - 表格高度與 SizePolicy 必須維持視窗自適應，消除內部與外層雙重垂直滾動條。
 5. **Guard-Form-Iconography (表單語意圖示視覺強化守衛)**：
    - 表單區塊標題與重要欄位組群引入語意圖示（📋 基本/基礎資訊、🔍 不良現象/問題描述、⚙️ 技轉查核/處理狀態、📝 活動摘要、📊 風險與統計、📌 待追蹤事項），提升視覺掃讀層次與辨識效率。

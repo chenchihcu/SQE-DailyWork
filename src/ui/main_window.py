@@ -23,6 +23,15 @@ from PySide6.QtWidgets import (
 
 from app_version import APP_TITLE
 from database.connection import disposable_runtime_enabled, get_connection
+from database.product_item_category import (
+    ITEM_CATEGORY_RAW_MATERIAL,
+    MASTER_SEMI_FINISHED_CATEGORIES,
+    SUPPLIER_EVENT_PRODUCT_CATEGORIES,
+)
+from database.supplier_category import (
+    SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+    SUPPLIER_CATEGORY_RAW_MATERIAL,
+)
 from database import repository
 from services.appearance_preferences_service import load_application_preferences
 from services.event import _product_service, _query_service
@@ -46,14 +55,27 @@ from ui.runtime_mode import is_automated_runtime, missing_supplier_create_gate
 from ui.page_header_bar import PageHeaderBar
 from ui.sidebar_nav import (
     ACTION_OPEN_APPEARANCE_REDESIGN,
+    NAV_LABEL_EVENT_QUERY,
+    NAV_LABEL_MASTER_OUTSOURCE,
+    NAV_LABEL_MASTER_RAW_MATERIAL,
+    NAV_LABEL_MASTER_RAW_SUPPLIER,
+    NAV_LABEL_MASTER_SEMI_FINISHED,
+    NAV_SUBTITLE_EVENT_OVERDUE,
+    NAV_SUBTITLE_EVENT_QUERY,
     PAGE_ANOMALY_CREATE,
+    PAGE_APPEARANCE_SETTINGS,
     PAGE_EVENT_OPEN_ACTIONS,
+    PAGE_EVENT_OPS,
     PAGE_EVENT_OVERDUE,
     PAGE_EVENT_QUERY,
     PAGE_EVENT_ROOT_CAUSE,
     PAGE_HOME,
     PAGE_MANAGER_VIEW,
     PAGE_MASTER,
+    PAGE_MASTER_OUTSOURCE_SUPPLIER,
+    PAGE_MASTER_RAW_MATERIAL,
+    PAGE_MASTER_RAW_SUPPLIER,
+    PAGE_MASTER_SEMI_FINISHED,
     PAGE_SUPPLIER_OVERVIEW,
     PAGE_NCR,
     PAGE_NCR_CREATE,
@@ -63,7 +85,6 @@ from ui.sidebar_nav import (
     PAGE_NCR_PENDING_OUTSOURCE,
     PAGE_NCR_STATS,
     PAGE_STATS,
-    PAGE_VISIT_CREATE,
     SidebarNav,
 )
 from ui.theme import asset_path
@@ -72,12 +93,10 @@ from ui.window_sizing import (
     restore_or_fit_window_geometry,
 )
 from ui.widgets.common_widgets import EmptyStateWidget
-from ui.widgets.home_widget import HomeWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
-from ui.widgets.manager_view_page import ManagerViewPage
 from ui.widgets.supplier_360_page import Supplier360Page
-from ui.widgets.supplier_event_queue_page import SupplierEventQueuePage
+from ui.widgets.supplier_event_ops_page import SupplierEventOpsPage
 from ui.widgets.supplier_overview_page import SupplierOverviewPage
 
 HOME_PAGE_INDEX = 0
@@ -93,34 +112,57 @@ NCR_TRACE_PAGE_INDEX = NCR_PAGE_OFFSET + 3
 NCR_TRACKING_PAGE_INDEX = NCR_PENDING_OUTSOURCE_PAGE_INDEX
 NCR_PAGE_INDEX = NCR_TRACKING_PAGE_INDEX
 NCR_STATS_PAGE_INDEX = NCR_PAGE_OFFSET + NCR_PAGE_COUNT
-MASTER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
-VISIT_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 1
-ANOMALY_CREATE_PAGE_INDEX = MASTER_PAGE_INDEX + 2
+MASTER_RAW_SUPPLIER_PAGE_INDEX = NCR_STATS_PAGE_INDEX + 1
+MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX = MASTER_RAW_SUPPLIER_PAGE_INDEX + 1
+MASTER_RAW_MATERIAL_PAGE_INDEX = MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX + 1
+MASTER_SEMI_FINISHED_PAGE_INDEX = MASTER_RAW_MATERIAL_PAGE_INDEX + 1
+MASTER_PAGE_INDEX = MASTER_RAW_SUPPLIER_PAGE_INDEX  # Compatibility alias.
+ANOMALY_CREATE_PAGE_INDEX = MASTER_SEMI_FINISHED_PAGE_INDEX + 1
 ANOMALY_MANAGEMENT_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX + 1
 SUPPLIER_OVERVIEW_PAGE_INDEX = ANOMALY_MANAGEMENT_PAGE_INDEX + 1
 SUPPLIER_360_PAGE_INDEX = SUPPLIER_OVERVIEW_PAGE_INDEX + 1
-MANAGER_VIEW_PAGE_INDEX = SUPPLIER_360_PAGE_INDEX + 1
-EVENT_OVERDUE_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 1
-EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 2
-EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX = MANAGER_VIEW_PAGE_INDEX + 3
-EVENT_CREATE_VISIT_PAGE_INDEX = VISIT_CREATE_PAGE_INDEX
+EVENT_OPS_PAGE_INDEX = SUPPLIER_360_PAGE_INDEX + 1
+APPEARANCE_SETTINGS_PAGE_INDEX = EVENT_OPS_PAGE_INDEX + 1
+# Compatibility aliases: legacy queue/manager pages now share the ops shell.
+MANAGER_VIEW_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
+EVENT_OVERDUE_QUEUE_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
+EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
+EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
 EVENT_CREATE_ANOMALY_PAGE_INDEX = ANOMALY_CREATE_PAGE_INDEX
 
 _PAGE_TITLES = {
-    HOME_PAGE_INDEX:  ("首頁", "Mitcorp SQE Tool"),
-    EVENT_PAGE_INDEX: ("事件管理", "供應商事件：訪廠、訪廠發現異常、單獨異常與已結案查詢"),
+    HOME_PAGE_INDEX:  ("", ""),  # Retired ghost slot; not user-navigable.
+    EVENT_PAGE_INDEX: (
+        NAV_LABEL_EVENT_QUERY,
+        f"供應商事件：{NAV_SUBTITLE_EVENT_QUERY}",
+    ),
     STATS_PAGE_INDEX: ("異常事件統計", "供應商事件趨勢、責任人績效與供應商風險"),
     NCR_STATS_PAGE_INDEX: ("不合格品統計分析", "倉庫實物不合格品統計圖表與比例分析"),
-    MASTER_PAGE_INDEX: ("基礎資料", "供應商與品名主檔管理"),
-    VISIT_CREATE_PAGE_INDEX: ("新增訪廠", "建立供應商訪廠紀錄"),
+    MASTER_RAW_SUPPLIER_PAGE_INDEX: (
+        NAV_LABEL_MASTER_RAW_SUPPLIER,
+        "原物料供應商主檔維護",
+    ),
+    MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX: (
+        NAV_LABEL_MASTER_OUTSOURCE,
+        "委外加工主檔維護",
+    ),
+    MASTER_RAW_MATERIAL_PAGE_INDEX: (
+        NAV_LABEL_MASTER_RAW_MATERIAL,
+        "原物料料號與品名主檔維護",
+    ),
+    MASTER_SEMI_FINISHED_PAGE_INDEX: (
+        NAV_LABEL_MASTER_SEMI_FINISHED,
+        "半成品與成品料號主檔維護",
+    ),
     ANOMALY_CREATE_PAGE_INDEX: ("新增異常", "建立供應商異常事件單"),
     ANOMALY_MANAGEMENT_PAGE_INDEX: ("異常案件管理", "查看與維護單一供應商異常案件"),
-    SUPPLIER_OVERVIEW_PAGE_INDEX: ("供應商總覽", "依供應商查看異常、訪廠與不合格品品質狀況"),
-    SUPPLIER_360_PAGE_INDEX: ("供應商檔案", "供應商事件、訪廠與不合格品的唯讀聚合視角"),
-    MANAGER_VIEW_PAGE_INDEX: ("主管檢視", "案件總覽與品質狀態營運分析"),
-    EVENT_OVERDUE_QUEUE_PAGE_INDEX: ("逾期未結", "待處理且逾期的供應商異常作業佇列"),
-    EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX: ("待根本原因", "根本原因尚未完成的待處理異常"),
-    EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX: ("進行中處置", "待處理異常的已規劃／執行中處置"),
+    SUPPLIER_OVERVIEW_PAGE_INDEX: ("供應商總覽", "依供應商查看異常與不合格品品質狀況"),
+    SUPPLIER_360_PAGE_INDEX: ("供應商檔案", "供應商事件與不合格品的唯讀聚合視角"),
+    EVENT_OPS_PAGE_INDEX: ("作業佇列", NAV_SUBTITLE_EVENT_OVERDUE),
+    APPEARANCE_SETTINGS_PAGE_INDEX: (
+        "顯示設定",
+        "介面外觀、表格、表單預設、匯出與系統偏好",
+    ),
 }
 
 # Compatibility alias kept for external callers
@@ -131,12 +173,13 @@ for _i, (_label, _title, _subtitle) in enumerate(NCR_PAGE_SPECS):
 
 # 側欄 PAGE_KEY ↔ QStackedWidget 索引對應（側欄不耦合堆疊索引，由此處轉換）。
 _PAGE_KEY_TO_INDEX = {
-    PAGE_HOME: HOME_PAGE_INDEX,
+    PAGE_HOME: EVENT_PAGE_INDEX,  # Compatibility redirect; home hub retired.
     PAGE_EVENT_QUERY: EVENT_PAGE_INDEX,
-    PAGE_EVENT_OVERDUE: EVENT_OVERDUE_QUEUE_PAGE_INDEX,
-    PAGE_EVENT_ROOT_CAUSE: EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX,
-    PAGE_EVENT_OPEN_ACTIONS: EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
-    PAGE_MANAGER_VIEW: MANAGER_VIEW_PAGE_INDEX,
+    PAGE_EVENT_OPS: EVENT_OPS_PAGE_INDEX,
+    PAGE_EVENT_OVERDUE: EVENT_OPS_PAGE_INDEX,
+    PAGE_EVENT_ROOT_CAUSE: EVENT_OPS_PAGE_INDEX,
+    PAGE_EVENT_OPEN_ACTIONS: EVENT_OPS_PAGE_INDEX,
+    PAGE_MANAGER_VIEW: EVENT_OPS_PAGE_INDEX,
     PAGE_SUPPLIER_OVERVIEW: SUPPLIER_OVERVIEW_PAGE_INDEX,
     PAGE_STATS: STATS_PAGE_INDEX,
     PAGE_NCR: NCR_TRACKING_PAGE_INDEX,
@@ -146,18 +189,29 @@ _PAGE_KEY_TO_INDEX = {
     PAGE_NCR_PENDING_MATERIAL: NCR_PENDING_MATERIAL_PAGE_INDEX,
     PAGE_NCR_HISTORY: NCR_TRACE_PAGE_INDEX,
     PAGE_NCR_STATS: NCR_STATS_PAGE_INDEX,
-    PAGE_MASTER: MASTER_PAGE_INDEX,
-    PAGE_VISIT_CREATE: VISIT_CREATE_PAGE_INDEX,
+    PAGE_MASTER: MASTER_RAW_SUPPLIER_PAGE_INDEX,
+    PAGE_MASTER_RAW_SUPPLIER: MASTER_RAW_SUPPLIER_PAGE_INDEX,
+    PAGE_MASTER_OUTSOURCE_SUPPLIER: MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX,
+    PAGE_MASTER_RAW_MATERIAL: MASTER_RAW_MATERIAL_PAGE_INDEX,
+    PAGE_MASTER_SEMI_FINISHED: MASTER_SEMI_FINISHED_PAGE_INDEX,
     PAGE_ANOMALY_CREATE: ANOMALY_CREATE_PAGE_INDEX,
+    PAGE_APPEARANCE_SETTINGS: APPEARANCE_SETTINGS_PAGE_INDEX,
 }
-_QUEUE_PAGE_KEYS = frozenset(
+_OPS_FAMILY_PAGE_KEYS = frozenset(
     {
+        PAGE_EVENT_OPS,
         PAGE_EVENT_OVERDUE,
         PAGE_EVENT_ROOT_CAUSE,
         PAGE_EVENT_OPEN_ACTIONS,
+        PAGE_MANAGER_VIEW,
     }
 )
-_PAGE_INDEX_TO_KEY = {index: key for key, index in _PAGE_KEY_TO_INDEX.items()}
+_QUEUE_PAGE_KEYS = _OPS_FAMILY_PAGE_KEYS
+_PAGE_INDEX_TO_KEY = {
+    index: key
+    for key, index in _PAGE_KEY_TO_INDEX.items()
+    if index != EVENT_OPS_PAGE_INDEX or key == PAGE_EVENT_OPS
+}
 
 
 class MainWindow(QMainWindow):
@@ -189,9 +243,12 @@ class MainWindow(QMainWindow):
         self._events_page: QWidget | None = None
         self._stats_page: QWidget | None = None
         self._ncr_stats_page: QWidget | None = None
-        self._master_page: QWidget | None = None
-        self._new_visit_page: QWidget | None = None
+        self._master_raw_supplier_page: QWidget | None = None
+        self._master_outsource_supplier_page: QWidget | None = None
+        self._master_raw_material_page: QWidget | None = None
+        self._master_semi_finished_page: QWidget | None = None
         self._new_anomaly_page: QWidget | None = None
+        self._appearance_preferences_page: QWidget | None = None
         self._anomaly_management_page: AnomalyManagementPage | None = None
         self._ncr_pages: list[QWidget] = []
         self._setup_ui()
@@ -302,17 +359,42 @@ class MainWindow(QMainWindow):
         self._ncr_stats_page = value
 
     def _get_or_create_master_widget(self) -> Any:
-        if isinstance(self._master_page, LazyPageWidget):
-            real = self._master_page.ensure_widget()
-            idx = self.stack.indexOf(self._master_page)
+        return self._get_or_create_master_page(self._master_raw_supplier_page)
+
+    def _get_or_create_master_page(self, lazy_page: Any) -> Any:
+        if isinstance(lazy_page, LazyPageWidget):
+            real = lazy_page.ensure_widget()
+            idx = self.stack.indexOf(lazy_page)
             if idx >= 0:
                 cur = self.stack.currentIndex()
-                self.stack.removeWidget(self._master_page)
+                self.stack.removeWidget(lazy_page)
                 self.stack.insertWidget(idx, real)
                 if cur == idx:
                     self.stack.setCurrentIndex(idx)
-            self._master_page = real
-        return self._master_page
+            if lazy_page is self._master_raw_supplier_page:
+                self._master_raw_supplier_page = real
+            elif lazy_page is self._master_outsource_supplier_page:
+                self._master_outsource_supplier_page = real
+            elif lazy_page is self._master_raw_material_page:
+                self._master_raw_material_page = real
+            elif lazy_page is self._master_semi_finished_page:
+                self._master_semi_finished_page = real
+            return real
+        return lazy_page
+
+    def _master_page_widgets(self) -> list[Any]:
+        return [
+            self._master_raw_supplier_page,
+            self._master_outsource_supplier_page,
+            self._master_raw_material_page,
+            self._master_semi_finished_page,
+        ]
+
+    def _refresh_master_pages(self) -> None:
+        for page in self._master_page_widgets():
+            widget = self._get_or_create_master_page(page)
+            if hasattr(widget, "refresh_data"):
+                widget.refresh_data()
 
     @property
     def master_widget(self) -> Any:
@@ -320,38 +402,12 @@ class MainWindow(QMainWindow):
 
     @master_widget.setter
     def master_widget(self, value: Any) -> None:
-        if self._master_page is not None and self._master_page is not value:
-            idx = self.stack.indexOf(self._master_page)
+        if self._master_raw_supplier_page is not None and self._master_raw_supplier_page is not value:
+            idx = self.stack.indexOf(self._master_raw_supplier_page)
             if idx >= 0:
-                self.stack.removeWidget(self._master_page)
+                self.stack.removeWidget(self._master_raw_supplier_page)
                 self.stack.insertWidget(idx, value)
-        self._master_page = value
-
-    def _get_or_create_new_visit_page(self) -> Any:
-        if isinstance(self._new_visit_page, LazyPageWidget):
-            real = self._new_visit_page.ensure_widget()
-            idx = self.stack.indexOf(self._new_visit_page)
-            if idx >= 0:
-                cur = self.stack.currentIndex()
-                self.stack.removeWidget(self._new_visit_page)
-                self.stack.insertWidget(idx, real)
-                if cur == idx:
-                    self.stack.setCurrentIndex(idx)
-            self._new_visit_page = real
-        return self._new_visit_page
-
-    @property
-    def new_visit_page(self) -> Any:
-        return self._get_or_create_new_visit_page()
-
-    @new_visit_page.setter
-    def new_visit_page(self, value: Any) -> None:
-        if self._new_visit_page is not None and self._new_visit_page is not value:
-            idx = self.stack.indexOf(self._new_visit_page)
-            if idx >= 0:
-                self.stack.removeWidget(self._new_visit_page)
-                self.stack.insertWidget(idx, value)
-        self._new_visit_page = value
+        self._master_raw_supplier_page = value
 
     def _get_or_create_new_anomaly_page(self) -> Any:
         if isinstance(self._new_anomaly_page, LazyPageWidget):
@@ -433,15 +489,12 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.stack.setObjectName("PageStack")
 
-        self.home_widget = HomeWidget(self)
+        self._retired_home_placeholder = QWidget()
+        self._retired_home_placeholder.setObjectName("RetiredHomePlaceholder")
 
         def _create_events_widget():
             from ui.widgets.defect_list_widget import EventListWidget
             return EventListWidget(self, mode="query", fixed_scope=None, lazy_load=False)
-
-        def _create_visit_create_page():
-            from ui.widgets.event_create_page import EventCreatePage
-            return EventCreatePage(self, "visit")
 
         def _create_anomaly_create_page():
             from ui.widgets.event_create_page import EventCreatePage
@@ -455,38 +508,82 @@ class MainWindow(QMainWindow):
             from ui.widgets.ncr_stats_widget import NcrStatsWidget
             return NcrStatsWidget(self, lazy_load=True)
 
-        def _create_master_widget():
-            from ui.widgets.master_data_widget import MasterDataWidget
-            return MasterDataWidget(self, lazy_load=True)
+        def _create_master_raw_supplier_page():
+            from ui.widgets.master_data_widget import MasterDataSupplierPage
+
+            return MasterDataSupplierPage(
+                self,
+                SUPPLIER_CATEGORY_RAW_MATERIAL,
+                page_label=NAV_LABEL_MASTER_RAW_SUPPLIER,
+                lazy_load=True,
+            )
+
+        def _create_master_outsource_supplier_page():
+            from ui.widgets.master_data_widget import MasterDataSupplierPage
+
+            return MasterDataSupplierPage(
+                self,
+                SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+                page_label=NAV_LABEL_MASTER_OUTSOURCE,
+                lazy_load=True,
+            )
+
+        def _create_master_raw_material_page():
+            from ui.widgets.master_data_widget import MasterDataProductPage
+
+            return MasterDataProductPage(
+                self,
+                (ITEM_CATEGORY_RAW_MATERIAL,),
+                page_label=NAV_LABEL_MASTER_RAW_MATERIAL,
+                lazy_load=True,
+            )
+
+        def _create_master_semi_finished_page():
+            from ui.widgets.master_data_widget import MasterDataProductPage
+
+            return MasterDataProductPage(
+                self,
+                MASTER_SEMI_FINISHED_CATEGORIES,
+                page_label=NAV_LABEL_MASTER_SEMI_FINISHED,
+                lazy_load=True,
+            )
+
+        def _create_appearance_preferences_page():
+            from ui.widgets.appearance_preferences_dialog import AppearancePreferencesPage
+            return AppearancePreferencesPage(self)
 
         self._events_page = LazyPageWidget(_create_events_widget, object_name="LazyEventsPage")
-        self._new_visit_page = LazyPageWidget(_create_visit_create_page, object_name="LazyVisitCreatePage")
         self._new_anomaly_page = LazyPageWidget(_create_anomaly_create_page, object_name="LazyAnomalyCreatePage")
         self._stats_page = LazyPageWidget(_create_stats_widget, object_name="LazyStatsPage")
         self._ncr_stats_page = LazyPageWidget(_create_ncr_stats_widget, object_name="LazyNcrStatsPage")
-        self._master_page = LazyPageWidget(_create_master_widget, object_name="LazyMasterPage")
+        self._master_raw_supplier_page = LazyPageWidget(
+            _create_master_raw_supplier_page,
+            object_name="LazyMasterRawSupplierPage",
+        )
+        self._master_outsource_supplier_page = LazyPageWidget(
+            _create_master_outsource_supplier_page,
+            object_name="LazyMasterOutsourceSupplierPage",
+        )
+        self._master_raw_material_page = LazyPageWidget(
+            _create_master_raw_material_page,
+            object_name="LazyMasterRawMaterialPage",
+        )
+        self._master_semi_finished_page = LazyPageWidget(
+            _create_master_semi_finished_page,
+            object_name="LazyMasterSemiFinishedPage",
+        )
+        self._appearance_preferences_page = LazyPageWidget(
+            _create_appearance_preferences_page,
+            object_name="LazyAppearancePreferencesPage",
+        )
         self._supplier_overview_page = SupplierOverviewPage(self)
         self._supplier_overview_page.supplier_selected.connect(self.open_supplier_360)
         self._supplier_360_page = Supplier360Page(self, self)
-        self._manager_view_page = ManagerViewPage(self)
-        self._event_overdue_queue_page = SupplierEventQueuePage(
-            self,
-            queue="overdue",
-            page_key=PAGE_EVENT_OVERDUE,
-        )
-        self._event_root_cause_queue_page = SupplierEventQueuePage(
-            self,
-            queue="root_cause",
-            page_key=PAGE_EVENT_ROOT_CAUSE,
-        )
-        self._event_open_actions_queue_page = SupplierEventQueuePage(
-            self,
-            queue="open_actions",
-            page_key=PAGE_EVENT_OPEN_ACTIONS,
-        )
+        self._event_ops_page = SupplierEventOpsPage(self)
+        self._event_ops_page.header_changed.connect(self._on_event_ops_header_changed)
         self._workbench_source_page_key: str | None = None
 
-        self.stack.insertWidget(HOME_PAGE_INDEX,  self.home_widget)
+        self.stack.insertWidget(HOME_PAGE_INDEX, self._retired_home_placeholder)
         self.stack.insertWidget(EVENT_PAGE_INDEX, self._events_page)
         self.stack.insertWidget(STATS_PAGE_INDEX, self._stats_page)
 
@@ -503,35 +600,42 @@ class MainWindow(QMainWindow):
         # ── 不合格品統計分析（索引 7）──
         self.stack.insertWidget(NCR_STATS_PAGE_INDEX, self._ncr_stats_page)
 
-        # ── 基礎資料（索引 8）──
-        self.stack.insertWidget(MASTER_PAGE_INDEX, self._master_page)
+        self.stack.insertWidget(MASTER_RAW_SUPPLIER_PAGE_INDEX, self._master_raw_supplier_page)
+        self.stack.insertWidget(
+            MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX,
+            self._master_outsource_supplier_page,
+        )
+        self.stack.insertWidget(MASTER_RAW_MATERIAL_PAGE_INDEX, self._master_raw_material_page)
+        self.stack.insertWidget(
+            MASTER_SEMI_FINISHED_PAGE_INDEX,
+            self._master_semi_finished_page,
+        )
 
-        # ── 供應商事件全頁建立表單（索引 9/10）──
-        self.stack.insertWidget(VISIT_CREATE_PAGE_INDEX, self._new_visit_page)
+        # ── 供應商事件全頁建立表單（索引 9）──
         self.stack.insertWidget(ANOMALY_CREATE_PAGE_INDEX, self._new_anomaly_page)
         self._anomaly_management_page = AnomalyManagementPage(self, self)
         self.stack.insertWidget(ANOMALY_MANAGEMENT_PAGE_INDEX, self._anomaly_management_page)
         self.stack.insertWidget(SUPPLIER_OVERVIEW_PAGE_INDEX, self._supplier_overview_page)
         self.stack.insertWidget(SUPPLIER_360_PAGE_INDEX, self._supplier_360_page)
-        self.stack.insertWidget(MANAGER_VIEW_PAGE_INDEX, self._manager_view_page)
-        self.stack.insertWidget(EVENT_OVERDUE_QUEUE_PAGE_INDEX, self._event_overdue_queue_page)
-        self.stack.insertWidget(EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX, self._event_root_cause_queue_page)
+        self.stack.insertWidget(EVENT_OPS_PAGE_INDEX, self._event_ops_page)
         self.stack.insertWidget(
-            EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
-            self._event_open_actions_queue_page,
+            APPEARANCE_SETTINGS_PAGE_INDEX,
+            self._appearance_preferences_page,
         )
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
 
         prefs = load_application_preferences()
+        startup_page = prefs.default_startup_page
+        if startup_page == "home":
+            startup_page = "events"
         startup_map = {
-            "home": HOME_PAGE_INDEX,
             "events": EVENT_PAGE_INDEX,
             "defects": NCR_PAGE_OFFSET,
             "stats": STATS_PAGE_INDEX,
         }
-        initial_index = startup_map.get(prefs.default_startup_page, HOME_PAGE_INDEX)
+        initial_index = startup_map.get(startup_page, EVENT_PAGE_INDEX)
         self._switch_primary_page(initial_index)
 
     def _insert_ncr_placeholders(self, reason: str) -> None:
@@ -558,6 +662,13 @@ class MainWindow(QMainWindow):
 
         current_index = self.stack.currentIndex()
         if (
+            current_index == APPEARANCE_SETTINGS_PAGE_INDEX
+            and page_index != current_index
+        ):
+            current_widget = self.stack.widget(current_index)
+            if hasattr(current_widget, "can_leave") and not current_widget.can_leave():
+                return
+        if (
             current_index == ANOMALY_MANAGEMENT_PAGE_INDEX
             and page_index != current_index
             and self._anomaly_management_page is not None
@@ -565,7 +676,7 @@ class MainWindow(QMainWindow):
         ):
             return
 
-        if page_index in (VISIT_CREATE_PAGE_INDEX, ANOMALY_CREATE_PAGE_INDEX):
+        if page_index == ANOMALY_CREATE_PAGE_INDEX:
             if not self._ensure_has_active_suppliers():
                 return
         
@@ -584,10 +695,7 @@ class MainWindow(QMainWindow):
                 NCR_STATS_PAGE_INDEX,
                 SUPPLIER_OVERVIEW_PAGE_INDEX,
                 SUPPLIER_360_PAGE_INDEX,
-                MANAGER_VIEW_PAGE_INDEX,
-                EVENT_OVERDUE_QUEUE_PAGE_INDEX,
-                EVENT_ROOT_CAUSE_QUEUE_PAGE_INDEX,
-                EVENT_OPEN_ACTIONS_QUEUE_PAGE_INDEX,
+                EVENT_OPS_PAGE_INDEX,
             ):
                 should_refresh = hasattr(real_widget, "refresh_data")
             elif hasattr(real_widget, "_has_loaded") and not getattr(real_widget, "_has_loaded", False):
@@ -604,6 +712,8 @@ class MainWindow(QMainWindow):
         self._sync_sidebar_active(page_index)
         title, subtitle = _PAGE_TITLES.get(page_index, ("", ""))
         self._header_bar.set_page(title, subtitle)
+        if page_index == EVENT_OPS_PAGE_INDEX:
+            self._event_ops_page.sync_header()
         if self._ncr is not None and self._is_ncr_index(page_index):
             self._ncr.refresh_for_local_index(page_index - NCR_PAGE_OFFSET)
 
@@ -617,8 +727,8 @@ class MainWindow(QMainWindow):
         """依目前頁面高亮導覽列；事件 scope 由頁內 chips 表示。"""
         if page_index == ANOMALY_MANAGEMENT_PAGE_INDEX:
             source_key = self._workbench_source_page_key
-            if source_key in _QUEUE_PAGE_KEYS:
-                self.sidebar.set_active(("page", source_key))
+            if source_key in _OPS_FAMILY_PAGE_KEYS:
+                self.sidebar.set_active(("page", PAGE_EVENT_OPS))
                 return
             self.sidebar.set_active(("page", PAGE_EVENT_QUERY))
             return
@@ -641,7 +751,14 @@ class MainWindow(QMainWindow):
         ):
             return  # 取消導覽；側欄高亮未變更，無需還原。
         if (
-            current in (VISIT_CREATE_PAGE_INDEX, ANOMALY_CREATE_PAGE_INDEX)
+            current == ANOMALY_CREATE_PAGE_INDEX
+            and self._action_target_index(action) != current
+        ):
+            current_widget = stack.widget(current)
+            if hasattr(current_widget, "can_leave") and not current_widget.can_leave():
+                return
+        if (
+            current == APPEARANCE_SETTINGS_PAGE_INDEX
             and self._action_target_index(action) != current
         ):
             current_widget = stack.widget(current)
@@ -651,10 +768,9 @@ class MainWindow(QMainWindow):
             page_index = _PAGE_KEY_TO_INDEX.get(value)
             if page_index is None:
                 return
-            if page_index == MASTER_PAGE_INDEX:
-                self._open_master_data()
-            else:
-                self._switch_primary_page(page_index)
+            if page_index == EVENT_OPS_PAGE_INDEX:
+                self._event_ops_page.activate_page_key(value)
+            self._switch_primary_page(page_index)
         elif kind == "scope":
             self._switch_primary_page(EVENT_PAGE_INDEX)
             self.events_widget.set_event_scope(value)
@@ -668,9 +784,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, timeout_ms)
 
     def open_appearance_preferences(self) -> None:
-        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
-        dlg = AppearancePreferencesDialog(self)
-        dlg.exec()
+        """Compatibility route for callers that previously opened the modal dialog."""
+        self._on_nav_activated(("page", PAGE_APPEARANCE_SETTINGS))
 
     def open_global_search(self) -> None:
         from ui.widgets.global_search_dialog import GlobalSearchDialog
@@ -682,7 +797,17 @@ class MainWindow(QMainWindow):
         res = super().findChild(arg__1, name) if options is None else super().findChild(arg__1, name, options)
         if res is not None:
             return res
-        for page_attr in ("_master_page", "_events_page", "_stats_page", "_ncr_stats_page", "_new_visit_page", "_new_anomaly_page"):
+        for page_attr in (
+            "_master_raw_supplier_page",
+            "_master_outsource_supplier_page",
+            "_master_raw_material_page",
+            "_master_semi_finished_page",
+            "_events_page",
+            "_stats_page",
+            "_ncr_stats_page",
+            "_new_anomaly_page",
+            "_appearance_preferences_page",
+        ):
             page = getattr(self, page_attr, None)
             if isinstance(page, LazyPageWidget):
                 child = page.findChild(arg__1, name, options)
@@ -690,17 +815,43 @@ class MainWindow(QMainWindow):
                     return child
         return None
 
-    def _open_master_data(self) -> None:
-        self._switch_primary_page(MASTER_PAGE_INDEX)
+    def _open_master_data(self, page_index: int = MASTER_RAW_SUPPLIER_PAGE_INDEX) -> None:
+        self._switch_primary_page(page_index)
 
-    def open_master_supplier_search(self, supplier_name: str = "") -> None:
-        self._open_master_data()
-        master = self.master_widget
-        if not supplier_name or not hasattr(master, "query_input"):
+    def open_master_raw_supplier(self, supplier_name: str = "") -> None:
+        self._open_master_data(MASTER_RAW_SUPPLIER_PAGE_INDEX)
+        self._apply_master_search(self._master_raw_supplier_page, supplier_name)
+
+    def open_master_outsource_supplier(self, supplier_name: str = "") -> None:
+        self._open_master_data(MASTER_OUTSOURCE_SUPPLIER_PAGE_INDEX)
+        self._apply_master_search(self._master_outsource_supplier_page, supplier_name)
+
+    def open_master_raw_material(self, keyword: str = "") -> None:
+        self._open_master_data(MASTER_RAW_MATERIAL_PAGE_INDEX)
+        self._apply_master_search(self._master_raw_material_page, keyword)
+
+    def open_master_semi_finished(self, keyword: str = "") -> None:
+        self._open_master_data(MASTER_SEMI_FINISHED_PAGE_INDEX)
+        self._apply_master_search(self._master_semi_finished_page, keyword)
+
+    def open_master_supplier_search(
+        self,
+        supplier_name: str = "",
+        *,
+        category: str = "",
+    ) -> None:
+        from database.supplier_category import SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
+
+        if str(category or "").strip() == SUPPLIER_CATEGORY_OUTSOURCE_FACTORY:
+            self.open_master_outsource_supplier(supplier_name)
+        else:
+            self.open_master_raw_supplier(supplier_name)
+
+    def _apply_master_search(self, lazy_page: Any, keyword: str) -> None:
+        master = self._get_or_create_master_page(lazy_page)
+        if not keyword or not hasattr(master, "query_input"):
             return
-        if hasattr(master, "tabs"):
-            master.tabs.setCurrentIndex(0)
-        master.query_input.setText(supplier_name)
+        master.query_input.setText(keyword)
         if hasattr(master, "_on_query_submitted"):
             master._on_query_submitted()
 
@@ -712,7 +863,6 @@ class MainWindow(QMainWindow):
         yyyymm: str | None = None,
         status: str = "ALL",
         event_scope: str | None = None,
-        overdue_only: bool = False,
     ) -> None:
         # Single consolidated event page: switch then let the widget activate the
         # matching scope tab. Routing the scope through apply_quick_filters makes
@@ -726,9 +876,8 @@ class MainWindow(QMainWindow):
             yyyymm=yyyymm,
             status=status,
             event_scope=event_scope,
-            overdue_only=overdue_only,
         )
-        # apply_quick_filters 更新了 scope；側欄維持事件管理頁高亮。
+        # apply_quick_filters 更新了 scope；側欄維持事件查詢頁高亮。
         self._sync_sidebar_active(EVENT_PAGE_INDEX)
 
     def open_anomaly_management(
@@ -741,11 +890,11 @@ class MainWindow(QMainWindow):
         """Open an anomaly in the main content area instead of a modal dialog."""
         if self._anomaly_management_page is None:
             return
-        if source_page_key in _QUEUE_PAGE_KEYS:
+        if source_page_key in _OPS_FAMILY_PAGE_KEYS:
             self._workbench_source_page_key = source_page_key
         elif source_page_key is None:
             current_key = _PAGE_INDEX_TO_KEY.get(self.stack.currentIndex())
-            if current_key in _QUEUE_PAGE_KEYS:
+            if current_key in _OPS_FAMILY_PAGE_KEYS:
                 self._workbench_source_page_key = current_key
             else:
                 self._workbench_source_page_key = None
@@ -780,13 +929,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "需先建立供應商",
-                "目前沒有可用供應商，請先到基礎資料建立供應商。",
+                f"目前沒有可用供應商，請先到「{NAV_LABEL_MASTER_RAW_SUPPLIER}」建立供應商。",
             )
         else:
             logger.info(
-                "目前沒有可用供應商；自動化環境略過提示對話框，改開基礎資料。"
+                "目前沒有可用供應商；自動化環境略過提示對話框，改開原物料供應商主檔。"
             )
-        self._open_master_data()
+        self.open_master_raw_supplier()
         return False
 
     def open_new_anomaly_create_page(self, initial_data: dict | None = None):
@@ -800,25 +949,8 @@ class MainWindow(QMainWindow):
                 page.reset_form()
         self._switch_primary_page(ANOMALY_CREATE_PAGE_INDEX)
 
-    def open_new_visit_create_page(self, initial_data: dict | None = None):
-        if not self._ensure_has_active_suppliers():
-            return
-        if hasattr(self, "new_visit_page"):
-            page = self.new_visit_page
-            if initial_data and hasattr(page, "initial_data"):
-                page.initial_data = dict(initial_data)
-            if hasattr(page, "reset_form"):
-                page.reset_form()
-        self._switch_primary_page(VISIT_CREATE_PAGE_INDEX)
-
     def open_new_anomaly_dialog(self):
         self.open_new_anomaly_create_page()
-
-    def open_new_visit_defect_dialog(self):
-        self.open_new_visit_create_page()
-
-    def open_new_visit_dialog(self):
-        self.open_new_visit_create_page()
 
     def open_warehouse_nonconforming_tracker(self) -> None:
         """Compatibility route for older callers; opens the outsource pending line."""
@@ -870,25 +1002,27 @@ class MainWindow(QMainWindow):
     # ── Data refresh ────────────────────────────────────────────────────────
 
     def refresh_all_views(self):
-        self.home_widget.refresh_data()
         self.events_widget.refresh_data()
         self.stats_widget.refresh_data()
         self.ncr_stats_widget.refresh_data()
-        self.master_widget.refresh_data()
+        self._refresh_master_pages()
         self._supplier_overview_page.refresh_data()
-        self._manager_view_page.refresh_data()
-        self._event_overdue_queue_page.refresh_data()
-        self._event_root_cause_queue_page.refresh_data()
-        self._event_open_actions_queue_page.refresh_data()
+        self._event_ops_page.refresh_data()
         self._refresh_sidebar_badge()
 
+    def _on_event_ops_header_changed(self, title: str, subtitle: str) -> None:
+        if self.stack.currentIndex() == EVENT_OPS_PAGE_INDEX:
+            self._header_bar.set_page(title, subtitle)
+
     def open_manager_view(self) -> None:
-        self._switch_primary_page(MANAGER_VIEW_PAGE_INDEX)
+        self.open_supplier_event_ops(PAGE_MANAGER_VIEW)
+
+    def open_supplier_event_ops(self, page_key: str = PAGE_EVENT_OPS) -> None:
+        self._event_ops_page.activate_page_key(page_key)
+        self._switch_primary_page(EVENT_OPS_PAGE_INDEX)
 
     def open_supplier_event_queue(self, page_key: str) -> None:
-        page_index = _PAGE_KEY_TO_INDEX.get(page_key)
-        if page_index is not None:
-            self._switch_primary_page(page_index)
+        self.open_supplier_event_ops(page_key)
 
     def _refresh_sidebar_badge(self) -> None:
         try:
@@ -909,26 +1043,6 @@ class MainWindow(QMainWindow):
             material_count = 0
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_OUTSOURCE), outsource_count)
         self.sidebar.set_badge(("page", PAGE_NCR_PENDING_MATERIAL), material_count)
-        try:
-            from services import supplier_event_queue_service
-
-            queue_counts = supplier_event_queue_service.get_supplier_event_queue_counts()
-            self.sidebar.set_badge(
-                ("page", PAGE_EVENT_OVERDUE),
-                int(queue_counts.get("overdue_anomaly_count", 0)),
-            )
-            self.sidebar.set_badge(
-                ("page", PAGE_EVENT_ROOT_CAUSE),
-                int(queue_counts.get("root_cause_pending_count", 0)),
-            )
-            self.sidebar.set_badge(
-                ("page", PAGE_EVENT_OPEN_ACTIONS),
-                int(queue_counts.get("open_queue_action_count", 0)),
-            )
-        except Exception:
-            logger.exception("重新整理供應商事件佇列徽章失敗")
-            for page_key in _QUEUE_PAGE_KEYS:
-                self.sidebar.set_badge(("page", page_key), 0)
 
     def _check_startup_unresolved(self) -> None:
         try:
@@ -946,6 +1060,12 @@ class MainWindow(QMainWindow):
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):  # noqa: N802
+        stack = getattr(self, "stack", None)
+        if stack is not None and stack.currentIndex() == APPEARANCE_SETTINGS_PAGE_INDEX:
+            current_widget = stack.currentWidget()
+            if hasattr(current_widget, "can_leave") and not current_widget.can_leave():
+                event.ignore()
+                return
         try:
             prefs = load_application_preferences()
         except Exception:

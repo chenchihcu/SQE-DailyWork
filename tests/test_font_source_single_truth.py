@@ -38,9 +38,9 @@ class FontSourceSingleTruthTests(unittest.TestCase):
         for family in theme.PREFERRED_CJK_FONT_FAMILIES:
             self.assertIn(f'"{family}"', theme.TYPOGRAPHY["font_family"])
 
-    def test_ncr_stylesheet_avoids_medium_font_weights(self) -> None:
-        offenders = re.findall(r"font-weight:\s*(500|600)\b", ui_style.app_stylesheet())
-        self.assertEqual(offenders, [], f"NCR QSS still uses 500/600: {offenders}")
+    def test_ncr_stylesheet_compatibility_shim_is_empty(self) -> None:
+        with self.assertWarns(DeprecationWarning):
+            self.assertEqual(ui_style.app_stylesheet(), "")
 
     def test_main_stylesheet_avoids_medium_font_weights(self) -> None:
         qss = theme.get_theme_qss()

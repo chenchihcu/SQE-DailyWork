@@ -23,7 +23,7 @@ CjkFontPreference = Literal["default", "noto_sans", "system"]
 WindowGeometryMode = Literal["remember", "standard", "maximized"]
 StatusBarDetailLevel = Literal["standard", "compact", "detailed"]
 
-StartupPage = Literal["home", "events", "defects", "stats"]
+StartupPage = Literal["events", "defects", "stats"]
 TablePageLimit = Literal[25, 50, 100, 0]
 DateFormatDisplay = Literal["YYYY-MM-DD", "YYYY/MM/DD"]
 ExportCompletionAction = Literal["open_file", "open_folder", "notify_only"]
@@ -57,16 +57,34 @@ CJK_FONT_PREFERENCE_VALUES: Final[frozenset[str]] = frozenset({"default", "noto_
 WINDOW_GEOMETRY_MODE_VALUES: Final[frozenset[str]] = frozenset({"remember", "standard", "maximized"})
 STATUS_BAR_DETAIL_LEVEL_VALUES: Final[frozenset[str]] = frozenset({"standard", "compact", "detailed"})
 
-STARTUP_PAGE_VALUES: Final[frozenset[str]] = frozenset({"home", "events", "defects", "stats"})
+STARTUP_PAGE_VALUES: Final[frozenset[str]] = frozenset({"events", "defects", "stats"})
+
+
+def _normalize_startup_page(value: object) -> str | None:
+    """Map retired ``home`` startup preference to ``events``."""
+    if value == "home":
+        return "events"
+    if isinstance(value, str) and value in STARTUP_PAGE_VALUES:
+        return value
+    return None
+
+
+def _canonicalize_stored_mapping(value: object) -> object:
+    """Normalize known stored aliases before round-trip or invalid-payload checks."""
+    if not isinstance(value, dict):
+        return value
+    canonical = dict(value)
+    normalized = _normalize_startup_page(canonical.get("default_startup_page"))
+    if normalized is not None:
+        canonical["default_startup_page"] = normalized
+    return canonical
+
+
 TABLE_PAGE_LIMIT_VALUES: Final[frozenset[int]] = frozenset({25, 50, 100, 0})
 DATE_FORMAT_DISPLAY_VALUES: Final[frozenset[str]] = frozenset({"YYYY-MM-DD", "YYYY/MM/DD"})
 DEFAULT_DUE_DAYS_VALUES: Final[frozenset[int]] = frozenset({7, 14, 30})
 DEFAULT_DEFECT_SAMPLE_SIZE_VALUES: Final[frozenset[int]] = frozenset({0, 50, 100, 200})
-DEFAULT_VISIT_TIME_SLOT_VALUES: Final[frozenset[str]] = frozenset({"上午", "下午", "全天"})
 DEFAULT_SEVERITY_LEVEL_VALUES: Final[frozenset[str]] = frozenset({"一般", "重大", "極嚴重"})
-DEFAULT_VISIT_TYPE_VALUES: Final[frozenset[str]] = frozenset(
-    {"例行訪廠", "品質輔導", "年度稽核", "新產品導入輔導"}
-)
 DEFAULT_DEFECT_DISPOSITION_VALUES: Final[frozenset[str]] = frozenset(
     {"", "特採", "退貨", "重工", "報廢", "待判定"}
 )
@@ -124,12 +142,9 @@ V8_FIELDS: Final[frozenset[str]] = frozenset(
         # Tab 3: 表單與業務 (Form & Business Defaults)
         "default_responsible_person",
         "default_anomaly_category",
-        "default_sync_visit",
         "default_due_days",
-        "default_visit_time_slot",
         "default_anomaly_source",
         "default_severity_level",
-        "default_visit_type",
         "auto_fill_anomaly_no_on_date_change",
         "default_closer_name",
         "default_defect_disposition",
@@ -166,13 +181,30 @@ V8_FIELDS: Final[frozenset[str]] = frozenset(
     }
 )
 
-V9_FIELDS: Final[frozenset[str]] = V8_FIELDS | frozenset(
+
+VISIT_RETIRED_PREFERENCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"default_sync_visit", "default_visit_time_slot", "default_visit_type"}
+)
+
+
+def _strip_visit_retired_fields(value: object) -> object:
+    if not isinstance(value, dict):
+        return value
+    return {key: item for key, item in value.items() if key not in VISIT_RETIRED_PREFERENCE_FIELDS}
+
+V8_LEGACY_FIELDS: Final[frozenset[str]] = V8_FIELDS | VISIT_RETIRED_PREFERENCE_FIELDS
+
+V9_LEGACY_FIELDS: Final[frozenset[str]] = V8_LEGACY_FIELDS | frozenset(
     {
         "erp_material_receipt_no_pattern",
         "erp_internal_work_order_no_pattern",
         "erp_outsource_work_order_pattern",
         "erp_outsource_receipt_no_pattern",
     }
+)
+
+V10_FIELDS: Final[frozenset[str]] = frozenset(
+    field for field in V9_LEGACY_FIELDS if field not in VISIT_RETIRED_PREFERENCE_FIELDS
 )
 
 V7_FIELDS: Final[frozenset[str]] = frozenset(
@@ -206,12 +238,9 @@ V7_FIELDS: Final[frozenset[str]] = frozenset(
         # Tab 3: 表單與業務 (Form & Business Defaults)
         "default_responsible_person",
         "default_anomaly_category",
-        "default_sync_visit",
         "default_due_days",
-        "default_visit_time_slot",
         "default_anomaly_source",
         "default_severity_level",
-        "default_visit_type",
         "auto_fill_anomaly_no_on_date_change",
         "default_closer_name",
         "default_defect_disposition",
@@ -268,12 +297,9 @@ V6_FIELDS: Final[frozenset[str]] = frozenset(
         # Tab 3: 表單業務預設
         "default_responsible_person",
         "default_anomaly_category",
-        "default_sync_visit",
         "default_due_days",
-        "default_visit_time_slot",
         "default_anomaly_source",
         "default_severity_level",
-        "default_visit_type",
         "auto_fill_anomaly_no_on_date_change",
         # Tab 4: 匯出與報告
         "default_export_dir",
@@ -311,9 +337,7 @@ V5_FIELDS: Final[frozenset[str]] = frozenset(
         "auto_backup_prompt",
         "default_responsible_person",
         "default_anomaly_category",
-        "default_sync_visit",
         "default_due_days",
-        "default_visit_time_slot",
         "default_export_dir",
         "export_completion_action",
         "report_organization_header",
@@ -342,9 +366,7 @@ V4_FIELDS: Final[frozenset[str]] = frozenset(
         "auto_backup_prompt",
         "default_responsible_person",
         "default_anomaly_category",
-        "default_sync_visit",
         "default_due_days",
-        "default_visit_time_slot",
         "default_export_dir",
         "export_completion_action",
         "report_organization_header",
@@ -417,12 +439,9 @@ class AppearancePreferences:
     # Tab 3: 表單與業務 (Form & Business Defaults)
     default_responsible_person: str = ""
     default_anomaly_category: str = ""
-    default_sync_visit: bool = True
     default_due_days: int = 7
-    default_visit_time_slot: str = "下午"
     default_anomaly_source: str = ""
     default_severity_level: str = "一般"
-    default_visit_type: str = "例行訪廠"
     auto_fill_anomaly_no_on_date_change: bool = True
     default_closer_name: str = ""
     default_defect_disposition: str = ""
@@ -450,7 +469,7 @@ class AppearancePreferences:
     pdf_header_logo_visible: bool = True
 
     # Tab 5: 系統與維護 (System, Logs & Maintenance)
-    default_startup_page: StartupPage = "home"
+    default_startup_page: StartupPage = "events"
     auto_backup_prompt: bool = True
     backup_retention_count: int = 10
     confirm_on_delete: bool = True
@@ -473,10 +492,14 @@ class AppearancePreferences:
         if not isinstance(value, dict):
             return cls.default()
 
-        if set(value) == V9_FIELDS:
-            return cls._from_v9_mapping(value)
+        if set(value) == V10_FIELDS:
+            return cls._from_v10_mapping(value)
+        if set(value) == V9_LEGACY_FIELDS:
+            return cls._from_v10_mapping(_strip_visit_retired_fields(value))
         elif set(value) == V8_FIELDS:
             return cls._from_v8_mapping(value)
+        elif set(value) == V8_LEGACY_FIELDS:
+            return cls._from_v8_mapping(_strip_visit_retired_fields(value))
         elif set(value) == V7_FIELDS:
             return cls._from_v7_mapping(value)
         elif set(value) == V6_FIELDS:
@@ -495,14 +518,18 @@ class AppearancePreferences:
         return cls.default()
 
     @classmethod
-    def _from_v9_mapping(cls, value: dict) -> "AppearancePreferences":
+    def _from_v10_mapping(cls, value: dict) -> "AppearancePreferences":
         from dataclasses import replace
 
         from services.anomaly_trace_validator import validate_trace_pattern_text
 
         base = cls._from_v8_mapping({key: value[key] for key in V8_FIELDS})
         restored_v8 = {key: base.to_mapping()[key] for key in V8_FIELDS}
-        if restored_v8 != {key: value[key] for key in V8_FIELDS}:
+        canonical = _canonicalize_stored_mapping(value)
+        if not isinstance(canonical, dict):
+            return cls.default()
+        expected_v8 = {key: canonical[key] for key in V8_FIELDS}
+        if restored_v8 != expected_v8:
             return cls.default()
         pattern_values = {
             "erp_material_receipt_no_pattern": value.get("erp_material_receipt_no_pattern", ""),
@@ -556,12 +583,9 @@ class AppearancePreferences:
         # Tab 3: 表單與業務
         default_responsible_person = value.get("default_responsible_person")
         default_anomaly_category = value.get("default_anomaly_category")
-        default_sync_visit = value.get("default_sync_visit")
         default_due_days = value.get("default_due_days")
-        default_visit_time_slot = value.get("default_visit_time_slot")
         default_anomaly_source = value.get("default_anomaly_source", "")
         default_severity_level = value.get("default_severity_level", "一般")
-        default_visit_type = value.get("default_visit_type", "例行訪廠")
         auto_fill_anomaly_no_on_date_change = value.get("auto_fill_anomaly_no_on_date_change", True)
         default_closer_name = value.get("default_closer_name", "")
         default_defect_disposition = value.get("default_defect_disposition", "")
@@ -585,7 +609,7 @@ class AppearancePreferences:
         pdf_header_logo_visible = value.get("pdf_header_logo_visible", True)
 
         # Tab 5: 系統與維護
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         auto_backup_prompt = value.get("auto_backup_prompt")
         backup_retention_count = value.get("backup_retention_count")
         confirm_on_delete = value.get("confirm_on_delete")
@@ -613,7 +637,7 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or table_double_click_action not in TABLE_DOUBLE_CLICK_ACTION_VALUES
             or search_mode not in SEARCH_MODE_VALUES
@@ -629,12 +653,9 @@ class AppearancePreferences:
             or not isinstance(quick_filter_case_sensitive, bool)
             or not isinstance(default_responsible_person, str)
             or not isinstance(default_anomaly_category, str)
-            or not isinstance(default_sync_visit, bool)
             or default_due_days not in DEFAULT_DUE_DAYS_VALUES
-            or default_visit_time_slot not in DEFAULT_VISIT_TIME_SLOT_VALUES
             or not isinstance(default_anomaly_source, str)
             or default_severity_level not in DEFAULT_SEVERITY_LEVEL_VALUES
-            or default_visit_type not in DEFAULT_VISIT_TYPE_VALUES
             or not isinstance(auto_fill_anomaly_no_on_date_change, bool)
             or not isinstance(default_closer_name, str)
             or default_defect_disposition not in DEFAULT_DEFECT_DISPOSITION_VALUES
@@ -699,12 +720,9 @@ class AppearancePreferences:
             quick_filter_case_sensitive=quick_filter_case_sensitive,
             default_responsible_person=default_responsible_person,
             default_anomaly_category=default_anomaly_category,
-            default_sync_visit=default_sync_visit,
             default_due_days=default_due_days,
-            default_visit_time_slot=default_visit_time_slot,
             default_anomaly_source=default_anomaly_source,
             default_severity_level=default_severity_level,
-            default_visit_type=default_visit_type,
             auto_fill_anomaly_no_on_date_change=auto_fill_anomaly_no_on_date_change,
             default_closer_name=default_closer_name,
             default_defect_disposition=default_defect_disposition,
@@ -770,12 +788,9 @@ class AppearancePreferences:
         # Tab 3: 表單與業務
         default_responsible_person = value.get("default_responsible_person")
         default_anomaly_category = value.get("default_anomaly_category")
-        default_sync_visit = value.get("default_sync_visit")
         default_due_days = value.get("default_due_days")
-        default_visit_time_slot = value.get("default_visit_time_slot")
         default_anomaly_source = value.get("default_anomaly_source", "")
         default_severity_level = value.get("default_severity_level", "一般")
-        default_visit_type = value.get("default_visit_type", "例行訪廠")
         auto_fill_anomaly_no_on_date_change = value.get("auto_fill_anomaly_no_on_date_change", True)
         default_closer_name = value.get("default_closer_name", "")
         default_defect_disposition = value.get("default_defect_disposition", "")
@@ -795,7 +810,7 @@ class AppearancePreferences:
         export_include_disclaimer = value.get("export_include_disclaimer", True)
 
         # Tab 5: 系統與維護
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         auto_backup_prompt = value.get("auto_backup_prompt")
         backup_retention_count = value.get("backup_retention_count")
         confirm_on_delete = value.get("confirm_on_delete")
@@ -820,7 +835,7 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or table_double_click_action not in TABLE_DOUBLE_CLICK_ACTION_VALUES
             or search_mode not in SEARCH_MODE_VALUES
@@ -834,12 +849,9 @@ class AppearancePreferences:
             or default_list_sort_field not in DEFAULT_LIST_SORT_FIELD_VALUES
             or not isinstance(default_responsible_person, str)
             or not isinstance(default_anomaly_category, str)
-            or not isinstance(default_sync_visit, bool)
             or default_due_days not in DEFAULT_DUE_DAYS_VALUES
-            or default_visit_time_slot not in DEFAULT_VISIT_TIME_SLOT_VALUES
             or not isinstance(default_anomaly_source, str)
             or default_severity_level not in DEFAULT_SEVERITY_LEVEL_VALUES
-            or default_visit_type not in DEFAULT_VISIT_TYPE_VALUES
             or not isinstance(auto_fill_anomaly_no_on_date_change, bool)
             or not isinstance(default_closer_name, str)
             or default_defect_disposition not in DEFAULT_DEFECT_DISPOSITION_VALUES
@@ -895,12 +907,9 @@ class AppearancePreferences:
             default_list_sort_field=default_list_sort_field,
             default_responsible_person=default_responsible_person,
             default_anomaly_category=default_anomaly_category,
-            default_sync_visit=default_sync_visit,
             default_due_days=default_due_days,
-            default_visit_time_slot=default_visit_time_slot,
             default_anomaly_source=default_anomaly_source,
             default_severity_level=default_severity_level,
-            default_visit_type=default_visit_type,
             auto_fill_anomaly_no_on_date_change=auto_fill_anomaly_no_on_date_change,
             default_closer_name=default_closer_name,
             default_defect_disposition=default_defect_disposition,
@@ -952,12 +961,9 @@ class AppearancePreferences:
 
         default_responsible_person = value.get("default_responsible_person")
         default_anomaly_category = value.get("default_anomaly_category")
-        default_sync_visit = value.get("default_sync_visit")
         default_due_days = value.get("default_due_days")
-        default_visit_time_slot = value.get("default_visit_time_slot")
         default_anomaly_source = value.get("default_anomaly_source", "")
         default_severity_level = value.get("default_severity_level", "一般")
-        default_visit_type = value.get("default_visit_type", "例行訪廠")
         auto_fill_anomaly_no_on_date_change = value.get("auto_fill_anomaly_no_on_date_change", True)
 
         default_export_dir = value.get("default_export_dir")
@@ -969,7 +975,7 @@ class AppearancePreferences:
         pdf_watermark_text = value.get("pdf_watermark_text", "")
         excel_autofit_columns = value.get("excel_autofit_columns", True)
 
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         auto_backup_prompt = value.get("auto_backup_prompt")
         backup_retention_count = value.get("backup_retention_count")
         confirm_on_delete = value.get("confirm_on_delete")
@@ -989,7 +995,7 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or table_double_click_action not in TABLE_DOUBLE_CLICK_ACTION_VALUES
             or search_mode not in SEARCH_MODE_VALUES
@@ -1000,12 +1006,9 @@ class AppearancePreferences:
             or not isinstance(table_auto_scroll_to_top, bool)
             or not isinstance(default_responsible_person, str)
             or not isinstance(default_anomaly_category, str)
-            or not isinstance(default_sync_visit, bool)
             or default_due_days not in DEFAULT_DUE_DAYS_VALUES
-            or default_visit_time_slot not in DEFAULT_VISIT_TIME_SLOT_VALUES
             or not isinstance(default_anomaly_source, str)
             or default_severity_level not in DEFAULT_SEVERITY_LEVEL_VALUES
-            or default_visit_type not in DEFAULT_VISIT_TYPE_VALUES
             or not isinstance(auto_fill_anomaly_no_on_date_change, bool)
             or not isinstance(default_export_dir, str)
             or export_completion_action not in EXPORT_COMPLETION_ACTION_VALUES
@@ -1047,12 +1050,9 @@ class AppearancePreferences:
             table_auto_scroll_to_top=table_auto_scroll_to_top,
             default_responsible_person=default_responsible_person,
             default_anomaly_category=default_anomaly_category,
-            default_sync_visit=default_sync_visit,
             default_due_days=default_due_days,
-            default_visit_time_slot=default_visit_time_slot,
             default_anomaly_source=default_anomaly_source,
             default_severity_level=default_severity_level,
-            default_visit_type=default_visit_type,
             auto_fill_anomaly_no_on_date_change=auto_fill_anomaly_no_on_date_change,
             default_export_dir=default_export_dir,
             export_completion_action=export_completion_action,
@@ -1081,15 +1081,13 @@ class AppearancePreferences:
         alternating_row_colors = value.get("alternating_row_colors")
         table_grid_lines = value.get("table_grid_lines")
         enable_animations = value.get("enable_animations")
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         table_page_limit = value.get("table_page_limit")
         auto_backup_prompt = value.get("auto_backup_prompt")
 
         default_responsible_person = value.get("default_responsible_person")
         default_anomaly_category = value.get("default_anomaly_category")
-        default_sync_visit = value.get("default_sync_visit")
         default_due_days = value.get("default_due_days")
-        default_visit_time_slot = value.get("default_visit_time_slot")
 
         default_export_dir = value.get("default_export_dir")
         export_completion_action = value.get("export_completion_action")
@@ -1114,14 +1112,12 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or not isinstance(auto_backup_prompt, bool)
             or not isinstance(default_responsible_person, str)
             or not isinstance(default_anomaly_category, str)
-            or not isinstance(default_sync_visit, bool)
             or default_due_days not in DEFAULT_DUE_DAYS_VALUES
-            or default_visit_time_slot not in DEFAULT_VISIT_TIME_SLOT_VALUES
             or not isinstance(default_export_dir, str)
             or export_completion_action not in EXPORT_COMPLETION_ACTION_VALUES
             or not isinstance(report_organization_header, str)
@@ -1150,9 +1146,7 @@ class AppearancePreferences:
             auto_backup_prompt=auto_backup_prompt,
             default_responsible_person=default_responsible_person,
             default_anomaly_category=default_anomaly_category,
-            default_sync_visit=default_sync_visit,
             default_due_days=default_due_days,
-            default_visit_time_slot=default_visit_time_slot,
             default_export_dir=default_export_dir,
             export_completion_action=export_completion_action,
             report_organization_header=report_organization_header,
@@ -1176,15 +1170,13 @@ class AppearancePreferences:
         alternating_row_colors = value.get("alternating_row_colors")
         table_grid_lines = value.get("table_grid_lines")
         enable_animations = value.get("enable_animations")
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         table_page_limit = value.get("table_page_limit")
         auto_backup_prompt = value.get("auto_backup_prompt")
 
         default_responsible_person = value.get("default_responsible_person")
         default_anomaly_category = value.get("default_anomaly_category")
-        default_sync_visit = value.get("default_sync_visit")
         default_due_days = value.get("default_due_days")
-        default_visit_time_slot = value.get("default_visit_time_slot")
 
         default_export_dir = value.get("default_export_dir")
         export_completion_action = value.get("export_completion_action")
@@ -1204,14 +1196,12 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or not isinstance(auto_backup_prompt, bool)
             or not isinstance(default_responsible_person, str)
             or not isinstance(default_anomaly_category, str)
-            or not isinstance(default_sync_visit, bool)
             or default_due_days not in DEFAULT_DUE_DAYS_VALUES
-            or default_visit_time_slot not in DEFAULT_VISIT_TIME_SLOT_VALUES
             or not isinstance(default_export_dir, str)
             or export_completion_action not in EXPORT_COMPLETION_ACTION_VALUES
             or not isinstance(report_organization_header, str)
@@ -1236,9 +1226,7 @@ class AppearancePreferences:
             auto_backup_prompt=auto_backup_prompt,
             default_responsible_person=default_responsible_person,
             default_anomaly_category=default_anomaly_category,
-            default_sync_visit=default_sync_visit,
             default_due_days=default_due_days,
-            default_visit_time_slot=default_visit_time_slot,
             default_export_dir=default_export_dir,
             export_completion_action=export_completion_action,
             report_organization_header=report_organization_header,
@@ -1258,7 +1246,7 @@ class AppearancePreferences:
         alternating_row_colors = value.get("alternating_row_colors")
         table_grid_lines = value.get("table_grid_lines")
         enable_animations = value.get("enable_animations")
-        default_startup_page = value.get("default_startup_page")
+        default_startup_page = _normalize_startup_page(value.get("default_startup_page"))
         table_page_limit = value.get("table_page_limit")
         auto_backup_prompt = value.get("auto_backup_prompt")
 
@@ -1272,7 +1260,7 @@ class AppearancePreferences:
             or not isinstance(alternating_row_colors, bool)
             or not isinstance(table_grid_lines, bool)
             or not isinstance(enable_animations, bool)
-            or default_startup_page not in STARTUP_PAGE_VALUES
+            or default_startup_page is None
             or table_page_limit not in TABLE_PAGE_LIMIT_VALUES
             or not isinstance(auto_backup_prompt, bool)
         ):
@@ -1365,12 +1353,9 @@ class AppearancePreferences:
             # Tab 3: 表單與業務
             "default_responsible_person": self.default_responsible_person,
             "default_anomaly_category": self.default_anomaly_category,
-            "default_sync_visit": self.default_sync_visit,
             "default_due_days": self.default_due_days,
-            "default_visit_time_slot": self.default_visit_time_slot,
             "default_anomaly_source": self.default_anomaly_source,
             "default_severity_level": self.default_severity_level,
-            "default_visit_type": self.default_visit_type,
             "auto_fill_anomaly_no_on_date_change": self.auto_fill_anomaly_no_on_date_change,
             "default_closer_name": self.default_closer_name,
             "default_defect_disposition": self.default_defect_disposition,

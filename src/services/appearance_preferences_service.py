@@ -8,7 +8,7 @@ import sqlite3
 from collections.abc import Callable
 
 from database.connection import get_connection
-from ui.appearance_preferences import AppearancePreferences
+from ui.appearance_preferences import AppearancePreferences, _canonicalize_stored_mapping
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,8 @@ APPEARANCE_PREFERENCES_V6_KEY = "appearance.preferences.v6"
 APPEARANCE_PREFERENCES_V7_KEY = "appearance.preferences.v7"
 APPEARANCE_PREFERENCES_V8_KEY = "appearance.preferences.v8"
 APPEARANCE_PREFERENCES_V9_KEY = "appearance.preferences.v9"
-APPEARANCE_PREFERENCES_KEY = APPEARANCE_PREFERENCES_V9_KEY
+APPEARANCE_PREFERENCES_V10_KEY = "appearance.preferences.v10"
+APPEARANCE_PREFERENCES_KEY = APPEARANCE_PREFERENCES_V10_KEY
 
 _V1_INVALID_BASELINE = {"density": "standard", "text_scale": "standard"}
 
@@ -65,14 +66,18 @@ def _load_version_preferences(
             and payload != invalid_baseline
         ):
             logger.warning("忽略格式無效的%s", log_label)
-    elif preferences == AppearancePreferences.default() and payload != preferences.to_mapping():
+    elif (
+        preferences == AppearancePreferences.default()
+        and _canonicalize_stored_mapping(payload) != preferences.to_mapping()
+    ):
         logger.warning("忽略格式無效的%s", log_label)
     return preferences
 
 
 def load_preferences(conn: sqlite3.Connection) -> AppearancePreferences:
-    """Load strict v9 preferences, with read-only v8, v7, v6, v5, v4, v3, v2 and v1 compatibility fallbacks."""
+    """Load strict v10 preferences, with read-only v9-v1 compatibility fallbacks."""
     fallback_chain: tuple[tuple[str, str, Callable[[object | None], AppearancePreferences], dict[str, str] | None], ...] = (
+        (APPEARANCE_PREFERENCES_V10_KEY, "介面與系統 v10 偏好", AppearancePreferences.from_mapping, None),
         (APPEARANCE_PREFERENCES_V9_KEY, "介面與系統 v9 偏好", AppearancePreferences.from_mapping, None),
         (APPEARANCE_PREFERENCES_V8_KEY, "介面與系統 v8 偏好", AppearancePreferences.from_mapping, None),
         (APPEARANCE_PREFERENCES_V7_KEY, "介面與系統 v7 偏好", AppearancePreferences.from_mapping, None),

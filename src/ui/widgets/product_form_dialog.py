@@ -14,6 +14,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from database.product_item_category import (
+    ITEM_CATEGORY_FINISHED,
+    ITEM_CATEGORY_RAW_MATERIAL,
+    ITEM_CATEGORY_SEMI_FINISHED,
+    infer_item_category_from_product_code,
+    normalize_item_category,
+)
 from database.product_stage import (
     PRODUCT_STAGE_MASS_PRODUCTION,
     PRODUCT_STAGE_OPTIONS,
@@ -49,11 +56,15 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         *,
         initial_data: dict | None = None,
         is_edit: bool = False,
+        fixed_item_category: str | None = None,
+        allow_item_category_choice: bool = False,
     ):
         super().__init__(parent)
         self._suppliers = suppliers
         self._initial_data = initial_data or {}
         self._is_edit = is_edit
+        self._fixed_item_category = (fixed_item_category or "").strip() or None
+        self._allow_item_category_choice = allow_item_category_choice
         self._stage_change_reason = ""
         self.setModal(True)
         self.setWindowTitle("編輯產品" if self._is_edit else "新增產品")
@@ -68,10 +79,13 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
             self.primary_supplier_combo.currentIndexChanged,
             self.secondary_supplier_combo.currentIndexChanged,
         ]
+        if self._fixed_item_category or self._allow_item_category_choice:
+            change_signals.append(self.item_category_combo.currentTextChanged)
         self._init_dirty_tracking(change_signals)
         # Clear field-level errors in real time as soon as the user edits.
         for signal in change_signals:
             signal.connect(self._clear_validation)
+        self.product_code_input.textChanged.connect(self._on_product_code_changed)
         fit_dialog_to_available_screen(self, preferred_width=640)
 
     def _setup_ui(self) -> None:
@@ -95,6 +109,9 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         self.product_stage_combo.setCurrentText(PRODUCT_STAGE_MASS_PRODUCTION)
         self.product_stage_combo.setAccessibleName("產品階段")
 
+        self.item_category_combo = QComboBox()
+        self.item_category_combo.setAccessibleName("品項類別")
+
         self.primary_supplier_combo = QComboBox()
         self.primary_supplier_combo.setAccessibleName("主供應商")
         self.secondary_supplier_combo = QComboBox()
@@ -111,6 +128,16 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
             )
         )
         form.addRow(RequiredFieldLabel("品名"), self.product_name_input)
+        if self._fixed_item_category or self._allow_item_category_choice:
+            if self._allow_item_category_choice:
+                self.item_category_combo.addItems(
+                    [ITEM_CATEGORY_SEMI_FINISHED, ITEM_CATEGORY_FINISHED]
+                )
+                form.addRow("品項類別", self.item_category_combo)
+            else:
+                self.item_category_combo.addItem(self._fixed_item_category or "")
+                self.item_category_combo.setEnabled(False)
+                form.addRow("品項類別", self.item_category_combo)
         form.addRow(
             make_paired_form_row(
                 "ProductSuppliersRow",
@@ -167,6 +194,13 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         self.product_stage_combo.setCurrentText(
             normalize_product_stage_ui(self._initial_data.get("product_stage"))
         )
+        if self._fixed_item_category or self._allow_item_category_choice:
+            initial_category = normalize_item_category(
+                self._initial_data.get("item_category")
+                or self._fixed_item_category
+                or ITEM_CATEGORY_SEMI_FINISHED
+            )
+            self.item_category_combo.setCurrentText(initial_category)
 
         supplier_id = str(self._initial_data.get("supplier_id") or "").strip()
         if supplier_id and not set_combo_current_data(self.primary_supplier_combo, supplier_id):
@@ -183,6 +217,27 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
                 f"{secondary_supplier_id}（目前值）", secondary_supplier_id
             )
             set_combo_current_data(self.secondary_supplier_combo, secondary_supplier_id)
+        self._on_product_code_changed(self.product_code_input.text())
+
+    def _on_product_code_changed(self, _text: str = "") -> None:
+        if not (self._fixed_item_category or self._allow_item_category_choice):
+            return
+        product_code = self.product_code_input.text().strip()
+        current = normalize_item_category(self.item_category_combo.currentText())
+        inferred = infer_item_category_from_product_code(product_code, current=current)
+        if self._allow_item_category_choice:
+            self.item_category_combo.setCurrentText(inferred)
+        warning = ""
+        if self._fixed_item_category == ITEM_CATEGORY_RAW_MATERIAL and product_code:
+            if not product_code.startswith("0"):
+                warning = "料號編碼原則：0 開頭為原物料；此料號建議於「原物料」主檔頁維護。"
+        elif self._allow_item_category_choice and product_code.startswith("0"):
+            warning = "料號編碼原則：0 開頭為原物料；建議改至「原物料」主檔頁維護。"
+        if warning:
+            self.inline_error.setText(warning)
+            self.inline_error.setVisible(True)
+        elif not self.inline_error.text().startswith("料號為必填"):
+            self.inline_error.setVisible(False)
 
     def _on_submit(self) -> None:
         product_code = self.product_code_input.text().strip()
@@ -264,12 +319,22 @@ class ProductFormDialog(DirtyTrackingMixin, QDialog):
         first_field.setFocus()
 
     def payload(self) -> dict:
+        product_code = self.product_code_input.text().strip()
+        if self._fixed_item_category or self._allow_item_category_choice:
+            current = normalize_item_category(self.item_category_combo.currentText())
+            item_category = infer_item_category_from_product_code(
+                product_code,
+                current=current,
+            )
+        else:
+            item_category = ITEM_CATEGORY_SEMI_FINISHED
         return {
-            "product_code": self.product_code_input.text().strip(),
+            "product_code": product_code,
             "product_name": self.product_name_input.text().strip(),
             "product_stage": normalize_product_stage_ui(
                 self.product_stage_combo.currentText()
             ),
+            "item_category": item_category,
             "supplier_id": str(self.primary_supplier_combo.currentData() or "").strip(),
             "secondary_supplier_id": str(
                 self.secondary_supplier_combo.currentData() or ""

@@ -25,6 +25,120 @@ LONG_SUPPLIER = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ股份有限
 LONG_PRODUCT = "倉庫產品名稱-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ精密組件"
 
 MIN_WIDTH_SIZE = (1024, 680)
+VISUAL_REFERENCE_DATE = (2026, 8, 31)
+VISUAL_REFERENCE_MONTH_RANGE = ("202603", "202608")
+
+
+def _stabilize_main_probe(window) -> None:
+    """Pin the visible month so pixel evidence does not drift at month boundaries."""
+    from PySide6.QtCore import QDate
+
+    events_widget = window.events_widget
+    if getattr(events_widget, "month_input", None) is not None:
+        events_widget.month_input.setDate(
+            QDate(VISUAL_REFERENCE_DATE[0], VISUAL_REFERENCE_DATE[1], 1)
+        )
+
+
+def _stabilize_event_create_probe(page) -> None:
+    """Pin volatile form defaults without changing production preferences."""
+    from PySide6.QtCore import QDate
+
+    form = page.form
+    reference_date = QDate(*VISUAL_REFERENCE_DATE)
+    form.date_edit.setDate(reference_date)
+    form.due_date_edit.setDate(reference_date.addDays(7))
+    form.anomaly_source_combo.setCurrentIndex(0)
+    form._update_trace_row_visibility()
+    scroll_area = getattr(form, "form_scroll", None)
+    if scroll_area is None:
+        shell = getattr(page, "workflow_shell", None)
+        scroll_area = getattr(shell, "content_scroll", None)
+    if scroll_area is not None:
+        scroll_area.verticalScrollBar().setValue(0)
+
+
+def _stabilize_appearance_preferences_probe(dialog) -> None:
+    """Render canonical defaults instead of the workstation's saved profile."""
+    from ui.appearance_preferences import AppearancePreferences
+
+    dialog._set_preferences(AppearancePreferences.default(), preview=False)
+
+
+def _clear_transient_main_window_status(window) -> None:
+    """Exclude timer-driven shell messages from page-specific pixel evidence."""
+    window.statusBar().clearMessage()
+
+
+def _clear_page_focus(app, page) -> None:
+    """Remove focus decoration when focus belongs to the captured page."""
+    focused = app.focusWidget()
+    if focused is not None and (focused is page or page.isAncestorOf(focused)):
+        focused.clearFocus()
+
+
+def _clear_widget_hover_state(window) -> None:
+    """Synchronously remove cursor-location hover from deterministic captures."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QWidget
+
+    leave_event = QEvent(QEvent.Type.Leave)
+    for widget in [window, *window.findChildren(QWidget)]:
+        QCoreApplication.sendEvent(widget, leave_event)
+    window.repaint()
+
+
+def _capture_appearance_preferences_page(
+    window,
+    page,
+    output_path: Path,
+    app: "QApplication",
+) -> str:
+    """Capture the embedded appearance page from its top edge in the app shell."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QCursor
+    from PySide6.QtWidgets import QScrollArea
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    window.show()
+    app.processEvents()
+    _clear_page_focus(app, page)
+    for scroll_area in page.findChildren(QScrollArea):
+        scroll_area.horizontalScrollBar().setValue(0)
+        scroll_area.verticalScrollBar().setValue(0)
+    # Keep the native pointer away from the fixed footer buttons.  Otherwise a
+    # workstation cursor left over the save action can make one category frame
+    # capture the QSS hover colour and produce a non-deterministic baseline.
+    QCursor.setPos(window.mapToGlobal(QPoint(8, 8)))
+    _settle_qt_paint(app, delay_ms=80, cycles=2)
+    _clear_transient_main_window_status(window)
+    app.processEvents()
+    _clear_page_focus(app, page)
+    for scroll_area in page.findChildren(QScrollArea):
+        scroll_area.horizontalScrollBar().setValue(0)
+        scroll_area.verticalScrollBar().setValue(0)
+    _clear_widget_hover_state(window)
+    _save_widget_capture(window, output_path)
+    return str(output_path)
+
+
+def _stabilize_event_list_probe(widget) -> None:
+    """Pin the event-list month shared by populated and empty-state captures."""
+    from PySide6.QtCore import QDate
+
+    if getattr(widget, "month_input", None) is not None:
+        widget.month_input.setDate(
+            QDate(VISUAL_REFERENCE_DATE[0], VISUAL_REFERENCE_DATE[1], 1)
+        )
+
+
+def _stabilize_month_range_probe(widget, *, refresh: bool) -> None:
+    """Pin year/month selectors while letting callers control data refresh."""
+    start_key, end_key = VISUAL_REFERENCE_MONTH_RANGE
+    if refresh:
+        widget.set_range(start_key, end_key)
+    else:
+        widget.range_selectors.set_range(start_key, end_key)
 
 
 def _ensure_repo_imports() -> None:
@@ -384,7 +498,7 @@ class _ProbeHost:
 
 
 def _stress_event_rows() -> list[dict]:
-    scopes = ("ANOMALY", "VISIT", "ANOMALY", "VISIT")
+    scopes = ("ANOMALY", "ANOMALY")
     rows = []
     for index in range(24):
         rows.append(
@@ -452,6 +566,7 @@ def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int
     # Land on the event-management page (the daily primary surface) rather than 首頁.
     try:
         window._switch_primary_page(EVENT_PAGE_INDEX)
+        _stabilize_main_probe(window)
     except Exception as exc:
         print(f"warning: could not switch visual probe page: {exc}", file=sys.stderr)
     return [_capture_widget(window, output, app)]
@@ -473,8 +588,9 @@ def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, in
         ("event-create-anomaly", EVENT_CREATE_ANOMALY_PAGE_INDEX, "已建立異常單：20260813001"),
     ):
         window._switch_primary_page(page_index)
-        screenshots.append(_capture_widget(window, _target_output_path(output, suffix), app))
         page = window.stack.currentWidget()
+        _stabilize_event_create_probe(page)
+        screenshots.append(_capture_widget(window, _target_output_path(output, suffix), app))
         if hasattr(page, "_on_form_saved"):
             page._on_form_saved(message)
             screenshots.append(
@@ -483,37 +599,54 @@ def _capture_event_create(output: Path, app: "QApplication", size: tuple[int, in
     return screenshots
 
 
-def _capture_appearance_settings(output: Path, app: "QApplication") -> list[str]:
-    """Capture all 5 preference tabs and high-readability preview states without persistence."""
-    from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
+def _capture_appearance_settings(
+    output: Path,
+    app: "QApplication",
+    size: tuple[int, int] | None,
+) -> list[str]:
+    """Capture all preference categories inside the main shell without persistence."""
+    from database.connection import initialize_database
+    from ui.layout_constants import MAIN_WINDOW_DEFAULT_HEIGHT, MAIN_WINDOW_DEFAULT_WIDTH
+    from ui.main_window import APPEARANCE_SETTINGS_PAGE_INDEX, MainWindow
+
+    initialize_database()
+    window = MainWindow()
+    window.resize(*(size or (MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT)))
+    window._switch_primary_page(APPEARANCE_SETTINGS_PAGE_INDEX)
+    lazy_page = window.stack.currentWidget()
+    page = lazy_page.ensure_widget()
+    _stabilize_appearance_preferences_probe(page)
 
     screenshots: list[str] = []
     tab_names = ["theme", "tables", "forms", "exports", "system"]
     for idx, name in enumerate(tab_names):
-        dialog = AppearancePreferencesDialog()
-        dialog.preference_tabs.setCurrentIndex(idx)
+        page.preference_tabs.setCurrentIndex(idx)
         suffix = "default" if idx == 0 else f"{name}-tab"
         screenshots.append(
-            _capture_widget(
-                dialog,
+            _capture_appearance_preferences_page(
+                window,
+                page,
                 _target_output_path(output, f"appearance-settings-{suffix}"),
                 app,
             )
         )
 
-    preview_dialog = AppearancePreferencesDialog()
-    preview_dialog._density_buttons["comfortable"].click()
-    preview_dialog._text_scale_buttons["large"].click()
-    preview_dialog._sidebar_density_buttons["compact"].click()
-    preview_dialog._table_density_buttons["comfortable"].click()
-    preview_dialog._contrast_mode_buttons["high"].click()
+    page.preference_tabs.setCurrentIndex(0)
+    page._density_buttons["comfortable"].click()
+    page._text_scale_buttons["large"].click()
+    page._sidebar_density_buttons["compact"].click()
+    page._table_density_buttons["comfortable"].click()
+    page._contrast_mode_buttons["high"].click()
     screenshots.append(
-        _capture_widget(
-            preview_dialog,
+        _capture_appearance_preferences_page(
+            window,
+            page,
             _target_output_path(output, "appearance-settings-comfortable-large"),
             app,
         )
     )
+    window.close()
+    app.processEvents()
     return screenshots
 
 
@@ -528,6 +661,7 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
     screenshots: list[str] = []
     with patch("services.event_service.list_events", return_value=_stress_event_rows()):
         widget = EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False)
+        _stabilize_event_list_probe(widget)
         widget.resize(*(size or (1180, 720)))
         widget.show()
         app.processEvents()
@@ -537,8 +671,6 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
         # to cover all four supplier-event views after that UI topology change.
         scope_cases = (
             repository.EVENT_SCOPE_ANOMALY_ONLY,
-            repository.EVENT_SCOPE_VISIT_WITH_ANOMALY,
-            repository.EVENT_SCOPE_VISIT_ONLY,
             repository.EVENT_SCOPE_CLOSED_ONLY,
         )
         for index, scope in enumerate(scope_cases):
@@ -574,21 +706,66 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
     from unittest.mock import patch
 
     from database.connection import initialize_database
-    from ui.widgets.master_data_widget import MasterDataWidget
+    from database.product_item_category import (
+        ITEM_CATEGORY_RAW_MATERIAL,
+        MASTER_SEMI_FINISHED_CATEGORIES,
+    )
+    from database.supplier_category import (
+        SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+        SUPPLIER_CATEGORY_RAW_MATERIAL,
+    )
+    from ui.widgets.master_data_widget import MasterDataProductPage, MasterDataSupplierPage
 
     initialize_database()
     screenshots: list[str] = []
+    page_specs = [
+        (
+            "master-raw-supplier",
+            lambda host: MasterDataSupplierPage(
+                host,
+                SUPPLIER_CATEGORY_RAW_MATERIAL,
+                page_label="原物料供應商",
+                lazy_load=False,
+            ),
+        ),
+        (
+            "master-outsource-supplier",
+            lambda host: MasterDataSupplierPage(
+                host,
+                SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+                page_label="委外加工",
+                lazy_load=False,
+            ),
+        ),
+        (
+            "master-raw-material",
+            lambda host: MasterDataProductPage(
+                host,
+                (ITEM_CATEGORY_RAW_MATERIAL,),
+                page_label="原物料",
+                lazy_load=False,
+            ),
+        ),
+        (
+            "master-semi-finished",
+            lambda host: MasterDataProductPage(
+                host,
+                MASTER_SEMI_FINISHED_CATEGORIES,
+                page_label="半成品/成品",
+                lazy_load=False,
+            ),
+        ),
+    ]
     with (
         patch("services.event_service.list_suppliers", return_value=_stress_supplier_rows()),
         patch("services.event_service.list_products", return_value=_stress_product_rows()),
     ):
-        widget = MasterDataWidget(_ProbeHost(), lazy_load=False)
-        widget.resize(*(size or (1180, 720)))
-        widget.show()
-        app.processEvents()
+        host = _ProbeHost()
         output.parent.mkdir(parents=True, exist_ok=True)
-        for index, suffix in enumerate(("master-supplier", "master-product")):
-            widget.tabs.setCurrentIndex(index)
+        for suffix, factory in page_specs:
+            widget = factory(host)
+            widget.resize(*(size or (1180, 720)))
+            widget.show()
             app.processEvents()
             if hasattr(widget, "supplier_table"):
                 widget._selected_supplier_id = None
@@ -598,14 +775,16 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
                 widget._selected_product_id = None
                 widget.product_table.clearSelection()
                 widget.product_table.setCurrentCell(-1, -1)
-            widget._sync_action_buttons()
-            widget.query_input.setFocus()
+            if hasattr(widget, "_sync_action_buttons"):
+                widget._sync_action_buttons()
+            if hasattr(widget, "query_input"):
+                widget.query_input.setFocus()
             app.processEvents()
             target = _target_output_path(output, suffix)
             _save_widget_capture(widget, target)
             screenshots.append(str(target))
-        widget.close()
-        app.processEvents()
+            widget.close()
+            app.processEvents()
     return screenshots
 
 
@@ -768,6 +947,7 @@ def _capture_empty_states(output: Path, app: "QApplication", size: tuple[int, in
         patch("services.event_service.list_products", return_value=[]),
     ):
         event_widget = EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False)
+        _stabilize_event_list_probe(event_widget)
         event_widget.resize(*(size or (1180, 720)))
         screenshots.append(
             _capture_widget(event_widget, _target_output_path(output, "empty-event-list"), app)
@@ -803,7 +983,6 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
     from ncr.embed import NcrWorkflowPage
     from ncr.ui.defect_form import DefectFormWidget
     from ui.widgets.event_create_page import EventCreatePage
-    from ui.widgets.new_visit_dialog import NewVisitDialog
     from ui.widgets.product_form_dialog import ProductFormDialog
     from ui.widgets.supplier_form_dialog import SupplierFormDialog
 
@@ -827,11 +1006,6 @@ def _capture_form_density(output: Path, app: "QApplication") -> list[str]:
             _target_output_path(output, "anomaly-calendar"),
             app,
         )
-    )
-
-    visit_dialog = NewVisitDialog()
-    screenshots.append(
-        _capture_widget(visit_dialog, _target_output_path(output, "visit-form"), app)
     )
 
     supplier_dialog = SupplierFormDialog()
@@ -1359,8 +1533,8 @@ def _capture_button_audit(app: "QApplication") -> dict:
         from ui.widgets.product_form_dialog import ProductFormDialog
         pages.append(ProductFormDialog([{"id": "supplier-1", "supplier_name": "測試供應商"}]))
 
-        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesDialog
-        pages.append(AppearancePreferencesDialog())
+        from ui.widgets.appearance_preferences_dialog import AppearancePreferencesPage
+        pages.append(AppearancePreferencesPage())
 
         try:
             from ncr.db.database import apply_schema
@@ -1486,6 +1660,7 @@ def _capture_combo_popups(output: Path, app: "QApplication") -> list[str]:
     )
 
     stats_widget = StatsViewWidget(lazy_load=True)
+    _stabilize_month_range_probe(stats_widget, refresh=False)
     stats_widget.resize(1024, 680)
     screenshots.append(
         _capture_combo_popup(
@@ -1525,7 +1700,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
     long_supplier = "超長供應商名稱-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     summary = {
         "anomaly_count": 200,
-        "visit_count": 20,
         "closed_anomaly_count": 40,
         "open_anomaly_count": 160,
         "overdue_open_anomaly_count": 15,
@@ -1552,14 +1726,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
             "closed_count": month,
             "overdue_count": month % 3,
             "backlog_count": month * 4,
-        }
-        for month in range(1, 13)
-    ]
-    visit_trend_data = [
-        {
-            "yyyymm": f"2026-{month:02d}",
-            "visit_count": (month % 4) + 1,
-            "visit_anomaly_count": month % 3,
         }
         for month in range(1, 13)
     ]
@@ -1593,7 +1759,6 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
     with (
         patch("ui.widgets.stats_view_widget._query_service.get_monthly_stats", return_value=summary),
         patch("ui.widgets.stats_view_widget._query_service.get_anomaly_trend_by_range", return_value=trend_data),
-        patch("ui.widgets.stats_view_widget._query_service.get_visit_trend_by_range", return_value=visit_trend_data),
         patch("ui.widgets.stats_view_widget._query_service.get_responsible_person_stats_by_range", return_value=resp_stats),
         patch("ui.widgets.stats_view_widget._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto),
     ):
@@ -1677,6 +1842,7 @@ def _capture_ncr_stats(output: Path, app: "QApplication", size: tuple[int, int] 
         ),
     ):
         widget = NcrStatsWidget(lazy_load=False)
+        _stabilize_month_range_probe(widget, refresh=True)
         widget.resize(*(size or (1024, 700)))
         widget.show()
         app.processEvents()
@@ -1853,7 +2019,7 @@ def main() -> int:
         elif args.target == "event-create":
             screenshots = _capture_event_create(output, app, size)
         elif args.target == "appearance-settings":
-            screenshots = _capture_appearance_settings(output, app)
+            screenshots = _capture_appearance_settings(output, app, size)
         elif args.target == "form-density":
             screenshots = _capture_form_density(output, app)
         elif args.target == "combo-popups":
