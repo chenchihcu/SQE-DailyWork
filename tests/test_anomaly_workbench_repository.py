@@ -115,6 +115,28 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
                 not_established_reason="",
             )
 
+    def test_bundle_transaction_rolls_back_note_when_cause_invalid(self) -> None:
+        try:
+            repository.upsert_anomaly_root_cause(
+                self.conn,
+                anomaly_id=self.anomaly_id,
+                statement="",
+                status="已驗證",
+                _commit=False,
+            )
+            repository.create_anomaly_analysis_note(
+                self.conn,
+                anomaly_id=self.anomaly_id,
+                content="should not persist",
+                evidence_type="FACT",
+                _commit=False,
+            )
+            self.conn.commit()
+        except ValueError:
+            self.conn.rollback()
+        notes = repository.list_anomaly_analysis_notes(self.conn, self.anomaly_id)
+        self.assertEqual(0, len(notes))
+
     # ---- corrective actions --------------------------------------------
     def test_ca_requires_implementation_for_verification_flow(self) -> None:
         action_id = repository.create_case_action(

@@ -4025,6 +4025,7 @@ def create_anomaly_analysis_note(
     evidence_type: str = ANOMALY_EVIDENCE_UNKNOWN,
     author_name: str = "",
     attachment_count: int = 0,
+    _commit: bool = True,
 ) -> str:
     require_anomaly(conn, anomaly_id)
     text = (content or "").strip()
@@ -4050,7 +4051,8 @@ def create_anomaly_analysis_note(
             _normalize_non_negative_int(attachment_count, field_name="Attachment count"),
         ),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
     return note_id
 
 

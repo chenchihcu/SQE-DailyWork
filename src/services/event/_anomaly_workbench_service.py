@@ -19,6 +19,8 @@ from database.repo_helpers import (
     ANOMALY_AUDIT_HYPOTHESIS_PROMOTED,
     ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED,
     ANOMALY_AUDIT_HYPOTHESIS_UPDATED,
+    ANOMALY_ROOT_CAUSE_NOT_STARTED,
+    ANOMALY_ROOT_CAUSE_PROPOSED,
 )
 from services import attachment_manager
 
@@ -68,6 +70,7 @@ def save_root_cause(
     validation_evidence: str = "",
     conclusion_note: str = "",
     not_established_reason: str = "",
+    promoted_from_hypothesis_id: str | None = None,
 ) -> str:
     with _open_conn() as conn:
         return repository.upsert_anomaly_root_cause(
@@ -79,7 +82,59 @@ def save_root_cause(
             validation_evidence=validation_evidence,
             conclusion_note=conclusion_note,
             not_established_reason=not_established_reason,
+            promoted_from_hypothesis_id=promoted_from_hypothesis_id,
         )
+
+
+def save_analysis_pending_changes(
+    *,
+    anomaly_id: str,
+    pending_note: dict[str, Any] | None = None,
+    cause_fields: dict[str, Any] | None = None,
+    promoted_from_hypothesis_id: str | None = None,
+) -> None:
+    """Persist pending analysis-tab drafts in one SQLite transaction (leave-guard path)."""
+    with _open_conn() as conn:
+        try:
+            if cause_fields:
+                statement = str(cause_fields.get("statement") or "").strip()
+                status = str(
+                    cause_fields.get("status") or ANOMALY_ROOT_CAUSE_NOT_STARTED
+                )
+                if statement and status == ANOMALY_ROOT_CAUSE_NOT_STARTED:
+                    status = ANOMALY_ROOT_CAUSE_PROPOSED
+                repository.upsert_anomaly_root_cause(
+                    conn,
+                    anomaly_id=anomaly_id,
+                    statement=statement,
+                    status=status,
+                    validation_method=str(
+                        cause_fields.get("validation_method") or ""
+                    ),
+                    validation_evidence=str(
+                        cause_fields.get("validation_evidence") or ""
+                    ),
+                    conclusion_note=str(cause_fields.get("conclusion_note") or ""),
+                    not_established_reason=str(
+                        cause_fields.get("not_established_reason") or ""
+                    ),
+                    promoted_from_hypothesis_id=promoted_from_hypothesis_id,
+                    _commit=False,
+                )
+            if pending_note:
+                repository.create_anomaly_analysis_note(
+                    conn,
+                    anomaly_id=anomaly_id,
+                    content=str(pending_note.get("content") or ""),
+                    evidence_type=str(
+                        pending_note.get("evidence_type") or "UNKNOWN"
+                    ),
+                    _commit=False,
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 
 # ---- Hypotheses ---------------------------------------------------------

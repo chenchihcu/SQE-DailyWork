@@ -874,3 +874,44 @@ Next action: 可選清理 appearance preferences 訪廠 tooltip。
 Harness update needed: yes
 Destination: `docs/harness/closed-loop-log.md`（本項）、`docs/architecture-workflow-contract.md`、`.agents`/`.claude` skill references
 
+## 發行阻斷修正：依賴安全下限與 Master Data 視覺契約
+
+Date: 2026-09-05
+Task: `003#發行阻斷修正`
+Observed: 發行用 `.venv` 的 Pillow 為 12.2.0；master-data visual probe patch 的 facade 並非 `MasterDataWidget` 實際呼叫的 service module，故 screenshot 會讀取 disposable DB 的 live supplier/product rows。既有 master-data baseline 與修正後 deterministic candidate 的 12 張對應 PNG 差異為 3.55% 至 19.72%，但畫面幾何一致。
+Root cause: dependency floor 未由 verification/build entry point 強制，且 visual fixture patch target 與 widget 的 import ownership 不一致；舊 baseline 未記錄 fixture provenance，無法辨識資料契約是否相同。
+Fix: `requirements.txt` 將 Pillow 下限升至 12.3.0；新增 stable-version fail-closed runtime floor helper，供 `verify.ps1` 和 `build_windows.ps1` 在實質工作前呼叫；Master Data probe 直接 patch widget-owned module object，回報 fixture SHA-256，visual regression manifest 將 fixture provenance 納入 capture contract。Focused profile 納入相關 contract tests。
+Verification: 單元／contract tests 28 PASS；變更後 `verify.ps1 -Profile Focused` 之安全 floor、compileall、focused tests、offscreen structural smoke、native Windows form-density 和 event-create 三 DPI 均完成，正式 DB backup/disposable count parity verified。`audit_formal_db_promotion_status.ps1` 純讀取 audit 為 `ready=true`，必要 migration markers、key tables 與 `product_records` active-filter view 均符合契約。Master Data native candidate 的 `visual_trustworthy=true`、CJK PASS、QSS warning 0；同環境 1.0 DPI repeat capture 四張 PNG ratio 皆 0.0。
+Residual risk: Focused 最終為 `not pass`，唯一失敗為 root `-e` 造成 source membership `712` 與 manifest `709` 漂移；精確刪除受本機 guard 拒絕。其後本次 read-back shell 搜尋誤產生 17-byte root `12.3.0`，已確認內容為單行搜尋輸出、SHA-256 `AC770E…5394`，精確刪除也被 guard 拒絕，因此目前 membership 為 713。Master Data 12 張 baseline PNG 尚未經人工作圖／明確 promotion 核准，native pixel regression 為 skip（contract mismatch）而非 pass。Full/Coverage/Soak/Release 未執行。
+Next action: 取得允許的 `-e` 和 `12.3.0` 移除路徑，讀回並將 manifest 更新為真實 membership 711；再由人類明確核准或拒絕 12 張 Master Data baseline PNG promotion。只在兩項 blocker 解決後執行 Full、Coverage、Soak 與另案 Release/portable artifact gate。
+Harness update needed: yes
+Destination: `scripts/assert_runtime_dependency_floor.py`, `scripts/verify.ps1`, `scripts/build_windows.ps1`, `scripts/qt_visual_probe.py`, `scripts/qt_visual_regress.py`, focused contract tests, this log
+
+## 異常分析 UI 簡化（Phase 1–5）
+
+Date: 2026-09-07
+Task: `004#異常分析 UI 簡化`
+Observed: 異常分析 tab 以五個 modal 按鈕映射 Note/Hypothesis/Root Cause；任何 `refresh_data()` 會 `_render_tabs()` 並 `setCurrentIndex(0)`，儲存後跳回案件概況。
+Root cause: widget 將 DB 物件直接暴露為 CRUD 入口，且 tab rebuild 未保留 UI state。
+Fix: `AnomalyManagementPage` 改為同頁 **分析紀錄**（`＋補充紀錄` inline append）、**原因結論**（inline `save_root_cause` + 收合驗證區）、**比較可能原因（N）**（預設收合、列上編輯／帶入）；`refresh_data(preserve_ui=True)` 保留 tab／scroll／展開與 cause draft；**帶入原因結論** 不呼叫 `promote_hypothesis_to_root_cause`；`save_root_cause` 可選 `promoted_from_hypothesis_id`。
+Impact: 一般案件流程縮為補充紀錄→填原因→儲存；複雜案件仍可用假設樹；overview/export read model 不變。
+Verification: `tests.test_anomaly_management_page` + workbench dialog/repository tests 40 PASS（offscreen）；`py_compile` PASS。Native `workbench-page-analysis` baseline promotion **not verified**（需獨立核准）。
+Residual risk: Phase 6–7（整頁原子 Save、完整離開三鍵）未實作；workbench visual baseline 尚未 promotion。
+Next action: 人工作圖審閱 `workbench-page-analysis` PNG；Phase 6–7 另案。
+Harness update needed: yes
+Destination: `docs/exec-plans/active/004-anomaly-analysis-ui-simplification.md`, `docs/ui-layout-theme-contract.md`, `docs/architecture-workflow-contract.md`, this log
+
+## 異常分析 UI 簡化（Phase 6–7）
+
+Date: 2026-09-07
+Task: `004#異常分析 UI 簡化` Phase 6–7
+Observed: Phase 1–5 僅 guard 原因結論 dirty（Yes/No）；note inline 草稿、工作台 tab 切換無保護；驗證區與附件關聯不明；離開路徑可能半成功寫入。
+Root cause: `can_leave()` 未涵蓋 note draft 與三鍵 UX；無 tab `currentChanged` guard；驗證區缺佐證摘要；guard 儲存無 bundle transaction。
+Fix: Phase 6 加 **佐證參考**／**前往附件**、驗證 auto-expand（`已驗證`/`無法確認`）、derived 狀態提示、欄位文案對齊。Phase 7 加 `_analysis_has_unsaved_changes`、三鍵離開／tab guard、`save_analysis_pending_changes`（repository `create_anomaly_analysis_note(..., _commit=False)` + `upsert` 同 conn）、note/cause in-flight 防重複提交。
+Impact: 離開／切 tab 不再靜默丟草稿；guard 儲存原子化；日常「加入」「儲存原因結論」行為不變。
+Verification: focused tests 46 PASS（offscreen）；`py_compile` pending harness gate.
+Residual risk: workbench PNG baseline promotion 仍另案；bundle 僅 guard 路徑，先「加入」再改 cause 離開仍可能兩段寫入（符合 Phase 1–5 設計）。
+Next action: native `workbench` probe 取 CJK 證據；baseline promotion 人工作圖。
+Harness update needed: yes
+Destination: `docs/exec-plans/active/004-anomaly-analysis-ui-simplification.md`, `docs/ui-layout-theme-contract.md`, `docs/architecture-workflow-contract.md`, `src/services/event/_anomaly_workbench_service.py`, `src/ui/widgets/anomaly_management_page.py`, this log
+

@@ -296,6 +296,16 @@ shared master-data area.
 - `list_anomaly_analysis_notes` and hypothesis evidence-chain attachment badges
   use live `anomaly_attachments` COUNT by `related_note_id`; do not trust stored
   `anomaly_analysis_notes.attachment_count`.
+- The **異常分析** tab edits the single `anomaly_root_causes` row inline via
+  `save_root_cause` (optional `promoted_from_hypothesis_id`); **帶入原因結論**
+  copies hypothesis text into the cause draft without calling
+  `promote_hypothesis_to_root_cause` and must not auto-set `已驗證`. Analysis
+  notes remain append-only via `create_analysis_note`. Leaving the workbench or
+  switching away from the analysis tab with unsaved cause/note drafts prompts
+  **儲存並離開** / **不儲存** / **取消**; **儲存並離開** calls
+  `save_analysis_pending_changes` (single SQLite transaction for pending cause +
+  note draft only). Daily **加入** and **儲存原因結論** remain separate service
+  calls.
 - Manager-view and other `list_column_contract` exports must use the same display
   strings as the page table renderer (e.g. `overdue` → `逾期`/`—`); see
   `tests/test_exports_phase7.py`.

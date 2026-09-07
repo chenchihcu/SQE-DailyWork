@@ -7,7 +7,7 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea, QTabWidget, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea, QTabWidget, QWidget, QMessageBox
 
 from services.event import (
     _anomaly_service,
@@ -84,11 +84,14 @@ class AnomalyManagementPageTests(unittest.TestCase):
     def tearDown(self) -> None:
         for patcher in self.patchers:
             patcher.stop()
+        app = QApplication.instance()
+        if app is not None:
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
         for page in self._pages:
             page.close()
             page.deleteLater()
         self._pages.clear()
-        app = QApplication.instance()
         if app is not None:
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
@@ -146,9 +149,42 @@ class AnomalyManagementPageTests(unittest.TestCase):
             child.text()
             for child in analysis_tab.findChildren(QPushButton)
         ]
-        self.assertIn("新增假設", buttons)
-        self.assertIn("編輯假設", buttons)
-        self.assertIn("晉升為根本原因", buttons)
+        self.assertIn("＋補充紀錄", buttons)
+        self.assertIn("儲存原因結論", buttons)
+        self.assertIn("▸ 比較可能原因（0）", buttons)
+
+    def test_refresh_data_preserves_analysis_tab(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page.tabs.setCurrentIndex(2)
+        page.refresh_data()
+        self.assertEqual(2, page.tabs.currentIndex())
+        self.assertEqual("異常分析", page.tabs.tabText(page.tabs.currentIndex()))
+
+    def test_bring_hypothesis_into_cause_sets_proposed_status(self) -> None:
+        hypothesis = {
+            "id": "hyp-1",
+            "statement": "Reflow peak temperature insufficient",
+            "status": "調查中",
+            "level": 1,
+        }
+        with mock.patch.object(
+            _anomaly_workbench_service, "list_hypotheses", return_value=[hypothesis]
+        ):
+            page = self._make_page()
+            page.load_anomaly("anomaly-1")
+            page.tabs.setCurrentIndex(2)
+            page._bring_hypothesis_into_cause(hypothesis)
+        self.assertTrue(page._analysis_cause_dirty)
+        self.assertEqual("hyp-1", page._analysis_promoted_from_hypothesis_id)
+        self.assertIn(
+            "Reflow peak temperature insufficient",
+            page._cause_statement_input.get_formatted_text(),
+        )
+        self.assertEqual(
+            "提案",
+            str(page._cause_status_combo.currentData()),
+        )
 
     def test_command_buttons_follow_save_then_cancel_order(self) -> None:
         page = self._make_page()
@@ -217,11 +253,11 @@ class AnomalyManagementPageTests(unittest.TestCase):
             analysis_buttons = [
                 btn.text() for btn in analysis_tab.findChildren(QPushButton)
             ]
-            self.assertIn("新增分析紀錄", analysis_buttons)
+            self.assertIn("＋補充紀錄", analysis_buttons)
             add_note = next(
                 btn
                 for btn in analysis_tab.findChildren(QPushButton)
-                if btn.text() == "新增分析紀錄"
+                if btn.text() == "＋補充紀錄"
             )
             self.assertTrue(add_note.isEnabled())
 
@@ -304,6 +340,70 @@ class AnomalyManagementPageTests(unittest.TestCase):
             page = self._make_page()
             page.load_anomaly("anomaly-1")
             self.assertEqual(0, page.repeat_issues_panel._table.rowCount())
+
+    def test_analysis_cause_dirty_leave_offers_save_and_leave(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page.tabs.setCurrentIndex(2)
+        page._analysis_cause_dirty = True
+        page._analysis_cause_draft = {"statement": "draft", "status": "提案"}
+        with mock.patch.object(page, "_confirm_analysis_leave", return_value="save"), mock.patch.object(
+            _anomaly_workbench_service, "save_analysis_pending_changes"
+        ) as save_mock:
+            self.assertTrue(page.can_leave())
+        save_mock.assert_called_once()
+
+    def test_analysis_note_draft_blocks_tab_switch(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page.tabs.setCurrentIndex(2)
+        page._analysis_note_form_open = True
+        page.refresh_data()
+        page._note_content_input.set_formatted_text("draft note")
+        with mock.patch.object(page, "_confirm_analysis_leave", return_value="cancel"):
+            page.tabs.setCurrentIndex(0)
+        self.assertEqual(2, page.tabs.currentIndex())
+
+    def test_close_note_form_confirms_when_draft_nonempty(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page._analysis_note_form_open = True
+        page.refresh_data()
+        page._note_content_input.set_formatted_text("draft text")
+        with mock.patch(
+            "ui.widgets.anomaly_management_page.is_automated_runtime",
+            return_value=False,
+        ), mock.patch.object(
+            QMessageBox,
+            "question",
+            return_value=QMessageBox.StandardButton.No,
+        ):
+            page._close_note_form()
+        self.assertTrue(page._analysis_note_form_open)
+
+    def test_verification_auto_expands_on_verified_status(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page.tabs.setCurrentIndex(2)
+        QCoreApplication.processEvents()
+        page._cause_statement_input.set_formatted_text("confirmed cause")
+        verified_index = page._cause_status_combo.findData("已驗證")
+        page._cause_status_combo.setCurrentIndex(verified_index)
+        page._update_cause_validation()
+        self.assertTrue(page._analysis_verification_expanded)
+
+    def test_note_submit_disabled_while_inflight(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        page._analysis_note_form_open = True
+        page.refresh_data()
+        page._note_content_input.set_formatted_text("note body")
+        page._note_submit_inflight = True
+        with mock.patch.object(
+            _anomaly_workbench_service, "create_analysis_note"
+        ) as create_mock:
+            page._submit_inline_analysis_note()
+        create_mock.assert_not_called()
 
 
 if __name__ == "__main__":
