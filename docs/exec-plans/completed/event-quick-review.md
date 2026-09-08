@@ -19,29 +19,21 @@ right-click action menu. No schema changes.
 - `tests/visual_baseline/event-list/baseline_manifest.json` — updated file list
 - `docs/ui-layout-theme-contract.md` — Master-Detail interaction table
 
-## Verification (Cloud / Linux)
+## Verification (Windows host)
 
-- `PYTHONPATH=src:. QT_QPA_PLATFORM=offscreen .venv/bin/python -m unittest tests.test_event_quick_review tests.test_event_list_widget_render_stability tests.test_event_action_menu_consistency tests.test_micro_interactions tests.test_layout_constants` — PASS
-- Native Windows visual gate (probe/regress Round 4) — **blocked on cloud VM**; requires Microsoft JhengHei UI host per AGENTS.md
+- `PYTHONPATH=src:. QT_QPA_PLATFORM=offscreen .venv/Scripts/python.exe -m unittest tests.test_event_quick_review tests.test_event_list_widget_render_stability tests.test_event_action_menu_consistency tests.test_micro_interactions tests.test_layout_constants` — PASS
+- `scripts/qt_visual_probe.py --target event-list --scale 1.0/1.25/1.5 --min-width` — exit 0, `visual_trustworthy: true`, `qss_unknown_property_warnings: 0`
+- `scripts/qt_visual_regress.py --target event-list --scale 1.0/1.25/1.5 --min-width` — exit 0, `failures: []`
+- `scripts/qt_visual_probe.py --target main --scale 1.0 --min-width` — exit 0 (startup lands on 事件查詢 with Quick Review splitter)
+- `scripts/button_audit_report.py` — exit 0
 
 ## Residual risk
 
-- Native Windows visual gate (probe/regress Round 4) remains blocked on cloud
-  Linux VMs (no Microsoft JhengHei UI). Do not list `empty-preview` /
-  `selected` PNGs in `baseline_manifest.json` until a Windows host runs
-  `--update`; harness_check fails if those names exist without files.
-- Quick Review status badges use inline palette styling; Round 3 QSS role
-  migration optional follow-up.
+- Quick Review status badges now use shared `statusBadge` + `tone` QSS (no inline stylesheet).
+- Other visual targets (`main` aside from startup landing) may still reflect
+  pre-splitter layout until a matching `--update` on this host.
 
 ## Next action
 
-Run on Windows:
-
-```powershell
-$env:PYTHONPATH='src;.'
-foreach ($s in '1.0','1.25','1.5') {
-  .venv\Scripts\python.exe scripts\qt_visual_probe.py --target event-list --scale $s --min-width --output Outputs\visual_qa\event-list-qr --update
-}
-.venv\Scripts\python.exe scripts\qt_visual_regress.py --target event-list
-.venv\Scripts\python.exe scripts\button_audit_report.py
-```
+Keep event-list visual regress on a Windows JhengHei UI host when changing
+Quick Review layout. Cloud Linux `visual_trustworthy: false` remains expected.

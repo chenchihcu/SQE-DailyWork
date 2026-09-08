@@ -27,12 +27,12 @@ from ui.layout_constants import (
     FORM_VERTICAL_SPACING,
     PANEL_MARGINS,
 )
+from ui.status_colors import get_status_tone
 from ui.widgets.common_widgets import (
     CaseStageStepper,
     EmptyStateWidget,
     apply_clickable_affordance,
     create_section_card,
-    create_status_item,
 )
 from ui.widgets.event_next_action import (
     HANDLER_OPEN_FULL,
@@ -317,25 +317,10 @@ class EventQuickReviewPanel(QWidget):
             if widget is not None:
                 widget.deleteLater()
         status = str(row.get("status") or detail.get("status") or "—")
-        status_label = QLabel(status)
-        status_label.setProperty("role", "statusBadge")
-        palette_item = create_status_item(status)
-        status_label.setStyleSheet(
-            f"color: {palette_item.foreground().color().name()};"
-            f"background-color: {palette_item.background().color().name()};"
-            "padding: 2px 8px; border-radius: 4px;"
-        )
+        status_label = self._status_badge(status)
         self._status_layout.addWidget(status_label)
         if bool(overview.get("overdue")) and status == "待處理":
-            overdue_label = QLabel("逾期")
-            overdue_label.setProperty("role", "statusBadge")
-            overdue_palette = create_status_item("逾期")
-            overdue_label.setStyleSheet(
-                f"color: {overdue_palette.foreground().color().name()};"
-                f"background-color: {overdue_palette.background().color().name()};"
-                "padding: 2px 8px; border-radius: 4px;"
-            )
-            self._status_layout.addWidget(overdue_label)
+            self._status_layout.addWidget(self._status_badge("逾期"))
 
         self.stage_stepper.set_case_state(detail, overview)
 
@@ -365,6 +350,15 @@ class EventQuickReviewPanel(QWidget):
         self._next_action = resolve_next_action(overview, detail)
         self.primary_button.setText(self._next_action.label)
         self.primary_button.setAccessibleName(self._next_action.label)
+
+    @staticmethod
+    def _status_badge(text: str) -> QLabel:
+        badge = QLabel(f"  {text}  ")
+        badge.setProperty("role", "statusBadge")
+        badge.setProperty("tone", get_status_tone(text))
+        badge.style().unpolish(badge)
+        badge.style().polish(badge)
+        return badge
 
     def _render_thumbnails(self, anomaly_id: str, attachment_count: int) -> None:
         for label in self._thumb_labels:

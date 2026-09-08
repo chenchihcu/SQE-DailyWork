@@ -175,6 +175,19 @@ def get_controls_qss() -> str:
             border: 1px solid {TOKENS["status_success_border"]};
         }}
 
+        QFrame#EventQuickReviewCountdown,
+        QFrame[role="pendingBanner"] {{
+            background: {TOKENS["status_pending_bg"]};
+            border: 1px solid {TOKENS["status_pending_border"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+        }}
+
+        QLabel[role="attachmentThumb"] {{
+            background: {TOKENS["subtle_bg"]};
+            border: 1px solid {TOKENS["border_soft"]};
+            border-radius: {TOKENS["radius_sm"]}px;
+        }}
+
         QPushButton[variant="primary"],
         QPushButton[variant="toolbarPrimary"],
         QPushButton[buttonRole="primary"] {{
