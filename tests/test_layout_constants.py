@@ -40,6 +40,11 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(140, lc.EVENT_LIST_CORE_PRODUCT_WIDTH)
         self.assertEqual(130, lc.EVENT_LIST_CORE_QUALITY_REQUIREMENT_WIDTH)
         self.assertEqual(78, lc.EVENT_LIST_CORE_STATUS_WIDTH)
+        self.assertEqual(360, lc.EVENT_LIST_QUICK_REVIEW_MIN_WIDTH)
+        self.assertEqual(58, lc.EVENT_LIST_SPLITTER_LIST_STRETCH)
+        self.assertEqual(42, lc.EVENT_LIST_SPLITTER_PREVIEW_STRETCH)
+        self.assertEqual(1200, lc.EVENT_LIST_PREVIEW_COLLAPSE_WIDTH)
+        self.assertEqual(62, lc.EVENT_LIST_PREVIEW_THUMB_SIZE)
 
     def test_ncr_list_column_profile_breakpoint(self) -> None:
         self.assertEqual(1024, lc.NCR_LIST_FULL_COLUMNS_MIN_WIDTH)

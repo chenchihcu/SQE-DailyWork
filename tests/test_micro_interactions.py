@@ -109,8 +109,8 @@ class MicroInteractionTests(unittest.TestCase):
                 Qt.CursorShape.PointingHandCursor,
                 widget.table.viewport().cursor().shape(),
             )
-            self.assertIn("動作選單", widget.table.toolTip())
-            self.assertIn("動作選單", widget.table.viewport().toolTip())
+            self.assertIn("快速審閱", widget.table.toolTip())
+            self.assertIn("快速審閱", widget.table.viewport().toolTip())
 
             buttons = {button.text(): button for button in widget.findChildren(QPushButton)}
             for text, tooltip in {

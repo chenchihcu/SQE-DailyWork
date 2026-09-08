@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QSplitter,
     QTabBar,
     QTableWidget,
     QTableWidgetItem,
@@ -49,6 +50,10 @@ from ui.layout_constants import (
     EVENT_LIST_FULL_COLUMNS_MIN_WIDTH,
     EVENT_LIST_ITEMS_PER_PAGE,
     EVENT_LIST_NAME_COL_MIN_WIDTH,
+    EVENT_LIST_PREVIEW_COLLAPSE_WIDTH,
+    EVENT_LIST_QUICK_REVIEW_MIN_WIDTH,
+    EVENT_LIST_SPLITTER_LIST_STRETCH,
+    EVENT_LIST_SPLITTER_PREVIEW_STRETCH,
     FILTER_MONTH_INPUT_WIDTH,
     FILTER_STATUS_COMBO_WIDTH,
     FILTER_SUPPLIER_MIN_WIDTH,
@@ -76,6 +81,15 @@ from ui.widgets.event_actions import (
     build_event_action_menu,
     dispatch_event_action,
 )
+from ui.widgets.event_next_action import (
+    HANDLER_ADD_ACTION,
+    HANDLER_CLOSE,
+    HANDLER_HANDLE_OVERDUE,
+    HANDLER_OPEN_FULL,
+    HANDLER_ROOT_CAUSE,
+    HANDLER_VERIFY,
+)
+from ui.widgets.event_quick_review_panel import EventQuickReviewPanel
 from ui.widgets.pagination_bar import PaginationBar
 from ui.widgets.event_list_filter_mixin import _EventListFilterMixin
 
@@ -159,6 +173,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self._compact_column_profile_override: bool | None = None
         self._selected_event_row: dict | None = None
         self._event_actions = EventActionsController(self, main_window)
+        self._quick_review_enabled = self.mode == "query" and self.fixed_scope is None
+        self.quick_review_panel: EventQuickReviewPanel | None = None
+        self._result_splitter: QSplitter | None = None
         self._setup_ui()
         self._has_loaded = False
         if not lazy_load:
@@ -337,10 +354,17 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         style_table(self.table)
-        apply_table_action_affordance(
-            self.table,
-            "點擊列選取；雙擊列以開啟編輯、刪除、結案或明細動作選單",
-        )
+        if self._quick_review_enabled:
+            self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.table.customContextMenuRequested.connect(self._on_table_context_menu)
+            affordance = (
+                "單擊列選取並更新右側快速審閱；"
+                "雙擊列開啟完整案件；"
+                "右鍵開啟操作選單"
+            )
+        else:
+            affordance = "點擊列選取；雙擊列以開啟編輯、刪除、結案或明細動作選單"
+        apply_table_action_affordance(self.table, affordance)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         for field in (
@@ -362,9 +386,24 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         header.sectionClicked.connect(self._on_header_clicked)
         header.setMinimumSectionSize(EVENT_LIST_NAME_COL_MIN_WIDTH)
 
-        self.table.cellDoubleClicked.connect(self._on_table_row_clicked)
+        self.table.cellDoubleClicked.connect(self._on_table_row_double_clicked)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
-        result_layout.addWidget(self.table, 1)
+        if self._quick_review_enabled:
+            self.quick_review_panel = EventQuickReviewPanel(self)
+            self.quick_review_panel.setMinimumWidth(EVENT_LIST_QUICK_REVIEW_MIN_WIDTH)
+            self.quick_review_panel.open_full_requested.connect(self.open_anomaly_details)
+            self.quick_review_panel.primary_action_requested.connect(
+                self._dispatch_quick_review_action
+            )
+            self._result_splitter = QSplitter(Qt.Orientation.Horizontal)
+            self._result_splitter.setObjectName("EventListResultSplitter")
+            self._result_splitter.addWidget(self.table)
+            self._result_splitter.addWidget(self.quick_review_panel)
+            self._result_splitter.setStretchFactor(0, EVENT_LIST_SPLITTER_LIST_STRETCH)
+            self._result_splitter.setStretchFactor(1, EVENT_LIST_SPLITTER_PREVIEW_STRETCH)
+            result_layout.addWidget(self._result_splitter, 1)
+        else:
+            result_layout.addWidget(self.table, 1)
         if self.fixed_status:
             self.table.setColumnHidden(EVENT_LIST_FIELDS.index("status"), True)
 
@@ -419,6 +458,22 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         super().resizeEvent(event)
         if hasattr(self, "table"):
             self._sync_table_column_profile()
+        self._sync_quick_review_visibility()
+
+    def _quick_review_collapsed(self) -> bool:
+        return self.width() < EVENT_LIST_PREVIEW_COLLAPSE_WIDTH
+
+    def _sync_quick_review_visibility(self) -> None:
+        if not self._quick_review_enabled or self.quick_review_panel is None:
+            return
+        collapsed = self._quick_review_collapsed()
+        self.quick_review_panel.setVisible(not collapsed)
+        if collapsed:
+            self.quick_review_panel.set_preview_collapsed(True)
+        elif self._selected_event_row is not None:
+            self.quick_review_panel.load_from_row(self._selected_event_row)
+        else:
+            self.quick_review_panel.clear()
 
     def _compact_column_profile_active(self) -> bool:
         if self._compact_column_profile_override is not None:
@@ -501,6 +556,8 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
     def _render_current_page(self):
         self._selected_event_row = None
+        if self.quick_review_panel is not None:
+            self.quick_review_panel.clear()
         total_pages = self._total_pages()
         self._current_page = min(max(1, self._current_page), total_pages)
         start = (self._current_page - 1) * self._page_size
@@ -611,13 +668,24 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             return None
         return payload
 
+    def _anomaly_id_from_row(self, row: dict) -> str:
+        return str(row.get("event_id") or row.get("id") or "").strip()
+
     def _on_table_selection_changed(self) -> None:
         if not self.table.selectedIndexes():
             self._selected_event_row = None
+            if self.quick_review_panel is not None and not self._quick_review_collapsed():
+                self.quick_review_panel.clear()
             self._sync_export_pdf_state()
             return
         row = self._row_data(self.table.currentRow())
         self._selected_event_row = dict(row) if row is not None else None
+        if (
+            self.quick_review_panel is not None
+            and self._selected_event_row is not None
+            and not self._quick_review_collapsed()
+        ):
+            self.quick_review_panel.load_from_row(self._selected_event_row)
         self._sync_export_pdf_state()
 
     def _export_selected_pdf(self) -> None:
@@ -659,6 +727,42 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             return self.table.viewport().mapToGlobal(rect.center())
         return self.table.mapToGlobal(self.table.rect().center())
 
+    def _on_table_row_double_clicked(self, row_idx: int, _column_idx: int) -> None:
+        row = self._row_data(row_idx)
+        if row is None:
+            return
+        self._selected_event_row = dict(row)
+        self.table.selectRow(row_idx)
+        self._sync_export_pdf_state()
+        if self._quick_review_enabled:
+            anomaly_id = self._anomaly_id_from_row(row)
+            if anomaly_id:
+                self.open_anomaly_details(anomaly_id)
+            return
+        self._on_table_row_clicked(row_idx, _column_idx)
+
+    def _on_table_context_menu(self, pos) -> None:
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        row_idx = index.row()
+        row = self._row_data(row_idx)
+        if row is None:
+            return
+        self._selected_event_row = dict(row)
+        self.table.selectRow(row_idx)
+        self._sync_export_pdf_state()
+        if self.quick_review_panel is not None and not self._quick_review_collapsed():
+            self.quick_review_panel.load_from_row(row)
+        menu, action_map = build_event_action_menu(self, row)
+        if not action_map:
+            return
+        selected = menu.exec(self.table.viewport().mapToGlobal(pos))
+        action_key = action_map.get(selected)
+        if not action_key:
+            return
+        self._dispatch_event_action(action_key, row)
+
     def _on_table_row_clicked(self, row_idx: int, _column_idx: int):
         row = self._row_data(row_idx)
         if row is None:
@@ -669,14 +773,13 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
         prefs = appearance_preferences_service.load_application_preferences()
         action = prefs.table_double_click_action
-        if action == "preview":
-            if row.get("id"):
-                self.open_anomaly_details(str(row["id"]))
-                return
-        elif action == "edit":
-            if row.get("id"):
-                self.open_edit_anomaly_dialog(str(row["id"]))
-                return
+        anomaly_id = self._anomaly_id_from_row(row)
+        if action == "preview" and anomaly_id:
+            self.open_anomaly_details(anomaly_id)
+            return
+        if action == "edit" and anomaly_id:
+            self.open_edit_anomaly_dialog(anomaly_id)
+            return
 
         menu, action_map = build_event_action_menu(self, row)
         if not action_map:
@@ -686,6 +789,89 @@ class EventListWidget(QWidget, _EventListFilterMixin):
         if not action_key:
             return
         self._dispatch_event_action(action_key, row)
+
+    def _dispatch_quick_review_action(self, handler_key: str, row: dict) -> None:
+        anomaly_id = self._anomaly_id_from_row(row)
+        if not anomaly_id:
+            return
+        if handler_key == HANDLER_OPEN_FULL:
+            self.open_anomaly_details(anomaly_id)
+            return
+        if handler_key == HANDLER_CLOSE:
+            self.open_close_dialog(anomaly_id, str(row.get("content") or ""))
+            if self.quick_review_panel is not None:
+                self.quick_review_panel.refresh()
+            return
+        if handler_key == HANDLER_ADD_ACTION:
+            from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
+
+            dialog = AddAnomalyActionDialog(anomaly_id, self)
+            dialog.action_created.connect(
+                lambda _action_id: self._after_quick_review_dialog()
+            )
+            dialog.exec()
+            return
+        if handler_key == HANDLER_ROOT_CAUSE:
+            from services.event import _anomaly_workbench_service
+            from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
+
+            initial = _anomaly_workbench_service.get_root_cause(anomaly_id) or {}
+            dialog = AnomalyRootCauseDialog(
+                anomaly_id,
+                initial=initial,
+                parent=self,
+            )
+            dialog.root_cause_saved.connect(
+                lambda _rc_id: self._after_quick_review_dialog()
+            )
+            dialog.exec()
+            return
+        current_action = row.get("current_action") or {}
+        if handler_key == HANDLER_HANDLE_OVERDUE:
+            if not current_action:
+                self.open_anomaly_details(anomaly_id)
+                return
+            from ui.widgets.complete_action_dialog import CompleteActionDialog
+
+            dialog = CompleteActionDialog(
+                str(current_action.get("id") or ""),
+                action_summary=str(current_action.get("description") or ""),
+                parent=self,
+            )
+            if str(current_action.get("execution_status") or "") == "已規劃":
+                dialog.outcome_combo.setCurrentIndex(1)
+                dialog.outcome_combo.setEnabled(False)
+            dialog.action_updated.connect(
+                lambda _action_id: self._after_quick_review_dialog()
+            )
+            dialog.exec()
+            return
+        if handler_key == HANDLER_VERIFY:
+            if not current_action:
+                self.open_anomaly_details(anomaly_id)
+                return
+            from ui.widgets.add_verification_dialog import AddVerificationDialog
+
+            dialog = AddVerificationDialog(
+                str(current_action.get("id") or ""),
+                description=str(current_action.get("description") or ""),
+                parent=self,
+            )
+            dialog.verification_created.connect(
+                lambda _verify_id: self._after_quick_review_dialog()
+            )
+            dialog.exec()
+            return
+        self.open_anomaly_details(anomaly_id)
+
+    def _after_quick_review_dialog(self) -> None:
+        refresh = getattr(self.main_window, "refresh_all_views", None)
+        if callable(refresh):
+            refresh()
+        elif hasattr(self, "refresh_data"):
+            self.refresh_data()
+        if self.quick_review_panel is not None and self._selected_event_row is not None:
+            self.quick_review_panel.refresh()
 
     def _dispatch_event_action(self, action_key: str, row: dict) -> None:
         dispatch_event_action(

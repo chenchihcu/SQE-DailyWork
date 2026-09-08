@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox, QScrollArea
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea
 
 from ui.appearance_preferences import AppearancePreferences
 from ui.theme import apply_app_theme
@@ -309,6 +309,13 @@ class AppearancePreferencesPageTests(unittest.TestCase):
         columns = page.findChildren(_ResponsivePreferenceColumns)
         self.assertEqual(5, len(columns))
         self.assertTrue(all(column._is_stacked for column in columns))
+        query_list_hints = [
+            label
+            for label in page.findChildren(QLabel)
+            if "事件查詢頁已固定為雙擊開啟完整案件" in label.text()
+        ]
+        self.assertEqual(1, len(query_list_hints))
+        self.assertTrue(query_list_hints[0].wordWrap())
         for scroll_area in page.findChildren(QScrollArea):
             self.assertEqual(0, scroll_area.horizontalScrollBar().maximum())
 
