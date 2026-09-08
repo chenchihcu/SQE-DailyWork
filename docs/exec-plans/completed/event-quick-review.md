@@ -26,8 +26,12 @@ right-click action menu. No schema changes.
 
 ## Residual risk
 
-- Visual baseline PNGs must be regenerated on a Windows host with `--update` before CI visual regress passes.
-- Quick Review status badges use inline palette styling; Round 3 QSS role migration optional follow-up.
+- Native Windows visual gate (probe/regress Round 4) remains blocked on cloud
+  Linux VMs (no Microsoft JhengHei UI). Do not list `empty-preview` /
+  `selected` PNGs in `baseline_manifest.json` until a Windows host runs
+  `--update`; harness_check fails if those names exist without files.
+- Quick Review status badges use inline palette styling; Round 3 QSS role
+  migration optional follow-up.
 
 ## Next action
 

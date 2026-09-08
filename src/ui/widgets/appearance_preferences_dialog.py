@@ -584,12 +584,17 @@ class AppearancePreferencesPage(QWidget):
         interaction_layout.setSpacing(ROW_GAP)
 
         interaction_layout.addWidget(QLabel("資料表列表列雙擊預設行為"))
-        interaction_layout.addWidget(
-            QLabel(
-                "事件查詢頁已固定為雙擊開啟完整案件；右鍵開啟操作選單。"
-                "下列設定僅套用於其他事件列表（例如作業佇列內嵌列表）。"
-            )
+        query_list_hint = QLabel(
+            "事件查詢頁已固定為雙擊開啟完整案件；右鍵開啟操作選單。"
+            "下列設定僅套用於其他事件列表（例如作業佇列內嵌列表）。"
         )
+        query_list_hint.setProperty("role", "messageText")
+        query_list_hint.setWordWrap(True)
+        query_list_hint.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+        interaction_layout.addWidget(query_list_hint)
         self._double_click_group = QButtonGroup(self)
         self._double_click_buttons = {}
         for value, label, description in (
