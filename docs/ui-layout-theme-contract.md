@@ -151,7 +151,17 @@
   Embedded queue pages omit standalone scope banners; workbench return from an ops
   chip shows `返回作業佇列`.
 - Supplier event lists on the 事件查詢 page use scope chips (單獨異常 / 已結案)
-  without a toolbar source tag. Statistics and NCR list pages retain their own
+  without a toolbar source tag. The consolidated query page uses a horizontal
+  `QSplitter` master-detail layout: the event table (~58% stretch) and
+  `EventQuickReviewPanel` (~42% stretch, min width `EVENT_LIST_QUICK_REVIEW_MIN_WIDTH`).
+  Interaction contract on this page only (`mode="query"`, no fixed scope):
+  **single-click** selects a row and loads the right-side Quick Review preview;
+  **double-click** opens the full `AnomalyManagementPage`; **right-click** opens
+  the existing `build_event_action_menu`. When viewport width is below
+  `EVENT_LIST_PREVIEW_COLLAPSE_WIDTH` (1200px), the preview panel hides so the
+  compact table profile can stay at 1024px without horizontal overflow. Legacy
+  `table_double_click_action` preferences apply only to non–Quick Review list
+  surfaces (scoped event pages). Statistics and NCR list pages retain their own
   compact source tags (`供應商事件`, `倉庫不合格品`). PDF export remains
   single-record output and is disabled until a row is selected. The table includes
   「品質異常單要求」 between 「缺失紀錄」 and 「狀態」; anomaly rows show 是／否／未設定

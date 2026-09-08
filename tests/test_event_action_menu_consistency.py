@@ -103,6 +103,32 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
             actions,
         )
 
+    def test_event_query_context_menu_keeps_pending_actions(self) -> None:
+        with patch(
+            "ui.widgets.defect_list_widget.event_service.list_events",
+            return_value=[dict(self.row)],
+        ):
+            widget = EventListWidget(self.main_window, mode="query")
+            widget.show()
+            self.app.processEvents()
+            self.assertIsNotNone(widget.quick_review_panel)
+            menu, action_map = build_event_action_menu(widget, dict(self.row))
+            actions = [action.text() for action in menu.actions()]
+            widget.close()
+            self.app.processEvents()
+
+        self.assertEqual(
+            [
+                "案件詳情",
+                "刪除異常",
+                "結案",
+                "",
+                "傳送精簡報告至 LINE",
+            ],
+            actions,
+        )
+        self.assertIn("view_anomaly_details", action_map.values())
+
     def test_anomaly_details_uses_management_route(self) -> None:
         controller = EventActionsController(self.main_window, self.main_window)
         controller.open_anomaly_details("anomaly-001")

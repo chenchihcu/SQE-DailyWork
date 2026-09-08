@@ -48,8 +48,16 @@ class SurfaceUsageStructureTests(unittest.TestCase):
     def test_query_page_subpanel_structure_and_roles_are_consistent(self) -> None:
         query = self.window.events_widget
         frames = query.findChildren(QFrame)
-        subpanels = [frame for frame in frames if frame.property("role") == "subpanel"]
-        panels = [frame for frame in frames if frame.property("role") == "panel"]
+        subpanels = [
+            frame
+            for frame in frames
+            if frame.property("role") == "subpanel" and frame.parentWidget() is query
+        ]
+        panels = [
+            frame
+            for frame in frames
+            if frame.property("role") == "panel" and frame.parentWidget() is query
+        ]
 
         self.assertEqual(1, len(subpanels), "query page should have exactly one subpanel")
         self.assertEqual(1, len(panels), "query page should have exactly one result panel")
