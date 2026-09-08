@@ -457,6 +457,39 @@ class EventListWidgetRenderStabilityTests(unittest.TestCase):
         self.assertEqual(event_service.EVENT_SCOPE_ANOMALY_ONLY, filters["event_scope"])
         self.assertEqual("ALL", self.widget._filter_status)
 
+    def test_query_mode_exposes_quick_review_splitter(self) -> None:
+        self.assertIsNotNone(self.widget.quick_review_panel)
+        self.assertIsNotNone(self.widget._result_splitter)
+        self.assertEqual(
+            self.widget._result_splitter.indexOf(self.widget.table),
+            0,
+        )
+        self.assertEqual(
+            self.widget._result_splitter.indexOf(self.widget.quick_review_panel),
+            1,
+        )
+
+    def test_table_selection_populates_quick_review(self) -> None:
+        with patch(
+            "ui.widgets.event_quick_review_panel._anomaly_service.get_anomaly_detail",
+            return_value={"status": "待處理", "problem_desc": "問題-0"},
+        ), patch(
+            "ui.widgets.event_quick_review_panel._anomaly_workbench_service.get_overview_card",
+            return_value={
+                "overdue": False,
+                "open_action_count": 0,
+                "current_action": None,
+                "root_cause_status": "尚未開始",
+                "corrective_action_status": "—",
+                "verification_result": "—",
+                "attachment_count": 0,
+            },
+        ):
+            self.widget.table.selectRow(0)
+            self._drain_events()
+            self.assertFalse(self.widget.quick_review_panel._empty_state.isVisible())
+            self.assertTrue(self.widget.quick_review_panel.primary_button.isVisible())
+
     def test_subsequent_quick_filter_without_month_clears_month(self) -> None:
         self.widget.apply_quick_filters(
             event_type="ANOMALY",

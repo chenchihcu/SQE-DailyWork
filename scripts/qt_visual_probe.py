@@ -501,11 +501,14 @@ def _stress_event_rows() -> list[dict]:
     scopes = ("ANOMALY", "ANOMALY")
     rows = []
     for index in range(24):
+        event_type = scopes[index % len(scopes)]
         rows.append(
             {
                 "id": f"evt-{index}",
-                "event_date": f"2026-{(index % 12) + 1:02d}-15",
-                "event_type": scopes[index % len(scopes)],
+                "event_id": f"evt-{index}",
+                "ref_no": f"20260715{index % 1000:03d}" if event_type == "ANOMALY" else "",
+                "event_date": f"2026-{VISUAL_REFERENCE_DATE[1]:02d}-{(index % 28) + 1:02d}",
+                "event_type": event_type,
                 "supplier_name": LONG_SUPPLIER if index == 0 else f"供應商-{index:02d}-長名稱股份有限公司",
                 "product_name": LONG_PRODUCT if index == 1 else f"產品-{index:02d}-精密組件",
                 "product_code": f"ITEM-{index:04d}",
@@ -520,6 +523,34 @@ def _stress_event_rows() -> list[dict]:
             }
         )
     return rows
+
+
+def _quick_review_probe_overview() -> dict:
+    return {
+        "overdue": True,
+        "current_action": {
+            "id": "probe-action-1",
+            "description": "完成 D3 暫時對策並回報驗證結果",
+            "due_date": "2099-12-31 18:00:00",
+        },
+        "open_action_count": 1,
+        "root_cause_status": "調查中",
+        "corrective_action_status": "—",
+        "verification_result": "—",
+        "attachment_count": 2,
+    }
+
+
+def _quick_review_probe_detail() -> dict:
+    return {
+        "anomaly_no": "20260715000",
+        "supplier_name": LONG_SUPPLIER,
+        "product_code": "ITEM-0000",
+        "product_stage": "試產",
+        "category": "錫橋短路",
+        "status": "待處理",
+        "problem_desc": "異常內容描述-0-長文字內容測試省略與 tooltip 行為驗證",
+    }
 
 
 def _stress_supplier_rows() -> list[dict]:
@@ -655,14 +686,36 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
 
     from database import repository
     from database.connection import initialize_database
+    from services.event import _anomaly_service, _anomaly_workbench_service
+    from ui.layout_constants import EVENT_LIST_PREVIEW_COLLAPSE_WIDTH
     from ui.widgets.defect_list_widget import EventListWidget
 
     initialize_database()
     screenshots: list[str] = []
-    with patch("services.event_service.list_events", return_value=_stress_event_rows()):
+    capture_size = size or (1280, 720)
+    if capture_size[0] < EVENT_LIST_PREVIEW_COLLAPSE_WIDTH:
+        capture_size = (EVENT_LIST_PREVIEW_COLLAPSE_WIDTH, capture_size[1])
+    with (
+        patch("services.event._query_service.list_events", return_value=_stress_event_rows()),
+        patch.object(
+            _anomaly_service,
+            "get_anomaly_detail",
+            return_value=_quick_review_probe_detail(),
+        ),
+        patch.object(
+            _anomaly_workbench_service,
+            "get_overview_card",
+            return_value=_quick_review_probe_overview(),
+        ),
+        patch.object(
+            _anomaly_workbench_service,
+            "list_attachments",
+            return_value=[],
+        ),
+    ):
         widget = EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False)
         _stabilize_event_list_probe(widget)
-        widget.resize(*(size or (1180, 720)))
+        widget.resize(*capture_size)
         widget.show()
         app.processEvents()
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -694,6 +747,25 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
             except Exception:
                 pass
             _settle_qt_paint(app, delay_ms=80, cycles=2)
+            if index == 0:
+                target_empty = _target_output_path(output, "event-list-scope0-empty-preview")
+                _save_widget_capture(widget, target_empty)
+                screenshots.append(str(target_empty))
+                if widget.table.rowCount() > 0:
+                    widget.table.selectRow(0)
+                    widget._on_table_selection_changed()
+                    _settle_qt_paint(app, delay_ms=80, cycles=2)
+                    target_selected = _target_output_path(
+                        output, "event-list-scope0-selected"
+                    )
+                    _save_widget_capture(widget, target_selected)
+                    screenshots.append(str(target_selected))
+                    widget.table.clearSelection()
+                    widget.table.setCurrentCell(-1, -1)
+                    if widget.table.selectionModel() is not None:
+                        widget.table.selectionModel().clear()
+                    widget._on_table_selection_changed()
+                    _settle_qt_paint(app, delay_ms=80, cycles=2)
             target = _target_output_path(output, f"event-list-scope{index}")
             _save_widget_capture(widget, target)
             screenshots.append(str(target))
