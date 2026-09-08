@@ -305,6 +305,20 @@ class AnomalyManagementPageTests(unittest.TestCase):
             page.load_anomaly("anomaly-1")
             self.assertEqual(0, page.repeat_issues_panel._table.rowCount())
 
+    def test_repeat_button_opens_dedicated_repeat_page(self) -> None:
+        main_window = mock.Mock()
+        page = AnomalyManagementPage(main_window)
+        self._pages.append(page)
+        with mock.patch.object(
+            repeat_issue_service,
+            "list_repeat_issues",
+            return_value=[{"peer_anomaly_id": "aid-2", "similarity_score": 80}],
+        ):
+            page.load_anomaly("anomaly-1")
+            self.assertEqual("潛在重複 (1)", page.repeat_button.text())
+            page.repeat_button.click()
+            main_window.open_repeat_issues_management.assert_called_once_with("anomaly-1")
+
 
 if __name__ == "__main__":
     unittest.main()

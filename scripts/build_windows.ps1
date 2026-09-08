@@ -21,6 +21,7 @@ $finalZipPath = Join-Path $finalDistRoot "SQE_DailyWork-win64.zip"
 $releaseSummaryPath = Join-Path $repoRoot "scratch\release-gate-summary.json"
 $previousReleaseSummaryPath = Join-Path $repoRoot "scratch\release-gate-summary.previous.json"
 $smokeHelper = Join-Path $PSScriptRoot "release_smoke_helpers.ps1"
+$runtimeDependencyFloorScript = Join-Path $PSScriptRoot "assert_runtime_dependency_floor.py"
 
 function Assert-ChildPath {
     param(
@@ -268,6 +269,13 @@ try {
         throw "PyInstaller/PySide6 toolchain is unavailable in .venv"
     }
     Write-Host "Toolchain: $toolchain"
+
+    Write-Host ""
+    Write-Host "[2a/8] Enforce runtime dependency security floor"
+    & $pythonExe $runtimeDependencyFloorScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Runtime dependency security floor failed with exit code $LASTEXITCODE"
+    }
 
     Write-Host ""
     Write-Host "[3/8] Build onedir with a sanitized native-library PATH"

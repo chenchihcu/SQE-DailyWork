@@ -97,6 +97,11 @@ class AnomalyManagementPage(QWidget):
         self.reopen_button.setProperty("variant", "secondary")
         self.reopen_button.clicked.connect(self._open_reopen_dialog)
         header_layout.addWidget(self.reopen_button)
+        self.repeat_button = QPushButton("潛在重複 (0)")
+        self.repeat_button.setAccessibleName("潛在重複異常")
+        self.repeat_button.setProperty("variant", "secondary")
+        self.repeat_button.clicked.connect(self._open_repeat_issues_page)
+        header_layout.addWidget(self.repeat_button)
         self.edit_button = QPushButton("編輯")
         self.edit_button.setAccessibleName("編輯異常")
         self.edit_button.setProperty("variant", "primary")
@@ -111,6 +116,7 @@ class AnomalyManagementPage(QWidget):
         self.repeat_issues_panel.open_anomaly_requested.connect(
             self._open_repeat_issue_anomaly
         )
+        self.repeat_issues_panel.hide()
         root.addWidget(self.repeat_issues_panel)
 
         self.tabs = QTabWidget()
@@ -151,9 +157,31 @@ class AnomalyManagementPage(QWidget):
             self.stage_stepper.set_case_state(self._detail, self._overview)
         if hasattr(self, "repeat_issues_panel"):
             self.repeat_issues_panel.load_anomaly(anomaly_key)
+            self.repeat_issues_panel.hide()
+        self._update_repeat_button(anomaly_key)
         self._render_tabs()
         if edit:
             self.begin_edit()
+
+    def _update_repeat_button(self, anomaly_key: str) -> None:
+        count = 0
+        try:
+            from services import repeat_issue_service
+            rows = repeat_issue_service.list_repeat_issues(anomaly_key)
+            count = len(rows)
+        except Exception:
+            count = 0
+        self.repeat_button.setText(f"潛在重複 ({count})")
+        if count > 0:
+            self.repeat_button.setProperty("variant", "primary")
+            self.repeat_button.setToolTip(f"發現 {count} 筆潛在重複歷史異常，點擊前往獨立檢閱與判定管理")
+        else:
+            self.repeat_button.setProperty("variant", "secondary")
+            self.repeat_button.setToolTip("查看此案件的潛在重複異常比對")
+
+    def _open_repeat_issues_page(self) -> None:
+        if hasattr(self.main_window, "open_repeat_issues_management"):
+            self.main_window.open_repeat_issues_management(self._anomaly_id)
 
     def _render_header(self) -> None:
         number = self._detail.get("anomaly_no") or self._anomaly_id

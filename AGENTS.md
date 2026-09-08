@@ -21,6 +21,7 @@ global baseline.
 - Execution plans: `docs/exec-plans/active/` and `docs/exec-plans/completed/`.
 - Data backup: `scripts/backup_data.ps1`.
 - Verification gate: `scripts/verify.ps1`; harness structure check: `scripts/harness_check.ps1`.
+- Detailed test patterns & harness rules: `docs/harness/test-patterns.md`.
 - Native Qt visual probe: `scripts/qt_visual_probe.py`.
 - Command policy: `.codex/rules/project.rules`.
 
@@ -91,7 +92,7 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Desktop QSS**: Prefer QSS roles (`role`, `variant`) and theme tokens over ad-hoc per-widget `setStyleSheet`, except where already established (e.g. tech-transfer cards).
 - **Rename before Delete**: When removing fields, rename them first (e.g., `status` -> `status_DELETING`) to let the compiler highlight all references.
 - **Grep Search**: After changes, verify application directories (`src/database/`, `src/services/`, `src/ui/`) are clean of old terms.
-- **Trace & Keyword Simplification Pass (行為不變精簡)**: When DRY-ing ERP trace / SMT keyword additions, loop `TRACE_FIELD_PATTERN_KEYS` / `TRACE_FIELD_LABELS` instead of hardcoding four field keys; reuse `_assert_trace_field_pattern` (validator), `_anomaly_write_fields` (anomaly CRUD), and `processing_line_source_hint` (NCR→異常 handoff). Do not change locked `ValueError` copy (`ERP 格式規則`, `格式不符合`)—`tests/test_anomaly_trace_fields.py` asserts them. Exclude from simplify passes: `anomaly_trace_contract`, migrations/repository schema, `list_column_contract`, `layout_constants`, paired stats pareto pipelines in `stats_view_widget`, and wiring `find_anomaly_trace_duplicate` unless explicitly requested. Qt create-form submit tests must set `anomaly_source` before `_on_submit()` or mocks never fire.
+- **Trace & Keyword Simplification Pass (行為不變精簡)**: When DRY-ing ERP trace / SMT keyword additions, loop pattern keys and reuse validators/write fields per `docs/architecture-workflow-contract.md`; do not change locked `ValueError` copy (`ERP 格式規則`, `格式不符合`). Full rules in `docs/harness/test-patterns.md` §2.
 - **Workbench dialog enum SSOT**: Loop `ANOMALY_*_STATUSES` / `ANOMALY_EVIDENCE_TYPES` + `ANOMALY_EVIDENCE_LABELS` from `repo_helpers`; no local `EVIDENCE_OPTIONS` or identity-map dicts.
 - **Startup Performance & Heavy Dependency Lazy Loading**:
   - **Heavy 3rd-party dependencies**: Heavy libraries (e.g. `openpyxl`, `reportlab`, `matplotlib`) must never be imported statically at module level in services or UI classes loaded during startup. Always import them inside the specific function or method where they are invoked.
@@ -110,19 +111,7 @@ Every core design change must be reflected across the entire stack. Never leave 
   - **GlobalSearchDialog tests**: Dialog `parent` must be `QWidget`; stub routing with `QWidget` + mocked methods, not `MagicMock` as parent.
   - **Full-page Qt tearDown**: Shared `QWidget` `_host` + tracked `_pages`; close tracked pages only—never `topLevelWidgets()` sweep (closes `_host`). No `mock.Mock()` parent; mock tab service calls. No `DeferredDelete` flush in same module (SEH).
   - **CI unittest hang watchdog**: `tests/hang_watchdog.py` arms on `GITHUB_ACTIONS` or `SQE_TEST_HANG_SECONDS>0` (CI default 180s). Dump all-thread traceback and `os._exit(3)` instead of waiting for the job timeout. CI `verify.ps1` uses `PYTHONUNBUFFERED=1` and unittest `-v`. A cancelled job is not a green gate.
-- **Migration and harness test patterns**:
-  - **defect_supplier_id backfill tests**: `defect_supplier_id_backfill_v1` runs once at `create_schema` when `migration_meta` ≠ `1`; test backfill success by inserting supplier+defect after first schema, deleting the meta key, then re-running `create_schema`; memory DB `defect_records` inserts need `defect_no, event_date, processing_line, item_no, qty, defect_desc, status, created_at`.
-  - **Harness membership**: After adding tracked source/tests, update `docs/harness/source-baseline-manifest.md` live count (`(git ls-files --cached --others --exclude-standard | Where-Object { Test-Path $_ }).Count`) before `harness_check.ps1` membership drift fails.
-  - **Verify Full runner coverage**: Full `scripts/verify.ps1` runs `unittest discover -s tests`, then `ncr.tests.test_core` + `ncr.tests.test_supplier_sync`, then pytest on `test_anomaly_folder_creation.py`, `test_attachment_rename.py`, `test_table_sorting.py`. Do not assume `unittest discover` alone covers NCR or pytest module-level tests.
-  - **Disposable DB path assertions**: Under `SQE_DB_PATH`, `DATA_DIR` resolves to the override parent—not `PROJECT_ROOT / "data"`. Attachment/export path tests must assert against `app_paths.data_dir()`, not a hard-coded repo `data/` path.
-  - **NCR in-memory supplier-sync tests**: `create_defect` tests need `processing_line` (`原物料` / `委外加工`) and a stub shared `suppliers` table so `_sync_and_resolve_supplier_id` runs; `supplier_records` alone is insufficient without the shared-master gate table.
-  - **NCR export column assertions**: Excel detail asserts must track `DETAIL_EXPORT_COLUMNS` order (e.g. `processing_line` precedes `item_no`); do not keep stale cell letters from pre-export-layout schemas.
-  - **Visual baseline refresh contract**: Regenerate required baselines with the same verified disposable DB as verify (`scripts/sqlite_backup.py` formal→scratch, set `SQE_DB_PATH` + `SQE_REQUIRE_DISPOSABLE_DB=1`). Data-bound targets (`stats-stress`, charts) false-fail if refreshed against a different DB snapshot.
-  - **Build traceability**: `build_windows.ps1` calls `write_build_info.py --output <staging>/build-info.json`; it never rewrites tracked `src/build_info.py`. Distro metadata records git/toolchain/zip SHA-256; startup logs `build_label()`.
-  - **NCR create embedding smoke**: Assert `CreateWorkflowShell.content_scroll` hosts `NcrCreateFormContent` and that `fields_widget` lives in that subtree—never `content_scroll.widget() is fields_widget`.
-  - **Workflow smoke trace contract**: `scripts/smoke_test_v2.py` must set `anomaly_source` (e.g. `訪廠／稽核` when trace ERP patterns are unset) and must not expect `supplier_id IS NULL` products inside `list_active_products_for_supplier` (strict mode).
-  - **Exec-plan lifecycle**: Completed plans belong in `docs/exec-plans/completed/` only; `harness_check.ps1` fails if `active/` contains `Plan status: completed`.
-  - **VIEW / repeat-links migration guards**: VIEW readiness via `sqlite_master.sql` or COUNT, not `_table_exists`; `product_records` VIEW filters `is_active=1` (Promotion CLI); `refresh_repeat_links_for_suppliers` calls `require_repeat_links_schema` before write (symmetric with `list_repeat_issues`).
+- **Migration and harness test patterns**: Follow authoritative test patterns in `docs/harness/test-patterns.md` §1 (covering defect supplier backfill, harness membership updates, Full verify runner coverage, disposable DB paths, NCR in-memory sync, visual baseline refresh, build traceability, workflow smoke trace, and VIEW migration guards). Exec-plans must follow lifecycle rules: completed plans belong in `docs/exec-plans/completed/` only (`harness_check.ps1` fails if `active/` contains completed plans).
 
 
 ## 4.1 Design Framework Cross-Reference

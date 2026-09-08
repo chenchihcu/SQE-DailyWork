@@ -18,6 +18,22 @@ _SPEC.loader.exec_module(_AUDIT_MODULE)
 MIGRATION_META_KEYS = _AUDIT_MODULE.MIGRATION_META_KEYS
 build_promotion_status_report = _AUDIT_MODULE.build_promotion_status_report
 
+_RUNTIME_FLOOR_MODULE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "assert_runtime_dependency_floor.py"
+)
+_RUNTIME_FLOOR_SPEC = importlib.util.spec_from_file_location(
+    "assert_runtime_dependency_floor",
+    _RUNTIME_FLOOR_MODULE_PATH,
+)
+assert _RUNTIME_FLOOR_SPEC and _RUNTIME_FLOOR_SPEC.loader
+_RUNTIME_FLOOR_MODULE = importlib.util.module_from_spec(_RUNTIME_FLOOR_SPEC)
+_RUNTIME_FLOOR_SPEC.loader.exec_module(_RUNTIME_FLOOR_MODULE)
+build_runtime_dependency_floor_report = (
+    _RUNTIME_FLOOR_MODULE.build_runtime_dependency_floor_report
+)
+
 
 class AuditFormalDbPromotionStatusTests(unittest.TestCase):
     def test_missing_database_is_not_ready(self) -> None:
@@ -67,6 +83,7 @@ class VerifyReleaseProfileContractTests(unittest.TestCase):
         self.assertIn("release-gate-summary.json", verify_script)
         self.assertIn("release-gate-summary.previous.json", verify_script)
         self.assertIn('Write-ReleaseSummary -Passed $false', verify_script)
+        self.assertIn("assert_runtime_dependency_floor.py", verify_script)
 
     def test_build_windows_records_zip_sha256_field(self) -> None:
         build_script = Path("scripts/build_windows.ps1").read_text(encoding="utf-8")
@@ -75,6 +92,7 @@ class VerifyReleaseProfileContractTests(unittest.TestCase):
         self.assertIn("sanitized native-library PATH", build_script)
         self.assertIn("Assert-PyInstallerCollection", build_script)
         self.assertIn("Archive-VerifiedCurrentArtifact", build_script)
+        self.assertIn("assert_runtime_dependency_floor.py", build_script)
 
     def test_packaging_spec_does_not_collect_all_qt_or_tests(self) -> None:
         spec = Path("scripts/sqe_dailywork.spec").read_text(encoding="utf-8")
@@ -118,6 +136,38 @@ class VerifyReleaseProfileContractTests(unittest.TestCase):
         self.assertIn('"appearance-settings"', release_visual_script)
         self.assertIn('"manager-view"', release_visual_script)
         self.assertIn("--update", release_visual_script)
+
+
+class RuntimeDependencyFloorTests(unittest.TestCase):
+    def test_vulnerable_pillow_version_fails_closed(self) -> None:
+        report = build_runtime_dependency_floor_report(
+            lambda distribution: "12.2.0"
+        )
+
+        self.assertEqual("fail", report["result"])
+        self.assertEqual(1, len(report["failures"]))
+        self.assertEqual("Pillow", report["failures"][0]["distribution"])
+
+    def test_patched_pillow_version_passes_floor(self) -> None:
+        report = build_runtime_dependency_floor_report(
+            lambda distribution: "12.3.0"
+        )
+
+        self.assertEqual("pass", report["result"])
+        self.assertEqual([], report["failures"])
+
+    def test_prerelease_pillow_version_fails_closed(self) -> None:
+        report = build_runtime_dependency_floor_report(
+            lambda distribution: "12.3.0rc1"
+        )
+
+        self.assertEqual("fail", report["result"])
+        self.assertEqual("12.3.0rc1", report["failures"][0]["installed"])
+
+    def test_requirements_declare_the_security_floor(self) -> None:
+        requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+        self.assertIn("Pillow>=12.3.0", requirements)
 
 
 if __name__ == "__main__":

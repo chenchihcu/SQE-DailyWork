@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +29,8 @@ LONG_PRODUCT = "倉庫產品名稱-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ精密組件"
 MIN_WIDTH_SIZE = (1024, 680)
 VISUAL_REFERENCE_DATE = (2026, 8, 31)
 VISUAL_REFERENCE_MONTH_RANGE = ("202603", "202608")
+MASTER_DATA_FIXTURE_ID = "master-data-stress-v1"
+EMPTY_STATES_FIXTURE_ID = "empty-states-v1"
 
 
 def _stabilize_main_probe(window) -> None:
@@ -130,6 +134,28 @@ def _stabilize_event_list_probe(widget) -> None:
         widget.month_input.setDate(
             QDate(VISUAL_REFERENCE_DATE[0], VISUAL_REFERENCE_DATE[1], 1)
         )
+
+
+def _position_probe_cursor_at_safe_corner(widget) -> None:
+    """Keep the native cursor outside interactive content before a capture."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QCursor
+
+    try:
+        QCursor.setPos(widget.mapToGlobal(QPoint(8, 8)))
+    except Exception:
+        # Cursor placement is a visual-stability aid; the native capture still
+        # proceeds when the host desktop does not expose a movable cursor.
+        pass
+
+
+def _stabilize_master_data_probe(widget, app: "QApplication") -> None:
+    """Remove workstation hover state while retaining the query-focus contract."""
+    if getattr(widget, "query_input", None) is not None:
+        widget.query_input.setFocus()
+    _position_probe_cursor_at_safe_corner(widget)
+    _settle_qt_paint(app, delay_ms=80, cycles=2)
+    _clear_widget_hover_state(widget)
 
 
 def _stabilize_month_range_probe(widget, *, refresh: bool) -> None:
@@ -556,6 +582,160 @@ def _stress_product_rows() -> list[dict]:
     return rows
 
 
+def _master_data_fixture() -> dict[str, object]:
+    from database.product_item_category import (
+        ITEM_CATEGORY_RAW_MATERIAL,
+        MASTER_SEMI_FINISHED_CATEGORIES,
+    )
+    from database.supplier_category import (
+        SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+        SUPPLIER_CATEGORY_RAW_MATERIAL,
+    )
+
+    supplier_rows = _stress_supplier_rows()
+    for index, row in enumerate(supplier_rows):
+        row["category"] = (
+            SUPPLIER_CATEGORY_RAW_MATERIAL
+            if index < 12
+            else SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
+        )
+
+    product_rows = _stress_product_rows()
+    semi_finished_categories = tuple(MASTER_SEMI_FINISHED_CATEGORIES)
+    for index, row in enumerate(product_rows):
+        row["item_category"] = (
+            ITEM_CATEGORY_RAW_MATERIAL
+            if index < 10
+            else semi_finished_categories[index % len(semi_finished_categories)]
+        )
+
+    return {
+        "id": MASTER_DATA_FIXTURE_ID,
+        "supplier_rows": supplier_rows,
+        "product_rows": product_rows,
+    }
+
+
+def _master_data_fixture_provenance(fixture: dict[str, object]) -> dict[str, object]:
+    payload = {
+        "id": fixture["id"],
+        "supplier_rows": fixture["supplier_rows"],
+        "product_rows": fixture["product_rows"],
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    supplier_rows = fixture["supplier_rows"]
+    product_rows = fixture["product_rows"]
+    return {
+        "id": fixture["id"],
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "supplier_row_count": len(supplier_rows),
+        "product_row_count": len(product_rows),
+    }
+
+
+def _empty_states_fixture() -> dict[str, object]:
+    return {
+        "id": EMPTY_STATES_FIXTURE_ID,
+        "event_rows": [],
+        "supplier_rows": [],
+        "product_rows": [],
+        "ncr_placeholder": {
+            "title": "倉庫不合格品模組暫時無法載入",
+            "hint": "原因：資料庫初始化失敗\n\n請確認資料庫檔案後重新啟動程式。",
+        },
+    }
+
+
+def _empty_states_fixture_provenance(fixture: dict[str, object]) -> dict[str, object]:
+    payload = {
+        "id": fixture["id"],
+        "event_rows": fixture["event_rows"],
+        "supplier_rows": fixture["supplier_rows"],
+        "product_rows": fixture["product_rows"],
+        "ncr_placeholder": fixture["ncr_placeholder"],
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "id": fixture["id"],
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "event_row_count": len(fixture["event_rows"]),
+        "supplier_row_count": len(fixture["supplier_rows"]),
+        "product_row_count": len(fixture["product_rows"]),
+    }
+
+
+@contextmanager
+def _patched_master_data_fixture(fixture: dict[str, object]):
+    from unittest.mock import patch
+
+    from ui.widgets import master_data_widget
+
+    supplier_rows = fixture["supplier_rows"]
+    product_rows = fixture["product_rows"]
+
+    def list_suppliers(*, category: str | None = None, **_kwargs) -> list[dict]:
+        if category is None:
+            return list(supplier_rows)
+        return [row for row in supplier_rows if row.get("category") == category]
+
+    def list_products(
+        *,
+        item_categories: tuple[str, ...] | None = None,
+        **_kwargs,
+    ) -> list[dict]:
+        if item_categories is None:
+            return list(product_rows)
+        categories = set(item_categories)
+        return [row for row in product_rows if row.get("item_category") in categories]
+
+    with (
+        patch.object(
+            master_data_widget._supplier_service,
+            "list_suppliers",
+            side_effect=list_suppliers,
+        ),
+        patch.object(
+            master_data_widget._product_service,
+            "list_products",
+            side_effect=list_products,
+        ),
+    ):
+        yield
+
+
+@contextmanager
+def _patched_empty_master_data(fixture: dict[str, object] | None = None):
+    """Keep the empty-state Master Data capture independent of the live DB."""
+    from unittest.mock import patch
+
+    from ui.widgets import master_data_widget
+
+    fixture = fixture or _empty_states_fixture()
+    with (
+        patch.object(
+            master_data_widget._supplier_service,
+            "list_suppliers",
+            return_value=list(fixture["supplier_rows"]),
+        ),
+        patch.object(
+            master_data_widget._product_service,
+            "list_products",
+            return_value=list(fixture["product_rows"]),
+        ),
+    ):
+        yield
+
+
 def _capture_main_window(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
     from database.connection import initialize_database
     from ui.main_window import MainWindow, EVENT_PAGE_INDEX
@@ -702,9 +882,12 @@ def _capture_event_list(output: Path, app: "QApplication", size: tuple[int, int]
     return screenshots
 
 
-def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    from unittest.mock import patch
-
+def _capture_master_data(
+    output: Path,
+    app: "QApplication",
+    size: tuple[int, int] | None,
+    fixture: dict[str, object] | None = None,
+) -> list[str]:
     from database.connection import initialize_database
     from database.product_item_category import (
         ITEM_CATEGORY_RAW_MATERIAL,
@@ -756,10 +939,8 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
             ),
         ),
     ]
-    with (
-        patch("services.event_service.list_suppliers", return_value=_stress_supplier_rows()),
-        patch("services.event_service.list_products", return_value=_stress_product_rows()),
-    ):
+    fixture = fixture or _master_data_fixture()
+    with _patched_master_data_fixture(fixture):
         host = _ProbeHost()
         output.parent.mkdir(parents=True, exist_ok=True)
         for suffix, factory in page_specs:
@@ -777,9 +958,7 @@ def _capture_master_data(output: Path, app: "QApplication", size: tuple[int, int
                 widget.product_table.setCurrentCell(-1, -1)
             if hasattr(widget, "_sync_action_buttons"):
                 widget._sync_action_buttons()
-            if hasattr(widget, "query_input"):
-                widget.query_input.setFocus()
-            app.processEvents()
+            _stabilize_master_data_probe(widget, app)
             target = _target_output_path(output, suffix)
             _save_widget_capture(widget, target)
             screenshots.append(str(target))
@@ -932,19 +1111,26 @@ def _capture_ncr_tracker(output: Path, app: "QApplication", size: tuple[int, int
     return screenshots
 
 
-def _capture_empty_states(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+def _capture_empty_states(
+    output: Path,
+    app: "QApplication",
+    size: tuple[int, int] | None,
+    fixture: dict[str, object] | None = None,
+) -> list[str]:
     from unittest.mock import patch
 
     from database.connection import initialize_database
     from ui.widgets.defect_list_widget import EventListWidget
     from ui.widgets.master_data_widget import MasterDataWidget
 
+    fixture = fixture or _empty_states_fixture()
     initialize_database()
     screenshots: list[str] = []
     with (
-        patch("services.event_service.list_events", return_value=[]),
-        patch("services.event_service.list_suppliers", return_value=[]),
-        patch("services.event_service.list_products", return_value=[]),
+        patch("services.event_service.list_events", return_value=fixture["event_rows"]),
+        patch("services.event_service.list_suppliers", return_value=fixture["supplier_rows"]),
+        patch("services.event_service.list_products", return_value=fixture["product_rows"]),
+        _patched_empty_master_data(fixture),
     ):
         event_widget = EventListWidget(_ProbeHost(), mode="query", fixed_scope=None, lazy_load=False)
         _stabilize_event_list_probe(event_widget)
@@ -963,9 +1149,10 @@ def _capture_empty_states(output: Path, app: "QApplication", size: tuple[int, in
     # component and QSS roles as MainWindow, not an unstyled QLabel.
     from ui.widgets.common_widgets import EmptyStateWidget
 
+    ncr_placeholder = fixture["ncr_placeholder"]
     placeholder = EmptyStateWidget(
-        "倉庫不合格品模組暫時無法載入",
-        "原因：資料庫初始化失敗\n\n請確認資料庫檔案後重新啟動程式。",
+        ncr_placeholder["title"],
+        ncr_placeholder["hint"],
     )
     placeholder.setObjectName("NcrUnavailablePlaceholder")
     placeholder.resize(*(size or (1180, 720)))
@@ -1052,14 +1239,23 @@ def _workbench_overview_payload() -> dict:
     """Return a representative read-model payload for AnomalyManagementPage.
 
     The probe mocks every read-side service call so the workbench can render
-    full CJK content without touching the disposable DB. Each list is sized to
-    exercise the scroll body, footer, and section-card density.
+    full CJK content without touching the disposable DB. The fixture exercises
+    the compact three-tab workbench, conditional trace rows, latest Supplier 8D
+    summary, and the scroll body at the minimum desktop width.
     """
 
     return {
         "detail": {
             "anomaly_no": "20260615001",
             "supplier_name": LONG_SUPPLIER,
+            "anomaly_date": "2026-06-15",
+            "product_name": LONG_PRODUCT,
+            "product_code": "355001-000057",
+            "category": "設計匹配不良",
+            "source_defect_no": "NCR-20260615-001",
+            "process_keywords": "印刷\n回焊",
+            "batch_qty": 1200,
+            "problem_desc": "實物端子無法與母座端子接頭，無法組裝接合。",
             "status": "待處理",
             "pending_items": "向供應商確認 8D 報告並回填改善措施",
             "responsible_person": "品保工程師 王小明",
@@ -1089,6 +1285,7 @@ def _workbench_overview_payload() -> dict:
                 "進一步以 5-Why 釐清人員未依標準作業書更新模具溫度。"
             ),
             "validation_method": "30 天監控量測資料並比對 SPC 管制圖",
+            "validation_evidence": "尺寸量測平均值 12.07 mm（規格 12.00 ± 0.05）。",
         },
         "analysis_notes": [
             {
@@ -1258,6 +1455,7 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
 
     from services.event import _anomaly_service, _anomaly_workbench_service, _case_action_service
     from ui.widgets.anomaly_management_page import AnomalyManagementPage
+    from PySide6.QtWidgets import QWidget
 
     payload = _workbench_overview_payload()
 
@@ -1311,9 +1509,15 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
     try:
         page = AnomalyManagementPage(_ProbeHost())
         page.load_anomaly("probe-workbench")
+        if page.tabs.count() != 3:
+            raise AssertionError("Anomaly workbench must expose exactly three tabs")
+        if page.findChild(QWidget, "CaseStageStepper") is not None:
+            raise AssertionError("Anomaly workbench stage stepper must be removed")
+        if page.close_button.isHidden() or not page.reopen_button.isHidden():
+            raise AssertionError("Open-case lifecycle action visibility is invalid")
         page.resize(*(size or (1024, 720)))
         for index, suffix in enumerate(
-            ("overview", "timeline", "analysis", "eight-d", "corrective", "attachments", "history")
+            ("workbench", "attachments", "timeline")
         ):
             page.tabs.setCurrentIndex(index)
             _settle_qt_paint(app, delay_ms=100, cycles=2)
@@ -1347,7 +1551,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
     from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
     from ui.widgets.add_verification_dialog import AddVerificationDialog
     from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
-    from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
     from ui.widgets.complete_action_dialog import CompleteActionDialog
 
     initialize_database()
@@ -1390,16 +1593,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
     )
     _capture_dialog(action_dialog, "dialog-density-add-action")
 
-    note_dialog = AnomalyNoteDialog("probe-density", parent=None)
-    _fill(
-        note_dialog,
-        content_input=(
-            "現場量測 30 筆資料，NG 率 3.9%，主要為尺寸超公差；"
-            "建議將 SPC 管制圖作為有效性驗證證據。"
-        ),
-    )
-    _capture_dialog(note_dialog, "dialog-density-add-note")
-
     from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
 
     root_cause_dialog = AnomalyRootCauseDialog("probe-density", parent=None)
@@ -1414,14 +1607,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         root_cause_dialog.status_combo.setCurrentIndex(verified_index)
     _capture_dialog(root_cause_dialog, "dialog-density-edit-root-cause")
 
-    from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
-
-    hypothesis_dialog = AnomalyHypothesisDialog("probe-density", parent=None)
-    _fill(
-        hypothesis_dialog,
-        statement_input="錫膏回溫時間不足導致印刷厚度偏低。",
-    )
-    _capture_dialog(hypothesis_dialog, "dialog-density-edit-hypothesis")
 
     from ui.widgets.close_anomaly_dialog import CloseAnomalyDialog
     from ui.widgets.reopen_anomaly_dialog import ReopenAnomalyDialog
@@ -2013,6 +2198,12 @@ def main() -> int:
     screenshot_path = None
     screenshots: list[str] = []
     pdf_info: dict = {}
+    master_data_fixture = (
+        _master_data_fixture() if args.target == "master-data" else None
+    )
+    empty_states_fixture = (
+        _empty_states_fixture() if args.target == "empty-states" else None
+    )
     if not args.no_screenshot:
         if args.target == "stats-stress":
             screenshots = _capture_stats_stress(output, app, size)
@@ -2029,11 +2220,21 @@ def main() -> int:
         elif args.target == "event-list":
             screenshots = _capture_event_list(output, app, size)
         elif args.target == "master-data":
-            screenshots = _capture_master_data(output, app, size)
+            screenshots = _capture_master_data(
+                output,
+                app,
+                size,
+                master_data_fixture,
+            )
         elif args.target == "ncr-tracker":
             screenshots = _capture_ncr_tracker(output, app, size)
         elif args.target == "empty-states":
-            screenshots = _capture_empty_states(output, app, size)
+            screenshots = _capture_empty_states(
+                output,
+                app,
+                size,
+                empty_states_fixture,
+            )
         elif args.target == "pdf-export":
             pdf_info = _capture_pdf_export(output)
         elif args.target == "workbench":
@@ -2070,6 +2271,14 @@ def main() -> int:
         "screenshot": screenshot_path,
         "disposable_database": disposable_db,
     }
+    if master_data_fixture is not None:
+        result["fixture_provenance"] = _master_data_fixture_provenance(
+            master_data_fixture
+        )
+    if empty_states_fixture is not None:
+        result["fixture_provenance"] = _empty_states_fixture_provenance(
+            empty_states_fixture
+        )
     if screenshots:
         result["screenshots"] = screenshots
     if _QSS_WARNINGS:

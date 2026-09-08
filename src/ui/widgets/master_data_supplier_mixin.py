@@ -157,6 +157,9 @@ class _MasterDataSupplierMixin:
         self.supplier_table.cellClicked.connect(self._on_supplier_table_clicked)
         layout.addWidget(self.supplier_table, 1)
 
+        self.supplier_empty_state = self._build_master_empty_state()
+        layout.addWidget(self.supplier_empty_state, 1)
+
         self.supplier_pagination = PaginationBar(
             on_page_changed=self._on_supplier_page_changed,
             on_page_size_changed=self._on_supplier_page_size_changed,
@@ -217,6 +220,12 @@ class _MasterDataSupplierMixin:
             total_items=total_items,
             current_page=self._supplier_page,
             page_size=self._supplier_page_size,
+        )
+        self._update_master_empty_state(
+            table=self.supplier_table,
+            empty_state=self.supplier_empty_state,
+            total_items=total_items,
+            query_keyword=self._supplier_query_keyword,
         )
 
         if selected_supplier_id and selected_row_index is None:

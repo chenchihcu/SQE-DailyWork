@@ -95,6 +95,7 @@ from ui.window_sizing import (
 from ui.widgets.common_widgets import EmptyStateWidget
 from ui.widgets.lazy_page_widget import LazyPageWidget
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
+from ui.widgets.repeat_issues_management_page import RepeatIssuesManagementPage
 from ui.widgets.supplier_360_page import Supplier360Page
 from ui.widgets.supplier_event_ops_page import SupplierEventOpsPage
 from ui.widgets.supplier_overview_page import SupplierOverviewPage
@@ -123,6 +124,7 @@ SUPPLIER_OVERVIEW_PAGE_INDEX = ANOMALY_MANAGEMENT_PAGE_INDEX + 1
 SUPPLIER_360_PAGE_INDEX = SUPPLIER_OVERVIEW_PAGE_INDEX + 1
 EVENT_OPS_PAGE_INDEX = SUPPLIER_360_PAGE_INDEX + 1
 APPEARANCE_SETTINGS_PAGE_INDEX = EVENT_OPS_PAGE_INDEX + 1
+REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX = APPEARANCE_SETTINGS_PAGE_INDEX + 1
 # Compatibility aliases: legacy queue/manager pages now share the ops shell.
 MANAGER_VIEW_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
 EVENT_OVERDUE_QUEUE_PAGE_INDEX = EVENT_OPS_PAGE_INDEX
@@ -162,6 +164,10 @@ _PAGE_TITLES = {
     APPEARANCE_SETTINGS_PAGE_INDEX: (
         "顯示設定",
         "介面外觀、表格、表單預設、匯出與系統偏好",
+    ),
+    REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX: (
+        "潛在重複異常管理",
+        "比對同供應商歷史相似案件與重複判定",
     ),
 }
 
@@ -250,6 +256,7 @@ class MainWindow(QMainWindow):
         self._new_anomaly_page: QWidget | None = None
         self._appearance_preferences_page: QWidget | None = None
         self._anomaly_management_page: AnomalyManagementPage | None = None
+        self._repeat_issues_page: RepeatIssuesManagementPage | None = None
         self._ncr_pages: list[QWidget] = []
         self._setup_ui()
         self._global_search_shortcut = QShortcut(
@@ -622,6 +629,11 @@ class MainWindow(QMainWindow):
             APPEARANCE_SETTINGS_PAGE_INDEX,
             self._appearance_preferences_page,
         )
+        self._repeat_issues_page = RepeatIssuesManagementPage(self, self)
+        self.stack.insertWidget(
+            REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX,
+            self._repeat_issues_page,
+        )
 
         content_layout.addWidget(self.stack, 1)
         root.addWidget(content_area, 1)
@@ -725,7 +737,7 @@ class MainWindow(QMainWindow):
 
     def _sync_sidebar_active(self, page_index: int) -> None:
         """依目前頁面高亮導覽列；事件 scope 由頁內 chips 表示。"""
-        if page_index == ANOMALY_MANAGEMENT_PAGE_INDEX:
+        if page_index in (ANOMALY_MANAGEMENT_PAGE_INDEX, REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX):
             source_key = self._workbench_source_page_key
             if source_key in _OPS_FAMILY_PAGE_KEYS:
                 self.sidebar.set_active(("page", PAGE_EVENT_OPS))
@@ -916,6 +928,22 @@ class MainWindow(QMainWindow):
             return
         self._supplier_360_page.load_supplier(supplier_id)
         self._switch_primary_page(SUPPLIER_360_PAGE_INDEX)
+
+    def open_repeat_issues_management(
+        self,
+        anomaly_id: str | None = None,
+        supplier_id: str | None = None,
+    ) -> None:
+        """開啟潛在重複異常專屬管理頁面。"""
+        if self._repeat_issues_page is None:
+            return
+        try:
+            self._repeat_issues_page.load_case(anomaly_id=anomaly_id, supplier_id=supplier_id)
+        except Exception as exc:
+            logger.exception("開啟潛在重複異常管理頁失敗")
+            QMessageBox.critical(self, "錯誤", f"開啟潛在重複異常管理頁失敗：{exc}")
+            return
+        self._switch_primary_page(REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX)
 
     # ── Dialogs ─────────────────────────────────────────────────────────────
 

@@ -695,6 +695,7 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             on_delete_anomaly=self.delete_anomaly,
             on_close_anomaly=self.open_close_dialog,
             on_view_anomaly_details=self.open_anomaly_details,
+            on_view_repeat_issues=self.open_repeat_issues,
             on_reopen_anomaly=self.reopen_anomaly,
             on_update_closed_at=self.open_update_closed_at_dialog,
             on_send_line=self.send_line_brief_report,
@@ -714,6 +715,9 @@ class EventListWidget(QWidget, _EventListFilterMixin):
 
     def open_anomaly_details(self, anomaly_id: str):
         self._event_actions.open_anomaly_details(anomaly_id)
+
+    def open_repeat_issues(self, anomaly_id: str):
+        self._event_actions.open_repeat_issues(anomaly_id)
 
     def reopen_anomaly(self, anomaly_id: str, ref_no: str):
         self._event_actions.reopen_anomaly(anomaly_id, ref_no)

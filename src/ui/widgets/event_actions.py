@@ -23,6 +23,7 @@ ACTION_EDIT_ANOMALY = "edit_anomaly"
 ACTION_DELETE_ANOMALY = "delete_anomaly"
 ACTION_CLOSE_ANOMALY = "close_anomaly"
 ACTION_VIEW_ANOMALY_DETAILS = "view_anomaly_details"
+ACTION_VIEW_REPEAT_ISSUES = "view_repeat_issues"
 ACTION_REOPEN_ANOMALY = "reopen_anomaly"
 ACTION_UPDATE_CLOSED_AT = "update_closed_at"
 ACTION_SEND_LINE = "send_line"
@@ -43,6 +44,7 @@ def build_event_action_menu(
         return menu, action_map
 
     _add_action("案件詳情", ACTION_VIEW_ANOMALY_DETAILS)
+    _add_action("潛在重複異常", ACTION_VIEW_REPEAT_ISSUES)
     _add_action("刪除異常", ACTION_DELETE_ANOMALY)
     if str(row.get("status") or "").strip() == "待處理":
         _add_action("結案", ACTION_CLOSE_ANOMALY)
@@ -102,6 +104,7 @@ def dispatch_event_action(
     on_delete_anomaly: Callable[[str, str], None],
     on_close_anomaly: Callable[[str, str], None],
     on_view_anomaly_details: Callable[[str], None] | None = None,
+    on_view_repeat_issues: Callable[[str], None] | None = None,
     on_reopen_anomaly: Callable[[str, str], None] | None = None,
     on_update_closed_at: Callable[[str, str], None] | None = None,
     on_send_line: Callable[[dict], None] | None = None,
@@ -111,6 +114,9 @@ def dispatch_event_action(
         return
     if action_key == ACTION_VIEW_ANOMALY_DETAILS and on_view_anomaly_details:
         on_view_anomaly_details(event_id)
+        return
+    if action_key == ACTION_VIEW_REPEAT_ISSUES and on_view_repeat_issues:
+        on_view_repeat_issues(event_id)
         return
     if action_key == ACTION_EDIT_ANOMALY:
         on_edit_anomaly(event_id)
@@ -191,6 +197,18 @@ class EventActionsController:
             self._parent,
             "無法開啟案件詳情",
             "目前視窗未提供異常案件管理頁。",
+        )
+
+    def open_repeat_issues(self, anomaly_id: str) -> None:
+        """Open the dedicated repeat issues management route."""
+        open_management = getattr(self._main_window, "open_repeat_issues_management", None)
+        if callable(open_management):
+            open_management(anomaly_id)
+            return
+        QMessageBox.warning(
+            self._parent,
+            "無法開啟重複異常管理",
+            "目前視窗未提供潛在重複異常管理頁面。",
         )
 
     def delete_anomaly(self, anomaly_id: str, ref_no: str) -> None:

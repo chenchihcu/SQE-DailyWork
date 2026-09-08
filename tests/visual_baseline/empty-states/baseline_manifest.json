@@ -5,6 +5,13 @@
     "scale": "1.5",
     "device_pixel_ratio": 3.0
   },
+  "fixture_provenance": {
+    "id": "empty-states-v1",
+    "sha256": "0dc2ae6b3c3bc010a5e5109612d5c73eb96d274ae0efe4c79fed344432cfad89",
+    "event_row_count": 0,
+    "supplier_row_count": 0,
+    "product_row_count": 0
+  },
   "files": [
     "empty-states@1.5x_empty-event-list.png",
     "empty-states@1.5x_empty-master.png",
@@ -17,6 +24,13 @@
         "selected_font": "Microsoft JhengHei UI",
         "scale": "1.0",
         "device_pixel_ratio": 2.0
+      },
+      "fixture_provenance": {
+        "id": "empty-states-v1",
+        "sha256": "0dc2ae6b3c3bc010a5e5109612d5c73eb96d274ae0efe4c79fed344432cfad89",
+        "event_row_count": 0,
+        "supplier_row_count": 0,
+        "product_row_count": 0
       },
       "files": [
         "empty-states_empty-event-list.png",
@@ -31,6 +45,13 @@
         "scale": "1.25",
         "device_pixel_ratio": 2.5
       },
+      "fixture_provenance": {
+        "id": "empty-states-v1",
+        "sha256": "0dc2ae6b3c3bc010a5e5109612d5c73eb96d274ae0efe4c79fed344432cfad89",
+        "event_row_count": 0,
+        "supplier_row_count": 0,
+        "product_row_count": 0
+      },
       "files": [
         "empty-states@1.25x_empty-event-list.png",
         "empty-states@1.25x_empty-master.png",
@@ -43,6 +64,13 @@
         "selected_font": "Microsoft JhengHei UI",
         "scale": "1.5",
         "device_pixel_ratio": 3.0
+      },
+      "fixture_provenance": {
+        "id": "empty-states-v1",
+        "sha256": "0dc2ae6b3c3bc010a5e5109612d5c73eb96d274ae0efe4c79fed344432cfad89",
+        "event_row_count": 0,
+        "supplier_row_count": 0,
+        "product_row_count": 0
       },
       "files": [
         "empty-states@1.5x_empty-event-list.png",

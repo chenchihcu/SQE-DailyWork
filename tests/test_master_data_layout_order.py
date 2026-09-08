@@ -62,7 +62,7 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
         self._list_products_patch.stop()
         self._list_suppliers_patch.stop()
 
-    def test_supplier_page_uses_toolbar_and_table_only_panel(self) -> None:
+    def test_supplier_page_uses_table_empty_state_and_pagination_panel(self) -> None:
         content_layout = self.supplier_widget.content_host.layout()
         self.assertIsNotNone(content_layout)
         assert content_layout is not None
@@ -73,10 +73,18 @@ class MasterDataLayoutOrderTests(unittest.TestCase):
         layout = panel.layout()
         self.assertIsNotNone(layout)
         assert layout is not None
-        self.assertEqual(2, layout.count())
+        self.assertEqual(3, layout.count())
         table = layout.itemAt(0).widget()
         self.assertIsInstance(table, QTableWidget)
         self.assertIs(table, self.supplier_widget.supplier_table)
+        self.assertIs(
+            self.supplier_widget.supplier_empty_state,
+            layout.itemAt(1).widget(),
+        )
+        self.assertIs(
+            self.supplier_widget.supplier_pagination,
+            layout.itemAt(2).widget(),
+        )
 
     def test_top_toolbar_contains_single_primary_row_with_left_query(self) -> None:
         toolbar = self.supplier_widget.inline_toolbar

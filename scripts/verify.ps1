@@ -376,6 +376,12 @@ function Invoke-PrepareVerifyDatabase {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $resolvedPython = Resolve-PythonExe -RepoRoot $repoRoot -Override $PythonExe
+$runtimeDependencyFloorScript = Join-Path $repoRoot "scripts\assert_runtime_dependency_floor.py"
+Write-Host "[preflight] runtime dependency security floor"
+& $resolvedPython $runtimeDependencyFloorScript
+if ($LASTEXITCODE -ne 0) {
+    throw "Runtime dependency security floor failed with exit code $LASTEXITCODE"
+}
 $formalDbPath = Join-Path $repoRoot "data\sqe_v2.db"
 $fingerprintScript = Join-Path $repoRoot "scripts\sqlite_readonly_fingerprint.py"
 $formalFingerprintBefore = "ABSENT"
@@ -648,6 +654,7 @@ try {
             "test_database_backup.py",
             "test_database_isolation.py",
             "test_prepare_verify_database.py",
+            "test_audit_formal_db_promotion_status.py",
             "test_hang_watchdog.py",
             "test_automated_modal_guard.py",
             "test_anomaly_transaction_boundaries.py",
@@ -656,6 +663,7 @@ try {
             "test_master_import_service.py",
             "test_date_range_and_export_warnings.py",
             "test_qt_message_handler.py",
+            "test_qt_visual_probe_popup_wait.py",
             "test_excel_report_custom_range.py",
             "test_form_field_pairing_layout.py",
             "test_form_inline_validation_and_dirty.py",

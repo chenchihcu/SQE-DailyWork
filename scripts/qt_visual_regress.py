@@ -77,6 +77,18 @@ def _current_env(probe_json: dict) -> dict:
     return {key: probe_json.get(key) for key in ENV_KEYS}
 
 
+def _current_capture_contract(probe_json: dict, target: str) -> dict:
+    contract = {"env": _current_env(probe_json)}
+    if target in {"master-data", "empty-states"}:
+        fixture_provenance = probe_json.get("fixture_provenance")
+        if not isinstance(fixture_provenance, dict):
+            raise SystemExit(
+                f"{target} probe did not report deterministic fixture provenance"
+            )
+        contract["fixture_provenance"] = fixture_provenance
+    return contract
+
+
 def _copy_baseline_with_retry(
     source: Path,
     destination: Path,
@@ -169,13 +181,11 @@ def main() -> int:
         existing = {}
         if manifest_path.exists():
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        capture_contract = _current_capture_contract(probe_json, args.target)
         scales = dict(existing.get("scales") or {})
-        scales[str(args.scale)] = {
-            "env": _current_env(probe_json),
-            "files": names,
-        }
+        scales[str(args.scale)] = {**capture_contract, "files": names}
         manifest = {
-            "env": _current_env(probe_json),
+            **capture_contract,
             "files": names,
             "scales": scales,
         }
@@ -193,13 +203,18 @@ def main() -> int:
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     scale_manifest = (manifest.get("scales") or {}).get(str(args.scale), manifest)
-    current = _current_env(probe_json)
-    if scale_manifest.get("env") != current:
+    baseline_contract = {"env": scale_manifest.get("env")}
+    if args.target in {"master-data", "empty-states"}:
+        baseline_contract["fixture_provenance"] = scale_manifest.get(
+            "fixture_provenance"
+        )
+    current_contract = _current_capture_contract(probe_json, args.target)
+    if baseline_contract != current_contract:
         print(json.dumps({
             "result": "skipped",
-            "reason": "environment differs from baseline (font/platform/scale) — pixel diff would be unreliable",
-            "baseline_env": scale_manifest.get("env"),
-            "current_env": current,
+            "reason": "capture contract differs from baseline (environment or fixture) — pixel diff would be unreliable",
+            "baseline_contract": baseline_contract,
+            "current_contract": current_contract,
         }, ensure_ascii=False, indent=2))
         return 2
 

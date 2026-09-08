@@ -183,6 +183,9 @@ class _MasterDataProductMixin:
         self.product_table.cellClicked.connect(self._on_product_table_clicked)
         layout.addWidget(self.product_table, 1)
 
+        self.product_empty_state = self._build_master_empty_state()
+        layout.addWidget(self.product_empty_state, 1)
+
         self.product_pagination = PaginationBar(
             on_page_changed=self._on_product_page_changed,
             on_page_size_changed=self._on_product_page_size_changed,
@@ -273,6 +276,12 @@ class _MasterDataProductMixin:
             total_items=total_items,
             current_page=self._product_page,
             page_size=self._product_page_size,
+        )
+        self._update_master_empty_state(
+            table=self.product_table,
+            empty_state=self.product_empty_state,
+            total_items=total_items,
+            query_keyword=self._product_query_keyword,
         )
 
         if selected_product_id and selected_row_index is None:

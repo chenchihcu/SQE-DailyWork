@@ -7,14 +7,24 @@ from PySide6.QtCore import QDate
 
 from scripts.qt_visual_probe import (
     _clear_transient_main_window_status,
+    _empty_states_fixture,
+    _empty_states_fixture_provenance,
+    _master_data_fixture,
+    _master_data_fixture_provenance,
+    _patched_empty_master_data,
+    _patched_master_data_fixture,
     _stabilize_appearance_preferences_probe,
     _stabilize_event_create_probe,
     _stabilize_event_list_probe,
     _stabilize_main_probe,
+    _stabilize_master_data_probe,
     _stabilize_month_range_probe,
     _wait_for_popup_visible,
 )
-from scripts.qt_visual_regress import _copy_baseline_with_retry
+from scripts.qt_visual_regress import (
+    _copy_baseline_with_retry,
+    _current_capture_contract,
+)
 from ui.appearance_preferences import AppearancePreferences
 
 
@@ -146,6 +156,14 @@ class _RangeWidgetRecorder:
         self.refreshed_values = (start_key, end_key)
 
 
+class _FocusRecorder:
+    def __init__(self) -> None:
+        self.set_focus_count = 0
+
+    def setFocus(self) -> None:
+        self.set_focus_count += 1
+
+
 class VisualProbeDeterminismTests(unittest.TestCase):
     def test_appearance_capture_clears_transient_shell_status(self) -> None:
         window = _FakeMainWindow()
@@ -200,6 +218,25 @@ class VisualProbeDeterminismTests(unittest.TestCase):
 
         self.assertEqual("2026-08-01", widget.month_input.value.toString("yyyy-MM-dd"))
 
+    def test_master_data_probe_clears_workstation_hover_state(self) -> None:
+        focus = _FocusRecorder()
+        widget = type("Widget", (), {"query_input": focus})()
+        app = _FakeApplication()
+
+        with (
+            patch(
+                "scripts.qt_visual_probe._position_probe_cursor_at_safe_corner"
+            ) as move_cursor,
+            patch("scripts.qt_visual_probe._settle_qt_paint") as settle_paint,
+            patch("scripts.qt_visual_probe._clear_widget_hover_state") as clear_hover,
+        ):
+            _stabilize_master_data_probe(widget, app)
+
+        self.assertEqual(1, focus.set_focus_count)
+        move_cursor.assert_called_once_with(widget)
+        settle_paint.assert_called_once_with(app, delay_ms=80, cycles=2)
+        clear_hover.assert_called_once_with(widget)
+
     def test_month_range_probe_can_set_controls_without_refresh(self) -> None:
         widget = _RangeWidgetRecorder()
 
@@ -215,6 +252,145 @@ class VisualProbeDeterminismTests(unittest.TestCase):
 
         self.assertEqual(("202603", "202608"), widget.refreshed_values)
         self.assertIsNone(widget.range_selectors.values)
+
+
+class MasterDataFixtureContractTests(unittest.TestCase):
+    def test_empty_patch_replaces_the_widget_owned_service_functions(self) -> None:
+        from ui.widgets import master_data_widget
+
+        original_supplier = master_data_widget._supplier_service.list_suppliers
+        original_product = master_data_widget._product_service.list_products
+
+        with _patched_empty_master_data(_empty_states_fixture()):
+            self.assertEqual(
+                [],
+                master_data_widget._supplier_service.list_suppliers(
+                    include_inactive=True,
+                    category="原物料供應商",
+                ),
+            )
+            self.assertEqual(
+                [],
+                master_data_widget._product_service.list_products(
+                    include_inactive=True,
+                    item_categories=("原物料",),
+                ),
+            )
+
+        self.assertIs(
+            original_supplier,
+            master_data_widget._supplier_service.list_suppliers,
+        )
+        self.assertIs(
+            original_product,
+            master_data_widget._product_service.list_products,
+        )
+
+    def test_fixture_patch_replaces_the_widget_owned_service_functions(self) -> None:
+        from database.product_item_category import (
+            ITEM_CATEGORY_RAW_MATERIAL,
+            MASTER_SEMI_FINISHED_CATEGORIES,
+        )
+        from database.supplier_category import (
+            SUPPLIER_CATEGORY_OUTSOURCE_FACTORY,
+            SUPPLIER_CATEGORY_RAW_MATERIAL,
+        )
+        from ui.widgets import master_data_widget
+
+        fixture = _master_data_fixture()
+        original_supplier = master_data_widget._supplier_service.list_suppliers
+        original_product = master_data_widget._product_service.list_products
+
+        with _patched_master_data_fixture(fixture):
+            raw_suppliers = master_data_widget._supplier_service.list_suppliers(
+                category=SUPPLIER_CATEGORY_RAW_MATERIAL
+            )
+            outsource_suppliers = master_data_widget._supplier_service.list_suppliers(
+                category=SUPPLIER_CATEGORY_OUTSOURCE_FACTORY
+            )
+            raw_products = master_data_widget._product_service.list_products(
+                item_categories=(ITEM_CATEGORY_RAW_MATERIAL,)
+            )
+            semi_finished_products = (
+                master_data_widget._product_service.list_products(
+                    item_categories=MASTER_SEMI_FINISHED_CATEGORIES
+                )
+            )
+
+            self.assertEqual(12, len(raw_suppliers))
+            self.assertEqual(8, len(outsource_suppliers))
+            self.assertEqual(10, len(raw_products))
+            self.assertEqual(10, len(semi_finished_products))
+
+        self.assertIs(
+            original_supplier,
+            master_data_widget._supplier_service.list_suppliers,
+        )
+        self.assertIs(
+            original_product,
+            master_data_widget._product_service.list_products,
+        )
+
+    def test_fixture_provenance_is_deterministic_and_complete(self) -> None:
+        first = _master_data_fixture_provenance(_master_data_fixture())
+        second = _master_data_fixture_provenance(_master_data_fixture())
+
+        self.assertEqual(first, second)
+        self.assertEqual("master-data-stress-v1", first["id"])
+        self.assertEqual(20, first["supplier_row_count"])
+        self.assertEqual(20, first["product_row_count"])
+        self.assertEqual(64, len(first["sha256"]))
+
+    def test_empty_states_fixture_provenance_is_deterministic_and_complete(self) -> None:
+        first = _empty_states_fixture_provenance(_empty_states_fixture())
+        second = _empty_states_fixture_provenance(_empty_states_fixture())
+
+        self.assertEqual(first, second)
+        self.assertEqual("empty-states-v1", first["id"])
+        self.assertEqual(0, first["event_row_count"])
+        self.assertEqual(0, first["supplier_row_count"])
+        self.assertEqual(0, first["product_row_count"])
+        self.assertEqual(64, len(first["sha256"]))
+
+    def test_master_data_capture_contract_requires_fixture_provenance(self) -> None:
+        with self.assertRaises(SystemExit):
+            _current_capture_contract({}, "master-data")
+
+    def test_empty_states_capture_contract_requires_fixture_provenance(self) -> None:
+        with self.assertRaises(SystemExit):
+            _current_capture_contract({}, "empty-states")
+
+    def test_master_data_capture_contract_includes_fixture_provenance(self) -> None:
+        provenance = _master_data_fixture_provenance(_master_data_fixture())
+        contract = _current_capture_contract(
+            {
+                "qt_platform": "windows",
+                "selected_font": "Microsoft JhengHei UI",
+                "scale": "1.0",
+                "device_pixel_ratio": 2.0,
+                "fixture_provenance": provenance,
+            },
+            "master-data",
+        )
+
+        self.assertEqual(provenance, contract["fixture_provenance"])
+        self.assertEqual("windows", contract["env"]["qt_platform"])
+
+    def test_empty_states_capture_contract_includes_fixture_provenance(self) -> None:
+        provenance = _empty_states_fixture_provenance(_empty_states_fixture())
+        contract = _current_capture_contract(
+            {
+                "qt_platform": "windows",
+                "selected_font": "Microsoft JhengHei UI",
+                "scale": "1.0",
+                "device_pixel_ratio": 2.0,
+                "fixture_provenance": provenance,
+            },
+            "empty-states",
+        )
+
+        self.assertEqual(provenance, contract["fixture_provenance"])
+        self.assertEqual("windows", contract["env"]["qt_platform"])
 
 
 class VisualBaselineCopyRetryTests(unittest.TestCase):

@@ -132,6 +132,28 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         self.assertEqual(initial_supplier_calls, self.list_suppliers_mock.call_count)
         self.assertEqual(initial_product_calls, self.list_products_mock.call_count)
 
+    def test_supplier_empty_scope_shows_actionable_empty_state(self) -> None:
+        self.supplier_widget._supplier_rows = []
+        self.supplier_widget._render_supplier_table()
+        self.app.processEvents()
+
+        empty_state = self.supplier_widget.supplier_empty_state
+        self.assertTrue(empty_state.isVisible())
+        self.assertFalse(self.supplier_widget.supplier_table.isVisible())
+        self.assertEqual("尚無原物料供應商", empty_state._title_label.text())
+        self.assertEqual(
+            "可按上方「新增」建立第一筆原物料供應商。",
+            empty_state._hint_label.text(),
+        )
+
+    def test_initial_page_focus_does_not_enter_search_control(self) -> None:
+        self.assertFalse(self.product_widget.query_input.hasFocus())
+
+        self.product_widget._focus_master_query()
+        self.app.processEvents()
+
+        self.assertTrue(self.product_widget.query_input.hasFocus())
+
     def test_product_enter_filters_by_primary_secondary_and_stage_fields(self) -> None:
         self.product_widget.query_input.setText("gamma")
         self.product_widget.query_input.returnPressed.emit()
@@ -146,6 +168,20 @@ class MasterDataQueryBehaviorTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(1, self.product_widget.product_table.rowCount())
         self.assertEqual("B-200", self.product_widget.product_table.item(0, 0).text())
+
+    def test_product_no_match_shows_search_specific_empty_state(self) -> None:
+        self.product_widget.query_input.setText("no-matching-product")
+        self.product_widget.query_input.returnPressed.emit()
+        self.app.processEvents()
+
+        empty_state = self.product_widget.product_empty_state
+        self.assertTrue(empty_state.isVisible())
+        self.assertFalse(self.product_widget.product_table.isVisible())
+        self.assertEqual("找不到符合條件的半成品/成品", empty_state._title_label.text())
+        self.assertEqual(
+            "請調整搜尋條件，或按上方「新增」建立主檔。",
+            empty_state._hint_label.text(),
+        )
 
         self.product_widget.query_input.setText("試產")
         self.product_widget.query_input.returnPressed.emit()

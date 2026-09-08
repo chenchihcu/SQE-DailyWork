@@ -23,6 +23,7 @@ from ui.main_window import (
     NCR_TRACE_PAGE_INDEX,
     NCR_PAGE_INDEX,
     NCR_PAGE_COUNT,
+    REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX,
     MainWindow,
 )
 from ui.sidebar_nav import (
@@ -59,8 +60,8 @@ class NcrEmbeddingSmokeTests(unittest.TestCase):
 
     def test_single_window_hosts_all_pages(self) -> None:
         # Ghost home slot + supplier-event / stats / NCR / master / create / management /
-        # supplier views / manager / three operational queues.
-        self.assertEqual(APPEARANCE_SETTINGS_PAGE_INDEX + 1, self.window.stack.count())
+        # supplier views / manager / three operational queues / appearance / repeat issues.
+        self.assertEqual(REPEAT_ISSUES_MANAGEMENT_PAGE_INDEX + 1, self.window.stack.count())
         # Sidebar is the sole navigation surface (home row retired).
         self.assertEqual(15, len(self.window.sidebar._buttons))
         self.assertIsNotNone(self.window.ncr)

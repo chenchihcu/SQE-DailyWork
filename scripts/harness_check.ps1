@@ -3,6 +3,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $failures = [System.Collections.Generic.List[string]]::new()
+# Raw text is a per-invocation snapshot; every harness run starts fresh.
+$textCache = @{}
 $gitExe = if (Test-Path -LiteralPath "C:\Program Files\Git\cmd\git.exe") {
     "C:\Program Files\Git\cmd\git.exe"
 } else {
@@ -17,6 +19,17 @@ function Add-Failure {
 function Join-RepoPath {
     param([string]$RelativePath)
     return (Join-Path $repoRoot $RelativePath)
+}
+
+function Get-CachedText {
+    param([string]$LiteralPath)
+
+    # Keep Get-Content's default encoding and empty-file behavior. Explicit
+    # encoding and line-oriented reads remain outside this raw-text cache.
+    if (-not $script:textCache.ContainsKey($LiteralPath)) {
+        $script:textCache[$LiteralPath] = Get-Content -LiteralPath $LiteralPath -Raw
+    }
+    return $script:textCache[$LiteralPath]
 }
 
 function Require-File {
@@ -51,7 +64,7 @@ function Require-Text {
         return
     }
 
-    $content = Get-Content -LiteralPath $path -Raw
+    $content = Get-CachedText -LiteralPath $path
     if (-not $content.Contains($Text)) {
         Add-Failure "Missing ${Label} in ${RelativePath}: $Text"
     }
@@ -173,7 +186,7 @@ function Require-LiveReleaseMembership {
         Add-Failure "Cannot check live release membership; missing file: $RelativePath"
         return
     }
-    $content = Get-Content -LiteralPath $path -Raw
+    $content = Get-CachedText -LiteralPath $path
     $match = [regex]::Match(
         $content,
         '(?m)^\| Live release membership count \|[^|]*\|\s*`?(\d+)`?\s*\|'
@@ -215,7 +228,7 @@ function Require-ActivePlanLifecycle {
             Where-Object { $_.Name -ne "README.md" }
     )
     foreach ($plan in $plans) {
-        $content = Get-Content -LiteralPath $plan.FullName -Raw
+        $content = Get-CachedText -LiteralPath $plan.FullName
         if (-not $content.Contains("Plan status: active")) {
             Add-Failure "Active execution plan lacks 'Plan status: active': $($plan.Name)"
         }
@@ -228,7 +241,7 @@ function Require-ActivePlanLifecycle {
 function Require-VisualTargetBaselines {
     $manifestPath = Join-RepoPath "scripts\qt_probe_targets.json"
     try {
-        $targetManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $targetManifest = Get-CachedText -LiteralPath $manifestPath | ConvertFrom-Json
     } catch {
         Add-Failure "Cannot check visual target mapping: $($_.Exception.Message)"
         return
@@ -244,7 +257,7 @@ function Require-VisualTargetBaselines {
             continue
         }
         try {
-            $baseline = Get-Content -LiteralPath $baselineManifestPath -Raw | ConvertFrom-Json
+            $baseline = Get-CachedText -LiteralPath $baselineManifestPath | ConvertFrom-Json
         } catch {
             Add-Failure "Invalid visual baseline manifest for $($target.name): $($_.Exception.Message)"
             continue
@@ -274,7 +287,7 @@ function Require-VisualTargetBaselines {
 function Require-NoOrphanVisualBaselines {
     $manifestPath = Join-RepoPath "scripts\qt_probe_targets.json"
     try {
-        $targetManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $targetManifest = Get-CachedText -LiteralPath $manifestPath | ConvertFrom-Json
     } catch {
         Add-Failure "Cannot check orphan visual baselines: $($_.Exception.Message)"
         return
@@ -306,7 +319,7 @@ function Require-NoStaleVisualPolicyPath {
         }
         Get-ChildItem -LiteralPath $directory -File -Recurse |
             ForEach-Object {
-                $content = Get-Content -LiteralPath $_.FullName -Raw
+                $content = Get-CachedText -LiteralPath $_.FullName
                 if ($content.Contains(".Codex/rules/visual_evidence_rules.md")) {
                     Add-Failure "Stale visual policy path in $($_.FullName)"
                 }
@@ -322,7 +335,7 @@ function Require-CodexRuleExamples {
         return
     }
 
-    $content = Get-Content -LiteralPath $path -Raw
+    $content = Get-CachedText -LiteralPath $path
     $ruleCount = [regex]::Matches($content, "prefix_rule\(").Count
     $matchCount = [regex]::Matches($content, "(?m)^\s*match\s*=\s*\[").Count
     $notMatchCount = [regex]::Matches($content, "(?m)^\s*not_match\s*=\s*\[").Count
@@ -366,7 +379,7 @@ function Require-ByteBudget {
         Add-Failure "Cannot check ${Label}; missing file: $RelativePath"
         return
     }
-    $content = Get-Content -LiteralPath $path -Raw
+    $content = Get-CachedText -LiteralPath $path
     $byteCount = [System.Text.Encoding]::UTF8.GetByteCount($content)
     if ($byteCount -gt $MaxBytes) {
         Add-Failure "${Label} exceeds ${MaxBytes} bytes: ${RelativePath} has ${byteCount} bytes"
@@ -384,7 +397,7 @@ function Require-CharBudget {
         Add-Failure "Cannot check ${Label}; missing file: $RelativePath"
         return
     }
-    $content = Get-Content -LiteralPath $path -Raw
+    $content = Get-CachedText -LiteralPath $path
     if ($content.Length -gt $MaxChars) {
         Add-Failure "${Label} exceeds ${MaxChars} characters: ${RelativePath} has $($content.Length) characters"
     }

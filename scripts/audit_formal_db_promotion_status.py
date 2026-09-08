@@ -11,7 +11,6 @@ from typing import Any
 MIGRATION_META_KEYS = (
     "case_actions_v1",
     "anomaly_attachments_contract_v1",
-    "anomaly_hypotheses_v1",
     "anomaly_repeat_links_v1",
     "product_records_view_is_active_v1",
     "defect_supplier_id_backfill_v1",
@@ -20,7 +19,6 @@ MIGRATION_META_KEYS = (
 TABLE_CHECKS = {
     "case_actions": "SELECT COUNT(*) FROM case_actions",
     "anomaly_attachments": "SELECT COUNT(*) FROM anomaly_attachments",
-    "anomaly_hypotheses": "SELECT COUNT(*) FROM anomaly_hypotheses",
     "anomaly_repeat_links": "SELECT COUNT(*) FROM anomaly_repeat_links",
 }
 

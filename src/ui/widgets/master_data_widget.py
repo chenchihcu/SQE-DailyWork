@@ -35,7 +35,7 @@ from ui.layout_constants import (
     TOOLBAR_CONTROL_MIN_HEIGHT,
     TOOLBAR_ITEM_SPACING,
 )
-from ui.widgets.common_widgets import apply_clickable_affordance
+from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
 from ui.widgets.master_data_product_mixin import _MasterDataProductMixin
 from ui.widgets.master_data_supplier_mixin import _MasterDataSupplierMixin
 from ui.widgets.product_form_dialog import ProductFormDialog as ProductFormDialog
@@ -75,10 +75,21 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
         self._supplier_page_size = 13
         self._product_page = 1
         self._product_page_size = 13
+        # Native Windows may expose an accessibility-wide text caret. Keep the
+        # page keyboard focusable, but do not give the search input implicit
+        # initial focus and show a caret before the user asks to search.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._initial_page_focus_pending = True
         self._setup_ui()
         self._has_loaded = False
         if not lazy_load:
             self.refresh_data()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._initial_page_focus_pending:
+            self._initial_page_focus_pending = False
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -165,6 +176,43 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
     def _focus_master_query(self) -> None:
         self.query_input.setFocus()
         self.query_input.selectAll()
+
+    def _master_entity_label(self) -> str:
+        return self._page_label or (
+            "供應商" if self._master_mode == self.MODE_SUPPLIER else "產品"
+        )
+
+    def _build_master_empty_state(self) -> EmptyStateWidget:
+        empty_state = EmptyStateWidget("", parent=self)
+        empty_state.setObjectName("MasterDataEmptyState")
+        empty_state.setVisible(False)
+        return empty_state
+
+    def _update_master_empty_state(
+        self,
+        *,
+        table: QWidget,
+        empty_state: EmptyStateWidget,
+        total_items: int,
+        query_keyword: str,
+    ) -> None:
+        has_rows = total_items > 0
+        table.setVisible(has_rows)
+        empty_state.setVisible(not has_rows)
+        if has_rows:
+            return
+
+        entity = self._master_entity_label()
+        if query_keyword.strip():
+            empty_state.set_message(
+                f"找不到符合條件的{entity}",
+                "請調整搜尋條件，或按上方「新增」建立主檔。",
+            )
+        else:
+            empty_state.set_message(
+                f"尚無{entity}",
+                f"可按上方「新增」建立第一筆{entity}。",
+            )
 
     def _on_query_submitted(self) -> None:
         text = self.query_input.text().strip()
@@ -263,9 +311,7 @@ class MasterDataWidget(QWidget, _MasterDataSupplierMixin, _MasterDataProductMixi
     def _sync_selection_status(self) -> None:
         if not hasattr(self, "selection_status_label"):
             return
-        entity = self._page_label or (
-            "供應商" if self._master_mode == self.MODE_SUPPLIER else "產品"
-        )
+        entity = self._master_entity_label()
         if self._master_mode == self.MODE_SUPPLIER:
             selected_ids = self._selected_table_ids(self.supplier_table)
             if not selected_ids:

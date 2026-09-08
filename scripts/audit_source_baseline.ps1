@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputDir,
     [switch]$FailOnDoNotTrack
 )
@@ -62,10 +62,10 @@ function Get-Classification {
     if ($Path -match "^artifacts/.*\.md$") {
         return "source"
     }
-    if ($Path -match "^(src|tests|scripts|docs)/") {
+    if ($Path -match "^(src|tests|scripts|docs|installer)/") {
         return "source"
     }
-    if ($Path -match "^(AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|main\.py|run_app\.bat|run_mig\.py|requirements\.txt|pytest\.ini|\.gitignore|\.editorconfig|\.env\.example)$") {
+    if ($Path -match "^(AGENTS\.md|CLAUDE\.md|CHANGELOG\.md|README\.md|design\.md|main\.py|run_app\.bat|run_mig\.py|requirements\.txt|pytest\.ini|\.gitignore|\.editorconfig|\.env\.example|\.coveragerc)$") {
         return "source"
     }
     if ($Path -match "^tests/visual_baseline/") {
