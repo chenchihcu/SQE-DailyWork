@@ -17,7 +17,7 @@ import tests  # noqa: F401
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
 
 from services import repeat_issue_service
 from services.event import _anomaly_service, _anomaly_workbench_service
@@ -107,6 +107,52 @@ class RepeatIssuesManagementPageTests(unittest.TestCase):
         self.assertTrue(page.source_case_card.isHidden())
         self.assertFalse(page.confirm_btn.isEnabled())
         self.assertFalse(page.dismiss_btn.isEnabled())
+
+    def test_card_layouts_and_spacing(self) -> None:
+        page = self._make_page()
+        source_layout = page.source_case_card.layout()
+        self.assertIsNotNone(source_layout)
+        self.assertEqual(4, source_layout.spacing())
+
+        sc_layout = page.source_card.layout()
+        self.assertIsNotNone(sc_layout)
+        self.assertEqual(6, sc_layout.spacing())
+
+        pc_layout = page.peer_card.layout()
+        self.assertIsNotNone(pc_layout)
+        self.assertEqual(6, pc_layout.spacing())
+
+    def test_comparison_metadata_labels_use_multiline_contract(self) -> None:
+        page = self._make_page()
+        for label in (
+            page.sc_meta_summary,
+            page.sc_meta_product,
+            page.pc_meta_summary,
+            page.pc_meta_product,
+            page.pc_meta_reasons,
+        ):
+            self.assertTrue(label.wordWrap())
+            self.assertEqual(label.property("role"), "helperText")
+            self.assertEqual(
+                label.sizePolicy().verticalPolicy(),
+                QSizePolicy.Policy.Minimum,
+            )
+
+    def test_comparison_metadata_rows_are_separate(self) -> None:
+        page = self._make_page()
+
+        def _mock_detail(aid: str) -> dict:
+            return self.source_detail if aid == "aid-1" else self.peer_detail
+
+        with mock.patch.object(_anomaly_service, "get_anomaly_detail", side_effect=_mock_detail), \
+             mock.patch.object(_anomaly_workbench_service, "get_root_cause", return_value=None), \
+             mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=self.mock_repeat_rows):
+            page.load_case("aid-1")
+
+        self.assertIn("供應商：", page.sc_meta_summary.text())
+        self.assertIn("料號品名：", page.sc_meta_product.text())
+        self.assertNotIn("\n", page.sc_meta_summary.text())
+        self.assertIn("比對特徵：", page.pc_meta_reasons.text())
 
     def test_load_case_with_anomaly_id(self) -> None:
         page = self._make_page()

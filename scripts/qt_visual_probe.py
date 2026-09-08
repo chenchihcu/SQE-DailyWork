@@ -1443,23 +1443,20 @@ def _workbench_overview_payload() -> dict:
     }
 
 
-def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
-    """Capture AnomalyManagementPage with representative read-model data.
+def _workbench_tab_suffixes() -> tuple[str, ...]:
+    return (
+        "workbench",
+        "attachments",
+        "timeline",
+    )
 
-    Uses ``unittest.mock`` to stub the service-layer read paths so the page
-    renders full CJK content with tabs, cards, actions and scroll bodies
-    without touching the disposable database.
-    """
 
+def _workbench_patchers(payload: dict):
     from unittest import mock
 
     from services.event import _anomaly_service, _anomaly_workbench_service, _case_action_service
-    from ui.widgets.anomaly_management_page import AnomalyManagementPage
-    from PySide6.QtWidgets import QWidget
 
-    payload = _workbench_overview_payload()
-
-    patchers = [
+    return [
         mock.patch.object(
             _anomaly_service,
             "get_anomaly_detail",
@@ -1473,34 +1470,63 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
         mock.patch.object(
             _anomaly_workbench_service,
             "get_root_cause",
-            return_value=payload["root_cause"],
+            return_value=payload.get("root_cause"),
         ),
         mock.patch.object(
             _anomaly_workbench_service,
             "list_analysis_notes",
-            return_value=payload["analysis_notes"],
+            return_value=payload.get("analysis_notes", []),
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_hypotheses",
+            return_value=payload.get("hypotheses", []),
         ),
         mock.patch.object(
             _anomaly_workbench_service,
             "list_eight_d_reviews",
-            return_value=payload["eight_d_reviews"],
+            return_value=payload.get("eight_d_reviews", []),
         ),
         mock.patch.object(
             _anomaly_workbench_service,
             "list_attachments",
-            return_value=payload["attachments"],
+            return_value=payload.get("attachments", []),
         ),
         mock.patch.object(
             _anomaly_workbench_service,
             "list_timeline",
-            return_value=payload["timeline"],
+            return_value=payload.get("timeline", []),
+        ),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "list_audit_logs",
+            return_value=payload.get("audit_logs", []),
         ),
         mock.patch.object(
             _case_action_service,
             "list_case_actions",
-            return_value=payload["actions"],
+            return_value=payload.get("actions", []),
+        ),
+        mock.patch(
+            "services.repeat_issue_service.list_repeat_issues",
+            return_value=[],
         ),
     ]
+
+
+def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] | None) -> list[str]:
+    """Capture AnomalyManagementPage with representative read-model data.
+
+    Uses ``unittest.mock`` to stub the service-layer read paths so the page
+    renders full CJK content with tabs, cards, actions and scroll bodies
+    without touching the disposable database.
+    """
+
+    from PySide6.QtWidgets import QWidget
+    from ui.widgets.anomaly_management_page import AnomalyManagementPage
+
+    payload = _workbench_overview_payload()
+    patchers = _workbench_patchers(payload)
 
     for patcher in patchers:
         patcher.start()
@@ -1509,16 +1535,19 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
     try:
         page = AnomalyManagementPage(_ProbeHost())
         page.load_anomaly("probe-workbench")
-        if page.tabs.count() != 3:
-            raise AssertionError("Anomaly workbench must expose exactly three tabs")
+        expected_tabs = len(AnomalyManagementPage.TAB_NAMES)
+        if page.tabs.count() != expected_tabs:
+            raise AssertionError(
+                f"Anomaly workbench must expose {expected_tabs} tabs, got {page.tabs.count()}"
+            )
         if page.findChild(QWidget, "CaseStageStepper") is not None:
             raise AssertionError("Anomaly workbench stage stepper must be removed")
         if page.close_button.isHidden() or not page.reopen_button.isHidden():
             raise AssertionError("Open-case lifecycle action visibility is invalid")
         page.resize(*(size or (1024, 720)))
-        for index, suffix in enumerate(
-            ("workbench", "attachments", "timeline")
-        ):
+        page.show()
+        app.processEvents()
+        for index, suffix in enumerate(_workbench_tab_suffixes()):
             page.tabs.setCurrentIndex(index)
             _settle_qt_paint(app, delay_ms=100, cycles=2)
             screenshots.append(
@@ -1529,6 +1558,161 @@ def _capture_workbench(output: Path, app: "QApplication", size: tuple[int, int] 
                 )
             )
 
+    finally:
+        for patcher in patchers:
+            patcher.stop()
+
+    return screenshots
+
+
+def _workbench_empty_analysis_payload() -> dict:
+    payload = _workbench_overview_payload()
+    payload["root_cause"] = None
+    payload["analysis_notes"] = []
+    payload["hypotheses"] = []
+    payload["actions"] = []
+    payload["eight_d_reviews"] = []
+    overview = dict(payload["overview"])
+    overview["current_action"] = None
+    overview["open_action_count"] = 0
+    payload["overview"] = overview
+    return payload
+
+
+def _capture_workbench_empty_analysis(
+    output: Path, app: "QApplication", size: tuple[int, int] | None
+) -> list[str]:
+    from ui.widgets.anomaly_management_page import AnomalyManagementPage
+
+    payload = _workbench_empty_analysis_payload()
+    patchers = _workbench_patchers(payload)
+
+    for patcher in patchers:
+        patcher.start()
+
+    screenshots: list[str] = []
+    try:
+        page = AnomalyManagementPage(_ProbeHost())
+        page.load_anomaly("probe-workbench-empty-analysis")
+        page.resize(*(size or MIN_WIDTH_SIZE))
+        page.show()
+        app.processEvents()
+        page.tabs.setCurrentIndex(0)
+        _settle_qt_paint(app, delay_ms=100, cycles=2)
+        screenshots.append(
+            _capture_widget(
+                page,
+                _target_output_path(output, "workbench-empty-analysis"),
+                app,
+            )
+        )
+    finally:
+        for patcher in patchers:
+            patcher.stop()
+
+    return screenshots
+
+
+def _repeat_issues_fixture() -> dict:
+    source_id = "probe-repeat-source"
+    peer_id = "probe-repeat-peer"
+    return {
+        "source_detail": {
+            "id": source_id,
+            "anomaly_no": "20260511006",
+            "anomaly_date": "2026-05-11",
+            "supplier_id": "probe-supplier-1",
+            "supplier_name": LONG_SUPPLIER,
+            "product_name": LONG_PRODUCT,
+            "product_code": "355001-000057",
+            "category": "規範文件缺漏",
+            "problem_desc": "實物端子無法與母座端子接頭，無法組裝接合。",
+            "status": "待處理",
+            "improvement_desc": "改善說明待填寫",
+        },
+        "peer_detail": {
+            "id": peer_id,
+            "anomaly_no": "20260512003",
+            "anomaly_date": "2026-05-12",
+            "supplier_id": "probe-supplier-1",
+            "supplier_name": LONG_SUPPLIER,
+            "product_name": LONG_PRODUCT,
+            "product_code": "355001-000057",
+            "category": "規範文件缺漏",
+            "problem_desc": "歷史案件不良現象描述，用於雙案對照視覺驗證。",
+            "status": "待處理",
+            "improvement_desc": "歷史改善措施說明",
+        },
+        "rows": [
+            {
+                "peer_anomaly_id": peer_id,
+                "similarity_score": 70,
+                "match_reasons": "相同異常類別、相同料號產品",
+                "anomaly_no": "20260512003",
+                "anomaly_date": "2026-05-12",
+                "category": "規範文件缺漏",
+                "status": "待處理",
+                "product_name": LONG_PRODUCT,
+                "problem_desc": "歷史案件不良現象描述，用於雙案對照視覺驗證。",
+                "disposition": "待確認",
+            }
+        ],
+        "suppliers": [
+            {"id": "probe-supplier-1", "name": LONG_SUPPLIER},
+        ],
+    }
+
+
+def _capture_repeat_issues_management(
+    output: Path, app: "QApplication", size: tuple[int, int] | None
+) -> list[str]:
+    from unittest import mock
+
+    from services import repeat_issue_service
+    from services.event import _anomaly_service, _anomaly_workbench_service
+    from ui.widgets.repeat_issues_management_page import RepeatIssuesManagementPage
+
+    fixture = _repeat_issues_fixture()
+    source_id = fixture["source_detail"]["id"]
+    peer_id = fixture["peer_detail"]["id"]
+
+    def _mock_detail(anomaly_id: str) -> dict:
+        if anomaly_id == source_id:
+            return fixture["source_detail"]
+        if anomaly_id == peer_id:
+            return fixture["peer_detail"]
+        return {}
+
+    patchers = [
+        mock.patch.object(_anomaly_service, "get_anomaly_detail", side_effect=_mock_detail),
+        mock.patch.object(_anomaly_workbench_service, "get_root_cause", return_value=None),
+        mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=fixture["rows"]),
+        mock.patch(
+            "services.event._supplier_service.list_active_suppliers",
+            return_value=fixture["suppliers"],
+        ),
+    ]
+
+    for patcher in patchers:
+        patcher.start()
+
+    screenshots: list[str] = []
+    try:
+        page = RepeatIssuesManagementPage(_ProbeHost())
+        page.load_case(source_id)
+        page.resize(*(size or MIN_WIDTH_SIZE))
+        page.show()
+        app.processEvents()
+        if page.table.rowCount() > 0:
+            page.table.selectRow(0)
+            _settle_qt_paint(app, delay_ms=100, cycles=2)
+        screenshots.append(
+            _capture_widget(
+                page,
+                _target_output_path(output, "repeat-issues-management"),
+                app,
+            )
+        )
     finally:
         for patcher in patchers:
             patcher.stop()
@@ -2239,6 +2423,10 @@ def main() -> int:
             pdf_info = _capture_pdf_export(output)
         elif args.target == "workbench":
             screenshots = _capture_workbench(output, app, size)
+        elif args.target == "workbench-empty-analysis":
+            screenshots = _capture_workbench_empty_analysis(output, app, size)
+        elif args.target == "repeat-issues-management":
+            screenshots = _capture_repeat_issues_management(output, app, size)
         elif args.target == "dialog-density":
             screenshots = _capture_dialog_density(output, app)
         elif args.target == "supplier-360":

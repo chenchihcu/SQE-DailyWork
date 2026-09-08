@@ -31,7 +31,13 @@ from ui.layout_constants import (
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
 )
-from ui.widgets.common_widgets import EmptyStateWidget, create_section_card, style_table
+from ui.widgets.common_widgets import (
+    EmptyStateWidget,
+    create_section_card,
+    make_multiline_label,
+    style_table,
+    sync_multiline_label_geometry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,21 +91,21 @@ class RepeatIssuesManagementPage(QWidget):
         # 基準案件提示卡片
         self.source_case_card = create_section_card(self)
         self.source_case_card.setObjectName("SourceCaseCard")
-        source_layout = QVBoxLayout(self.source_case_card)
-        source_layout.setContentsMargins(*PANEL_MARGINS)
+        source_layout = self.source_case_card.layout()
+        assert source_layout is not None
         source_layout.setSpacing(4)
 
         self.source_case_title = QLabel("基準案件")
         self.source_case_title.setProperty("role", "sectionTitle")
-        self.source_case_summary = QLabel("尚未載入基準案件")
-        self.source_case_summary.setWordWrap(True)
+        self.source_case_summary = make_multiline_label("尚未載入基準案件", role="helperText")
         source_layout.addWidget(self.source_case_title)
         source_layout.addWidget(self.source_case_summary)
         root.addWidget(self.source_case_card)
         self.source_case_card.hide()
 
         # 查詢與過濾工具列
-        filter_card = create_section_card(self)
+        filter_card = QFrame(self)
+        filter_card.setProperty("role", "panel")
         filter_layout = QHBoxLayout(filter_card)
         filter_layout.setContentsMargins(*PANEL_MARGINS)
         filter_layout.setSpacing(FORM_HORIZONTAL_SPACING)
@@ -207,33 +213,32 @@ class RepeatIssuesManagementPage(QWidget):
         # 左欄：基準案件
         self.source_card = create_section_card(self)
         self.source_card.setObjectName("ComparisonSourceCard")
-        sc_layout = QVBoxLayout(self.source_card)
-        sc_layout.setContentsMargins(*PANEL_MARGINS)
+        sc_layout = self.source_card.layout()
+        assert sc_layout is not None
         sc_layout.setSpacing(6)
 
         self.sc_header = QLabel("【基準案件】")
         self.sc_header.setProperty("role", "sectionTitle")
         sc_layout.addWidget(self.sc_header)
 
-        self.sc_info = QLabel("—")
-        self.sc_info.setProperty("role", "muted")
-        sc_layout.addWidget(self.sc_info)
+        self.sc_meta_summary = make_multiline_label("—", role="helperText")
+        sc_layout.addWidget(self.sc_meta_summary)
+
+        self.sc_meta_product = make_multiline_label("—", role="helperText")
+        sc_layout.addWidget(self.sc_meta_product)
 
         sc_layout.addWidget(QLabel("不良現象："))
-        self.sc_problem = QLabel("—")
-        self.sc_problem.setWordWrap(True)
+        self.sc_problem = make_multiline_label("—")
         self.sc_problem.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         sc_layout.addWidget(self.sc_problem)
 
         sc_layout.addWidget(QLabel("根本原因："))
-        self.sc_root_cause = QLabel("—")
-        self.sc_root_cause.setWordWrap(True)
+        self.sc_root_cause = make_multiline_label("—")
         self.sc_root_cause.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         sc_layout.addWidget(self.sc_root_cause)
 
         sc_layout.addWidget(QLabel("改善措施 / 對策："))
-        self.sc_actions = QLabel("—")
-        self.sc_actions.setWordWrap(True)
+        self.sc_actions = make_multiline_label("—")
         self.sc_actions.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         sc_layout.addWidget(self.sc_actions)
 
@@ -242,33 +247,35 @@ class RepeatIssuesManagementPage(QWidget):
         # 右欄：歷史相似案件
         self.peer_card = create_section_card(self)
         self.peer_card.setObjectName("ComparisonPeerCard")
-        pc_layout = QVBoxLayout(self.peer_card)
-        pc_layout.setContentsMargins(*PANEL_MARGINS)
+        pc_layout = self.peer_card.layout()
+        assert pc_layout is not None
         pc_layout.setSpacing(6)
 
         self.pc_header = QLabel("【歷史相似案件】")
         self.pc_header.setProperty("role", "sectionTitle")
         pc_layout.addWidget(self.pc_header)
 
-        self.pc_info = QLabel("—")
-        self.pc_info.setProperty("role", "muted")
-        pc_layout.addWidget(self.pc_info)
+        self.pc_meta_summary = make_multiline_label("—", role="helperText")
+        pc_layout.addWidget(self.pc_meta_summary)
+
+        self.pc_meta_product = make_multiline_label("—", role="helperText")
+        pc_layout.addWidget(self.pc_meta_product)
+
+        self.pc_meta_reasons = make_multiline_label("—", role="helperText")
+        pc_layout.addWidget(self.pc_meta_reasons)
 
         pc_layout.addWidget(QLabel("不良現象："))
-        self.pc_problem = QLabel("—")
-        self.pc_problem.setWordWrap(True)
+        self.pc_problem = make_multiline_label("—")
         self.pc_problem.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         pc_layout.addWidget(self.pc_problem)
 
         pc_layout.addWidget(QLabel("根本原因："))
-        self.pc_root_cause = QLabel("—")
-        self.pc_root_cause.setWordWrap(True)
+        self.pc_root_cause = make_multiline_label("—")
         self.pc_root_cause.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         pc_layout.addWidget(self.pc_root_cause)
 
         pc_layout.addWidget(QLabel("改善措施 / 對策："))
-        self.pc_actions = QLabel("—")
-        self.pc_actions.setWordWrap(True)
+        self.pc_actions = make_multiline_label("—")
         self.pc_actions.setStyleSheet("background: rgba(0,0,0,0.03); border-radius: 4px; padding: 6px;")
         pc_layout.addWidget(self.pc_actions)
 
@@ -547,7 +554,12 @@ class RepeatIssuesManagementPage(QWidget):
         s_act = src_detail.get("improvement_desc") or "—"
 
         self.sc_header.setText(f"【基準案件】{s_no}  [{s_status}]")
-        self.sc_info.setText(f"供應商：{s_supplier}　|　類別：{s_cat}　|　日期：{s_date}\n料號品名：{s_code} {s_product}")
+        self.sc_meta_summary.setText(
+            f"供應商：{s_supplier}　|　類別：{s_cat}　|　日期：{s_date}"
+        )
+        self.sc_meta_product.setText(f"料號品名：{s_code} {s_product}".strip())
+        sync_multiline_label_geometry(self.sc_meta_summary)
+        sync_multiline_label_geometry(self.sc_meta_product)
         self.sc_problem.setText(s_prob)
         self.sc_root_cause.setText(s_rc_text)
         self.sc_actions.setText(s_act)
@@ -567,7 +579,14 @@ class RepeatIssuesManagementPage(QWidget):
         disp = data.get("disposition") or repeat_issue_service.DISPOSITION_PENDING
 
         self.pc_header.setText(f"【歷史案件】{p_no}  [{p_status}]  相似度：{score} 分 ({disp})")
-        self.pc_info.setText(f"供應商：{p_supplier}　|　類別：{p_cat}　|　日期：{p_date}\n料號品名：{p_code} {p_product}\n比對特徵：{reasons}")
+        self.pc_meta_summary.setText(
+            f"供應商：{p_supplier}　|　類別：{p_cat}　|　日期：{p_date}"
+        )
+        self.pc_meta_product.setText(f"料號品名：{p_code} {p_product}".strip())
+        self.pc_meta_reasons.setText(f"比對特徵：{reasons}")
+        sync_multiline_label_geometry(self.pc_meta_summary)
+        sync_multiline_label_geometry(self.pc_meta_product)
+        sync_multiline_label_geometry(self.pc_meta_reasons)
         self.pc_problem.setText(p_prob)
         self.pc_root_cause.setText(p_rc_text)
         self.pc_actions.setText(p_act)
@@ -580,13 +599,16 @@ class RepeatIssuesManagementPage(QWidget):
 
     def _clear_comparison(self) -> None:
         self.sc_header.setText("【基準案件】")
-        self.sc_info.setText("—")
+        self.sc_meta_summary.setText("—")
+        self.sc_meta_product.setText("—")
         self.sc_problem.setText("—")
         self.sc_root_cause.setText("—")
         self.sc_actions.setText("—")
 
         self.pc_header.setText("【歷史相似案件】")
-        self.pc_info.setText("—")
+        self.pc_meta_summary.setText("—")
+        self.pc_meta_product.setText("—")
+        self.pc_meta_reasons.setText("—")
         self.pc_problem.setText("—")
         self.pc_root_cause.setText("—")
         self.pc_actions.setText("—")

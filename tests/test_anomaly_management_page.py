@@ -7,7 +7,14 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea, QTabWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QTabWidget,
+    QWidget,
+)
 
 from services.event import (
     _anomaly_service,
@@ -17,6 +24,7 @@ from services.event import (
 from services import repeat_issue_service
 from ui.sidebar_nav import PAGE_EVENT_OVERDUE
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
+from ui.widgets.common_widgets import CaseStageStepper
 
 
 class AnomalyManagementPageTests(unittest.TestCase):
@@ -98,17 +106,22 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self._pages.append(page)
         return page
 
-    def test_renders_seven_management_tabs(self) -> None:
+    def test_renders_three_management_tabs(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
 
         tabs = page.findChild(QTabWidget, "AnomalyManagementTabs")
         self.assertIsNotNone(tabs)
-        self.assertEqual(tabs.count(), 7)
+        self.assertEqual(tabs.count(), 3)
         self.assertEqual(
             [tabs.tabText(index) for index in range(tabs.count())],
             list(AnomalyManagementPage.TAB_NAMES),
         )
+
+    def test_stage_stepper_not_present(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        self.assertIsNone(page.findChild(CaseStageStepper, "CaseStageStepper"))
 
     def test_loads_anomaly_and_enters_inline_edit(self) -> None:
         page = self._make_page()
@@ -138,21 +151,18 @@ class AnomalyManagementPageTests(unittest.TestCase):
             self.assertEqual(1, len(scrolls))
             self.assertTrue(scrolls[0].widgetResizable())
 
-    def test_analysis_tab_exposes_hypothesis_actions(self) -> None:
+    def test_processing_tab_exposes_hypothesis_actions(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
-        analysis_tab = page.tabs.widget(2)
-        buttons = [
-            child.text()
-            for child in analysis_tab.findChildren(QPushButton)
-        ]
+        processing_tab = page.tabs.widget(0)
+        buttons = [child.text() for child in processing_tab.findChildren(QPushButton)]
         self.assertIn("新增假設", buttons)
         self.assertIn("編輯假設", buttons)
         self.assertIn("晉升為根本原因", buttons)
 
     def test_command_buttons_follow_save_then_cancel_order(self) -> None:
         page = self._make_page()
-        command_row = page.layout().itemAt(4).layout()
+        command_row = page.layout().itemAt(2).layout()
 
         self.assertIs(command_row.itemAt(1).widget(), page.save_button)
         self.assertIs(command_row.itemAt(2).widget(), page.cancel_button)
@@ -162,28 +172,41 @@ class AnomalyManagementPageTests(unittest.TestCase):
     def test_header_close_and_reopen_buttons_are_mutually_exclusive(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
-        self.assertTrue(page.close_button.isEnabled())
-        self.assertFalse(page.reopen_button.isEnabled())
+        self.assertFalse(page.close_button.isHidden())
+        self.assertTrue(page.reopen_button.isHidden())
         self.assertTrue(page.edit_button.isEnabled())
 
         self.detail["status"] = "已結案"
         page.load_anomaly("anomaly-1")
-        self.assertFalse(page.close_button.isEnabled())
-        self.assertTrue(page.reopen_button.isEnabled())
+        self.assertTrue(page.close_button.isHidden())
+        self.assertFalse(page.reopen_button.isHidden())
         self.assertFalse(page.edit_button.isEnabled())
 
-    def test_overview_tab_exposes_quality_conclusion_section(self) -> None:
+    def test_processing_tab_exposes_workbench_sections(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
-        overview_tab = page.tabs.widget(0)
+        processing_tab = page.tabs.widget(0)
         labels = [
             child.text()
-            for child in overview_tab.findChildren(type(page.header_text))
+            for child in processing_tab.findChildren(QLabel)
             if child.property("role") == "sectionTitle"
         ]
-        self.assertIn("品質結論", labels)
-        self.assertIn("案件資料", labels)
-        self.assertIn("目前處置", labels)
+        self.assertIn("根因調查", labels)
+        self.assertIn("案件概覽", labels)
+        self.assertIn("Next Action", labels)
+        self.assertIn("Action 清單", labels)
+
+    def test_empty_fields_hidden_in_overview_grid(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        processing_tab = page.tabs.widget(0)
+        value_labels = [
+            child.text()
+            for child in processing_tab.findChildren(QLabel)
+            if child.property("role") == "value"
+        ]
+        self.assertFalse(any(text.startswith("來源 NCR 單號：") for text in value_labels))
+        self.assertFalse(any(text.startswith("SMT 製程關鍵詞：") for text in value_labels))
 
     def test_closed_case_disables_corrective_action_commands(self) -> None:
         action = {
@@ -202,25 +225,24 @@ class AnomalyManagementPageTests(unittest.TestCase):
         ):
             page = self._make_page()
             page.load_anomaly("anomaly-1")
-            corrective_tab = page.tabs.widget(4)
-            buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
+            processing_tab = page.tabs.widget(0)
+            buttons = [btn.text() for btn in processing_tab.findChildren(QPushButton)]
             self.assertIn("開始執行", buttons)
 
             self.detail["status"] = "已結案"
             page.load_anomaly("anomaly-1")
-            corrective_tab = page.tabs.widget(4)
-            buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
+            processing_tab = page.tabs.widget(0)
+            buttons = [btn.text() for btn in processing_tab.findChildren(QPushButton)]
             self.assertNotIn("開始執行", buttons)
             self.assertNotIn("完成／取消", buttons)
 
-            analysis_tab = page.tabs.widget(2)
             analysis_buttons = [
-                btn.text() for btn in analysis_tab.findChildren(QPushButton)
+                btn.text() for btn in processing_tab.findChildren(QPushButton)
             ]
             self.assertIn("新增分析紀錄", analysis_buttons)
             add_note = next(
                 btn
-                for btn in analysis_tab.findChildren(QPushButton)
+                for btn in processing_tab.findChildren(QPushButton)
                 if btn.text() == "新增分析紀錄"
             )
             self.assertTrue(add_note.isEnabled())
@@ -248,24 +270,19 @@ class AnomalyManagementPageTests(unittest.TestCase):
         ):
             page = self._make_page()
             page.load_anomaly("anomaly-1")
-            corrective_tab = page.tabs.widget(4)
-            buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
+            processing_tab = page.tabs.widget(0)
+            buttons = [btn.text() for btn in processing_tab.findChildren(QPushButton)]
             self.assertIn("新增有效性驗證", buttons)
 
             page.load_anomaly("anomaly-1")
-            corrective_tab = page.tabs.widget(4)
-            buttons = [btn.text() for btn in corrective_tab.findChildren(QPushButton)]
+            processing_tab = page.tabs.widget(0)
+            buttons = [btn.text() for btn in processing_tab.findChildren(QPushButton)]
             self.assertNotIn("新增有效性驗證", buttons)
-
-    def test_corrective_tab_is_named_disposition_items(self) -> None:
-        page = self._make_page()
-        self.assertEqual("處置項目", page.TAB_NAMES[4])
-        self.assertEqual("處置項目", page.tabs.tabText(4))
 
     def test_footer_command_row_has_only_save_and_cancel(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
-        command_row = page.layout().itemAt(4).layout()
+        command_row = page.layout().itemAt(2).layout()
         footer_buttons = [
             command_row.itemAt(index).widget()
             for index in range(command_row.count())
@@ -295,7 +312,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         page.return_to_list()
         main_window.open_supplier_event_ops.assert_called_once_with(PAGE_EVENT_OVERDUE)
 
-    def test_repeat_issues_panel_survives_runtime_error(self) -> None:
+    def test_repeat_button_survives_runtime_error(self) -> None:
         with mock.patch.object(
             repeat_issue_service,
             "list_repeat_issues",
@@ -303,7 +320,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
         ):
             page = self._make_page()
             page.load_anomaly("anomaly-1")
-            self.assertEqual(0, page.repeat_issues_panel._table.rowCount())
+            self.assertEqual("潛在重複 (0)", page.repeat_button.text())
 
     def test_repeat_button_opens_dedicated_repeat_page(self) -> None:
         main_window = mock.Mock()

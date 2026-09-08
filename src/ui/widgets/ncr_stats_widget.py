@@ -29,7 +29,7 @@ from ui.layout_constants import (
     STATS_EXPORT_BUTTON_MIN_WIDTH,
     STATS_REFRESH_BUTTON_MIN_WIDTH,
 )
-from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget, apply_clickable_affordance
+from ui.widgets.common_widgets import AnalyticsWorkflowShell, EmptyStateWidget, apply_clickable_affordance, make_multiline_label
 from ui.widgets.stats_dashboard_helpers import (
     build_temp_chart_paths,
     cleanup_temp_files,
@@ -178,8 +178,7 @@ class NcrStatsWidget(QWidget, _NcrStatsChartMixin):
                 return_slips = ncr_stats_service.get_return_slip_ratio_by_range(conn, iso_start, iso_end)
         except Exception as exc:
             logger.exception("載入 NCR 統計數據失敗")
-            err_lbl = QLabel(f"無法載入統計數據：{exc}")
-            err_lbl.setProperty("role", "errorText")
+            err_lbl = make_multiline_label(f"無法載入統計數據：{exc}", role="errorText")
             self.grid_layout.addWidget(err_lbl, 0, 0)
             self.grid_layout.activate()
             self.grid_layout.update()

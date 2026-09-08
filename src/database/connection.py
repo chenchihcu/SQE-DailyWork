@@ -259,6 +259,7 @@ def initialize_database() -> dict:
     report["ncr_migration"] = ncr_migration_report
     report["case_actions_migration"] = case_actions_migration
     report["hypotheses_migration"] = hypotheses_migration
+    report["repeat_links_migration"] = repeat_links_migration
     if report.get("migrated"):
         logger.info("已將 Legacy 資料從 %s 遷移至 %s", LEGACY_DB_PATH, DB_PATH)
     return report

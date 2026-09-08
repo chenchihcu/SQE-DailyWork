@@ -28,14 +28,16 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSizePolicy
 
 from ui.layout_constants import FORM_VERTICAL_SPACING, PANEL_MARGINS
 from ui.theme import TOKENS
 from ui.widgets.common_widgets import (
     EmptyStateWidget,
+    MultilineLabel,
     RequiredFieldLabel,
     create_section_card,
+    make_multiline_label,
     make_paired_form_row,
     mark_button_variant,
 )
@@ -78,6 +80,49 @@ class EmptyStateWidgetTests(unittest.TestCase):
         self.assertEqual(widget._title_label.text(), "無提示")
         # Passing an empty hint re-hides the hint label.
         self.assertFalse(widget._hint_label.isVisibleTo(widget))
+
+    def test_multiline_hint_uses_minimum_vertical_policy(self) -> None:
+        widget = EmptyStateWidget("尚無分析紀錄", "目前沒有可顯示的資料。")
+        self.addCleanup(widget.deleteLater)
+        for label in (widget._title_label, widget._hint_label):
+            self.assertTrue(label.wordWrap())
+            self.assertEqual(
+                label.sizePolicy().verticalPolicy(),
+                QSizePolicy.Policy.Minimum,
+            )
+
+    def test_multiline_hint_reports_taller_height_than_single_line(self) -> None:
+        widget = EmptyStateWidget(
+            "尚無資料",
+            "第一行提示\n第二行提示",
+        )
+        self.addCleanup(widget.deleteLater)
+        widget.resize(320, 200)
+        single_line = make_multiline_label("單行提示", role="hint")
+        self.addCleanup(single_line.deleteLater)
+        single_line.resize(320, 200)
+        multiline_height = widget._hint_label.heightForWidth(300)
+        single_line_height = single_line.heightForWidth(300)
+        self.assertGreater(multiline_height, single_line_height)
+
+
+class MakeMultilineLabelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        _ensure_qapp()
+
+    def test_make_multiline_label_sets_wrap_and_policy(self) -> None:
+        label = make_multiline_label("第一行\n第二行", role="helperText")
+        self.addCleanup(label.deleteLater)
+        self.assertIsInstance(label, MultilineLabel)
+        self.assertTrue(label.wordWrap())
+        self.assertTrue(label.hasHeightForWidth())
+        self.assertEqual(label.property("role"), "helperText")
+        self.assertEqual(
+            label.sizePolicy().verticalPolicy(),
+            QSizePolicy.Policy.Minimum,
+        )
+        self.assertGreater(label.heightForWidth(240), label.fontMetrics().height())
 
 
 class RequiredFieldLabelTests(unittest.TestCase):

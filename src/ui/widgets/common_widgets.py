@@ -414,6 +414,102 @@ def apply_toolbar_label_policy(label: QLabel) -> None:
     label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
 
+class MultilineLabel(QLabel):
+    """QLabel that reports wrapped height to parent layouts on Windows/Qt."""
+
+    def __init__(
+        self,
+        text: str = "",
+        *,
+        role: str = "value",
+        alignment: Qt.AlignmentFlag | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(text, parent)
+        if role:
+            self.setProperty("role", role)
+        self.setWordWrap(True)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        if alignment is not None:
+            self.setAlignment(alignment)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def setText(self, text: str) -> None:  # type: ignore[override]
+        super().setText(text)
+        self._sync_wrapped_height()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._sync_wrapped_height()
+
+    def _sync_wrapped_height(self) -> None:
+        width = self._layout_width()
+        if width <= 0:
+            return
+        needed = self.heightForWidth(width)
+        if needed > 0:
+            self.setMinimumHeight(needed)
+
+    def _layout_width(self) -> int:
+        width = self.contentsRect().width()
+        if width > 0:
+            return width
+        parent = self.parentWidget()
+        if parent is None:
+            return 0
+        return max(parent.width() - (PANEL_MARGINS[0] + PANEL_MARGINS[2]), 0)
+
+
+def make_multiline_label(
+    text: str,
+    *,
+    role: str = "value",
+    alignment: Qt.AlignmentFlag | None = None,
+    parent: QWidget | None = None,
+) -> MultilineLabel:
+    """Create a content label that reports correct height for wrapped/multi-line text.
+
+    Use for empty-state hints, metadata rows, and card bodies inside narrow
+    splitters so Qt does not paint stacked lines into a single-line height.
+    """
+    return MultilineLabel(
+        text,
+        role=role,
+        alignment=alignment,
+        parent=parent,
+    )
+
+
+def configure_multiline_label(label: QLabel) -> QLabel:
+    """Apply the shared multi-line layout contract to an existing QLabel."""
+    label.setWordWrap(True)
+    label.setMinimumWidth(0)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    if isinstance(label, MultilineLabel):
+        label._sync_wrapped_height()
+    return label
+
+
+def sync_multiline_label_geometry(label: QLabel) -> None:
+    """Refresh wrapped height after programmatic text updates."""
+    if isinstance(label, MultilineLabel):
+        label._sync_wrapped_height()
+        label.updateGeometry()
+        return
+    configure_multiline_label(label)
+    width = label.width()
+    if width <= 0 and label.parentWidget() is not None:
+        width = label.parentWidget().width()
+    if width > 0 and label.hasHeightForWidth():
+        needed = label.heightForWidth(width)
+        if needed > 0:
+            label.setMinimumHeight(needed)
+    label.updateGeometry()
+
+
 def make_inline_error_label() -> QLabel:
     """Form-level inline error hint (hidden until validation fails).
 
@@ -497,15 +593,20 @@ class EmptyStateWidget(QFrame):
         layout.setSpacing(CONTROL_ROW_SPACING)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._title_label = QLabel(title)
-        self._title_label.setProperty("role", "title")
-        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._title_label = make_multiline_label(
+            title,
+            role="title",
+            alignment=Qt.AlignmentFlag.AlignCenter,
+            parent=self,
+        )
         layout.addWidget(self._title_label)
 
-        self._hint_label = QLabel(hint)
-        self._hint_label.setProperty("role", "hint")
-        self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hint_label.setWordWrap(True)
+        self._hint_label = make_multiline_label(
+            hint,
+            role="hint",
+            alignment=Qt.AlignmentFlag.AlignCenter,
+            parent=self,
+        )
         self._hint_label.setVisible(bool(hint))
         layout.addWidget(self._hint_label)
 
