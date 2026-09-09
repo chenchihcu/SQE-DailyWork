@@ -57,8 +57,6 @@ OVERVIEW_FIELDS: tuple[tuple[str, str], ...] = (
     ("root_cause_status", "根本原因狀態"),
     ("corrective_action_status", "改善措施狀態"),
     ("verification_result", "有效性驗證"),
-    ("hypothesis_count", "原因假設數"),
-    ("hypothesis_adopted", "已採納假設"),
     ("attachment_count", "附件數"),
     ("repeat_link_count", "重複警示"),
 )
@@ -86,8 +84,6 @@ def _overview_snapshot(conn, anomaly_id: str) -> dict[str, Any]:
         "root_cause_status": overview.get("root_cause_status") or "尚未開始",
         "corrective_action_status": overview.get("corrective_action_status") or "—",
         "verification_result": overview.get("verification_result") or "—",
-        "hypothesis_count": int(overview.get("hypothesis_count") or 0),
-        "hypothesis_adopted": bool(overview.get("hypothesis_adopted")),
         "attachment_count": int(overview.get("attachment_count") or 0),
         "repeat_link_count": int(overview.get("repeat_link_count") or 0),
     }

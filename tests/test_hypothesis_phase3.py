@@ -238,10 +238,10 @@ class Phase3HypothesisRepositoryTests(unittest.TestCase):
             row for row in chain if row["node_type"] == "hypothesis"
         )
         self.assertEqual(1, hypothesis_node["attachment_count"])
-        overview = repository.get_anomaly_overview_card(self.conn, self.anomaly_id)
-        self.assertEqual(1, overview["hypothesis_count"])
-        self.assertEqual(1, overview["hypothesis_deepest_level"])
-        self.assertFalse(overview["hypothesis_adopted"])
+        metrics = repository.hypothesis_overview_metrics(self.conn, self.anomaly_id)
+        self.assertEqual(1, metrics["hypothesis_count"])
+        self.assertEqual(1, metrics["hypothesis_deepest_level"])
+        self.assertFalse(metrics["hypothesis_adopted"])
         self.assertIn(note_id, {row["node_id"] for row in chain})
 
     def test_analysis_note_attachment_count_uses_live_manifest(self) -> None:
@@ -273,58 +273,39 @@ class Phase3HypothesisServiceTests(unittest.TestCase):
         self.conn.execute("PRAGMA foreign_keys=ON")
         repository.create_schema(self.conn)
         self.anomaly_id = _seed_anomaly(self.conn)
-        self.conn_patcher = mock.patch.object(
-            _anomaly_workbench_service,
-            "_open_conn",
-            return_value=self.conn,
-        )
-        self.conn_patcher.start()
 
     def tearDown(self) -> None:
-        self.conn_patcher.stop()
         self.conn.close()
 
-    def test_create_hypothesis_writes_audit_log(self) -> None:
-        hypothesis_id = _anomaly_workbench_service.create_hypothesis(
-            anomaly_id=self.anomaly_id,
-            statement="service path",
-            evidence_type="FACT",
-        )
-        logs = repository.list_anomaly_audit_logs(self.conn, self.anomaly_id)
-        self.assertTrue(any(log["action"] == ANOMALY_AUDIT_HYPOTHESIS_CREATED for log in logs))
-        row = repository.get_anomaly_hypothesis(self.conn, hypothesis_id)
-        self.assertEqual("service path", row["statement"])
-
-    def test_promote_hypothesis_writes_audit_log(self) -> None:
-        hypothesis_id = repository.create_anomaly_hypothesis(
+    def test_product_read_paths_return_empty_collections(self) -> None:
+        repository.create_anomaly_hypothesis(
             self.conn,
             anomaly_id=self.anomaly_id,
-            statement="promote me",
-            status="支持",
+            statement="cold-stored hypothesis",
         )
-        _anomaly_workbench_service.promote_hypothesis_to_root_cause(
-            anomaly_id=self.anomaly_id,
-            hypothesis_id=hypothesis_id,
-        )
-        logs = repository.list_anomaly_audit_logs(self.conn, self.anomaly_id)
-        self.assertTrue(any(log["action"] == ANOMALY_AUDIT_HYPOTHESIS_PROMOTED for log in logs))
+        self.assertEqual([], _anomaly_workbench_service.list_hypotheses(self.anomaly_id))
+        self.assertEqual([], _anomaly_workbench_service.list_analysis_notes(self.anomaly_id))
+        self.assertEqual([], _anomaly_workbench_service.list_eight_d_reviews(self.anomaly_id))
+        self.assertEqual([], _anomaly_workbench_service.list_evidence_chain(self.anomaly_id))
 
-    def test_update_hypothesis_non_status_writes_audit_log(self) -> None:
-        hypothesis_id = repository.create_anomaly_hypothesis(
-            self.conn,
-            anomaly_id=self.anomaly_id,
-            statement="before edit",
-        )
-        _anomaly_workbench_service.update_hypothesis(
-            anomaly_id=self.anomaly_id,
-            hypothesis_id=hypothesis_id,
-            statement="after edit",
-            evidence_type="FACT",
-        )
-        logs = repository.list_anomaly_audit_logs(self.conn, self.anomaly_id)
-        self.assertTrue(
-            any(log["action"] == ANOMALY_AUDIT_HYPOTHESIS_UPDATED for log in logs)
-        )
+    def test_product_write_paths_fail_closed(self) -> None:
+        with self.assertRaises(ValueError):
+            _anomaly_workbench_service.create_hypothesis(
+                anomaly_id=self.anomaly_id,
+                statement="blocked",
+            )
+        with self.assertRaises(ValueError):
+            _anomaly_workbench_service.create_analysis_note(
+                anomaly_id=self.anomaly_id,
+                content="blocked",
+            )
+        with self.assertRaises(ValueError):
+            _anomaly_workbench_service.create_eight_d_review_with_audit(
+                anomaly_id=self.anomaly_id,
+                revision="Rev A",
+                review_status="接受",
+                review_comment="blocked",
+            )
 
 
 if __name__ == "__main__":

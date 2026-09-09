@@ -33,6 +33,12 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(6, lc.COMPACT_PAGE_SPACING)
         self.assertEqual((12, 6, 12, 6), lc.COMPACT_COMMAND_ROW_MARGINS)
 
+    def test_workbench_action_table_column_widths(self) -> None:
+        self.assertEqual(96, lc.WORKBENCH_ACTION_DUE_DATE_WIDTH)
+        self.assertEqual(88, lc.WORKBENCH_ACTION_OWNER_WIDTH)
+        self.assertEqual(72, lc.WORKBENCH_ACTION_STATUS_WIDTH)
+        self.assertEqual(180, lc.WORKBENCH_ACTION_OPS_WIDTH)
+
     def test_event_list_column_profile_breakpoint(self) -> None:
         self.assertEqual(1024, lc.EVENT_LIST_FULL_COLUMNS_MIN_WIDTH)
         self.assertEqual(106, lc.EVENT_LIST_CORE_ANOMALY_NO_WIDTH)

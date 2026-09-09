@@ -56,11 +56,7 @@ def _enrich_events_with_overview(
         row["root_cause_status"] = card.get("root_cause_status")
         row["corrective_action_status"] = card.get("corrective_action_status")
         row["verification_result"] = card.get("verification_result")
-        row["has_analysis_notes"] = bool(card.get("has_analysis_notes"))
         row["attachment_count"] = int(card.get("attachment_count", 0))
-        row["hypothesis_count"] = int(card.get("hypothesis_count") or 0)
-        row["hypothesis_deepest_level"] = int(card.get("hypothesis_deepest_level") or 0)
-        row["hypothesis_adopted"] = bool(card.get("hypothesis_adopted"))
         row["repeat_link_count"] = int(card.get("repeat_link_count") or 0)
 
 

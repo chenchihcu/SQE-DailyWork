@@ -88,6 +88,7 @@ from ui.widgets.event_next_action import (
     HANDLER_OPEN_FULL,
     HANDLER_ROOT_CAUSE,
     HANDLER_VERIFY,
+    HANDLER_VIEW_ACTIONS,
 )
 from ui.widgets.event_quick_review_panel import EventQuickReviewPanel
 from ui.widgets.pagination_bar import PaginationBar
@@ -796,6 +797,13 @@ class EventListWidget(QWidget, _EventListFilterMixin):
             return
         if handler_key == HANDLER_OPEN_FULL:
             self.open_anomaly_details(anomaly_id)
+            return
+        if handler_key == HANDLER_VIEW_ACTIONS:
+            opener = getattr(self.main_window, "open_anomaly_management", None)
+            if callable(opener):
+                opener(anomaly_id, initial_tab="Action 清單")
+            else:
+                self.open_anomaly_details(anomaly_id)
             return
         if handler_key == HANDLER_CLOSE:
             self.open_close_dialog(anomaly_id, str(row.get("content") or ""))

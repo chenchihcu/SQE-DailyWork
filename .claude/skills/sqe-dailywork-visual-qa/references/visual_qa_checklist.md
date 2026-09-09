@@ -43,6 +43,7 @@ Interpreter: `.venv\Scripts\python.exe` (Python 3.14.3) — not the `.uv-python/
   - `ncr-tracker` — warehouse 建立 / 待處理 / 歷史 tabs (list views, not just the create form)
   - `stats-stress` — 4 異常統計 charts with long-name stress · `ncr-stats` — NCR 2×2 grid
   - `appearance-settings` — appearance preferences dialog (default & comfortable large) · `workbench` — anomaly management workbench · `dialog-density` — dense workbench write dialogs
+  - `repeat-issues-management` — dedicated potential-duplicate review page with dual-case comparison and long CJK stress fixture
   - `empty-states` — empty event list / master / NCR-unavailable placeholder · `pdf-export` — sample event PDF + PDF font report
 - `--scale 1.0,1.25,1.5` — capture at multiple DPIs (one child process per scale; required by §11). Filenames get an `@1.25x` suffix.
 - `--min-width` (or `--size 1024x680`) — capture resizable surfaces at the contract minimum to catch CJK clipping.
@@ -74,6 +75,13 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 - **已知限制（2026-08-29，已緩解）**：Orchestrator 以 subprocess-per-page 隔離。`event_create_anomaly` 在 offscreen 點擊按鍵仍會 SEH，改為結構驗證（略過按鍵點擊）；報告 `## 結構驗證頁面` 會列出。其他頁若仍 SEH，見 `## SEH 崩潰頁面`。
 - **報告輸出**：執行完畢後會產生 `scratch/button_audit_report.md` 報表，請檢視該報表以確認是否有任何按鈕拋出例外錯誤 (Exceptions)。
 
+## 禁止假完成 (No false done)
+
+- **未跑 native visual probe 不得宣稱 UI 任務完成。** Offscreen unittest / structural smoke 不能替代 probe。
+- 必要檢查未執行或 FAIL → 標 **`not verified`** 或保持 open；**禁止**寫入 `Residual risk` 當作「下次再跑 probe」的藉口。
+- `Residual risk` 僅用於**已執行必要檢查後**仍無法消除的環境限制（例如非 Windows 主機無法跑 native Qt、字體安裝差異）。
+- UI 交付的 `Verification` 必須列出：probe 命令、JSON 關鍵欄位（`visual_trustworthy`, `cjk_font_ok`, `qss_unknown_property_warnings`）、PNG 路徑，以及從 PNG 讀到的版面結論。
+
 ## 定義通過條件 (Passing Conditions)
 
 要宣稱本技能已「通過 (Passed)」或「完成 (Done)」，必須滿足對應測試類型的通過條件：
@@ -98,7 +106,7 @@ The probe is self-checking — read its JSON, do not eyeball platform validity:
 
 A visual claim is "done" only after the relevant dimensions below are checked (skip ones that truly don't apply, and say which):
 
-1. **Surface coverage** — every touched surface has a probe target: 6 sidebar pages (`main`, `event-list`, `master-data`, `ncr-tracker`, `stats-stress`/`ncr-stats`, `appearance-settings`), dialogs (`form-density`), exports (`pdf-export`).
+1. **Surface coverage** — every touched surface has a probe target: 6 sidebar pages (`main`, `event-list`, `master-data`, `ncr-tracker`, `stats-stress`/`ncr-stats`, `appearance-settings`), workbench/dialogs (`workbench`, `dialog-density`, `form-density`), dedicated flows (`repeat-issues-management`, `supplier-360`, `manager-view`), exports (`pdf-export`).
 2. **Multi-DPI** — `--scale 1.0,1.25,1.5`; read each PNG for badge / limit-label / disclosure clipping.
 3. **Minimum width** — `--min-width` (1024×680); long CJK must not clip.
 4. **Empty / loading / error states** — `--target empty-states`; confirm `暫無資料` and the NCR-unavailable placeholder render.

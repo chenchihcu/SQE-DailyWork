@@ -80,6 +80,7 @@ from database.repo_helpers import (
     ANOMALY_ATTACHMENT_CATEGORY_OTHER,
     ANOMALY_EIGHT_D_REVIEWS_MIGRATION_META_KEY,
     ANOMALY_AUDIT_LOGS_MIGRATION_META_KEY,
+    is_retired_workbench_audit_action,
     PRODUCT_RECORDS_VIEW_IS_ACTIVE_META_KEY,
     PRODUCT_RECORDS_VIEW_IS_ACTIVE_SCHEMA_VERSION,
     # ── TypedDicts ──
@@ -4921,10 +4922,13 @@ def list_anomaly_timeline(conn: sqlite3.Connection, anomaly_id: str) -> list[dic
     audit = list_anomaly_audit_logs(conn, anomaly_id)
     events: list[dict] = []
     for entry in audit:
+        action = str(entry.get("action") or "AUDIT")
+        if is_retired_workbench_audit_action(action):
+            continue
         events.append(
             {
                 "ts": entry.get("created_at") or "",
-                "kind": entry.get("action") or "AUDIT",
+                "kind": action,
                 "summary": entry.get("after_value") or entry.get("before_value") or "",
                 "actor": entry.get("actor_name") or "",
                 "source": "audit",
@@ -4991,11 +4995,9 @@ def get_anomaly_overview_card(conn: sqlite3.Connection, anomaly_id: str) -> dict
         "root_cause_status": (rc or {}).get("status", ANOMALY_ROOT_CAUSE_NOT_STARTED),
         "corrective_action_status": improvement_status or "—",
         "verification_result": verify_result or "—",
-        "has_analysis_notes": bool(list_anomaly_analysis_notes(conn, anomaly_id)),
         "attachment_count": _count_anomaly_attachment_manifest(conn, anomaly_id),
         "repeat_link_count": count_repeat_links_for_anomaly(conn, anomaly_id),
     }
-    overview.update(hypothesis_overview_metrics(conn, anomaly_id))
     return overview
 
 

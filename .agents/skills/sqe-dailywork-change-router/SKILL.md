@@ -1,6 +1,6 @@
 ---
 name: sqe-dailywork-change-router
-version: 1.1.0
+version: 1.2.0
 description: "把 SQE DailyWork 變更路由到正確來源檔與驗證 gate（UI、資料契約、services、docs、tests、code-simplifier safe-pass）。Use when 要決定改哪裡、跑什麼驗證、route、change router、驗證 gate 或 code-simplifier。Do NOT use for 實際改 UI 佈局（改用 sqe-dailywork-ui-ux-flow-optimizer）、改 schema（改用 sqe-dailywork-data-contract）或文件盤點（改用 sqe-dailywork-doc-gardening）。"
 allowed-tools: Read, Grep, Glob
 ---
@@ -19,9 +19,29 @@ Use this skill before implementing SQE DailyWork changes that may touch more tha
 ## Verification Selection
 
 - Harness/config/docs-only automation changes: run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness_check.ps1`.
-- Python behavior changes: prefer `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1`.
-- UI visual/CJK/font/screenshot work: use `scripts\qt_visual_probe.py` on native Windows Qt; offscreen is structural smoke only.
-- If full verification is impractical, run the closest focused unittest and report the residual risk.
+- Python behavior changes (no visible UI): prefer `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1`; if impractical, run the closest focused unittest and report the gap under `Residual risk`.
+- **UI visual closure gate** (visible `src/ui/` layout, typography, CJK, cards, comparison panels): read `sqe-dailywork-visual-qa`, run the mapped native `scripts\qt_visual_probe.py --target` on Windows, read the PNG, and require probe JSON `visual_trustworthy: true`. Offscreen unittest is structural smoke only. **Do not mark the task done or list skipped probe under `Residual risk`** — use `not verified` instead.
+- Global QSS/theme changes: run every touched target or `scripts\qt_visual_belt.py`.
+
+### UI surface → probe target
+
+| Changed surface / file | Probe target |
+| --- | --- |
+| `repeat_issues_management_page.py` | `repeat-issues-management` |
+| `anomaly_management_page.py`, workbench tabs | `workbench` |
+| `repeat_issues_panel.py` | `workbench` |
+| `stats_view_widget.py` | `stats-stress` |
+| `ncr_stats_widget.py` | `ncr-stats` |
+| `event_list_widget.py` | `event-list` |
+| `supplier_360_page.py` | `supplier-360` |
+| `manager_view_page.py` | `manager-view` |
+| `theme.py`, global QSS | all touched targets or `qt_visual_belt.py` |
+
+Example (repeat issues page):
+
+```
+.venv\Scripts\python.exe scripts\qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5 --output Outputs\visual_qa\repeat-issues-management\probe.png
+```
 
 ## `/code-simplifier` Safe-Pass Router
 
@@ -66,7 +86,7 @@ Use when the user asks for behavior-preserving simplification (`/code-simplifier
 
 - Visual-evidence policy (Playwright / offscreen): authority is `.claude/rules/visual_evidence_rules.md` — do not restate it here.
 - Do not run migration, `--apply`, direct `data/*.db` changes, or destructive cleanup without explicit user approval.
-- Keep findings and delivery in `Changes / Impact / Verification / Residual risk / Next action` (mirrored mechanically by `.Codex/hooks/sqe-dailywork-stop.ps1` — update both together).
+- Keep findings and delivery in `Changes / Impact / Verification / Residual risk / Next action` (mirrored mechanically by `.Codex/hooks/sqe-dailywork-stop.ps1` — update both together). `Verification` must cite executed probe commands/JSON/PNG paths for UI work; skipped mandatory checks belong in `not verified`, not `Residual risk`.
 
 ## 何時不要觸發
 

@@ -21,6 +21,7 @@ from ui.widgets.event_next_action import (
     HANDLER_OPEN_FULL,
     HANDLER_ROOT_CAUSE,
     HANDLER_VERIFY,
+    HANDLER_VIEW_ACTIONS,
     resolve_next_action,
 )
 from ui.widgets.event_quick_review_panel import EventQuickReviewPanel, format_due_countdown
@@ -125,6 +126,19 @@ class EventQuickReviewTests(unittest.TestCase):
             resolve_next_action(overview, detail).handler_key,
         )
 
+        overview = {
+            "overdue": False,
+            "open_action_count": 2,
+            "current_action": {"description": "追蹤供應商回覆"},
+            "root_cause_status": "已驗證",
+            "corrective_action_status": "執行中",
+            "verification_result": "—",
+        }
+        self.assertEqual(
+            HANDLER_VIEW_ACTIONS,
+            resolve_next_action(overview, detail).handler_key,
+        )
+
         self.assertEqual(
             HANDLER_OPEN_FULL,
             resolve_next_action({}, {"status": "已結案"}).handler_key,
@@ -171,6 +185,8 @@ class EventQuickReviewTests(unittest.TestCase):
         panel.load_from_row(row)
         self._drain_events()
         self.assertIn("20260908001", panel._ref_label.text())
+        self.assertEqual("開放 Action", panel._action_title.text())
+        self.assertIn("1 筆開放", panel._action_desc.text())
         self.assertTrue(panel.primary_button.isVisible())
         self.assertEqual("處理逾期處置", panel.primary_button.text())
 
@@ -219,6 +235,7 @@ class EventQuickReviewTests(unittest.TestCase):
             main_window.open_anomaly_management.assert_called_once_with(
                 "anomaly-1",
                 edit=False,
+                initial_tab=None,
             )
 
     def test_page_change_clears_quick_review_preview(self) -> None:

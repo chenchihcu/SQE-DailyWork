@@ -898,6 +898,7 @@ class MainWindow(QMainWindow):
         *,
         edit: bool = False,
         source_page_key: str | None = None,
+        initial_tab: str | int | None = None,
     ) -> None:
         """Open an anomaly in the main content area instead of a modal dialog."""
         if self._anomaly_management_page is None:
@@ -916,7 +917,11 @@ class MainWindow(QMainWindow):
                 "_filter_event_scope",
                 repository.EVENT_SCOPE_ANOMALY_ONLY,
             ) or repository.EVENT_SCOPE_ANOMALY_ONLY
-            self._anomaly_management_page.load_anomaly(anomaly_id, edit=edit)
+            self._anomaly_management_page.load_anomaly(
+                anomaly_id,
+                edit=edit,
+                initial_tab=initial_tab,
+            )
         except Exception as exc:
             logger.exception("開啟異常管理頁失敗")
             QMessageBox.critical(self, "錯誤", f"開啟異常管理頁失敗：{exc}")

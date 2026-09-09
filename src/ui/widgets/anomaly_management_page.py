@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,12 +33,17 @@ from ui.layout_constants import (
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
     ROW_GAP,
+    WORKBENCH_ACTION_DUE_DATE_WIDTH,
+    WORKBENCH_ACTION_OPS_WIDTH,
+    WORKBENCH_ACTION_OWNER_WIDTH,
+    WORKBENCH_ACTION_STATUS_WIDTH,
 )
 from ui.widgets.common_widgets import (
     EmptyStateWidget,
     apply_clickable_affordance,
     create_section_card,
     make_multiline_label,
+    style_table,
     sync_multiline_label_geometry,
 )
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
@@ -50,9 +57,19 @@ class AnomalyManagementPage(QWidget):
     """案件詳情與既有工作台資料的單一主視窗入口。"""
 
     TAB_NAMES = (
-        "案件處理",
+        "案件概覽",
+        "Action 清單",
+        "根本原因",
         "附件與佐證",
         "處理歷程",
+    )
+
+    _ACTION_TABLE_HEADERS = (
+        "預定日期",
+        "責任人",
+        "狀態",
+        "處置內容",
+        "操作",
     )
 
     _FULL_WIDTH_OVERVIEW_LABELS = frozenset(
@@ -135,8 +152,6 @@ class AnomalyManagementPage(QWidget):
 
         self.tabs = QTabWidget()
         self.tabs.setObjectName("AnomalyManagementTabs")
-        for name in self.TAB_NAMES:
-            self.tabs.addTab(QWidget(), name)
         root.addWidget(self.tabs, 1)
 
         self.save_button = QPushButton("儲存")
@@ -156,7 +171,29 @@ class AnomalyManagementPage(QWidget):
         command_row.addWidget(self.cancel_button)
         root.addLayout(command_row)
 
-    def load_anomaly(self, anomaly_id: str, *, edit: bool = False) -> None:
+    @classmethod
+    def resolve_tab_index(cls, initial_tab: str | int | None) -> int | None:
+        if initial_tab is None:
+            return None
+        if isinstance(initial_tab, int):
+            if 0 <= initial_tab < len(cls.TAB_NAMES):
+                return initial_tab
+            return None
+        tab_name = str(initial_tab).strip()
+        if not tab_name:
+            return None
+        try:
+            return cls.TAB_NAMES.index(tab_name)
+        except ValueError:
+            return None
+
+    def load_anomaly(
+        self,
+        anomaly_id: str,
+        *,
+        edit: bool = False,
+        initial_tab: str | int | None = None,
+    ) -> None:
         anomaly_key = str(anomaly_id or "").strip()
         if not anomaly_key:
             raise ValueError("Anomaly id is required")
@@ -169,6 +206,9 @@ class AnomalyManagementPage(QWidget):
         self._sync_back_button_label()
         self._update_repeat_button(anomaly_key)
         self._render_tabs()
+        tab_index = self.resolve_tab_index(initial_tab)
+        if tab_index is not None:
+            self.tabs.setCurrentIndex(tab_index)
         if edit:
             self.begin_edit()
 
@@ -253,17 +293,23 @@ class AnomalyManagementPage(QWidget):
         return verify_status == ACTION_VERIFICATION_PENDING
 
     def _render_tabs(self) -> None:
+        while self.tabs.count():
+            old = self.tabs.widget(0)
+            self.tabs.removeTab(0)
+            if old is not None:
+                old.deleteLater()
         builders = (
-            self._build_processing_tab,
+            self._build_overview_tab,
+            self._build_actions_tab,
+            self._build_root_cause_tab,
             self._build_attachments_tab,
             self._build_timeline_tab,
         )
         for index, builder in enumerate(builders):
-            old = self.tabs.widget(index)
-            self.tabs.removeTab(index)
-            if old is not None:
-                old.deleteLater()
-            self.tabs.insertTab(index, builder(), self.TAB_NAMES[index])
+            self.tabs.addTab(builder(), self.TAB_NAMES[index])
+        tab_bar = self.tabs.tabBar()
+        tab_bar.setExpanding(False)
+        tab_bar.setDocumentMode(True)
         self.tabs.setCurrentIndex(0)
 
     def _base_tab(self) -> tuple[QWidget, QVBoxLayout]:
@@ -287,20 +333,71 @@ class AnomalyManagementPage(QWidget):
         tab._workbench_content_body = body
         return tab, layout
 
-    def _build_processing_tab(self) -> QWidget:
+    def _build_overview_tab(self) -> QWidget:
         tab, layout = self._base_tab()
         self._add_case_overview_grid(layout, tab)
-        self._add_next_action_section(layout, tab)
-        self._add_root_cause_section(layout, tab)
+        layout.addStretch(1)
+        return tab
+
+    def _build_actions_tab(self) -> QWidget:
+        tab, layout = self._base_tab()
         actions = _case_action_service.list_case_actions(self._anomaly_id)
-        self._add_case_action_rows(layout, actions, add_stretch=False)
+        card = create_section_card(tab)
+        card.layout().addWidget(self._section_title("Action 清單"))
+        if not actions:
+            card.layout().addWidget(
+                EmptyStateWidget("尚無 Action", "可建立下一步處置或改善措施。")
+            )
+        else:
+            card.layout().addWidget(self._build_action_table(actions))
+        layout.addWidget(card)
         self._add_action_button(
             layout,
             "新增 Action",
             self._open_add_action_dialog,
             requires_open_case=True,
         )
-        self._add_eight_d_section(layout, tab)
+        layout.addStretch(1)
+        return tab
+
+    def _build_root_cause_tab(self) -> QWidget:
+        tab, layout = self._base_tab()
+        overview = self._overview
+        progress_card = create_section_card(tab)
+        progress_layout = progress_card.layout()
+        progress_layout.addWidget(self._section_title("調查進度"))
+        progress_layout.addLayout(
+            self._quality_badge_row("根本原因", overview.get("root_cause_status"))
+        )
+        progress_layout.addLayout(
+            self._quality_badge_row(
+                "改善措施",
+                overview.get("corrective_action_status"),
+            )
+        )
+        progress_layout.addLayout(
+            self._quality_badge_row(
+                "有效性驗證",
+                overview.get("verification_result"),
+            )
+        )
+        layout.addWidget(progress_card)
+
+        root_cause = _anomaly_workbench_service.get_root_cause(self._anomaly_id)
+        root_card = create_section_card(tab)
+        root_card.layout().addWidget(self._section_title("根本原因"))
+        if root_cause:
+            root_card.layout().addWidget(self._kv("狀態", root_cause.get("status")))
+            root_card.layout().addWidget(self._kv("說明", root_cause.get("statement")))
+            root_card.layout().addWidget(
+                self._kv("驗證方式", root_cause.get("validation_method"))
+            )
+        else:
+            root_card.layout().addWidget(
+                EmptyStateWidget("尚未建立根本原因", "可於異常分析流程補充。")
+            )
+        layout.addWidget(root_card)
+        self._add_action_button(layout, "編輯根本原因", self._open_root_cause_dialog)
         layout.addStretch(1)
         return tab
 
@@ -362,188 +459,6 @@ class AnomalyManagementPage(QWidget):
         )
         card_layout.addLayout(grid)
         layout.addWidget(card)
-
-    def _add_next_action_section(self, layout: QVBoxLayout, tab: QWidget) -> None:
-        overview = self._overview
-        action_card = create_section_card(tab)
-        action_layout = action_card.layout()
-        action_layout.addWidget(self._section_title("Next Action"))
-        current = overview.get("current_action") or {}
-        if not current:
-            action_layout.addWidget(
-                EmptyStateWidget("尚無待處置動作。", "可建立下一步處置。")
-            )
-        else:
-            action_layout.addWidget(self._kv("處置內容", current.get("description")))
-            action_layout.addWidget(
-                self._kv("Action 類型", current.get("action_type_label"))
-            )
-            action_layout.addWidget(self._kv("負責人", current.get("owner")))
-            action_layout.addWidget(self._kv("到期日", current.get("due_date")))
-            action_layout.addWidget(
-                self._kv("執行狀態", current.get("execution_status"))
-            )
-            action_layout.addWidget(
-                self._kv("驗證狀態", current.get("verification_status"))
-            )
-            action_layout.addWidget(
-                self._kv("逾期", "是" if overview.get("overdue") else "否")
-            )
-            command_row = QHBoxLayout()
-            command_row.setSpacing(CONTROL_ROW_SPACING)
-            if self._allows_case_action_commands():
-                status = str(current.get("execution_status") or "")
-                if status == "已規劃":
-                    start_button = QPushButton("開始執行")
-                    start_button.setProperty("variant", "secondary")
-                    start_button.clicked.connect(
-                        lambda _checked=False, action_id=str(current.get("id") or ""): (
-                            self._start_case_action(action_id)
-                        )
-                    )
-                    command_row.addWidget(start_button)
-                if status in ("已規劃", "執行中"):
-                    update_button = QPushButton(
-                        "取消" if status == "已規劃" else "完成／取消"
-                    )
-                    update_button.setProperty("variant", "secondary")
-                    update_button.clicked.connect(
-                        lambda _checked=False, row=dict(current): (
-                            self._open_complete_action_dialog(row)
-                        )
-                    )
-                    command_row.addWidget(update_button)
-            command_row.addStretch(1)
-            action_layout.addLayout(command_row)
-        layout.addWidget(action_card)
-
-    def _add_root_cause_section(self, layout: QVBoxLayout, tab: QWidget) -> None:
-        overview = self._overview
-        card = create_section_card(tab)
-        card_layout = card.layout()
-        card_layout.addWidget(self._section_title("根因調查"))
-        card_layout.addLayout(
-            self._quality_badge_row("根本原因", overview.get("root_cause_status"))
-        )
-        card_layout.addLayout(
-            self._quality_badge_row(
-                "改善措施",
-                overview.get("corrective_action_status"),
-            )
-        )
-        card_layout.addLayout(
-            self._quality_badge_row(
-                "有效性驗證",
-                overview.get("verification_result"),
-            )
-        )
-        hypothesis_count = int(overview.get("hypothesis_count") or 0)
-        if hypothesis_count > 0:
-            card_layout.addWidget(
-                self._kv(
-                    "原因假設",
-                    f"{hypothesis_count} 筆（最深 L{overview.get('hypothesis_deepest_level') or 0}）",
-                )
-            )
-        layout.addWidget(card)
-
-        self._add_list_section(
-            layout,
-            tab,
-            "分析紀錄",
-            _anomaly_workbench_service.list_analysis_notes(self._anomaly_id),
-            lambda row: (
-                f"[{row.get('evidence_label') or row.get('evidence_type') or '—'}] "
-                f"{row.get('author_name') or '未知'}"
-                + (
-                    f"　📎 {int(row.get('attachment_count') or 0)} 份附件"
-                    if int(row.get("attachment_count") or 0) > 0
-                    else ""
-                )
-                + f"\n{row.get('content') or '—'}"
-            ),
-        )
-
-        root_cause = _anomaly_workbench_service.get_root_cause(self._anomaly_id)
-        root_card = create_section_card(tab)
-        root_card.layout().addWidget(self._section_title("根本原因"))
-        if root_cause:
-            root_card.layout().addWidget(self._kv("狀態", root_cause.get("status")))
-            root_card.layout().addWidget(self._kv("說明", root_cause.get("statement")))
-            root_card.layout().addWidget(
-                self._kv("驗證方式", root_cause.get("validation_method"))
-            )
-        else:
-            root_card.layout().addWidget(
-                EmptyStateWidget("尚未建立根本原因", "可於異常分析流程補充。")
-            )
-        layout.addWidget(root_card)
-
-        hypothesis_card = create_section_card(tab)
-        hypothesis_card.layout().addWidget(self._section_title("多層原因假設"))
-        self._hypothesis_list = QListWidget()
-        self._hypothesis_list.setObjectName("AnomalyHypothesisList")
-        try:
-            hypotheses = _anomaly_workbench_service.list_hypotheses(self._anomaly_id)
-        except RuntimeError:
-            hypotheses = []
-        if not hypotheses:
-            hypothesis_card.layout().addWidget(
-                EmptyStateWidget("尚無原因假設", "可建立 L1–L5 多層 Why 樹。")
-            )
-        else:
-            for row in hypotheses:
-                level = int(row.get("level") or 1)
-                indent = "　" * max(level - 1, 0)
-                attachment_count = int(row.get("attachment_count") or 0)
-                attachment_suffix = (
-                    f"　📎 {attachment_count}" if attachment_count > 0 else ""
-                )
-                text = (
-                    f"{indent}L{level} [{row.get('status') or '—'}] "
-                    f"{row.get('evidence_label') or row.get('evidence_type') or '—'}"
-                    f"{attachment_suffix}\n{row.get('statement') or '—'}"
-                )
-                item = QListWidgetItem(text)
-                item.setData(256, str(row.get("id") or ""))
-                item.setData(257, str(row.get("status") or ""))
-                self._hypothesis_list.addItem(item)
-            hypothesis_card.layout().addWidget(self._hypothesis_list)
-        layout.addWidget(hypothesis_card)
-
-        self._add_action_button(layout, "新增分析紀錄", self._open_add_note_dialog)
-        self._add_action_button(layout, "新增假設", self._open_add_hypothesis_dialog)
-        self._add_action_button(layout, "編輯假設", self._open_edit_hypothesis_dialog)
-        self._add_action_button(
-            layout, "晉升為根本原因", self._promote_selected_hypothesis
-        )
-        self._add_action_button(layout, "編輯根本原因", self._open_root_cause_dialog)
-
-    def _add_eight_d_section(self, layout: QVBoxLayout, tab: QWidget) -> None:
-        reviews = _anomaly_workbench_service.list_eight_d_reviews(self._anomaly_id)
-        card = create_section_card(tab)
-        card.layout().addWidget(self._section_title("Supplier 8D 審查"))
-        if not reviews:
-            card.layout().addWidget(
-                EmptyStateWidget("尚未上傳 Supplier 8D。", "可追加審查紀錄。")
-            )
-        else:
-            for row in reviews:
-                status = str(row.get("review_status") or "—")
-                row_layout = QHBoxLayout()
-                row_layout.addWidget(
-                    self._status_badge(status, self._eight_d_tone(status))
-                )
-                row_layout.addWidget(
-                    self._kv(
-                        f"Rev {row.get('revision') or '—'}",
-                        row.get("review_comment") or "—",
-                    ),
-                    1,
-                )
-                card.layout().addLayout(row_layout)
-        layout.addWidget(card)
-        self._add_action_button(layout, "追加 Supplier 8D 審查", self._open_add_8d_dialog)
 
     def _build_timeline_tab(self) -> QWidget:
         tab, layout = self._base_tab()
@@ -611,85 +526,6 @@ class AnomalyManagementPage(QWidget):
         row.addStretch(1)
         layout.addLayout(row)
 
-    def _open_add_note_dialog(self) -> None:
-        from ui.widgets.anomaly_note_dialog import AnomalyNoteDialog
-
-        dialog = AnomalyNoteDialog(self._anomaly_id, self)
-        dialog.note_created.connect(lambda _id: self.refresh_data())
-        dialog.exec()
-
-    def _open_add_hypothesis_dialog(self) -> None:
-        from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
-
-        dialog = AnomalyHypothesisDialog(self._anomaly_id, parent=self)
-        dialog.hypothesis_saved.connect(lambda _id: self.refresh_data())
-        dialog.exec()
-
-    def _selected_hypothesis(self) -> dict | None:
-        if not hasattr(self, "_hypothesis_list"):
-            return None
-        item = self._hypothesis_list.currentItem()
-        if item is None:
-            return None
-        return {
-            "id": str(item.data(256) or ""),
-            "status": str(item.data(257) or ""),
-        }
-
-    def _open_edit_hypothesis_dialog(self) -> None:
-        from ui.widgets.anomaly_hypothesis_dialog import AnomalyHypothesisDialog
-
-        selected = self._selected_hypothesis()
-        if not selected or not selected.get("id"):
-            QMessageBox.information(self, "編輯假設", "請先選取一筆原因假設。")
-            return
-        rows = {
-            str(row.get("id") or ""): row
-            for row in _anomaly_workbench_service.list_hypotheses(self._anomaly_id)
-        }
-        initial = rows.get(str(selected["id"]))
-        if initial is None:
-            QMessageBox.warning(self, "編輯假設", "找不到所選假設，請重新整理後再試。")
-            return
-        dialog = AnomalyHypothesisDialog(
-            self._anomaly_id,
-            initial=initial,
-            parent=self,
-        )
-        dialog.hypothesis_saved.connect(lambda _id: self.refresh_data())
-        dialog.exec()
-
-    def _promote_selected_hypothesis(self) -> None:
-        selected = self._selected_hypothesis()
-        if not selected or not selected.get("id"):
-            QMessageBox.information(self, "晉升根本原因", "請先選取一筆原因假設。")
-            return
-        if selected.get("status") not in {"採納", "支持"}:
-            QMessageBox.information(
-                self,
-                "晉升根本原因",
-                "僅「採納」或「支持」狀態的假設可晉升為根本原因。",
-            )
-            return
-        answer = QMessageBox.question(
-            self,
-            "晉升根本原因",
-            "將所選假設晉升為根本原因？此動作不會自動設為「已驗證」。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            _anomaly_workbench_service.promote_hypothesis_to_root_cause(
-                anomaly_id=self._anomaly_id,
-                hypothesis_id=str(selected["id"]),
-            )
-        except Exception as exc:
-            QMessageBox.warning(self, "晉升失敗", localize_exception(exc))
-            return
-        self.refresh_data()
-
     def _open_root_cause_dialog(self) -> None:
         from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
 
@@ -740,13 +576,6 @@ class AnomalyManagementPage(QWidget):
             parent=self,
         )
         dialog.verification_created.connect(lambda _id: self.refresh_data())
-        dialog.exec()
-
-    def _open_add_8d_dialog(self) -> None:
-        from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
-
-        dialog = AddEightDReviewDialog(self._anomaly_id, parent=self)
-        dialog.review_created.connect(lambda _id: self.refresh_data())
         dialog.exec()
 
     def _open_add_audit_log_dialog(self) -> None:
@@ -805,89 +634,130 @@ class AnomalyManagementPage(QWidget):
                 card.layout().addWidget(label)
         layout.addWidget(card)
 
-    def _add_case_action_rows(
-        self,
-        layout: QVBoxLayout,
-        actions: list[dict],
-        *,
-        add_stretch: bool = True,
-    ) -> None:
-        card = create_section_card(layout.parentWidget())
-        card.layout().addWidget(self._section_title("Action 清單"))
-        if not actions:
-            card.layout().addWidget(
-                EmptyStateWidget("尚無 Action", "可建立下一步處置或改善措施。")
-            )
-        for action in actions:
-            summary = make_multiline_label(
-                f"{action.get('action_type_label') or action.get('action_type') or '—'}　"
-                f"[{action.get('execution_status') or '—'}]　"
-                f"驗證：{action.get('verification_status') or '—'}\n"
-                f"{action.get('description') or '—'}\n"
-                f"負責人：{action.get('owner') or '—'}　"
-                f"到期日：{action.get('due_date') or '—'}",
-                role="value",
-            )
-            summary.setToolTip(summary.text())
-            card.layout().addWidget(summary)
+    def _build_action_table(self, actions: list[dict]) -> QTableWidget:
+        table = QTableWidget(len(actions), len(self._ACTION_TABLE_HEADERS))
+        table.setObjectName("AnomalyActionTable")
+        table.setHorizontalHeaderLabels(list(self._ACTION_TABLE_HEADERS))
+        style_table(table, enable_sorting=False)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        table.setColumnWidth(0, WORKBENCH_ACTION_DUE_DATE_WIDTH)
+        table.setColumnWidth(1, WORKBENCH_ACTION_OWNER_WIDTH)
+        table.setColumnWidth(2, WORKBENCH_ACTION_STATUS_WIDTH)
+        table.setColumnWidth(4, WORKBENCH_ACTION_OPS_WIDTH)
 
-            command_row = QHBoxLayout()
-            command_row.setSpacing(CONTROL_ROW_SPACING)
-            if self._allows_case_action_commands():
-                status = str(action.get("execution_status") or "")
-                if status == "已規劃":
-                    start_button = QPushButton("開始執行")
-                    start_button.setAccessibleName(
-                        f"開始執行 {action.get('description') or 'Action'}"
-                    )
-                    start_button.setProperty("variant", "secondary")
-                    apply_clickable_affordance(
-                        start_button, tooltip="將狀態更新為執行中"
-                    )
-                    start_button.clicked.connect(
-                        lambda _checked=False, action_id=str(action.get("id") or ""): (
-                            self._start_case_action(action_id)
-                        )
-                    )
-                    command_row.addWidget(start_button)
-                if status in ("已規劃", "執行中"):
-                    update_button = QPushButton(
-                        "取消" if status == "已規劃" else "完成／取消"
-                    )
-                    update_button.setAccessibleName(
-                        f"完成或取消 {action.get('description') or 'Action'}"
-                    )
-                    update_button.setProperty("variant", "secondary")
-                    apply_clickable_affordance(
-                        update_button, tooltip="更新 Action 執行狀態"
-                    )
-                    update_button.clicked.connect(
-                        lambda _checked=False, row=dict(action): (
-                            self._open_complete_action_dialog(row)
-                        )
-                    )
-                    command_row.addWidget(update_button)
-            if self._allows_action_verification(action):
-                verification_button = QPushButton("新增有效性驗證")
-                verification_button.setAccessibleName(
-                    f"驗證 {action.get('description') or 'Action'}"
+        for row_index, action in enumerate(actions):
+            due_item = QTableWidgetItem(str(action.get("due_date") or "—"))
+            due_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            table.setItem(row_index, 0, due_item)
+
+            owner_item = QTableWidgetItem(str(action.get("owner") or "—"))
+            owner_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            table.setItem(row_index, 1, owner_item)
+
+            status_label, status_tone = self._action_display_status(action)
+            status_host = QWidget()
+            status_layout = QHBoxLayout(status_host)
+            status_layout.setContentsMargins(4, 2, 4, 2)
+            status_layout.addWidget(self._status_badge(status_label, status_tone))
+            status_layout.addStretch(1)
+            table.setCellWidget(row_index, 2, status_host)
+
+            type_label = (
+                action.get("action_type_label")
+                or action.get("action_type")
+                or "—"
+            )
+            description = str(action.get("description") or "—")
+            content_item = QTableWidgetItem(f"{type_label}\n{description}")
+            content_item.setToolTip(content_item.text())
+            table.setItem(row_index, 3, content_item)
+
+            table.setCellWidget(
+                row_index,
+                4,
+                self._build_action_ops_widget(action),
+            )
+            table.setRowHeight(row_index, max(table.rowHeight(row_index), 56))
+
+        return table
+
+    def _build_action_ops_widget(self, action: dict) -> QWidget:
+        host = QWidget()
+        row = QHBoxLayout(host)
+        row.setContentsMargins(4, 2, 4, 2)
+        row.setSpacing(CONTROL_ROW_SPACING)
+        if self._allows_case_action_commands():
+            status = str(action.get("execution_status") or "")
+            if status == "已規劃":
+                start_button = QPushButton("開始執行")
+                start_button.setAccessibleName(
+                    f"開始執行 {action.get('description') or 'Action'}"
                 )
-                verification_button.setProperty("variant", "secondary")
+                start_button.setProperty("variant", "secondary")
                 apply_clickable_affordance(
-                    verification_button,
-                    tooltip="追加一筆有效性驗證紀錄",
+                    start_button, tooltip="將狀態更新為執行中"
                 )
-                verification_button.clicked.connect(
-                    lambda _checked=False, row=dict(action): (
-                        self._open_verification_dialog(row)
+                start_button.clicked.connect(
+                    lambda _checked=False, action_id=str(action.get("id") or ""): (
+                        self._start_case_action(action_id)
                     )
                 )
-                command_row.addWidget(verification_button)
-            command_row.addStretch(1)
-            card.layout().addLayout(command_row)
-        layout.addWidget(card)
-        if add_stretch:
-            layout.addStretch(1)
+                row.addWidget(start_button)
+            if status in ("已規劃", "執行中"):
+                update_button = QPushButton(
+                    "取消" if status == "已規劃" else "完成／取消"
+                )
+                update_button.setAccessibleName(
+                    f"完成或取消 {action.get('description') or 'Action'}"
+                )
+                update_button.setProperty("variant", "secondary")
+                apply_clickable_affordance(
+                    update_button, tooltip="更新 Action 執行狀態"
+                )
+                update_button.clicked.connect(
+                    lambda _checked=False, row_data=dict(action): (
+                        self._open_complete_action_dialog(row_data)
+                    )
+                )
+                row.addWidget(update_button)
+        if self._allows_action_verification(action):
+            verification_button = QPushButton("新增有效性驗證")
+            verification_button.setAccessibleName(
+                f"驗證 {action.get('description') or 'Action'}"
+            )
+            verification_button.setProperty("variant", "secondary")
+            apply_clickable_affordance(
+                verification_button,
+                tooltip="追加一筆有效性驗證紀錄",
+            )
+            verification_button.clicked.connect(
+                lambda _checked=False, row_data=dict(action): (
+                    self._open_verification_dialog(row_data)
+                )
+            )
+            row.addWidget(verification_button)
+        row.addStretch(1)
+        return host
+
+    @staticmethod
+    def _action_display_status(action: dict) -> tuple[str, str]:
+        execution_status = str(action.get("execution_status") or "")
+        if execution_status == "已完成":
+            return "Done", "success"
+        if execution_status == "已取消":
+            return "已取消", "na"
+        if execution_status in {"已規劃", "執行中"}:
+            return "Open", "warning"
+        return execution_status or "—", "pending"
 
     def begin_edit(self) -> None:
         if not self._anomaly_id or self._editing:
@@ -1064,15 +934,5 @@ class AnomalyManagementPage(QWidget):
         if text in ("無效", "反證", "淘汰"):
             return "danger"
         if text in ("待驗證", "調查中", "提案", "執行中", "支持"):
-            return "warning"
-        return "pending"
-
-    @staticmethod
-    def _eight_d_tone(status: str) -> str:
-        if status == "接受":
-            return "success"
-        if status == "退回修正":
-            return "danger"
-        if status == "需補充證據":
             return "warning"
         return "pending"

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 HANDLER_HANDLE_OVERDUE = "handle_overdue"
 HANDLER_ADD_ACTION = "add_action"
+HANDLER_VIEW_ACTIONS = "view_actions"
 HANDLER_ROOT_CAUSE = "root_cause"
 HANDLER_VERIFY = "verify"
 HANDLER_CLOSE = "close"
@@ -72,5 +73,8 @@ def resolve_next_action(
 
     if status == "待處理" and _stages_ready_for_close(detail_data, overview_data):
         return NextActionSpec("結案", HANDLER_CLOSE)
+
+    if status == "待處理" and open_count > 0:
+        return NextActionSpec("查看 Action 清單", HANDLER_VIEW_ACTIONS)
 
     return NextActionSpec("開啟完整案件", HANDLER_OPEN_FULL)

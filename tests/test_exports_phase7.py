@@ -185,10 +185,10 @@ class ExportPhase7Tests(unittest.TestCase):
             workbook = load_workbook(path)
             anomaly_sheet = workbook["異常"]
             headers = [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 32)]
-            self.assertIn("原因假設數", headers)
-            self.assertIn("已採納假設", headers)
+            self.assertNotIn("原因假設數", headers)
+            self.assertNotIn("已採納假設", headers)
             self.assertIn("重複警示", headers)
-            self.assertIn("原因假設", workbook.sheetnames)
+            self.assertNotIn("原因假設", workbook.sheetnames)
 
     def test_export_events_report_skips_charts_when_preference_disabled(self) -> None:
         with mock.patch(
@@ -218,7 +218,7 @@ class ExportPhase7Tests(unittest.TestCase):
             detail = repository.get_anomaly_detail(conn, self.anomaly_id)
         text = _anomaly_markdown.render_anomaly_markdown(detail)
         self.assertIn("案件概況:", text)
-        self.assertIn("原因假設數:", text)
+        self.assertNotIn("原因假設數:", text)
         self.assertIn("開啟中處置:", text)
 
     def test_manager_export_single_summary_sheet(self) -> None:

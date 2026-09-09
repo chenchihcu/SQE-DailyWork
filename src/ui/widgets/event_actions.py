@@ -187,11 +187,17 @@ class EventActionsController:
             error_msg="開啟異常編輯失敗：",
         )
 
-    def open_anomaly_details(self, anomaly_id: str, *, edit: bool = False) -> None:
+    def open_anomaly_details(
+        self,
+        anomaly_id: str,
+        *,
+        edit: bool = False,
+        initial_tab: str | int | None = None,
+    ) -> None:
         """Open the single anomaly workbench route."""
         open_management = getattr(self._main_window, "open_anomaly_management", None)
         if callable(open_management):
-            open_management(anomaly_id, edit=edit)
+            open_management(anomaly_id, edit=edit, initial_tab=initial_tab)
             return
         QMessageBox.warning(
             self._parent,

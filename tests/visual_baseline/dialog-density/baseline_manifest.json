@@ -7,14 +7,11 @@
   },
   "files": [
     "dialog-density@1.5x_dialog-density-add-action.png",
-    "dialog-density@1.5x_dialog-density-add-note.png",
     "dialog-density@1.5x_dialog-density-edit-root-cause.png",
-    "dialog-density@1.5x_dialog-density-edit-hypothesis.png",
     "dialog-density@1.5x_dialog-density-close-anomaly.png",
     "dialog-density@1.5x_dialog-density-reopen-anomaly.png",
     "dialog-density@1.5x_dialog-density-complete-action.png",
     "dialog-density@1.5x_dialog-density-add-verification.png",
-    "dialog-density@1.5x_dialog-density-add-eight-d.png",
     "dialog-density@1.5x_dialog-density-add-audit.png"
   ],
   "scales": {
@@ -27,14 +24,11 @@
       },
       "files": [
         "dialog-density_dialog-density-add-action.png",
-        "dialog-density_dialog-density-add-note.png",
         "dialog-density_dialog-density-edit-root-cause.png",
-        "dialog-density_dialog-density-edit-hypothesis.png",
         "dialog-density_dialog-density-close-anomaly.png",
         "dialog-density_dialog-density-reopen-anomaly.png",
         "dialog-density_dialog-density-complete-action.png",
         "dialog-density_dialog-density-add-verification.png",
-        "dialog-density_dialog-density-add-eight-d.png",
         "dialog-density_dialog-density-add-audit.png"
       ]
     },
@@ -47,14 +41,11 @@
       },
       "files": [
         "dialog-density@1.25x_dialog-density-add-action.png",
-        "dialog-density@1.25x_dialog-density-add-note.png",
         "dialog-density@1.25x_dialog-density-edit-root-cause.png",
-        "dialog-density@1.25x_dialog-density-edit-hypothesis.png",
         "dialog-density@1.25x_dialog-density-close-anomaly.png",
         "dialog-density@1.25x_dialog-density-reopen-anomaly.png",
         "dialog-density@1.25x_dialog-density-complete-action.png",
         "dialog-density@1.25x_dialog-density-add-verification.png",
-        "dialog-density@1.25x_dialog-density-add-eight-d.png",
         "dialog-density@1.25x_dialog-density-add-audit.png"
       ]
     },
@@ -67,14 +58,11 @@
       },
       "files": [
         "dialog-density@1.5x_dialog-density-add-action.png",
-        "dialog-density@1.5x_dialog-density-add-note.png",
         "dialog-density@1.5x_dialog-density-edit-root-cause.png",
-        "dialog-density@1.5x_dialog-density-edit-hypothesis.png",
         "dialog-density@1.5x_dialog-density-close-anomaly.png",
         "dialog-density@1.5x_dialog-density-reopen-anomaly.png",
         "dialog-density@1.5x_dialog-density-complete-action.png",
         "dialog-density@1.5x_dialog-density-add-verification.png",
-        "dialog-density@1.5x_dialog-density-add-eight-d.png",
         "dialog-density@1.5x_dialog-density-add-audit.png"
       ]
     }

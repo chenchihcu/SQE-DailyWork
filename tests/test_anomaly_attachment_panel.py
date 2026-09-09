@@ -25,7 +25,6 @@ class EvidenceAttachmentPanelTests(unittest.TestCase):
             source = Path(temp_dir) / "measurement.pdf"
             source.write_bytes(b"evidence")
             with (
-                patch.object(_anomaly_workbench_service, "list_attachment_notes", return_value=[]),
                 patch.object(_anomaly_workbench_service, "list_attachment_actions", return_value=[]),
                 patch.object(_anomaly_workbench_service, "list_attachments", return_value=[]),
                 patch.object(
@@ -70,7 +69,6 @@ class EvidenceAttachmentPanelTests(unittest.TestCase):
             },
         ]
         with (
-            patch.object(_anomaly_workbench_service, "list_attachment_notes", return_value=[]),
             patch.object(_anomaly_workbench_service, "list_attachment_actions", return_value=[]),
             patch.object(_anomaly_workbench_service, "list_attachments", return_value=rows),
         ):

@@ -1,8 +1,10 @@
 """Anomaly case-workbench service (Phase 2–5).
 
-Single read/write boundary for analysis notes, root cause, attachments,
-Supplier 8D reviews, audit log, and timeline/overview projections. Canonical
-Action and verification writes live exclusively in ``_case_action_service``.
+Read/write boundary for root cause, attachments, audit log, and
+timeline/overview projections. Analysis notes, multi-layer hypotheses, and
+Supplier 8D review tables are retired from product UI (cold-stored in SQLite).
+Canonical Action and verification writes live exclusively in
+``_case_action_service``.
 """
 
 from __future__ import annotations
@@ -15,10 +17,8 @@ from typing import Any
 from database import connection as _connection
 from database import repository
 from database.repo_helpers import (
-    ANOMALY_AUDIT_HYPOTHESIS_CREATED,
-    ANOMALY_AUDIT_HYPOTHESIS_PROMOTED,
-    ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED,
-    ANOMALY_AUDIT_HYPOTHESIS_UPDATED,
+    RETIRED_WORKBENCH_FEATURE_RETIRED_MSG,
+    is_retired_workbench_audit_action,
 )
 from services import attachment_manager
 
@@ -30,10 +30,13 @@ def _open_conn():
     return _connection.get_connection()
 
 
-# ---- Analysis notes -----------------------------------------------------
+def _retired_write() -> None:
+    raise ValueError(RETIRED_WORKBENCH_FEATURE_RETIRED_MSG)
+
+
+# ---- Analysis notes (retired from product) --------------------------------
 def list_analysis_notes(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_anomaly_analysis_notes(conn, anomaly_id)
+    return []
 
 
 def create_analysis_note(
@@ -43,14 +46,7 @@ def create_analysis_note(
     evidence_type: str = "UNKNOWN",
     author_name: str = "",
 ) -> str:
-    with _open_conn() as conn:
-        return repository.create_anomaly_analysis_note(
-            conn,
-            anomaly_id=anomaly_id,
-            content=content,
-            evidence_type=evidence_type,
-            author_name=author_name,
-        )
+    _retired_write()
 
 
 # ---- Root cause ---------------------------------------------------------
@@ -82,10 +78,9 @@ def save_root_cause(
         )
 
 
-# ---- Hypotheses ---------------------------------------------------------
+# ---- Hypotheses (retired from product) ------------------------------------
 def list_hypotheses(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_anomaly_hypotheses(conn, anomaly_id)
+    return []
 
 
 def create_hypothesis(
@@ -98,27 +93,7 @@ def create_hypothesis(
     linked_note_id: str | None = None,
     actor_name: str = "",
 ) -> str:
-    with _open_conn() as conn:
-        hypothesis_id = repository.create_anomaly_hypothesis(
-            conn,
-            anomaly_id=anomaly_id,
-            statement=statement,
-            status=status,
-            evidence_type=evidence_type,
-            parent_hypothesis_id=parent_hypothesis_id,
-            linked_note_id=linked_note_id,
-            _commit=False,
-        )
-        repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=anomaly_id,
-            action=ANOMALY_AUDIT_HYPOTHESIS_CREATED,
-            after_value=(statement or "")[:240],
-            actor_name=actor_name,
-            _commit=False,
-        )
-        conn.commit()
-    return hypothesis_id
+    _retired_write()
 
 
 def update_hypothesis(
@@ -132,60 +107,7 @@ def update_hypothesis(
     linked_note_id: str | None = None,
     actor_name: str = "",
 ) -> dict[str, Any]:
-    with _open_conn() as conn:
-        before = repository.get_anomaly_hypothesis(conn, hypothesis_id) or {}
-        updated = repository.update_anomaly_hypothesis(
-            conn,
-            hypothesis_id=hypothesis_id,
-            anomaly_id=anomaly_id,
-            statement=statement,
-            status=status,
-            evidence_type=evidence_type,
-            parent_hypothesis_id=parent_hypothesis_id,
-            linked_note_id=linked_note_id,
-            _commit=False,
-        )
-        if status is not None and status != before.get("status"):
-            repository.append_anomaly_audit_log(
-                conn,
-                anomaly_id=anomaly_id,
-                action=ANOMALY_AUDIT_HYPOTHESIS_STATUS_CHANGED,
-                before_value=str(before.get("status") or ""),
-                after_value=str(updated.get("status") or ""),
-                actor_name=actor_name,
-                _commit=False,
-            )
-        changed_fields: list[str] = []
-        if statement is not None and (statement or "").strip() != str(
-            before.get("statement") or ""
-        ).strip():
-            changed_fields.append("statement")
-        if evidence_type is not None and str(evidence_type or "").strip() != str(
-            before.get("evidence_type") or ""
-        ).strip():
-            changed_fields.append("evidence_type")
-        if parent_hypothesis_id is not None:
-            before_parent = str(before.get("parent_hypothesis_id") or "").strip() or None
-            after_parent = str(updated.get("parent_hypothesis_id") or "").strip() or None
-            if before_parent != after_parent:
-                changed_fields.append("parent_hypothesis_id")
-        if linked_note_id is not None:
-            before_note = str(before.get("linked_note_id") or "").strip() or None
-            after_note = str(updated.get("linked_note_id") or "").strip() or None
-            if before_note != after_note:
-                changed_fields.append("linked_note_id")
-        if changed_fields:
-            repository.append_anomaly_audit_log(
-                conn,
-                anomaly_id=anomaly_id,
-                action=ANOMALY_AUDIT_HYPOTHESIS_UPDATED,
-                before_value=",".join(changed_fields),
-                after_value=str(updated.get("id") or hypothesis_id),
-                actor_name=actor_name,
-                _commit=False,
-            )
-        conn.commit()
-    return updated
+    _retired_write()
 
 
 def promote_hypothesis_to_root_cause(
@@ -195,30 +117,11 @@ def promote_hypothesis_to_root_cause(
     root_cause_status: str | None = None,
     actor_name: str = "",
 ) -> dict[str, Any]:
-    with _open_conn() as conn:
-        result = repository.promote_hypothesis_to_root_cause(
-            conn,
-            hypothesis_id=hypothesis_id,
-            anomaly_id=anomaly_id,
-            root_cause_status=root_cause_status,
-            _commit=False,
-        )
-        repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=anomaly_id,
-            action=ANOMALY_AUDIT_HYPOTHESIS_PROMOTED,
-            after_value=str(result.get("root_cause_status") or ""),
-            actor_name=actor_name,
-            _commit=False,
-        )
-        conn.commit()
-    _sync_markdown(anomaly_id)
-    return result
+    _retired_write()
 
 
 def list_evidence_chain(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_anomaly_evidence_chain(conn, anomaly_id)
+    return []
 
 
 # ---- Attachments --------------------------------------------------------
@@ -249,9 +152,9 @@ def create_attachment(
             file_type=file_type,
             revision=revision,
             uploaded_by=uploaded_by,
-            related_note_id=related_note_id,
+            related_note_id=None,
             related_action_id=related_action_id,
-            related_hypothesis_id=related_hypothesis_id,
+            related_hypothesis_id=None,
             _commit=False,
         )
         repository.append_anomaly_audit_log(
@@ -303,9 +206,9 @@ def import_attachment_from_file(
             file_type=attachment_manager.attachment_file_type(stored_path),
             revision=revision,
             uploaded_by=uploaded_by,
-            related_note_id=related_note_id,
+            related_note_id=None,
             related_action_id=related_action_id,
-            related_hypothesis_id=related_hypothesis_id,
+            related_hypothesis_id=None,
         )
         return attachment_id
     except Exception:
@@ -346,9 +249,9 @@ def update_attachment(
             category=category,
             description=description,
             revision=revision,
-            related_note_id=related_note_id,
+            related_note_id=None,
             related_action_id=related_action_id,
-            related_hypothesis_id=related_hypothesis_id,
+            related_hypothesis_id=None,
             _commit=False,
         )
         repository.append_anomaly_audit_log(
@@ -523,7 +426,7 @@ def _sync_markdown(anomaly_id: str) -> None:
         logger.warning("Attachment Markdown sync warning: %s", exc)
 
 
-# ---- Supplier 8D --------------------------------------------------------
+# ---- Supplier 8D (retired from product; use attachment category) ----------
 def create_eight_d_review(
     *,
     anomaly_id: str,
@@ -533,21 +436,11 @@ def create_eight_d_review(
     attachment_id: str | None = None,
     review_date: str | None = None,
 ) -> str:
-    with _open_conn() as conn:
-        return repository.create_anomaly_eight_d_review(
-            conn,
-            anomaly_id=anomaly_id,
-            revision=revision,
-            review_status=review_status,
-            review_comment=review_comment,
-            attachment_id=attachment_id,
-            review_date=review_date,
-        )
+    _retired_write()
 
 
 def list_eight_d_reviews(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_anomaly_eight_d_reviews(conn, anomaly_id)
+    return []
 
 
 # ---- Audit / timeline / overview ---------------------------------------
@@ -572,7 +465,12 @@ def append_audit_log(
 
 def list_audit_logs(anomaly_id: str) -> list[dict[str, Any]]:
     with _open_conn() as conn:
-        return repository.list_anomaly_audit_logs(conn, anomaly_id)
+        rows = repository.list_anomaly_audit_logs(conn, anomaly_id)
+    return [
+        row
+        for row in rows
+        if not is_retired_workbench_audit_action(str(row.get("action") or ""))
+    ]
 
 
 # Convenience wrappers that bundle a domain write with an audit log entry so
@@ -589,32 +487,7 @@ def create_eight_d_review_with_audit(
     review_date: str | None = None,
     actor_name: str = "",
 ) -> tuple[str, str]:
-    """Create a Supplier 8D review row and append a matching audit entry.
-
-    Returns ``(review_id, audit_log_id)``.
-    """
-    with _open_conn() as conn:
-        review_id = repository.create_anomaly_eight_d_review(
-            conn,
-            anomaly_id=anomaly_id,
-            revision=revision,
-            review_status=review_status,
-            review_comment=review_comment,
-            attachment_id=attachment_id,
-            review_date=review_date,
-        )
-        summary = f"{revision} → {review_status}"
-        if review_comment:
-            summary = f"{summary}（{review_comment}）"
-        audit_id = repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=anomaly_id,
-            action="EIGHT_D_REVIEWED",
-            before_value="",
-            after_value=summary,
-            actor_name=actor_name,
-        )
-    return review_id, audit_id
+    _retired_write()
 
 
 def append_manual_audit(

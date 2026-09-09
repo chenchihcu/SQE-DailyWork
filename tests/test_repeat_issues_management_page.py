@@ -104,16 +104,12 @@ class RepeatIssuesManagementPageTests(unittest.TestCase):
         page = self._make_page()
         self.assertEqual("潛在重複異常管理", page.title_label.text())
         self.assertEqual(8, page.table.columnCount())
-        self.assertTrue(page.source_case_card.isHidden())
+        self.assertEqual("返回上一頁", page.back_button.text())
         self.assertFalse(page.confirm_btn.isEnabled())
         self.assertFalse(page.dismiss_btn.isEnabled())
 
     def test_card_layouts_and_spacing(self) -> None:
         page = self._make_page()
-        source_layout = page.source_case_card.layout()
-        self.assertIsNotNone(source_layout)
-        self.assertEqual(4, source_layout.spacing())
-
         sc_layout = page.source_card.layout()
         self.assertIsNotNone(sc_layout)
         self.assertEqual(6, sc_layout.spacing())
@@ -165,8 +161,7 @@ class RepeatIssuesManagementPageTests(unittest.TestCase):
              mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=self.mock_repeat_rows):
             page.load_case("aid-1")
 
-        self.assertFalse(page.source_case_card.isHidden())
-        self.assertIn("20260629001", page.source_case_title.text())
+        self.assertIn("20260629001", page.back_button.text())
         self.assertEqual(1, page.table.rowCount())
         self.assertEqual("20260323001", page.table.item(0, 1).text())
         self.assertEqual("75", page.table.item(0, 5).text())

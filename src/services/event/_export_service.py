@@ -549,8 +549,6 @@ def export_events_report(
                 str(row.get("corrective_action_status") or "—"),
                 str(row.get("verification_result") or "—"),
                 int(row.get("attachment_count") or 0),
-                int(row.get("hypothesis_count") or 0),
-                "是" if row.get("hypothesis_adopted") else "否",
                 int(row.get("repeat_link_count") or 0),
                 row.get("status") or "",
                 row.get("closed_at") or "",
@@ -584,26 +582,16 @@ def export_events_report(
                 _OVERVIEW_LABELS["corrective_action_status"],
                 _OVERVIEW_LABELS["verification_result"],
                 _OVERVIEW_LABELS["attachment_count"],
-                _OVERVIEW_LABELS["hypothesis_count"],
-                _OVERVIEW_LABELS["hypothesis_adopted"],
                 _OVERVIEW_LABELS["repeat_link_count"],
                 "狀態",
                 "結案日期",
             ],
             anomaly_rows,
             _anomaly_detail_row,
-            {1, 2, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30},
+            {1, 2, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28},
         )
 
         export_warnings: list[str] = []
-        hypothesis_temp_pngs: list[Path] = []
-        if include_charts:
-            hypothesis_temp_pngs = _append_hypothesis_export_sheet(
-                workbook,
-                anomaly_rows,
-                output_parent=Path(file_path).parent,
-                warnings=export_warnings,
-            )
 
         # 4. 責任人排行榜頁
         resp_stats_rows = _query_service.get_responsible_person_stats_by_range(start_date, end_date)
@@ -757,11 +745,6 @@ def export_events_report(
         output_path = Path(file_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         workbook.save(output_path)
-        for png_path in hypothesis_temp_pngs:
-            try:
-                png_path.unlink(missing_ok=True)
-            except OSError:
-                pass
         message = f"已匯出至：{output_path}"
         if export_warnings:
             message += "\n完成但有警告：\n- " + "\n- ".join(export_warnings)

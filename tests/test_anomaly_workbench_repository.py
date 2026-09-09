@@ -305,7 +305,7 @@ class AnomalyWorkbenchRepositoryTests(unittest.TestCase):
         self.assertEqual(card["root_cause_status"], "尚未開始")
         self.assertEqual(card["corrective_action_status"], "已完成")
         self.assertEqual(card["verification_result"], "無效")
-        self.assertTrue(card["has_analysis_notes"])
+        self.assertNotIn("has_analysis_notes", card)
 
 
 class AnomalyEvidenceTablesMigrationTests(unittest.TestCase):

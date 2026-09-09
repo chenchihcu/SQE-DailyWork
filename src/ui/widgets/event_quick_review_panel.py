@@ -157,9 +157,9 @@ class EventQuickReviewPanel(QWidget):
         action_layout = self._action_card.layout()
         assert action_layout is not None
         action_layout.setContentsMargins(*PANEL_MARGINS)
-        action_title = QLabel("下一步處置")
-        action_title.setProperty("role", "sectionTitle")
-        action_layout.addWidget(action_title)
+        self._action_title = QLabel("開放 Action")
+        self._action_title.setProperty("role", "sectionTitle")
+        action_layout.addWidget(self._action_title)
         self._action_desc = QLabel()
         self._action_desc.setProperty("role", "value")
         self._action_desc.setWordWrap(True)
@@ -324,26 +324,33 @@ class EventQuickReviewPanel(QWidget):
 
         self.stage_stepper.set_case_state(detail, overview)
 
+        open_count = int(overview.get("open_action_count") or 0)
         current = overview.get("current_action") or {}
-        action_text = str(
-            current.get("description")
-            or detail.get("pending_items")
-            or row.get("content")
-            or "—"
-        )
-        self._action_desc.setText(action_text)
-        due_date = current.get("due_date") or ""
-        self._due_value = due_date
-        if due_date:
-            self._due_label.setText(f"到期：{due_date}")
-            self._due_label.show()
-        else:
+        if open_count <= 0:
+            self._action_desc.setText("尚無開放 Action")
             self._due_label.hide()
-        self._refresh_countdown_text()
-        if due_date:
-            self._countdown_timer.start()
-        else:
+            self._countdown_frame.hide()
+            self._due_value = None
             self._countdown_timer.stop()
+        else:
+            description = str(current.get("description") or "—")
+            owner = str(current.get("owner") or "").strip()
+            owner_text = f"　負責人：{owner}" if owner else ""
+            self._action_desc.setText(f"{open_count} 筆開放\n最近：{description}{owner_text}")
+            due_date = current.get("due_date") or ""
+            self._due_value = due_date
+            if due_date:
+                self._due_label.setText(f"預定日期：{due_date}")
+                self._due_label.show()
+                self._countdown_frame.show()
+            else:
+                self._due_label.hide()
+                self._countdown_frame.hide()
+            self._refresh_countdown_text()
+            if due_date:
+                self._countdown_timer.start()
+            else:
+                self._countdown_timer.stop()
 
         self._render_thumbnails(anomaly_id, int(overview.get("attachment_count") or 0))
 

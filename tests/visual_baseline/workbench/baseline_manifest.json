@@ -7,12 +7,10 @@
   },
   "files": [
     "workbench@1.5x_workbench-page-overview.png",
-    "workbench@1.5x_workbench-page-timeline.png",
-    "workbench@1.5x_workbench-page-analysis.png",
-    "workbench@1.5x_workbench-page-eight-d.png",
-    "workbench@1.5x_workbench-page-corrective.png",
+    "workbench@1.5x_workbench-page-actions.png",
+    "workbench@1.5x_workbench-page-root-cause.png",
     "workbench@1.5x_workbench-page-attachments.png",
-    "workbench@1.5x_workbench-page-history.png"
+    "workbench@1.5x_workbench-page-timeline.png"
   ],
   "scales": {
     "1.0": {
@@ -24,12 +22,10 @@
       },
       "files": [
         "workbench_workbench-page-overview.png",
-        "workbench_workbench-page-timeline.png",
-        "workbench_workbench-page-analysis.png",
-        "workbench_workbench-page-eight-d.png",
-        "workbench_workbench-page-corrective.png",
+        "workbench_workbench-page-actions.png",
+        "workbench_workbench-page-root-cause.png",
         "workbench_workbench-page-attachments.png",
-        "workbench_workbench-page-history.png"
+        "workbench_workbench-page-timeline.png"
       ]
     },
     "1.25": {
@@ -41,12 +37,10 @@
       },
       "files": [
         "workbench@1.25x_workbench-page-overview.png",
-        "workbench@1.25x_workbench-page-timeline.png",
-        "workbench@1.25x_workbench-page-analysis.png",
-        "workbench@1.25x_workbench-page-eight-d.png",
-        "workbench@1.25x_workbench-page-corrective.png",
+        "workbench@1.25x_workbench-page-actions.png",
+        "workbench@1.25x_workbench-page-root-cause.png",
         "workbench@1.25x_workbench-page-attachments.png",
-        "workbench@1.25x_workbench-page-history.png"
+        "workbench@1.25x_workbench-page-timeline.png"
       ]
     },
     "1.5": {
@@ -58,12 +52,10 @@
       },
       "files": [
         "workbench@1.5x_workbench-page-overview.png",
-        "workbench@1.5x_workbench-page-timeline.png",
-        "workbench@1.5x_workbench-page-analysis.png",
-        "workbench@1.5x_workbench-page-eight-d.png",
-        "workbench@1.5x_workbench-page-corrective.png",
+        "workbench@1.5x_workbench-page-actions.png",
+        "workbench@1.5x_workbench-page-root-cause.png",
         "workbench@1.5x_workbench-page-attachments.png",
-        "workbench@1.5x_workbench-page-history.png"
+        "workbench@1.5x_workbench-page-timeline.png"
       ]
     }
   }

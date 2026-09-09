@@ -88,21 +88,6 @@ class RepeatIssuesManagementPage(QWidget):
         header_layout.addWidget(self.back_button)
         root.addWidget(header)
 
-        # 基準案件提示卡片
-        self.source_case_card = create_section_card(self)
-        self.source_case_card.setObjectName("SourceCaseCard")
-        source_layout = self.source_case_card.layout()
-        assert source_layout is not None
-        source_layout.setSpacing(4)
-
-        self.source_case_title = QLabel("基準案件")
-        self.source_case_title.setProperty("role", "sectionTitle")
-        self.source_case_summary = make_multiline_label("尚未載入基準案件", role="helperText")
-        source_layout.addWidget(self.source_case_title)
-        source_layout.addWidget(self.source_case_summary)
-        root.addWidget(self.source_case_card)
-        self.source_case_card.hide()
-
         # 查詢與過濾工具列
         filter_card = QFrame(self)
         filter_card.setProperty("role", "panel")
@@ -318,7 +303,7 @@ class RepeatIssuesManagementPage(QWidget):
 
         splitter.addWidget(bottom_container)
         splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(1, 4)
         root.addWidget(splitter, 1)
 
         self._populate_suppliers_filter()
@@ -357,17 +342,6 @@ class RepeatIssuesManagementPage(QWidget):
                 self._source_root_cause = None
 
             s_no = self._source_detail.get("anomaly_no") or self._source_anomaly_id
-            s_supplier = self._source_detail.get("supplier_name") or "—"
-            s_date = self._source_detail.get("anomaly_date") or "—"
-            s_cat = self._source_detail.get("category") or "—"
-            s_status = self._source_detail.get("status") or "—"
-            s_prob = self._source_detail.get("problem_desc") or "—"
-
-            self.source_case_title.setText(f"基準案件：{s_no} [{s_status}]")
-            self.source_case_summary.setText(
-                f"供應商：{s_supplier}　|　日期：{s_date}　|　類別：{s_cat}\n不良現象：{s_prob}"
-            )
-            self.source_case_card.show()
             self.back_button.setText(f"返回案件 {s_no}")
 
             sid = str(self._source_detail.get("supplier_id") or "")
@@ -380,7 +354,6 @@ class RepeatIssuesManagementPage(QWidget):
         else:
             self._source_detail = {}
             self._source_root_cause = None
-            self.source_case_card.hide()
             self.back_button.setText("返回上一頁")
             if supplier_id:
                 idx = self.supplier_combo.findData(str(supplier_id).strip())
@@ -563,6 +536,9 @@ class RepeatIssuesManagementPage(QWidget):
         self.sc_problem.setText(s_prob)
         self.sc_root_cause.setText(s_rc_text)
         self.sc_actions.setText(s_act)
+        sync_multiline_label_geometry(self.sc_problem)
+        sync_multiline_label_geometry(self.sc_root_cause)
+        sync_multiline_label_geometry(self.sc_actions)
 
         p_no = peer_detail.get("anomaly_no") or peer_id or "—"
         p_status = peer_detail.get("status") or "—"
@@ -590,6 +566,9 @@ class RepeatIssuesManagementPage(QWidget):
         self.pc_problem.setText(p_prob)
         self.pc_root_cause.setText(p_rc_text)
         self.pc_actions.setText(p_act)
+        sync_multiline_label_geometry(self.pc_problem)
+        sync_multiline_label_geometry(self.pc_root_cause)
+        sync_multiline_label_geometry(self.pc_actions)
 
         self.confirm_btn.setEnabled(bool(source_id and peer_id))
         self.dismiss_btn.setEnabled(bool(source_id and peer_id))

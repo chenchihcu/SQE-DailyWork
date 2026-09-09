@@ -135,23 +135,8 @@ def build_event_pdf_html(
 
     anomaly_id = str(detail.get("id") or row.get("event_id") or "").strip()
     if anomaly_id:
-        try:
-            from services.appearance_preferences_service import load_application_preferences
-
-            prefs = load_application_preferences()
-            include_hypothesis_png = bool(
-                getattr(prefs, "export_include_charts", True)
-            )
-        except Exception:
-            include_hypothesis_png = True
-        overview, open_actions, hypotheses = _anomaly_export_enrichment(anomaly_id)
+        overview, open_actions = _anomaly_export_enrichment(anomaly_id)
         sections.append(_quality_overview_section(overview, open_actions))
-        hypothesis_html = _hypothesis_tree_section(
-            hypotheses,
-            include_png=include_hypothesis_png,
-        )
-        if hypothesis_html:
-            sections.append(hypothesis_html)
 
     closing_section = _closing_info_section(
         detail,
@@ -434,7 +419,6 @@ def _quality_overview_section(overview: dict, open_actions: list[dict]) -> str:
             overview_labels["verification_result"],
             overview.get("verification_result") or "—",
         ),
-        (overview_labels["hypothesis_count"], int(overview.get("hypothesis_count") or 0)),
         (overview_labels["attachment_count"], int(overview.get("attachment_count") or 0)),
     ]
     html = _section("品質結論／目前處置", fields)
@@ -495,16 +479,14 @@ def _hypothesis_tree_section(hypotheses: list[dict], *, include_png: bool) -> st
     return _text_section("原因假設樹", text_body)
 
 
-def _anomaly_export_enrichment(anomaly_id: str) -> tuple[dict, list[dict], list[dict]]:
+def _anomaly_export_enrichment(anomaly_id: str) -> tuple[dict, list[dict]]:
     from services.event import _anomaly_workbench_service
     from services.event import _case_action_service
 
     try:
         overview = _anomaly_workbench_service.get_overview_card(anomaly_id)
         actions = _case_action_service.list_case_actions(anomaly_id)
-        hypotheses = _anomaly_workbench_service.list_hypotheses(anomaly_id)
     except ValueError:
         overview = {}
         actions = []
-        hypotheses = []
-    return overview, actions, hypotheses
+    return overview, actions

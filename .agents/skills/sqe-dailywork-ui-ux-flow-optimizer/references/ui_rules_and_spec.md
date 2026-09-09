@@ -184,8 +184,11 @@ allowed-tools: Read, Grep, Glob, Bash
 6. **佈局密度測試**：`python -m unittest tests/test_form_field_pairing_layout.py`
 7. **月度統計匯出測試**：`python -m unittest tests/test_monthly_stats_expansion.py`
 8. **導覽與啟動頁測試**：`python -m unittest tests/test_top_nav_compact_height.py tests/test_appearance_preferences_navigation.py`
-9. **原生視覺探針**：`python scripts/qt_visual_probe.py --target form-density` 與 `python scripts/qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width`
-10. **檢查探針指標**：`visual_trustworthy == True` 且 `qss_unknown_property_warnings == 0`。
+9. **原生視覺探針**：依變更表面選 target（見 `sqe-dailywork-change-router`）；常見命令：
+   - `python scripts/qt_visual_probe.py --target form-density`
+   - `python scripts/qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width`
+   - `python scripts/qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5 --output Outputs/visual_qa/repeat-issues-management/probe.png`
+10. **檢查探針指標**：`visual_trustworthy == True` 且 `qss_unknown_property_warnings == 0`；**讀 PNG** 確認長文/CJK 未裁切。未跑 probe → `not verified`，不是 `Residual risk`。
 
 ---
 

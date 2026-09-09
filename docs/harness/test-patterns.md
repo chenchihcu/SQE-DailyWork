@@ -33,6 +33,34 @@ This document consolidates detailed testing conventions, harness patterns, migra
 
 ---
 
+## 4. UI Visual Closure Gate
+
+- **Trigger**: Any visible change under `src/ui/` (layout, cards, comparison panels, typography, CJK copy, QSS roles).
+- **Required**: Native Windows `scripts/qt_visual_probe.py --target <mapped>` with `--min-width` and `--scale 1.0,1.25,1.5` when the surface is resizable; read the saved PNG (console CJK is cp950 display noise).
+- **Pass JSON**: `visual_trustworthy: true`, `cjk_font_ok: true`, `qss_unknown_property_warnings: 0`, exit code `0`.
+- **Widget → target** (see also `.claude/skills/sqe-dailywork-change-router/SKILL.md`):
+
+| Surface | Target |
+| --- | --- |
+| `repeat_issues_management_page.py` | `repeat-issues-management` |
+| `anomaly_management_page.py`, workbench tabs | `workbench` |
+| `repeat_issues_panel.py` | `workbench` |
+| `stats_view_widget.py` | `stats-stress` |
+| `ncr_stats_widget.py` | `ncr-stats` |
+| `event_list_widget.py` | `event-list` |
+| `theme.py`, global QSS | touched targets or `qt_visual_belt.py` |
+
+- **Offscreen unittest** (`QT_QPA_PLATFORM=offscreen`): structural smoke only — never visual evidence.
+- **Delivery semantics**: Skipped mandatory probe → label **`not verified`** or keep task open. **Do not** write skipped probe under `Residual risk`. `Residual risk` is only for post-check environmental limits.
+
+Example:
+
+```powershell
+.venv\Scripts\python.exe scripts\qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5 --output Outputs\visual_qa\repeat-issues-management\probe.png
+```
+
+---
+
 ## 3. PySide6 / Qt Automated Testing Guardrails
 
 - **Automated Modal Guard**: Never invoke blocking `QMessageBox` / `QDialog.exec()` in `closeEvent`, `_ensure_has_active_suppliers`, or other automated handlers. Use `ui.runtime_mode.is_automated_runtime()` (`QT_QPA_PLATFORM == "offscreen"`, `SQE_TESTING`, `SQE_PROBE`, `SQE_REQUIRE_DISPOSABLE_DB`) and skip the prompt.

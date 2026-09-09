@@ -108,6 +108,11 @@ def get_tabs_qss() -> str:
             margin-right: 2px;
         }}
 
+        QTabWidget#AnomalyManagementTabs QTabBar::tab {{
+            min-width: 0;
+            padding: 6px 14px;
+        }}
+
         QFrame[role="topNavBar"] {{
             background: {TOKENS["page_bg"]};
             border-bottom: 1px solid {TOKENS["border_soft"]};

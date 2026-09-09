@@ -20,6 +20,18 @@ Harness update needed:
 Destination:
 ```
 
+## UI visual closure gate — no false done via Residual risk
+
+Date: 2026-09-09
+Task: Close repeat-issues-management visual verification gap; forbid listing skipped native probe as Residual risk.
+Changes: Strengthened `scripts/qt_visual_probe.py` repeat-issues fixture with long CJK multiline stress data; ran native probe at 1.0/1.25/1.5 + min-width. Added AGENTS.md UI visual closure gate and Residual risk vs `not verified` semantics. Updated change-router, visual-qa, ui-ux-flow-optimizer skills (`.claude` + `.agents` mirrors), `docs/harness/test-patterns.md` §4, `CLAUDE.md`, and global `configure-qt-layout-theme` skill.
+Impact: UI layout tasks cannot be marked done with unittest-only evidence; agents must run mapped `qt_visual_probe` and read PNGs before delivery. Skipped probe is `not verified`, not Residual risk.
+Verification: `qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5` exit 0; JSON `visual_trustworthy/cjk_font_ok/qss_unknown_property_warnings` pass; PNG read confirms no top SourceCaseCard and dual comparison long text renders. `tests.test_repeat_issues_management_page` regression; `scripts/harness_check.ps1`.
+Residual risk: None for this closure (native probe executed on Windows).
+Next action: On future UI edits, route through change-router widget→target table before claiming Verification PASS.
+Harness update needed: yes
+Destination: `AGENTS.md`, `CLAUDE.md`, `.claude/skills/sqe-dailywork-change-router/SKILL.md`, `.agents/skills/*` mirrors, `visual_qa_checklist.md`, `ui-ux-flow-optimizer`, `docs/harness/test-patterns.md`, `configure-qt-layout-theme` (global), `scripts/harness_check.ps1`, this log.
+
 ## Initial Entry
 
 Date: 2026-05-16

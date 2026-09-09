@@ -1312,8 +1312,8 @@ def _workbench_overview_payload() -> dict:
 
     The probe mocks every read-side service call so the workbench can render
     full CJK content without touching the disposable DB. The fixture exercises
-    the compact three-tab workbench, conditional trace rows, latest Supplier 8D
-    summary, and the scroll body at the minimum desktop width.
+    the five-tab workbench, conditional trace rows, attachment category labels,
+    and the scroll body at the minimum desktop width.
     """
 
     return {
@@ -1348,7 +1348,6 @@ def _workbench_overview_payload() -> dict:
             "root_cause_status": "已建立",
             "corrective_action_status": "執行中",
             "verification_result": "待驗證",
-            "has_analysis_notes": True,
         },
         "root_cause": {
             "status": "已建立",
@@ -1517,7 +1516,9 @@ def _workbench_overview_payload() -> dict:
 
 def _workbench_tab_suffixes() -> tuple[str, ...]:
     return (
-        "workbench",
+        "overview",
+        "actions",
+        "root-cause",
         "attachments",
         "timeline",
     )
@@ -1543,21 +1544,6 @@ def _workbench_patchers(payload: dict):
             _anomaly_workbench_service,
             "get_root_cause",
             return_value=payload.get("root_cause"),
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_analysis_notes",
-            return_value=payload.get("analysis_notes", []),
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_hypotheses",
-            return_value=payload.get("hypotheses", []),
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_eight_d_reviews",
-            return_value=payload.get("eight_d_reviews", []),
         ),
         mock.patch.object(
             _anomaly_workbench_service,
@@ -1685,47 +1671,69 @@ def _capture_workbench_empty_analysis(
     return screenshots
 
 
+_REPEAT_ISSUES_LONG_PROBLEM = (
+    "1. 爆板 96/200，每片都有，位置隨機，單板數量隨機\n"
+    "2. Datecode 2550\n"
+    "3. 進貨單號：3402-260407006-0001\n"
+    "4. 瑞太福料號：MIT00514B\n"
+    "5. 爆板位置不固定，單板爆板數量不固定／連板\n"
+    "6. 連板爆板不良率：100%"
+)
+_REPEAT_ISSUES_PEER_PROBLEM = (
+    "1. 歷史案件爆板 48/100，位置集中於板邊\n"
+    "2. Datecode 2548\n"
+    "3. 進貨單號：3402-260312004-0002\n"
+    "4. 瑞太福料號：MIT00514B\n"
+    "5. 連板爆板不良率：60%"
+)
+_REPEAT_ISSUES_LONG_IMPROVEMENT = (
+    "1. 要求供應商提供烘烤紀錄與出貨檢驗報告\n"
+    "2. 重測吸濕敏感度與回焊曲線後再放行\n"
+    "3. 追蹤連板爆板位置是否與鋼板開孔對位相關"
+)
+
+
 def _repeat_issues_fixture() -> dict:
     source_id = "probe-repeat-source"
     peer_id = "probe-repeat-peer"
     return {
         "source_detail": {
             "id": source_id,
-            "anomaly_no": "20260511006",
-            "anomaly_date": "2026-05-11",
+            "anomaly_no": "20260529001",
+            "anomaly_date": "2026-05-29",
             "supplier_id": "probe-supplier-1",
             "supplier_name": LONG_SUPPLIER,
             "product_name": LONG_PRODUCT,
             "product_code": "355001-000057",
-            "category": "規範文件缺漏",
-            "problem_desc": "實物端子無法與母座端子接頭，無法組裝接合。",
+            "category": "其他",
+            "problem_desc": _REPEAT_ISSUES_LONG_PROBLEM,
             "status": "待處理",
-            "improvement_desc": "改善說明待填寫",
+            "improvement_desc": _REPEAT_ISSUES_LONG_IMPROVEMENT,
         },
         "peer_detail": {
             "id": peer_id,
-            "anomaly_no": "20260512003",
-            "anomaly_date": "2026-05-12",
+            "anomaly_no": "20260323001",
+            "anomaly_date": "2026-03-23",
             "supplier_id": "probe-supplier-1",
             "supplier_name": LONG_SUPPLIER,
             "product_name": LONG_PRODUCT,
             "product_code": "355001-000057",
-            "category": "規範文件缺漏",
-            "problem_desc": "歷史案件不良現象描述，用於雙案對照視覺驗證。",
-            "status": "待處理",
-            "improvement_desc": "歷史改善措施說明",
+            "category": "其他",
+            "problem_desc": _REPEAT_ISSUES_PEER_PROBLEM,
+            "status": "已結案",
+            "improvement_desc": "更換加熱管並重測溫升曲線後再出貨",
         },
         "rows": [
             {
                 "peer_anomaly_id": peer_id,
-                "similarity_score": 70,
+                "similarity_score": 75,
                 "match_reasons": "相同異常類別、相同料號產品",
-                "anomaly_no": "20260512003",
-                "anomaly_date": "2026-05-12",
-                "category": "規範文件缺漏",
-                "status": "待處理",
+                "anomaly_no": "20260323001",
+                "anomaly_date": "2026-03-23",
+                "category": "其他",
+                "status": "已結案",
                 "product_name": LONG_PRODUCT,
-                "problem_desc": "歷史案件不良現象描述，用於雙案對照視覺驗證。",
+                "problem_desc": _REPEAT_ISSUES_PEER_PROBLEM,
                 "disposition": "待確認",
             }
         ],
@@ -1804,7 +1812,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
 
     from database.connection import initialize_database
     from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
-    from ui.widgets.add_eight_d_review_dialog import AddEightDReviewDialog
     from ui.widgets.add_verification_dialog import AddVerificationDialog
     from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
     from ui.widgets.complete_action_dialog import CompleteActionDialog
@@ -1914,20 +1921,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         sample_input="3 批 / 共 1200 pcs",
     )
     _capture_dialog(verification_dialog, "dialog-density-add-verification")
-
-    eight_d_dialog = AddEightDReviewDialog(
-        "probe-density",
-        next_revision_hint="Rev B",
-        parent=None,
-        actor_name="品保工程師 王小明",
-    )
-    _fill(
-        eight_d_dialog,
-        comment_input=(
-            "請補上 SPC 管制圖、30 天監控資料與模具溫度差異說明。"
-        ),
-    )
-    _capture_dialog(eight_d_dialog, "dialog-density-add-eight-d")
 
     audit_dialog = AddAuditLogDialog(
         "probe-density", parent=None, actor_name="品保工程師 王小明"
