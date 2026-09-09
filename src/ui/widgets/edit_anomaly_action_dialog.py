@@ -292,7 +292,7 @@ class EditAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         valid = self._has_content
 
-        set_field_invalid(self.action_items_input, not valid)
+        self.action_items_input.set_validation_invalid( not valid)
 
         if self._error_label is not None:
 
@@ -388,7 +388,7 @@ class EditAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         except ValueError as exc:
 
-            set_field_invalid(self.action_items_input, True)
+            self.action_items_input.set_validation_invalid( True)
 
             if self._error_label is not None:
 
@@ -398,7 +398,7 @@ class EditAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         except Exception as exc:
 
-            set_field_invalid(self.action_items_input, True)
+            self.action_items_input.set_validation_invalid( True)
 
             if self._error_label is not None:
 

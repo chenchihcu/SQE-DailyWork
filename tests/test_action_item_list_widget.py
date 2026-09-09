@@ -85,6 +85,27 @@ class ActionItemListWidgetTests(unittest.TestCase):
         widget.setReadOnly(True)
         self.assertTrue(widget._column_header.isHidden())
 
+    def test_row_height_fits_control_min_height(self) -> None:
+        widget = ActionItemListWidget()
+        row = widget._rows[0]
+        self.assertGreaterEqual(
+            row.minimumHeight(),
+            lc.ACTION_ITEM_ROW_MIN_HEIGHT + lc.ACTION_ITEM_ROW_V_MARGIN,
+        )
+        self.assertEqual(row.description_input.minimumHeight(), lc.ACTION_ITEM_ROW_MIN_HEIGHT)
+
+    def test_validation_invalid_marks_empty_description_only(self) -> None:
+        widget = ActionItemListWidget()
+        widget.set_items(
+            [
+                {"description": "已有內容", "owner": "", "due_date": ""},
+                {"description": "", "owner": "", "due_date": ""},
+            ]
+        )
+        widget.set_validation_invalid(True)
+        self.assertFalse(bool(widget._rows[0].description_input.property("invalid")))
+        self.assertTrue(bool(widget._rows[1].description_input.property("invalid")))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, Signal, Qt
+from PySide6.QtCore import QDate, QSize, Signal, Qt
 from PySide6.QtWidgets import (
     QDateEdit,
     QHBoxLayout,
@@ -18,18 +18,32 @@ from database.repo_helpers import parse_numbered_description_lines
 from ui.layout_constants import (
     ACTION_ITEM_DELETE_WIDTH,
     ACTION_ITEM_DUE_DATE_WIDTH,
+    ACTION_ITEM_HEADER_GAP,
     ACTION_ITEM_INDEX_WIDTH,
     ACTION_ITEM_OWNER_WIDTH,
+    ACTION_ITEM_ROW_MIN_HEIGHT,
+    ACTION_ITEM_ROW_SPACING,
+    ACTION_ITEM_ROW_V_HALF_MARGIN,
+    ACTION_ITEM_ROW_V_MARGIN,
 )
-
-_ACTION_ITEM_ROW_SPACING = 6
+from ui.widgets.common_widgets import set_field_invalid
 
 
 def _make_action_item_row_layout(parent: QWidget) -> QHBoxLayout:
     layout = QHBoxLayout(parent)
-    layout.setContentsMargins(0, 2, 0, 2)
-    layout.setSpacing(_ACTION_ITEM_ROW_SPACING)
+    layout.setContentsMargins(
+        0,
+        ACTION_ITEM_ROW_V_HALF_MARGIN,
+        0,
+        ACTION_ITEM_ROW_V_HALF_MARGIN,
+    )
+    layout.setSpacing(ACTION_ITEM_ROW_SPACING)
     return layout
+
+
+def _apply_action_item_control_height(widget: QWidget) -> None:
+    widget.setMinimumHeight(ACTION_ITEM_ROW_MIN_HEIGHT)
+    widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
 
 def _configure_editable_field_width(widget: QWidget, width: int) -> None:
@@ -69,6 +83,7 @@ class ActionItemListRow(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.setMinimumHeight(ACTION_ITEM_ROW_MIN_HEIGHT + ACTION_ITEM_ROW_V_MARGIN)
         row_layout = _make_action_item_row_layout(self)
 
         self.num_label = QLabel(f"{index}.")
@@ -79,20 +94,21 @@ class ActionItemListRow(QWidget):
         self.num_label.setProperty("uiRole", "bulletIndexLabel")
 
         self.description_input = QLineEdit(description)
-        self.description_input.setMinimumHeight(28)
+        _apply_action_item_control_height(self.description_input)
         self.description_input.setPlaceholderText(f"處置內容 {index}")
         self.description_input.setAccessibleName(f"處置內容 {index}")
         self.description_input.textChanged.connect(self._emit_changed)
 
         self.owner_input = QLineEdit(owner)
         _configure_editable_field_width(self.owner_input, ACTION_ITEM_OWNER_WIDTH)
-        self.owner_input.setMinimumHeight(28)
+        _apply_action_item_control_height(self.owner_input)
         self.owner_input.setPlaceholderText("責任人")
         self.owner_input.setAccessibleName(f"責任人 {index}")
         self.owner_input.textChanged.connect(self._emit_changed)
 
         self.due_date_edit = QDateEdit()
         _configure_editable_field_width(self.due_date_edit, ACTION_ITEM_DUE_DATE_WIDTH)
+        _apply_action_item_control_height(self.due_date_edit)
         self.due_date_edit.setCalendarPopup(True)
         self.due_date_edit.setDisplayFormat("yyyy-MM-dd")
         self.due_date_edit.setAccessibleName(f"預定日期 {index}")
@@ -103,6 +119,7 @@ class ActionItemListRow(QWidget):
 
         self.btn_delete = QPushButton("刪除")
         self.btn_delete.setFixedWidth(ACTION_ITEM_DELETE_WIDTH)
+        self.btn_delete.setFixedHeight(ACTION_ITEM_ROW_MIN_HEIGHT)
         self.btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_delete.setAccessibleName(f"刪除條目 {index}")
         self.btn_delete.setToolTip("刪除此列條目")
@@ -160,7 +177,7 @@ class ActionItemListWidget(QWidget):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(4)
+        self.main_layout.setSpacing(ACTION_ITEM_HEADER_GAP)
 
         self._column_header = self._build_column_header()
         self.main_layout.addWidget(self._column_header)
@@ -168,7 +185,7 @@ class ActionItemListWidget(QWidget):
         self.items_container = QWidget()
         self.items_layout = QVBoxLayout(self.items_container)
         self.items_layout.setContentsMargins(0, 0, 0, 0)
-        self.items_layout.setSpacing(4)
+        self.items_layout.setSpacing(ACTION_ITEM_ROW_SPACING)
         self.main_layout.addWidget(self.items_container)
 
         self.btn_add = QPushButton("+ 新增條目")
@@ -319,3 +336,28 @@ class ActionItemListWidget(QWidget):
         self.btn_add.setVisible(not read_only)
         for row in self._rows:
             row.set_read_only(read_only)
+
+    def set_validation_invalid(self, invalid: bool) -> None:
+        """Apply field-level invalid borders to empty description inputs."""
+        for row in self._rows:
+            row_invalid = invalid and not row.description_input.text().strip()
+            set_field_invalid(row.description_input, row_invalid)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        row_count = max(len(self._rows), 1)
+        row_block = ACTION_ITEM_ROW_MIN_HEIGHT + ACTION_ITEM_ROW_V_MARGIN
+        header_block = (
+            self._column_header.sizeHint().height() + ACTION_ITEM_HEADER_GAP
+            if self._column_header.isVisible()
+            else 0
+        )
+        rows_block = row_count * row_block + max(row_count - 1, 0) * ACTION_ITEM_ROW_SPACING
+        add_block = (
+            self.btn_add.sizeHint().height() + ACTION_ITEM_HEADER_GAP
+            if self.btn_add.isVisible()
+            else 0
+        )
+        return hint.expandedTo(
+            QSize(hint.width(), header_block + rows_block + add_block)
+        )

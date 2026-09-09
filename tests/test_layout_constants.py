@@ -49,6 +49,8 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual(52, lc.ACTION_ITEM_DELETE_WIDTH)
         self.assertEqual(112, lc.ACTION_ITEM_OWNER_WIDTH)
         self.assertEqual(128, lc.ACTION_ITEM_DUE_DATE_WIDTH)
+        self.assertEqual(lc.CONTROL_MIN_HEIGHT, lc.ACTION_ITEM_ROW_MIN_HEIGHT)
+        self.assertEqual(8, lc.ACTION_ITEM_HEADER_GAP)
         self.assertGreater(lc.ACTION_ITEM_OWNER_WIDTH, lc.WORKBENCH_ACTION_OWNER_WIDTH)
         self.assertGreater(
             lc.ACTION_ITEM_DUE_DATE_WIDTH, lc.WORKBENCH_ACTION_DUE_DATE_WIDTH
