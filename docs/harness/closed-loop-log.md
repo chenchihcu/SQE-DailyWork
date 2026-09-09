@@ -20,6 +20,18 @@ Harness update needed:
 Destination:
 ```
 
+## Table cell widget button clipping — use tableCellAction not secondary
+
+Date: 2026-09-09
+Task: Fix AnomalyActionTable 編輯/流程 column button vertical clipping; harvest reusable harness rule.
+Changes: Added `make_table_cell_action_button` / `make_table_cell_widget_host` in `common_widgets.py`; `AnomalyActionTable` switched from `variant="secondary"` to `role="tableCellAction"`; `WORKBENCH_ACTION_ROW_HEIGHT` derived as 44 (`TABLE_CELL_WIDGET_V_MARGIN + TABLE_CELL_ACTION_MIN_HEIGHT`); `supplier_contact_manager_dialog` calls `resizeRowToContents`; regression tests in `test_anomaly_action_table.py`; docs in `ui-layout-theme-contract.md` and `test-patterns.md` §4.
+Impact: Table `setCellWidget` action buttons no longer clip when row height is pinned; future tables reuse the helper instead of duplicating QSS conflict.
+Verification: `tests.test_anomaly_action_table`, `tests.test_layout_constants`; native `qt_visual_probe --target workbench` + `dialog-density` at 1.0/1.25/1.5; full belt 18/18.
+Residual risk: None after native probe PASS on Windows.
+Next action: Grep new `setCellWidget` + `variant="secondary"` pairs in PR review.
+Harness update needed: yes
+Destination: `docs/harness/test-patterns.md` §4, `docs/ui-layout-theme-contract.md`, `docs/harness/closed-loop-log.md`, `AGENTS.md` Workbench Action List bullet.
+
 ## UI visual closure gate — no false done via Residual risk
 
 Date: 2026-09-09
@@ -885,4 +897,16 @@ Residual risk: `appearance_preferences_dialog.py` 訪廠 tooltip、design framew
 Next action: 可選清理 appearance preferences 訪廠 tooltip。
 Harness update needed: yes
 Destination: `docs/harness/closed-loop-log.md`（本項）、`docs/architecture-workflow-contract.md`、`.agents`/`.claude` skill references
+
+## Doc Gardening — Workbench Timeline and Legacy Analysis Retire (2026-09-09)
+
+Date: 2026-09-09
+Task: Doc-gardening remediation after `workbench-timeline-tab-retire` and `workbench-legacy-analysis-retire`.
+Changes: Synced `docs/architecture-workflow-contract.md`, `README.md`, `docs/ui-layout-theme-contract.md`, `design.md`, `docs/risk-ledger.md`, `AGENTS.md`, `docs/harness/contradiction-log.md` (TBD resolution), and `add_audit_log_dialog.py` legacy placeholder with four-tab workbench, header repeat-issues route, retired timeline tab, and retired product analysis/hypothesis/export paths. Repository audit writes and schema remain.
+Impact: Agents reading contracts no longer restore `處理歷程` Tab, embedded `RepeatIssuesPanel`, hypothesis-tree exports, or footer close/reopen gates as current product behavior.
+Verification: `scripts\harness_check.ps1`; focused unittest `test_anomaly_management_page`, `test_anomaly_workbench_write_dialogs`, `test_layout_constants`.
+Residual risk: Historical completed exec plans and Web design framework still describe pre-retirement layout; native workbench baselines unchanged by this doc-only pass.
+Next action: Re-run doc gardening after the next workbench IA change in the same PR as code.
+Harness update needed: yes
+Destination: architecture/ui-layout contracts, `README.md`, `AGENTS.md`, `design.md`, `docs/risk-ledger.md`, `docs/harness/contradiction-log.md`, this log
 

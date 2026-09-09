@@ -28,7 +28,12 @@ from database.repo_helpers import (
     ANOMALY_ATTACHMENT_CATEGORY_SUPPLIER_8D,
 )
 from services import attachment_manager
-from services.event import _anomaly_workbench_service
+from services.event import _anomaly_service, _anomaly_workbench_service
+from services.problem_photo_link_codec import (
+    bullet_index_combo_options,
+    category_supports_problem_bullet_link,
+    set_link_for_filename,
+)
 from ui.layout_constants import CONTROL_ROW_SPACING, FORM_VERTICAL_SPACING, PANEL_MARGINS
 from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.common_widgets import EmptyStateWidget, apply_clickable_affordance
@@ -85,10 +90,29 @@ class AttachmentMetadataDialog(QDialog):
         action_index = self.action_combo.findData(str(row.get("related_action_id") or ""))
         self.action_combo.setCurrentIndex(max(action_index, 0))
 
+        self.bullet_combo = QComboBox()
+        problem_desc = ""
+        try:
+            detail = _anomaly_service.get_anomaly_detail(anomaly_id)
+            problem_desc = str(detail.get("problem_desc") or "")
+        except Exception:
+            problem_desc = ""
+        for label, value in bullet_index_combo_options(problem_desc):
+            self.bullet_combo.addItem(label, value)
+        bullet_index = row.get("bullet_index")
+        bullet_combo_index = self.bullet_combo.findData(bullet_index)
+        self.bullet_combo.setCurrentIndex(max(bullet_combo_index, 0))
+        self._bullet_row_label = QLabel("關聯不良現象條次")
+        self.category_combo.currentIndexChanged.connect(
+            lambda _: self._sync_bullet_combo_visibility()
+        )
+
         form.addRow("附件分類", self.category_combo)
         form.addRow("說明", self.description_input)
         form.addRow("版本", self.revision_input)
         form.addRow("關聯 Action", self.action_combo)
+        form.addRow(self._bullet_row_label, self.bullet_combo)
+        self._sync_bullet_combo_visibility()
         root.addLayout(form)
 
         self.buttons = QDialogButtonBox(
@@ -99,7 +123,19 @@ class AttachmentMetadataDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         root.addWidget(self.buttons)
 
-    def payload(self) -> dict[str, str]:
+    def _sync_bullet_combo_visibility(self) -> None:
+        visible = category_supports_problem_bullet_link(
+            str(self.category_combo.currentData() or "")
+        )
+        self._bullet_row_label.setVisible(visible)
+        self.bullet_combo.setVisible(visible)
+
+    def payload(self) -> dict[str, str | int | None]:
+        bullet_index = self.bullet_combo.currentData()
+        if not category_supports_problem_bullet_link(
+            str(self.category_combo.currentData() or "")
+        ):
+            bullet_index = None
         return {
             "category": str(self.category_combo.currentData() or "Other"),
             "description": self.description_input.get_formatted_text().strip(),
@@ -107,6 +143,7 @@ class AttachmentMetadataDialog(QDialog):
             "related_note_id": None,
             "related_action_id": str(self.action_combo.currentData() or "") or None,
             "related_hypothesis_id": None,
+            "bullet_index": bullet_index,
         }
 
 
@@ -118,6 +155,7 @@ class EvidenceAttachmentPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._anomaly_id = ""
+        self._problem_desc = ""
         self._selected_path: Path | None = None
         self._rows: list[dict] = []
         self._build_ui()
@@ -149,6 +187,11 @@ class EvidenceAttachmentPanel(QWidget):
         self.revision_input = QLineEdit()
         self.revision_input.setPlaceholderText("如 Rev A")
         self.action_combo = QComboBox()
+        self.bullet_combo = QComboBox()
+        self._bullet_row_label = QLabel("關聯不良現象條次")
+        self.category_combo.currentIndexChanged.connect(
+            lambda _: self._sync_bullet_combo_visibility()
+        )
         self.upload_button = QPushButton("上傳")
         self.upload_button.setAccessibleName("上傳 Evidence")
         self.upload_button.setProperty("variant", "primary")
@@ -166,6 +209,7 @@ class EvidenceAttachmentPanel(QWidget):
         form.addRow("說明", self.description_input)
         form.addRow("版本", self.revision_input)
         form.addRow("關聯 Action", self.action_combo)
+        form.addRow(self._bullet_row_label, self.bullet_combo)
         upload_layout.addLayout(form)
         upload_layout.addWidget(self.upload_button, 0, Qt.AlignmentFlag.AlignLeft)
         root.addWidget(upload)
@@ -185,8 +229,33 @@ class EvidenceAttachmentPanel(QWidget):
         self._selected_path = None
         self.file_name_label.setText("尚未選擇檔案")
         self.upload_button.setEnabled(False)
+        self._load_problem_desc()
         self._load_link_options()
         self.refresh()
+
+    def _load_problem_desc(self) -> None:
+        self._problem_desc = ""
+        if not self._anomaly_id:
+            return
+        try:
+            detail = _anomaly_service.get_anomaly_detail(self._anomaly_id)
+            self._problem_desc = str(detail.get("problem_desc") or "")
+        except Exception:
+            self._problem_desc = ""
+        self._refresh_bullet_combo()
+
+    def _refresh_bullet_combo(self) -> None:
+        self.bullet_combo.clear()
+        for label, value in bullet_index_combo_options(self._problem_desc):
+            self.bullet_combo.addItem(label, value)
+        self._sync_bullet_combo_visibility()
+
+    def _sync_bullet_combo_visibility(self) -> None:
+        visible = category_supports_problem_bullet_link(
+            str(self.category_combo.currentData() or "")
+        )
+        self._bullet_row_label.setVisible(visible)
+        self.bullet_combo.setVisible(visible)
 
     def _load_link_options(self) -> None:
         self.action_combo.clear()
@@ -221,8 +290,13 @@ class EvidenceAttachmentPanel(QWidget):
         if self._selected_path is None or not self._anomaly_id:
             return
         self.upload_button.setEnabled(False)
+        bullet_index = self.bullet_combo.currentData()
+        if not category_supports_problem_bullet_link(
+            str(self.category_combo.currentData() or "")
+        ):
+            bullet_index = None
         try:
-            _anomaly_workbench_service.import_attachment_from_file(
+            attachment_id = _anomaly_workbench_service.import_attachment_from_file(
                 anomaly_id=self._anomaly_id,
                 source_path=self._selected_path,
                 category=str(self.category_combo.currentData() or "Other"),
@@ -231,6 +305,14 @@ class EvidenceAttachmentPanel(QWidget):
                 uploaded_by="local_user",
                 related_action_id=str(self.action_combo.currentData() or "") or None,
             )
+            stored_name = self._selected_path.name
+            for row in _anomaly_workbench_service.list_attachments(self._anomaly_id):
+                if str(row.get("id") or "") == str(attachment_id):
+                    stored_name = str(
+                        row.get("stored_name") or row.get("file_name") or stored_name
+                    )
+                    break
+            set_link_for_filename(self._anomaly_id, stored_name, bullet_index)
         except Exception as exc:
             self.upload_button.setEnabled(True)
             QMessageBox.warning(self, "附件上傳失敗", localize_exception(exc))
@@ -299,6 +381,11 @@ class EvidenceAttachmentPanel(QWidget):
             link_label.setWordWrap(True)
             link_label.setProperty("role", "meta")
             layout.addWidget(link_label)
+        if row.get("bullet_index"):
+            bullet_label = QLabel(f"關聯不良現象條次：{row.get('bullet_index')}")
+            bullet_label.setWordWrap(True)
+            bullet_label.setProperty("role", "meta")
+            layout.addWidget(bullet_label)
 
         if not row.get("legacy_physical") and row.get("id"):
             commands = QHBoxLayout()
@@ -323,13 +410,20 @@ class EvidenceAttachmentPanel(QWidget):
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        payload = dialog.payload()
+        bullet_index = payload.pop("bullet_index", None)
         try:
             _anomaly_workbench_service.update_attachment(
                 anomaly_id=self._anomaly_id,
                 attachment_id=str(row.get("id") or ""),
                 actor_name="local_user",
-                **dialog.payload(),
+                **payload,
             )
+            stored_name = str(
+                row.get("stored_name") or row.get("file_name") or ""
+            ).strip()
+            if stored_name:
+                set_link_for_filename(self._anomaly_id, stored_name, bullet_index)
         except Exception as exc:
             QMessageBox.warning(self, "附件資料更新失敗", localize_exception(exc))
             return
@@ -348,12 +442,15 @@ class EvidenceAttachmentPanel(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
+        stored_name = str(row.get("stored_name") or row.get("file_name") or "").strip()
         try:
             result = _anomaly_workbench_service.delete_attachment(
                 anomaly_id=self._anomaly_id,
                 attachment_id=str(row.get("id") or ""),
                 actor_name="local_user",
             )
+            if stored_name:
+                set_link_for_filename(self._anomaly_id, stored_name, None)
         except Exception as exc:
             QMessageBox.warning(self, "附件刪除失敗", localize_exception(exc))
             return

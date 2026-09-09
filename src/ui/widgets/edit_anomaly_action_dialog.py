@@ -1,4 +1,4 @@
-"""Create one canonical case Action from the anomaly workbench."""
+"""Edit one canonical case Action from the anomaly workbench."""
 
 
 
@@ -34,7 +34,9 @@ from ui.layout_constants import WORKBENCH_DIALOG_WIDE_MIN_WIDTH
 
 from database.repo_helpers import (
 
-    CASE_ACTION_TYPE_CONTAINMENT,
+    CASE_ACTION_TYPE_LABELS,
+
+    CASE_ACTION_TYPE_NEXT_ACTION,
 
     CASE_ACTION_VERIFICATION_ELIGIBLE_TYPES,
 
@@ -84,23 +86,35 @@ from ui.widgets.defect_form_widgets import (
 
 
 
-class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
+class EditAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
-    """Create typed Actions with per-row owner and due date."""
-
-
-
-    action_created = Signal(str)
+    """Edit an open Action's metadata through the workbench dialog."""
 
 
 
-    def __init__(self, anomaly_id: str, parent=None) -> None:
+    action_updated = Signal(str)
+
+
+
+    def __init__(self, action: dict, parent=None) -> None:
 
         super().__init__(parent)
 
-        self._anomaly_id = anomaly_id.strip()
+        self._action = dict(action)
 
-        self.setWindowTitle("新增 Action")
+        self._action_id = str(self._action.get("id") or "").strip()
+
+        if not self._action_id:
+
+            raise ValueError("Action id is required")
+
+        status = str(self._action.get("execution_status") or "")
+
+        if status not in ("已規劃", "執行中"):
+
+            raise ValueError("Only planned or in-progress Actions are editable")
+
+        self.setWindowTitle("編輯 Action")
 
         self.setModal(True)
 
@@ -112,19 +126,31 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         self.action_type_combo = QComboBox()
 
-        for value, label in ordered_case_action_type_labels(for_ui=True):
+        action_type = str(self._action.get("action_type") or "")
 
-            self.action_type_combo.addItem(label, value)
+        if action_type == CASE_ACTION_TYPE_NEXT_ACTION:
 
-        containment_index = self.action_type_combo.findData(
+            self.action_type_combo.addItem(
 
-            CASE_ACTION_TYPE_CONTAINMENT
+                CASE_ACTION_TYPE_LABELS[CASE_ACTION_TYPE_NEXT_ACTION],
 
-        )
+                CASE_ACTION_TYPE_NEXT_ACTION,
 
-        if containment_index >= 0:
+            )
 
-            self.action_type_combo.setCurrentIndex(containment_index)
+            self.action_type_combo.setEnabled(False)
+
+        else:
+
+            for value, label in ordered_case_action_type_labels(for_ui=True):
+
+                self.action_type_combo.addItem(label, value)
+
+            index = self.action_type_combo.findData(action_type)
+
+            if index >= 0:
+
+                self.action_type_combo.setCurrentIndex(index)
 
         self.action_type_combo.setAccessibleName("Action 類型")
 
@@ -136,15 +162,15 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         )
 
+        self.action_items_input.set_from_legacy_description(
 
+            str(self._action.get("description") or ""),
 
-        self.execution_status_combo = QComboBox()
+            default_owner=str(self._action.get("owner") or ""),
 
-        self.execution_status_combo.addItem("已規劃", "已規劃")
+            default_due=str(self._action.get("due_date") or ""),
 
-        self.execution_status_combo.addItem("執行中", "執行中")
-
-        self.execution_status_combo.setAccessibleName("執行狀態")
+        )
 
 
 
@@ -152,9 +178,13 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         self.verify_check.setAccessibleName("需要有效性驗證")
 
+        self.verify_check.setChecked(bool(self._action.get("verification_required")))
+
 
 
         self._setup_ui()
+
+        self._sync_verification_contract()
 
         self._update_validation()
 
@@ -188,8 +218,6 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         form.addRow("", self._error_label)
 
-        form.addRow(QLabel("執行狀態"), self.execution_status_combo)
-
         form.addRow(QLabel("有效性驗證"), self.verify_check)
 
         lay.addLayout(form)
@@ -204,7 +232,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         if self._save_button:
 
-            self._save_button.setText("建立 Action")
+            self._save_button.setText("儲存 Action")
 
         buttons.accepted.connect(self._on_submit)
 
@@ -222,8 +250,6 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         )
 
-        self._sync_verification_contract()
-
 
 
     def _connect_dirty_signals(self) -> None:
@@ -233,8 +259,6 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
             self.action_items_input.valueChanged,
 
             self.action_type_combo.currentIndexChanged,
-
-            self.execution_status_combo.currentIndexChanged,
 
             self.verify_check.toggled,
 
@@ -250,7 +274,9 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         self.verify_check.setEnabled(eligible)
 
-        self.verify_check.setChecked(eligible)
+        if not eligible:
+
+            self.verify_check.setChecked(False)
 
 
 
@@ -292,25 +318,73 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
             return
 
+        action_type = str(self.action_type_combo.currentData() or "")
+
+        verification_required = self.verify_check.isChecked()
+
         try:
 
-            created_ids = _case_action_service.create_case_actions_batch(
+            if len(items) == 1:
 
-                anomaly_id=self._anomaly_id,
+                item = items[0]
 
-                items=items,
+                _case_action_service.update_case_action(
 
-                action_type=str(self.action_type_combo.currentData() or ""),
+                    self._action_id,
 
-                execution_status=str(
+                    action_type=action_type,
 
-                    self.execution_status_combo.currentData() or "已規劃"
+                    description=item["description"],
 
-                ),
+                    owner=item["owner"],
 
-                verification_required=self.verify_check.isChecked(),
+                    due_date=item["due_date"],
 
-            )
+                    verification_required=verification_required,
+
+                )
+
+                result_ids = [self._action_id]
+
+            else:
+
+                result_ids = _case_action_service.split_case_action(
+
+                    self._action_id,
+
+                    items,
+
+                )
+
+                if action_type != str(self._action.get("action_type") or ""):
+
+                    for new_id in result_ids:
+
+                        _case_action_service.update_case_action(
+
+                            new_id,
+
+                            action_type=action_type,
+
+                            verification_required=verification_required,
+
+                        )
+
+                elif verification_required != bool(
+
+                    self._action.get("verification_required")
+
+                ):
+
+                    for new_id in result_ids:
+
+                        _case_action_service.update_case_action(
+
+                            new_id,
+
+                            verification_required=verification_required,
+
+                        )
 
         except ValueError as exc:
 
@@ -332,7 +406,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
                     localize_popup_message(
 
-                        f"建立處置失敗：{localize_exception(exc)}"
+                        f"更新處置失敗：{localize_exception(exc)}"
 
                     )
 
@@ -342,7 +416,7 @@ class AddAnomalyActionDialog(DirtyTrackingMixin, QDialog):
 
         self._dirty = False
 
-        self.action_created.emit(created_ids[0])
+        self.action_updated.emit(result_ids[0])
 
         self.accept()
 

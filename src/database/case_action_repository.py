@@ -40,6 +40,7 @@ from database.repo_helpers import (
     CASE_ACTION_TYPES,
     CASE_ACTION_VERIFICATION_ELIGIBLE_TYPES,
     CASE_ACTIONS_MIGRATION_META_KEY,
+    CASE_ACTIONS_MULTILINE_SPLIT_META_KEY,
     CASE_ACTIONS_SCHEMA_VERSION,
     CORRECTIVE_ACTION_STATUS_CANCELLED,
     CORRECTIVE_ACTION_STATUS_EFFECTIVE,
@@ -58,6 +59,9 @@ from database.repo_helpers import (
     _table_columns,
     _table_exists,
     get_migration_meta,
+    is_multiline_case_action_description,
+    parse_numbered_description_lines,
+    upsert_migration_meta,
 )
 
 
@@ -888,6 +892,14 @@ def list_case_actions(
         FROM case_actions
         WHERE {' AND '.join(clauses)}
         ORDER BY
+            CASE action_type
+                WHEN 'CONTAINMENT' THEN 0
+                WHEN 'CORRECTION' THEN 1
+                WHEN 'CORRECTIVE_ACTION' THEN 2
+                WHEN 'SYSTEMIC_IMPROVEMENT' THEN 3
+                WHEN 'NEXT_ACTION' THEN 4
+                ELSE 5
+            END,
             CASE execution_status
                 WHEN '執行中' THEN 0
                 WHEN '已規劃' THEN 1
@@ -1245,3 +1257,167 @@ def aggregate_verification_status(actions: list[dict[str, Any]]) -> str:
         if status in statuses:
             return status
     return "—"
+
+
+def _normalize_action_item_rows(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for item in items:
+        description = str(item.get("description") or "").strip()
+        if not description:
+            continue
+        normalized.append(
+            {
+                "description": description,
+                "owner": str(item.get("owner") or "").strip(),
+                "due_date": str(item.get("due_date") or "").strip(),
+            }
+        )
+    return normalized
+
+
+def split_case_action(
+    conn: sqlite3.Connection,
+    action_id: str,
+    items: list[dict[str, Any]],
+    *,
+    _commit: bool = True,
+) -> list[str]:
+    """Replace one open Action with multiple single-line Actions."""
+    parent = get_case_action(conn, action_id)
+    if parent is None:
+        raise ValueError("Action not found")
+    if parent["execution_status"] not in CASE_ACTION_OPEN_STATUSES:
+        raise ValueError("Only planned or in-progress Actions can be split")
+    normalized_items = _normalize_action_item_rows(items)
+    if len(normalized_items) < 2:
+        raise ValueError("Split requires at least two Action items")
+
+    new_ids: list[str] = []
+    for item in normalized_items:
+        new_id = create_case_action(
+            conn,
+            anomaly_id=str(parent["anomaly_id"]),
+            action_type=str(parent["action_type"]),
+            description=item["description"],
+            owner=item["owner"],
+            due_date=item["due_date"],
+            execution_status=str(parent["execution_status"]),
+            verification_required=bool(parent.get("verification_required")),
+            notes=str(parent.get("notes") or ""),
+            _commit=False,
+        )
+        new_ids.append(new_id)
+
+    if _table_exists(conn, "anomaly_attachments") and new_ids:
+        conn.execute(
+            """
+            UPDATE anomaly_attachments
+            SET related_action_id = ?
+            WHERE related_action_id = ?
+            """,
+            (new_ids[0], str(parent["id"])),
+        )
+
+    cancel_note = (
+        f"已拆分為 {len(new_ids)} 筆 Action：{', '.join(new_ids)}"
+    )
+    cancel_case_action(
+        conn,
+        str(parent["id"]),
+        cancel_note=cancel_note,
+        _commit=False,
+    )
+    _commit_if(conn, _commit)
+    return new_ids
+
+
+def preview_multiline_case_actions_split(conn: sqlite3.Connection) -> dict[str, Any]:
+    require_case_actions_schema(conn)
+    already_applied = bool(
+        get_migration_meta(conn, CASE_ACTIONS_MULTILINE_SPLIT_META_KEY)
+    )
+    rows = conn.execute(
+        """
+        SELECT id, description, owner, due_date, execution_status
+        FROM case_actions
+        WHERE execution_status IN ('已規劃', '執行中')
+        ORDER BY created_at ASC, rowid ASC
+        """
+    ).fetchall()
+    candidates: list[dict[str, Any]] = []
+    expected_new_actions = 0
+    for row in rows:
+        description = str(row["description"] or "")
+        if not is_multiline_case_action_description(description):
+            continue
+        line_count = len(parse_numbered_description_lines(description))
+        candidates.append(
+            {
+                "id": str(row["id"]),
+                "execution_status": str(row["execution_status"]),
+                "line_count": line_count,
+                "owner": str(row["owner"] or ""),
+                "due_date": str(row["due_date"] or ""),
+            }
+        )
+        expected_new_actions += line_count
+    return {
+        "ready": True,
+        "already_applied": already_applied,
+        "candidate_count": len(candidates),
+        "expected_new_actions": expected_new_actions,
+        "candidates": candidates,
+    }
+
+
+def migrate_multiline_case_actions_split(
+    conn: sqlite3.Connection,
+    *,
+    apply: bool = False,
+) -> dict[str, Any]:
+    preview = preview_multiline_case_actions_split(conn)
+    if preview["already_applied"]:
+        return {**preview, "applied": False, "skipped": True}
+    if not apply:
+        return {**preview, "applied": False}
+
+    split_count = 0
+    new_action_count = 0
+    for candidate in preview["candidates"]:
+        parent = get_case_action(conn, str(candidate["id"]))
+        if parent is None:
+            continue
+        if parent["execution_status"] not in CASE_ACTION_OPEN_STATUSES:
+            continue
+        lines = parse_numbered_description_lines(str(parent["description"] or ""))
+        if len(lines) < 2:
+            continue
+        items = [
+            {
+                "description": line,
+                "owner": str(parent.get("owner") or ""),
+                "due_date": str(parent.get("due_date") or ""),
+            }
+            for line in lines
+        ]
+        created = split_case_action(
+            conn,
+            str(parent["id"]),
+            items,
+            _commit=False,
+        )
+        split_count += 1
+        new_action_count += len(created)
+
+    upsert_migration_meta(
+        conn,
+        CASE_ACTIONS_MULTILINE_SPLIT_META_KEY,
+        CASE_ACTIONS_SCHEMA_VERSION,
+    )
+    _commit_if(conn, True)
+    return {
+        **preview,
+        "applied": True,
+        "split_count": split_count,
+        "new_action_count": new_action_count,
+    }

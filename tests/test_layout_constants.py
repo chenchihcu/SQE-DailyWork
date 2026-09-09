@@ -34,10 +34,30 @@ class LayoutConstantsTests(unittest.TestCase):
         self.assertEqual((12, 6, 12, 6), lc.COMPACT_COMMAND_ROW_MARGINS)
 
     def test_workbench_action_table_column_widths(self) -> None:
-        self.assertEqual(96, lc.WORKBENCH_ACTION_DUE_DATE_WIDTH)
-        self.assertEqual(88, lc.WORKBENCH_ACTION_OWNER_WIDTH)
-        self.assertEqual(72, lc.WORKBENCH_ACTION_STATUS_WIDTH)
-        self.assertEqual(180, lc.WORKBENCH_ACTION_OPS_WIDTH)
+        self.assertEqual(112, lc.WORKBENCH_ACTION_DUE_DATE_WIDTH)
+        self.assertEqual(96, lc.WORKBENCH_ACTION_OWNER_WIDTH)
+        self.assertEqual(88, lc.WORKBENCH_ACTION_STATUS_WIDTH)
+        self.assertEqual(120, lc.WORKBENCH_ACTION_TYPE_WIDTH)
+        self.assertEqual(56, lc.WORKBENCH_ACTION_EDIT_WIDTH)
+        self.assertEqual(168, lc.WORKBENCH_ACTION_FLOW_WIDTH)
+        self.assertEqual(4, lc.TABLE_CELL_WIDGET_V_MARGIN)
+        self.assertEqual(40, lc.TABLE_CELL_ACTION_MIN_HEIGHT)
+        self.assertEqual(44, lc.WORKBENCH_ACTION_ROW_HEIGHT)
+
+    def test_action_item_list_layout_constants(self) -> None:
+        self.assertEqual(28, lc.ACTION_ITEM_INDEX_WIDTH)
+        self.assertEqual(52, lc.ACTION_ITEM_DELETE_WIDTH)
+        self.assertEqual(112, lc.ACTION_ITEM_OWNER_WIDTH)
+        self.assertEqual(128, lc.ACTION_ITEM_DUE_DATE_WIDTH)
+        self.assertGreater(lc.ACTION_ITEM_OWNER_WIDTH, lc.WORKBENCH_ACTION_OWNER_WIDTH)
+        self.assertGreater(
+            lc.ACTION_ITEM_DUE_DATE_WIDTH, lc.WORKBENCH_ACTION_DUE_DATE_WIDTH
+        )
+
+    def test_workbench_root_cause_dialog_constants(self) -> None:
+        self.assertEqual(820, lc.WORKBENCH_ROOT_CAUSE_DIALOG_PREFERRED_WIDTH)
+        self.assertEqual(640, lc.WORKBENCH_ROOT_CAUSE_DIALOG_PREFERRED_HEIGHT)
+        self.assertEqual(28, lc.WORKBENCH_ROOT_CAUSE_COMPACT_ADD_HEIGHT)
 
     def test_event_list_column_profile_breakpoint(self) -> None:
         self.assertEqual(1024, lc.EVENT_LIST_FULL_COLUMNS_MIN_WIDTH)
@@ -128,6 +148,12 @@ class LayoutConstantsTests(unittest.TestCase):
     def test_master_search_width_constants(self) -> None:
         self.assertEqual(220, lc.MASTER_SEARCH_MIN_WIDTH)
         self.assertEqual(340, lc.MASTER_SEARCH_MAX_WIDTH)
+
+    def test_anomaly_problem_photo_dual_column_contract(self) -> None:
+        self.assertEqual(3, lc.ANOMALY_PROBLEM_PHOTO_LEFT_STRETCH)
+        self.assertEqual(2, lc.ANOMALY_PROBLEM_PHOTO_RIGHT_STRETCH)
+        self.assertEqual(72, lc.WORKBENCH_OVERVIEW_THUMB_SIZE)
+        self.assertEqual(6, lc.WORKBENCH_OVERVIEW_MAX_THUMBNAILS)
 
 if __name__ == "__main__":
     unittest.main()

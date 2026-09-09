@@ -120,6 +120,99 @@ class AnomalyActionsRepositoryTests(unittest.TestCase):
         self.assertEqual(rows[-1]["id"], no_date_id)
         self.assertEqual(rows[-1]["due_date"], "")
 
+    def test_split_case_action_creates_rows_and_cancels_parent(self) -> None:
+        parent_id = repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CONTAINMENT",
+            description="1. 第一項\n2. 第二項",
+            owner="Alice",
+            due_date="2026-09-16",
+            execution_status="已規劃",
+        )
+        new_ids = repository.split_case_action(
+            self.conn,
+            parent_id,
+            [
+                {
+                    "description": "第一項",
+                    "owner": "Alice",
+                    "due_date": "2026-09-16",
+                },
+                {
+                    "description": "第二項",
+                    "owner": "Bob",
+                    "due_date": "2026-09-20",
+                },
+            ],
+        )
+        self.assertEqual(len(new_ids), 2)
+        parent = repository.get_case_action(self.conn, parent_id)
+        assert parent is not None
+        self.assertEqual(parent["execution_status"], "已取消")
+        rows = repository.list_case_actions(self.conn, self.anomaly_id)
+        open_rows = [
+            row for row in rows if row["execution_status"] in ("已規劃", "執行中")
+        ]
+        self.assertEqual(
+            sorted(row["description"] for row in open_rows),
+            ["第一項", "第二項"],
+        )
+        self.assertEqual(open_rows[0]["owner"], "Alice")
+        self.assertEqual(open_rows[1]["owner"], "Bob")
+
+    def test_preview_multiline_case_actions_split_counts_candidates(self) -> None:
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CONTAINMENT",
+            description="1. 第一項\n2. 第二項",
+            owner="Alice",
+            due_date="2026-09-16",
+        )
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CONTAINMENT",
+            description="單行處置",
+            owner="Bob",
+            due_date="2026-09-20",
+        )
+        preview = repository.preview_multiline_case_actions_split(self.conn)
+        self.assertEqual(preview["candidate_count"], 1)
+        self.assertEqual(preview["expected_new_actions"], 2)
+
+    def test_list_orders_by_8d_action_type_before_due_date(self) -> None:
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="SYSTEMIC_IMPROVEMENT",
+            description="prevention",
+            due_date="2026-07-20",
+            execution_status="執行中",
+        )
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CONTAINMENT",
+            description="containment",
+            due_date="2026-07-25",
+            execution_status="執行中",
+        )
+        repository.create_case_action(
+            self.conn,
+            anomaly_id=self.anomaly_id,
+            action_type="CORRECTIVE_ACTION",
+            description="corrective",
+            due_date="2026-07-10",
+            execution_status="執行中",
+        )
+        rows = repository.list_case_actions(self.conn, self.anomaly_id)
+        self.assertEqual(
+            [row["action_type"] for row in rows],
+            ["CONTAINMENT", "CORRECTIVE_ACTION", "SYSTEMIC_IMPROVEMENT"],
+        )
+
     # --- update / complete / cancel ------------------------------------
 
     def test_update_only_open_actions(self) -> None:

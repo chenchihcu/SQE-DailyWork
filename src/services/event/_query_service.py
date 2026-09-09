@@ -491,3 +491,138 @@ def get_anomaly_trend_by_range(start_date: str, end_date: str) -> list[dict]:
             "backlog_count": backlog_count,
         })
     return results
+
+
+REPEAT_RECURRENCE_BUCKET_FLAGGED = "重複警示"
+REPEAT_RECURRENCE_BUCKET_FIRST_TIME = "首次異常"
+REPEAT_RECURRENCE_BUCKETS: tuple[str, ...] = (
+    REPEAT_RECURRENCE_BUCKET_FLAGGED,
+    REPEAT_RECURRENCE_BUCKET_FIRST_TIME,
+)
+
+
+def _build_distribution_rows(
+    counts: dict[str, int],
+    *,
+    label_key: str,
+    ordered_labels: tuple[str, ...],
+) -> list[dict]:
+    total = sum(counts.get(label, 0) for label in ordered_labels)
+    if total <= 0:
+        return []
+    rows: list[dict] = []
+    for label in ordered_labels:
+        count = int(counts.get(label, 0))
+        if count <= 0:
+            continue
+        rows.append({
+            label_key: label,
+            "count": count,
+            "percent": round(count / total * 100, 1),
+        })
+    return rows
+
+
+def get_anomaly_repeat_recurrence_by_range(start_date: str, end_date: str) -> list[dict]:
+    """Return repeat-vs-first-time distribution for anomalies opened in a date range.
+
+    Page charts and Excel export must use this single implementation.
+    A case is flagged when it has at least one row in ``anomaly_repeat_links``,
+    matching ``repeat_link_count`` on the workbench overview card.
+    """
+    from database.repo_helpers import _table_exists
+
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
+
+    with _connection.get_connection() as conn:
+        if not _table_exists(conn, "anomaly_repeat_links"):
+            return []
+        rows = conn.execute(
+            """
+            SELECT
+                CASE
+                    WHEN l.anomaly_id IS NOT NULL THEN ?
+                    ELSE ?
+                END AS bucket,
+                COUNT(*) AS count
+            FROM anomalies AS a
+            LEFT JOIN (
+                SELECT DISTINCT anomaly_id
+                FROM anomaly_repeat_links
+            ) AS l ON l.anomaly_id = a.id
+            WHERE a.anomaly_date BETWEEN ? AND ?
+            GROUP BY bucket
+            """,
+            (
+                REPEAT_RECURRENCE_BUCKET_FLAGGED,
+                REPEAT_RECURRENCE_BUCKET_FIRST_TIME,
+                start_date,
+                end_date,
+            ),
+        ).fetchall()
+
+    counts = {REPEAT_RECURRENCE_BUCKET_FLAGGED: 0, REPEAT_RECURRENCE_BUCKET_FIRST_TIME: 0}
+    for row in rows:
+        bucket = str(row["bucket"] or "")
+        if bucket in counts:
+            counts[bucket] = int(row["count"] or 0)
+    return _build_distribution_rows(
+        counts,
+        label_key="bucket",
+        ordered_labels=REPEAT_RECURRENCE_BUCKETS,
+    )
+
+
+def get_anomaly_product_stage_distribution_by_range(
+    start_date: str, end_date: str
+) -> list[dict]:
+    """Return normalized product-stage distribution for anomalies opened in a date range.
+
+    Page charts and Excel export must use this single implementation.
+    """
+    from database.product_stage import (
+        PRODUCT_STAGE_MASS_PRODUCTION,
+        PRODUCT_STAGE_OPTIONS,
+        PRODUCT_STAGE_TRIAL_PRODUCTION,
+    )
+
+    try:
+        start_date, end_date = validate_date_range(start_date, end_date)
+    except DateRangeFormatError:
+        return []
+
+    with _connection.get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                CASE
+                    WHEN TRIM(product_stage) = ? THEN ?
+                    ELSE ?
+                END AS product_stage,
+                COUNT(*) AS count
+            FROM anomalies
+            WHERE anomaly_date BETWEEN ? AND ?
+            GROUP BY product_stage
+            """,
+            (
+                PRODUCT_STAGE_TRIAL_PRODUCTION,
+                PRODUCT_STAGE_TRIAL_PRODUCTION,
+                PRODUCT_STAGE_MASS_PRODUCTION,
+                start_date,
+                end_date,
+            ),
+        ).fetchall()
+
+    counts = {stage: 0 for stage in PRODUCT_STAGE_OPTIONS}
+    for row in rows:
+        stage = str(row["product_stage"] or PRODUCT_STAGE_MASS_PRODUCTION)
+        if stage in counts:
+            counts[stage] = int(row["count"] or 0)
+    return _build_distribution_rows(
+        counts,
+        label_key="product_stage",
+        ordered_labels=PRODUCT_STAGE_OPTIONS,
+    )

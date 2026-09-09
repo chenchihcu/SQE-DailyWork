@@ -32,8 +32,9 @@ shared master-data area.
      analysis note → optional attachment (`related_note_id`) → optional
      multi-layer hypothesis (`anomaly_hypotheses`) → optional
      attachment (`related_hypothesis_id`) → 1:1 root cause conclusion.
-     Consumers (overview, timeline, Markdown, export) must use a single
-     read-model helper (`list_anomaly_evidence_chain`, planned) rather than
+     Consumers (overview, Markdown, export) must use a single read-model helper
+     (`list_anomaly_evidence_chain`; repository implemented, product API
+     retired — returns `[]`) rather than
      ad-hoc per-table joins. See
      `docs/exec-plans/completed/2026-08-26-phase3-items-20-23-hypothesis-contract.md`.
    - **Workbench header closure (Phase 4):** `AnomalyManagementPage` and
@@ -43,20 +44,29 @@ shared master-data area.
      `CASE_REOPENED`; closure fields on `anomalies` are cleared. See
      `docs/exec-plans/completed/2026-08-26-phase4-items-01-24-workbench-ui.md`.
    - `case_actions.action_type` is one of `NEXT_ACTION`, `CONTAINMENT`,
-     `CORRECTION`, `CORRECTIVE_ACTION`, or `SYSTEMIC_IMPROVEMENT`; execution
+     `CORRECTION`, `CORRECTIVE_ACTION`, or `SYSTEMIC_IMPROVEMENT`; create/edit
+     UI exposes only the four 8D types (`CASE_ACTION_TYPES_FOR_UI` in
+     `repo_helpers.py`). `list_case_actions` sorts by 8D type order before
+     execution status and due date. Execution
      status is one of `已規劃`, `執行中`, `已完成`, or `已取消`.
+   - `case_actions.description` stores one single-line task per row. Create/edit
+     dialogs use `ActionItemListWidget` so each UI row maps to one Action with
+     its own `owner` and `due_date`. Legacy numbered multi-line descriptions
+     (`1. xxx\n2. yyy`) remain readable until split on edit or via the optional
+     `scripts/split_multiline_case_actions.py` Promotion Gate.
    - Verification status is derived, not stored on `case_actions`. Only completed
      `CORRECTIVE_ACTION` and `SYSTEMIC_IMPROVEMENT` rows with
      `verification_required = 1` accept append-only `action_verifications`.
      The latest verification produces `待驗證 / 有效 / 無效 / 無法判定`;
      non-improvement types are `不適用`, and explicitly waived improvement
      actions are `不需要`.
-   - Status-changing Action helpers (`create_case_action`, `update_case_action`,
-     `start_case_action`, `complete_case_action`, `cancel_case_action`, and
+   - Status-changing Action helpers (`create_case_action`, `create_case_actions_batch`,
+     `update_case_action`, `split_case_action`, `start_case_action`, `complete_case_action`, `cancel_case_action`, and
      `record_action_verification`) bundle the sub-table write with an
-     `anomaly_audit_logs` row so the timeline reflects every transition
-     without callers re-implementing audit logic. UI dialogs must call these
-     helpers instead of the repository directly.
+     `anomaly_audit_logs` row for cold-storage audit without callers
+     re-implementing audit logic. Product UI no longer projects a timeline
+     tab; repository `list_anomaly_timeline` remains for scripts/tests.
+     UI dialogs must call these helpers instead of the repository directly.
    - `get_anomaly_overview_card()` is the read-model SSOT for current Action,
      due date, overdue, execution status, and verification status. Overdue means
      an open anomaly has at least one `已規劃 / 執行中` Action whose non-empty
@@ -76,7 +86,11 @@ shared master-data area.
   - Physical bytes remain under
     `data/attachments/anomaly/{anomaly_id}/`, resolved from the active
     `SQE_DB_PATH` data directory. `captions.json` and image-only attachment
-    APIs remain a legacy compatibility surface. The workbench read projection
+    APIs remain a legacy compatibility surface. Field-photo links from
+    problem-desc bullet items are stored in sidecar
+    `problem_photo_links.json` (`{version, links: {stored_name: 1-based_index}}`)
+    beside the physical files; workbench `list_attachments` merges
+    `bullet_index` from this sidecar for UI read models. The workbench read projection
     marks DB rows as `storage_state=present/missing` and exposes unregistered
     physical files as `legacy_physical=true` without guessing their category,
     note, Action, or uploader. Item-level Phase 2 traceability (14–19) is
@@ -118,8 +132,10 @@ shared master-data area.
    deterministic `similarity_score` and newline-delimited `match_reasons`).
    Scoring SSOT is `repeat_issue_scoring.py`; refresh runs per supplier on
    anomaly create/update and during `anomaly_repeat_links_v1` backfill. The
-   workbench `RepeatIssuesPanel` and Supplier 360 `repeat_flagged_anomaly_count`
-   are read-only projections over this index. Warehouse `defect_records` are not
+   workbench header `潛在重複 (N)` (routes to the dedicated repeat-issues page)
+   and Supplier 360 `repeat_flagged_anomaly_count` are read-only projections over
+   this index. `RepeatIssuesPanel` remains source-only; it is not embedded in the
+   workbench. Warehouse `defect_records` are not
    indexed for repeat similarity.
 9. Manager View is a supplier-event operational read model only. Canonical
    projection for the manager summary table is `list_manager_summary_rows()`
@@ -168,6 +184,15 @@ shared master-data area.
   presets from `ui_settings.smt.process_keywords.v1` or enter custom keywords.
 - Keyword statistics use `get_anomaly_process_keyword_pareto_by_range` as the single
   implementation for the stats page chart and Excel export sheet/chart PNG.
+- Repeat recurrence statistics use `get_anomaly_repeat_recurrence_by_range` as the
+  single implementation for the stats page donut and Excel export sheet/chart PNG.
+  Cohort is anomalies opened in-range (`anomaly_date`); **重複警示** means at least
+  one row in `anomaly_repeat_links` for that anomaly (same SSOT as overview
+  `repeat_link_count`).
+- Product stage statistics use `get_anomaly_product_stage_distribution_by_range` as
+  the single implementation for the stats page donut and Excel export sheet/chart
+  PNG. Cohort is anomalies opened in-range; `product_stage` normalizes to `量產` or
+  `試產` (`database/product_stage.py`).
 
 ## Supplier Anomaly ERP Trace Numbers
 
@@ -277,24 +302,28 @@ shared master-data area.
 - `repository.get_anomaly_overview_card` is the single source of truth for the
   workbench summary (current next action, overdue flag, open action count, root
   cause status, corrective action status, effectiveness verification result,
-  analysis notes flag, attachment count). The UI dialog, the event list, the
+  attachment count, repeat link count). The UI dialog, the event list, the
   Excel detail sheet, the PDF payload, and the Markdown snapshot must all
   consume this read model — UI / exporters must not recompute their own join.
+  Legacy analysis-note and hypothesis flags are retired from the product
+  overview card; repository tables remain for existing data only.
 - `_query_service.list_events` and `_query_service.list_events_by_range`
   annotate each anomaly row with the overview card fields so every consumer
   (table, dashboard cards, export) sees the same numbers.
 - Excel 異常 detail sheet appends the parity columns (`逾期`, `目前處置`,
   `處置項目數`, `根本原因狀態`, `改善措施狀態`, `有效性驗證`, `附件數`,
-  `原因假設數`, `已採納假設`, `重複警示`) after the existing legacy fields.
-  Range Excel may add a「原因假設」sheet with up to 12 embedded hypothesis-tree
-  PNGs when `export_include_charts` is enabled. Event PDF and Markdown snapshots
+  `重複警示`) after the existing legacy fields. Hypothesis-tree export sheets
+  and PNG embedding are retired from the product export path (repository data
+  preserved). Event PDF and Markdown snapshots
   consume the same overview card; weekly PPTX overdue highlighting uses overview
   `overdue`, not `anomalies.due_date` alone. Manager view Excel and supplier
   quarterly reports are separate supplier-event exports and must not merge NCR rows.
 - VISIT rows are intentionally not enriched; only ANOMALY rows own the workbench
   sub-tables and the parity rules. Product event query no longer lists VISIT rows.
-- `list_anomaly_analysis_notes` and hypothesis evidence-chain attachment badges
-  use live `anomaly_attachments` COUNT by `related_note_id`; do not trust stored
+- Product UI no longer surfaces analysis notes or hypothesis trees; repository
+  `list_anomaly_analysis_notes` / hypothesis helpers remain for legacy data and
+  scripts. Where attachment badges still apply to legacy rows, use live
+  `anomaly_attachments` COUNT by `related_note_id`; do not trust stored
   `anomaly_analysis_notes.attachment_count`.
 - Manager-view and other `list_column_contract` exports must use the same display
   strings as the page table renderer (e.g. `overdue` → `逾期`/`—`); see

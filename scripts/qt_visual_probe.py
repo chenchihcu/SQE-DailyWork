@@ -1312,7 +1312,7 @@ def _workbench_overview_payload() -> dict:
 
     The probe mocks every read-side service call so the workbench can render
     full CJK content without touching the disposable DB. The fixture exercises
-    the five-tab workbench, conditional trace rows, attachment category labels,
+    the four-tab workbench, conditional trace rows, attachment category labels,
     and the scroll body at the minimum desktop width.
     """
 
@@ -1520,7 +1520,6 @@ def _workbench_tab_suffixes() -> tuple[str, ...]:
         "actions",
         "root-cause",
         "attachments",
-        "timeline",
     )
 
 
@@ -1549,16 +1548,6 @@ def _workbench_patchers(payload: dict):
             _anomaly_workbench_service,
             "list_attachments",
             return_value=payload.get("attachments", []),
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_timeline",
-            return_value=payload.get("timeline", []),
-        ),
-        mock.patch.object(
-            _anomaly_workbench_service,
-            "list_audit_logs",
-            return_value=payload.get("audit_logs", []),
         ),
         mock.patch.object(
             _case_action_service,
@@ -1691,6 +1680,12 @@ _REPEAT_ISSUES_LONG_IMPROVEMENT = (
     "2. 重測吸濕敏感度與回焊曲線後再放行\n"
     "3. 追蹤連板爆板位置是否與鋼板開孔對位相關"
 )
+_REPEAT_ISSUES_LONG_ROOT_CAUSE = (
+    "1. PCB 吸濕後回焊熱應力超出材料 Tg 容忍範圍\n"
+    "2. 供應商烘烤紀錄不完整，無法追溯出貨前含水率\n"
+    "3. 連板爆板位置與鋼板開孔對位偏差造成局部應力集中\n"
+    "4. 需比對歷史相同 Datecode 批次與本次入庫檢驗差異"
+)
 
 
 def _repeat_issues_fixture() -> dict:
@@ -1765,7 +1760,11 @@ def _capture_repeat_issues_management(
 
     patchers = [
         mock.patch.object(_anomaly_service, "get_anomaly_detail", side_effect=_mock_detail),
-        mock.patch.object(_anomaly_workbench_service, "get_root_cause", return_value=None),
+        mock.patch.object(
+            _anomaly_workbench_service,
+            "get_root_cause",
+            return_value={"statement": _REPEAT_ISSUES_LONG_ROOT_CAUSE},
+        ),
         mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=fixture["rows"]),
         mock.patch(
             "services.event._supplier_service.list_active_suppliers",
@@ -1811,7 +1810,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
     """
 
     from database.connection import initialize_database
-    from ui.widgets.add_audit_log_dialog import AddAuditLogDialog
     from ui.widgets.add_verification_dialog import AddVerificationDialog
     from ui.widgets.anomaly_action_dialog import AddAnomalyActionDialog
     from ui.widgets.complete_action_dialog import CompleteActionDialog
@@ -1846,15 +1844,38 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
             dialog._dirty = False
 
     action_dialog = AddAnomalyActionDialog("probe-density", parent=None)
-    _fill(
-        action_dialog,
-        description_input=(
-            "向供應商要求 8D 報告並於 7 日內回覆改善措施；"
-            "逾期則升級為品保月報專案。"
-        ),
-        owner_input="品保工程師 王小明",
+    action_dialog.action_items_input.set_items(
+        [
+            {
+                "description": "向供應商要求 8D 報告並於 7 日內回覆改善措施",
+                "owner": "品保工程師 王小明",
+                "due_date": "2026-09-16",
+            },
+            {
+                "description": "觀察 SPI 錫量是否回到規格",
+                "owner": "SMT 工程師 李大華",
+                "due_date": "2026-09-20",
+            },
+        ]
     )
     _capture_dialog(action_dialog, "dialog-density-add-action")
+
+    from ui.widgets.edit_anomaly_action_dialog import EditAnomalyActionDialog
+
+    edit_action_dialog = EditAnomalyActionDialog(
+        {
+            "id": "probe-action",
+            "anomaly_id": "probe-density",
+            "action_type": "CONTAINMENT",
+            "description": "1. 評估修改鋼板開孔\n2. 觀察 SPI 錫量",
+            "owner": "振順豐",
+            "due_date": "2026-09-16",
+            "execution_status": "已規劃",
+            "verification_required": False,
+        },
+        parent=None,
+    )
+    _capture_dialog(edit_action_dialog, "dialog-density-edit-action")
 
     from ui.widgets.anomaly_root_cause_dialog import AnomalyRootCauseDialog
 
@@ -1921,18 +1942,6 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
         sample_input="3 批 / 共 1200 pcs",
     )
     _capture_dialog(verification_dialog, "dialog-density-add-verification")
-
-    audit_dialog = AddAuditLogDialog(
-        "probe-density", parent=None, actor_name="品保工程師 王小明"
-    )
-    _fill(
-        audit_dialog,
-        message_input=(
-            "已與供應商窗口電話會議確認改善時程；"
-            "下週二現場稽核並提交 Rev B 報告。"
-        ),
-    )
-    _capture_dialog(audit_dialog, "dialog-density-add-audit")
 
     return screenshots
 
@@ -2182,6 +2191,19 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         {"rank": 4, "category": "外觀不良", "count": 10, "percent": 10.0, "cumulative_percent": 93.0},
         {"rank": 5, "category": "未分類", "count": 7, "percent": 7.0, "cumulative_percent": 100.0},
     ]
+    process_keyword_pareto = [
+        {"rank": 1, "keyword": "SPI", "count": 18, "percent": 45.0, "cumulative_percent": 45.0},
+        {"rank": 2, "keyword": "回流焊", "count": 12, "percent": 30.0, "cumulative_percent": 75.0},
+        {"rank": 3, "keyword": "AOI", "count": 10, "percent": 25.0, "cumulative_percent": 100.0},
+    ]
+    repeat_recurrence = [
+        {"bucket": "重複警示", "count": 14, "percent": 28.0},
+        {"bucket": "首次異常", "count": 36, "percent": 72.0},
+    ]
+    product_stage_distribution = [
+        {"product_stage": "量產", "count": 32, "percent": 64.0},
+        {"product_stage": "試產", "count": 18, "percent": 36.0},
+    ]
     class _StatsProbeHost:
         def open_event_query_with_filters(self, **_kwargs):
             return None
@@ -2195,6 +2217,9 @@ def _capture_stats_stress(output: Path, app: "QApplication", size: tuple[int, in
         patch("ui.widgets.stats_view_widget._query_service.get_anomaly_trend_by_range", return_value=trend_data),
         patch("ui.widgets.stats_view_widget._query_service.get_responsible_person_stats_by_range", return_value=resp_stats),
         patch("ui.widgets.stats_view_widget._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto),
+        patch("ui.widgets.stats_view_widget._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=process_keyword_pareto),
+        patch("ui.widgets.stats_view_widget._query_service.get_anomaly_repeat_recurrence_by_range", return_value=repeat_recurrence),
+        patch("ui.widgets.stats_view_widget._query_service.get_anomaly_product_stage_distribution_by_range", return_value=product_stage_distribution),
     ):
         widget = StatsViewWidget(main_window=_StatsProbeHost())
         # 操作真實可見的起迄下拉（AGENTS §3：探針不得驅動隱藏代理）；

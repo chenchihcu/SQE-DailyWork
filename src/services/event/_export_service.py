@@ -280,6 +280,14 @@ def export_events_report(
         process_keyword_pareto_rows = (
             _query_service.get_anomaly_process_keyword_pareto_by_range(start_date, end_date)
         )
+        repeat_recurrence_rows = _query_service.get_anomaly_repeat_recurrence_by_range(
+            start_date, end_date
+        )
+        product_stage_rows = (
+            _query_service.get_anomaly_product_stage_distribution_by_range(
+                start_date, end_date
+            )
+        )
         total_anomalies = totals["total_anomalies"]
         closed_anomalies = totals["closed_anomalies"]
         open_anomalies = totals["open_anomalies"]
@@ -391,6 +399,8 @@ def export_events_report(
                 ("category_pareto", "I7"),
                 ("responsible", "A23"),
                 ("process_keyword_pareto", "A39"),
+                ("repeat_recurrence", "A55"),
+                ("product_stage", "I55"),
             ]
             for key, cell in chart_placements:
                 path = temp_chart_paths.get(key)
@@ -476,6 +486,59 @@ def export_events_report(
                     cell.number_format = "0.0"
             keyword_sheet.row_dimensions[r_idx].height = 20
         _auto_fit(keyword_sheet)
+
+        def _build_distribution_sheet(
+            sheet_name: str,
+            headers: list[str],
+            rows: list[dict],
+            label_key: str,
+        ) -> None:
+            sheet = workbook.create_sheet(sheet_name)
+            sheet.views.sheetView[0].showGridLines = True
+            sheet.append(headers)
+            for col_idx in range(1, len(headers) + 1):
+                cell = sheet.cell(row=1, column=col_idx)
+                cell.font = STYLE_HEADER_FONT
+                cell.fill = STYLE_FILL_HEADER
+                cell.alignment = ALIGN_CENTER
+                cell.border = STYLE_BORDER_THIN
+            sheet.row_dimensions[1].height = 24
+
+            for r_idx, row in enumerate(rows, start=2):
+                data = [
+                    row.get(label_key, ""),
+                    row.get("count", 0),
+                    row.get("percent", 0.0),
+                ]
+                sheet.append(data)
+                is_even = r_idx % 2 == 0
+                for c_idx in range(1, len(headers) + 1):
+                    cell = sheet.cell(row=r_idx, column=c_idx)
+                    cell.font = STYLE_FONT
+                    cell.border = STYLE_BORDER_THIN
+                    if is_even:
+                        cell.fill = STYLE_FILL_ZEBRA
+                    if c_idx == 1:
+                        cell.alignment = ALIGN_LEFT
+                    else:
+                        cell.alignment = ALIGN_RIGHT
+                    if c_idx == 3:
+                        cell.number_format = "0.0"
+                sheet.row_dimensions[r_idx].height = 20
+            _auto_fit(sheet)
+
+        _build_distribution_sheet(
+            "重複異常再發率",
+            ["分類", "件數", "佔比(%)"],
+            repeat_recurrence_rows,
+            "bucket",
+        )
+        _build_distribution_sheet(
+            "產品階段分布",
+            ["產品階段", "件數", "佔比(%)"],
+            product_stage_rows,
+            "product_stage",
+        )
 
         # 3. 事件明細依權威 event_type 分成訪廠與異常兩個活頁。
         def _build_event_detail_sheet(name, headers, rows, row_builder, centered_columns):

@@ -39,6 +39,15 @@ def get_data_widgets_qss() -> str:
             background: {TOKENS["primary_faint"]};
         }}
 
+        QTableWidget#AnomalyActionTable::item {{
+            padding: 4px 6px;
+            min-height: 0;
+        }}
+
+        QTableWidget#AnomalyActionTable::item:hover {{
+            background: {TOKENS["primary_faint"]};
+        }}
+
         QTableWidget::item:selected {{
             background: {TOKENS["surface_active"]};
             color: {TOKENS["text_primary"]};

@@ -112,6 +112,102 @@ def create_case_action(
     return action_id
 
 
+def create_case_actions_batch(
+    *,
+    anomaly_id: str,
+    items: list[dict[str, Any]],
+    action_type: str = CASE_ACTION_TYPE_NEXT_ACTION,
+    execution_status: str = CASE_ACTION_STATUS_PLANNED,
+    verification_required: bool | None = None,
+    notes: str = "",
+    actor_name: str = "",
+) -> list[str]:
+    """Create multiple Actions in one transaction from per-row dialog items."""
+    normalized_items: list[dict[str, str]] = []
+    for item in items:
+        description = str(item.get("description") or "").strip()
+        if not description:
+            continue
+        normalized_items.append(
+            {
+                "description": description,
+                "owner": str(item.get("owner") or "").strip(),
+                "due_date": str(item.get("due_date") or "").strip(),
+            }
+        )
+    if not normalized_items:
+        raise ValueError("Action description is required")
+
+    created_ids: list[str] = []
+    with _open_conn() as conn:
+        for item in normalized_items:
+            action_id = repository.create_case_action(
+                conn,
+                anomaly_id=anomaly_id,
+                action_type=action_type,
+                description=item["description"],
+                owner=item["owner"],
+                due_date=item["due_date"],
+                execution_status=execution_status,
+                verification_required=verification_required,
+                notes=notes,
+                _commit=False,
+            )
+            created = repository.get_case_action(conn, action_id)
+            repository.append_anomaly_audit_log(
+                conn,
+                anomaly_id=anomaly_id,
+                action="CASE_ACTION_CREATED",
+                before_value="",
+                after_value=_audit_value(created),
+                actor_name=actor_name,
+                _commit=False,
+            )
+            created_ids.append(action_id)
+    return created_ids
+
+
+def split_case_action(
+    action_id: str,
+    items: list[dict[str, Any]],
+    *,
+    actor_name: str = "",
+) -> list[str]:
+    """Split one open Action into multiple Actions with audit rows."""
+    with _open_conn() as conn:
+        before = repository.get_case_action(conn, action_id)
+        if before is None:
+            raise ValueError("Action not found")
+        new_ids = repository.split_case_action(
+            conn,
+            action_id,
+            items,
+            _commit=False,
+        )
+        for new_id in new_ids:
+            created = repository.get_case_action(conn, new_id)
+            repository.append_anomaly_audit_log(
+                conn,
+                anomaly_id=str(before["anomaly_id"]),
+                action="CASE_ACTION_CREATED",
+                before_value="",
+                after_value=_audit_value(created),
+                actor_name=actor_name,
+                _commit=False,
+            )
+        cancelled = repository.get_case_action(conn, action_id)
+        repository.append_anomaly_audit_log(
+            conn,
+            anomaly_id=str(before["anomaly_id"]),
+            action="CASE_ACTION_SPLIT",
+            before_value=_audit_value(before),
+            after_value=_audit_value(cancelled),
+            actor_name=actor_name,
+            _commit=False,
+        )
+    return new_ids
+
+
 def update_case_action(
     action_id: str,
     *,
@@ -290,12 +386,14 @@ __all__ = [
     "cancel_case_action",
     "complete_case_action",
     "create_case_action",
+    "create_case_actions_batch",
     "get_case_action",
     "get_current_case_action",
     "is_anomaly_overdue",
     "list_action_verifications",
     "list_case_actions",
     "record_action_verification",
+    "split_case_action",
     "start_case_action",
     "update_case_action",
 ]

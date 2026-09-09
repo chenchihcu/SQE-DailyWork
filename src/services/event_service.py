@@ -93,6 +93,8 @@ from services.event._query_service import (  # noqa: E402, F401
     get_responsible_person_stats_by_range,
     get_anomaly_trend_by_range,
     get_anomaly_closure_activity_by_range,
+    get_anomaly_repeat_recurrence_by_range,
+    get_anomaly_product_stage_distribution_by_range,
 )
 
 # ---------------------------------------------------------------------------

@@ -43,7 +43,6 @@ from services.anomaly_trace_contract import (
 )
 from services.event import _anomaly_service
 from ui.layout_constants import (
-    ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_WIDTH,
     DIALOG_OUTER_MARGINS,
@@ -58,8 +57,8 @@ from ui.sidebar_nav import NAV_LABEL_MASTER_SEMI_FINISHED
 from ui.window_sizing import fit_dialog_to_available_screen
 from ui.popup_i18n import localize_exception, localize_popup_message
 from ui.widgets.bullet_list_widget import BulletListWidget
+from ui.widgets.evidence_bullet_list_widget import EvidenceBulletListWidget
 from ui.widgets.tag_input_widget import TagInputWidget
-from ui.widgets.close_anomaly_dialog import AttachmentEditor
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
@@ -211,7 +210,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setMinimumContentsLength(12)
 
-        self.problem_input = BulletListWidget(placeholder="輸入不良現象...")
+        self.problem_input = EvidenceBulletListWidget(placeholder="輸入不良現象...")
         self.pending_items_input = BulletListWidget(placeholder="輸入確認事項 / 待追蹤...")
         self.process_keywords_input = TagInputWidget()
 
@@ -300,13 +299,22 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
 
         content_layout.addLayout(grid)
 
-        desc_title = QLabel("🔍 問題描述")
+        desc_title = QLabel("🔍 不良現象與現場照片")
         desc_title.setProperty("role", "sectionTitle")
         content_layout.addWidget(desc_title)
         content_layout.addWidget(QLabel("SMT 製程關鍵詞"))
         content_layout.addWidget(self.process_keywords_input)
+
         content_layout.addWidget(RequiredFieldLabel("不良現象描述"))
         content_layout.addWidget(self.problem_input)
+        photo_hint = QLabel(
+            "每條不良現象可附加現場照片，儲存後於案件概覽逐條對照。"
+        )
+        photo_hint.setProperty("role", "messageText")
+        photo_hint.setProperty("tone", "info")
+        photo_hint.setWordWrap(True)
+        content_layout.addWidget(photo_hint)
+
         content_layout.addWidget(QLabel("📌 確認事項 / 待追蹤"))
         content_layout.addWidget(self.pending_items_input)
 
@@ -333,13 +341,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         rc_layout.addWidget(QLabel("公司廠內庫存"), 1, 2)
         rc_layout.addWidget(self.rc_internal_inv_combo, 1, 3)
         content_layout.addWidget(self._rc_group)
-
-        photo_title = QLabel("📷 現場照片")
-        photo_title.setProperty("role", "sectionTitle")
-        content_layout.addWidget(photo_title)
-        self.attachment_editor = AttachmentEditor(self)
-        self.attachment_editor.set_preview_height(ANOMALY_ATTACHMENT_COMPACT_HEIGHT)
-        content_layout.addWidget(self.attachment_editor)
         content_layout.addStretch(1)
         if self._page_mode:
             layout = QVBoxLayout(self)
@@ -401,7 +402,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.rc_supplier_wip_combo,
             self.rc_in_transit_combo,
             self.rc_internal_inv_combo,
-            self.attachment_editor,
         ]
         if self._button_box is not None:
             save_btn = self._button_box.button(QDialogButtonBox.StandardButton.Save)
@@ -496,8 +496,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         self.rc_in_transit_combo.setEnabled(False)
         self.rc_internal_inv_combo.setEnabled(False)
 
-        self.attachment_editor.set_read_only(True)
-
         # Change Save button to Close and hide Cancel (redundant in read-only mode)
         if self.save_button:
             self.save_button.setText("關閉")
@@ -530,8 +528,6 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.rc_supplier_wip_combo.currentTextChanged,
             self.rc_in_transit_combo.currentTextChanged,
             self.rc_internal_inv_combo.currentTextChanged,
-            self.attachment_editor.add_button.clicked,
-            self.attachment_editor.remove_button.clicked,
         ])
 
     def _on_date_changed(self, _date: QDate | None = None) -> None:
@@ -673,7 +669,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
 
         self._refresh_submit_state()
         if self._is_edit:
-            self.attachment_editor.load_existing_attachments(self._anomaly_id)
+            self.problem_input.load_row_photos(self._anomaly_id)
 
     def _on_submit(self):
         quality_report_required_id = self.quality_report_required_group.checkedId()
@@ -759,15 +755,13 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         try:
             if self._is_edit:
                 result = _anomaly_service.update_anomaly(self._anomaly_id, payload)
-                self.attachment_editor.save_to_anomaly(self._anomaly_id)
-                self._warn_if_attachment_rename_failures()
+                self.problem_input.save_photos_to_anomaly(self._anomaly_id)
                 completion_text = "異常資料已更新"
             else:
                 result = _anomaly_service.create_anomaly_with_visit_link(payload)
                 anomaly_id = str(result.get("anomaly_id") or "").strip()
                 if anomaly_id:
-                    self.attachment_editor.save_to_anomaly(anomaly_id)
-                    self._warn_if_attachment_rename_failures()
+                    self.problem_input.save_photos_to_anomaly(anomaly_id)
                 completion_text = f"已建立異常單：{result['anomaly_no']}"
             warnings = (
                 list(result.get("warnings") or [])
@@ -800,11 +794,3 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
                 localize_popup_message(f"建立異常失敗：{localize_exception(exc)}"),
             )
 
-    def _warn_if_attachment_rename_failures(self) -> None:
-        failures = self.attachment_editor._last_rename_failures
-        if failures:
-            QMessageBox.warning(
-                self,
-                "附件改名失敗",
-                "以下附件改名未成功，檔名可能維持原狀：\n" + "\n".join(failures),
-            )

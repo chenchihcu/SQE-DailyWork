@@ -44,6 +44,8 @@ ALLOWED_ATTACHMENT_SUFFIXES: frozenset[str] = frozenset(
     }
 )
 CAPTIONS_FILENAME = "captions.json"
+PROBLEM_PHOTO_LINKS_FILENAME = "problem_photo_links.json"
+_SIDEcar_FILENAMES = frozenset({CAPTIONS_FILENAME, PROBLEM_PHOTO_LINKS_FILENAME})
 
 
 def _sync_anomaly_markdown(anomaly_id: str) -> None:
@@ -186,7 +188,7 @@ def list_stored_attachment_files(anomaly_id: str) -> list[Path]:
     items = [
         p
         for p in folder.iterdir()
-        if p.is_file() and p.name != CAPTIONS_FILENAME
+        if p.is_file() and p.name not in _SIDEcar_FILENAMES
         and p.suffix.lower() in ALLOWED_ATTACHMENT_SUFFIXES
     ]
     items.sort(key=lambda p: p.name.casefold())

@@ -18,7 +18,7 @@ from database import connection as _connection
 from database import repository
 from database.repo_helpers import (
     RETIRED_WORKBENCH_FEATURE_RETIRED_MSG,
-    is_retired_workbench_audit_action,
+    RETIRED_WORKBENCH_TIMELINE_MSG,
 )
 from services import attachment_manager
 
@@ -353,6 +353,9 @@ def list_attachments(anomaly_id: str) -> list[dict[str, Any]]:
         if str(row.get("stored_name") or row.get("file_name") or "").strip()
     }
     captions = attachment_manager.get_anomaly_captions(anomaly_id)
+    from services.problem_photo_link_codec import get_problem_photo_links
+
+    photo_links = get_problem_photo_links(anomaly_id)
     result: list[dict[str, Any]] = []
     for row in metadata:
         item = dict(row)
@@ -363,6 +366,7 @@ def list_attachments(anomaly_id: str) -> list[dict[str, Any]]:
             else "missing"
         )
         item["legacy_physical"] = False
+        item["bullet_index"] = photo_links.get(stored_name)
         result.append(item)
 
     for path in physical_files:
@@ -391,6 +395,7 @@ def list_attachments(anomaly_id: str) -> list[dict[str, Any]]:
                 "uploaded_at": "",
                 "storage_state": "present",
                 "legacy_physical": True,
+                "bullet_index": photo_links.get(path.name),
             }
         )
     result.sort(
@@ -464,13 +469,7 @@ def append_audit_log(
 
 
 def list_audit_logs(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        rows = repository.list_anomaly_audit_logs(conn, anomaly_id)
-    return [
-        row
-        for row in rows
-        if not is_retired_workbench_audit_action(str(row.get("action") or ""))
-    ]
+    return []
 
 
 # Convenience wrappers that bundle a domain write with an audit log entry so
@@ -497,25 +496,11 @@ def append_manual_audit(
     after_value: str,
     actor_name: str = "",
 ) -> str:
-    """Append a free-form audit entry authored from the UI workbench.
-
-    Use sparingly: most state transitions should go through the dedicated
-    repository functions so timestamps stay consistent.
-    """
-    with _open_conn() as conn:
-        return repository.append_anomaly_audit_log(
-            conn,
-            anomaly_id=anomaly_id,
-            action=action,
-            before_value="",
-            after_value=after_value,
-            actor_name=actor_name,
-        )
+    raise ValueError(RETIRED_WORKBENCH_TIMELINE_MSG)
 
 
 def list_timeline(anomaly_id: str) -> list[dict[str, Any]]:
-    with _open_conn() as conn:
-        return repository.list_anomaly_timeline(conn, anomaly_id)
+    return []
 
 
 def get_overview_card(anomaly_id: str) -> dict[str, Any]:

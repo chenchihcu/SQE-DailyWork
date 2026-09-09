@@ -132,9 +132,12 @@ from database.case_action_repository import (
     list_action_verifications as list_action_verifications,
     list_case_actions,
     migrate_case_actions_v1,
+    migrate_multiline_case_actions_split,
     preview_case_actions_v1_migration as preview_case_actions_v1_migration,
+    preview_multiline_case_actions_split,
     record_action_verification as record_action_verification,
     require_case_actions_schema as require_case_actions_schema,
+    split_case_action,
     update_case_action as update_case_action,
 )
 from database import anomaly_hypothesis_repository as _anomaly_hypothesis_repository

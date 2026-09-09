@@ -227,6 +227,46 @@ def _sync_clickable_cursor(widget: QWidget) -> None:
     widget.setCursor(cursor)
 
 
+def make_table_cell_widget_host(
+    *,
+    spacing: int = 4,
+) -> tuple[QWidget, QHBoxLayout]:
+    """Compact host for QTableWidget::setCellWidget action rows."""
+    from ui.layout_constants import (
+        TABLE_CELL_WIDGET_H_MARGIN,
+        TABLE_CELL_WIDGET_V_HALF_MARGIN,
+    )
+
+    host = QWidget()
+    layout = QHBoxLayout(host)
+    layout.setContentsMargins(
+        TABLE_CELL_WIDGET_H_MARGIN,
+        TABLE_CELL_WIDGET_V_HALF_MARGIN,
+        TABLE_CELL_WIDGET_H_MARGIN,
+        TABLE_CELL_WIDGET_V_HALF_MARGIN,
+    )
+    layout.setSpacing(spacing)
+    return host, layout
+
+
+def make_table_cell_action_button(
+    text: str,
+    *,
+    accessible_name: str | None = None,
+    tooltip: str | None = None,
+    on_clicked: Callable[[], None] | None = None,
+) -> QPushButton:
+    """Link-like table action button; avoids secondary min-height clipping in cells."""
+    button = QPushButton(text)
+    if accessible_name:
+        button.setAccessibleName(accessible_name)
+    button.setProperty("role", "tableCellAction")
+    apply_clickable_affordance(button, tooltip=tooltip)
+    if on_clicked is not None:
+        button.clicked.connect(lambda _checked=False: on_clicked())
+    return button
+
+
 def apply_clickable_affordance(
     widget: QWidget,
     *,

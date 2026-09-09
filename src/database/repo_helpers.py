@@ -22,6 +22,7 @@ STAGE_SYNC_SCOPE_ALL_HISTORY = "all_history_and_future"
 # ── Regex helpers ──────────────────────────────────────────────────────────
 _SUPPLIER_SUFFIX_PATTERN = re.compile(r"(?:-\d+|-[0-9a-fA-F]{8}(?:-受保護)?)$")
 _STRICT_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_NUMBERED_LINE_PREFIX_PATTERN = re.compile(r"^(\d+[\.\)]|\-|•|\*)\s*")
 
 # ── Event / defect constants ───────────────────────────────────────────────
 EVENT_SCOPE_VISIT_ONLY = "VISIT_ONLY"
@@ -52,6 +53,7 @@ ANOMALY_ACTIONS_BACKFILL_META_KEY = "anomaly_actions_backfill_v1"
 # ── Canonical case action constants (48-item rollout, Phase 1) ─────────────
 CASE_ACTIONS_MIGRATION_META_KEY = "case_actions_v1"
 CASE_ACTIONS_SCHEMA_VERSION = "1"
+CASE_ACTIONS_MULTILINE_SPLIT_META_KEY = "case_actions_multiline_split_v1"
 
 CASE_ACTION_TYPE_NEXT_ACTION = "NEXT_ACTION"
 CASE_ACTION_TYPE_CONTAINMENT = "CONTAINMENT"
@@ -72,10 +74,46 @@ CASE_ACTION_TYPE_LABELS: dict[str, str] = {
     CASE_ACTION_TYPE_CORRECTIVE_ACTION: "矯正措施",
     CASE_ACTION_TYPE_SYSTEMIC_IMPROVEMENT: "預防／系統改善",
 }
+CASE_ACTION_TYPE_8D_ORDER: tuple[str, ...] = (
+    CASE_ACTION_TYPE_CONTAINMENT,
+    CASE_ACTION_TYPE_CORRECTION,
+    CASE_ACTION_TYPE_CORRECTIVE_ACTION,
+    CASE_ACTION_TYPE_SYSTEMIC_IMPROVEMENT,
+)
+CASE_ACTION_TYPES_FOR_UI: tuple[str, ...] = CASE_ACTION_TYPE_8D_ORDER
+CASE_ACTION_TYPE_SORT_RANK: dict[str, int] = {
+    CASE_ACTION_TYPE_CONTAINMENT: 0,
+    CASE_ACTION_TYPE_CORRECTION: 1,
+    CASE_ACTION_TYPE_CORRECTIVE_ACTION: 2,
+    CASE_ACTION_TYPE_SYSTEMIC_IMPROVEMENT: 3,
+    CASE_ACTION_TYPE_NEXT_ACTION: 4,
+}
 CASE_ACTION_VERIFICATION_ELIGIBLE_TYPES: tuple[str, ...] = (
     CASE_ACTION_TYPE_CORRECTIVE_ACTION,
     CASE_ACTION_TYPE_SYSTEMIC_IMPROVEMENT,
 )
+
+
+def ordered_case_action_type_labels(
+    *,
+    for_ui: bool = False,
+) -> tuple[tuple[str, str], ...]:
+    """Return (type_code, label) pairs in 8D report order.
+
+    When ``for_ui`` is True, legacy ``NEXT_ACTION`` is omitted from create/edit
+    dropdowns while remaining readable for existing rows.
+    """
+    types = CASE_ACTION_TYPES_FOR_UI if for_ui else CASE_ACTION_TYPES
+    order = {code: index for index, code in enumerate(CASE_ACTION_TYPE_8D_ORDER)}
+    if not for_ui:
+        order[CASE_ACTION_TYPE_NEXT_ACTION] = len(CASE_ACTION_TYPE_8D_ORDER)
+    return tuple(
+        sorted(
+            ((code, CASE_ACTION_TYPE_LABELS[code]) for code in types),
+            key=lambda item: order.get(item[0], 99),
+        )
+    )
+
 
 CASE_ACTION_STATUS_PLANNED = "已規劃"
 CASE_ACTION_STATUS_IN_PROGRESS = "執行中"
@@ -211,6 +249,7 @@ ANOMALY_AUDIT_CASE_REOPENED = "CASE_REOPENED"
 RETIRED_WORKBENCH_FEATURE_RETIRED_MSG = (
     "分析紀錄、多層原因假設與 Supplier 8D 審查已從產品工作台退役。"
 )
+RETIRED_WORKBENCH_TIMELINE_MSG = "處理歷程已從產品工作台退役。"
 RETIRED_WORKBENCH_AUDIT_ACTIONS: frozenset[str] = frozenset(
     {
         ANOMALY_AUDIT_HYPOTHESIS_CREATED,
@@ -529,6 +568,25 @@ def _build_product_lookup_by_supplier_and_name(
         _register_unique_lookup_key(lookup, (supplier_id, product_name), product_id)
         _register_unique_lookup_key(lookup, (secondary_supplier_id, product_name), product_id)
     return lookup
+
+
+def parse_numbered_description_lines(text: str) -> list[str]:
+    """Split newline-delimited numbered/bullet text into plain item strings."""
+    if not text or not str(text).strip():
+        return []
+    extracted: list[str] = []
+    for line in str(text).strip().splitlines():
+        line_str = line.strip()
+        if not line_str:
+            continue
+        cleaned = _NUMBERED_LINE_PREFIX_PATTERN.sub("", line_str)
+        extracted.append(cleaned if cleaned else line_str)
+    return extracted
+
+
+def is_multiline_case_action_description(text: str) -> bool:
+    """True when a case_actions.description should be treated as legacy multi-item."""
+    return len(parse_numbered_description_lines(text)) >= 2
 
 
 # ── Schema helpers ─────────────────────────────────────────────────────────

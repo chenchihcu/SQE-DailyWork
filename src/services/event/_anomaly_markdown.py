@@ -94,6 +94,9 @@ def render_anomaly_markdown(detail: dict) -> str:
     anomaly_id = str(detail.get("id") or "")
     captions = attachment_manager.get_anomaly_captions(anomaly_id)
     attachments = attachment_manager.list_stored_attachment_files(anomaly_id)
+    from services.problem_photo_link_codec import get_problem_photo_links
+
+    photo_links = get_problem_photo_links(anomaly_id)
 
     lines = ["---", "異常事件:"]
     for field, label in ANOMALY_FIELDS:
@@ -103,6 +106,9 @@ def render_anomaly_markdown(detail: dict) -> str:
         for path in attachments:
             lines.append(f"    - 檔名: {_yaml_scalar(path.name)}")
             lines.append(f"      圖說: {_yaml_scalar(captions.get(path.name, ''))}")
+            bullet_index = photo_links.get(path.name)
+            if bullet_index:
+                lines.append(f"      關聯條次: {_yaml_scalar(bullet_index)}")
     else:
         lines.append("  附件: []")
 

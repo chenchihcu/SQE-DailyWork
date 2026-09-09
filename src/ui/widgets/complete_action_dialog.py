@@ -75,7 +75,7 @@ class CompleteActionDialog(DirtyTrackingMixin, QDialog):
         )
 
         self.note_input = BulletListWidget(
-            placeholder="完成說明／取消原因（選填；儲存後將寫入處理歷程）"
+            placeholder="完成說明／取消原因（選填）"
         )
 
         self._action_summary = action_summary

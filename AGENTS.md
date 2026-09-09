@@ -32,7 +32,7 @@ global baseline.
 - Keep SQE DailyWork terminology aligned across services, dialogs, tables, `src/ui/popup_i18n.py`, and `README.md`.
 - Keep `docs/architecture-workflow-contract.md` synchronized when changing workflow tables, import behavior, statistics, or entrypoint routing.
 - Cursor rules live in `.cursor/rules/`; do not remove the rules directory.
-- **Trunk-Based Development**：遵循全域 `CLAUDE.md` 的 TBD 規則，所有開發直接在 `main` 進行，禁止開 feature branch。
+- **Trunk-Based Development（§8）**：所有開發直接在 `main` 進行，禁止開 feature branch。
 
 ## 1. Core Architectural Laws (The Atomic Path)
 Every core design change must be reflected across the entire stack. Never leave "ghost" fields or orphaned code.
@@ -83,6 +83,8 @@ Every core design change must be reflected across the entire stack. Never leave 
 - **Zero-Noise Analytics Standard (統計看板純淨化)**: Statistics dashboards strictly retain only the Date Range filter, Refresh button, Export Excel button, and visual charts. Textual insight summaries and verbose diagnostic paragraphs must not be displayed on the visible UI. During `refresh_data()`, do not create, populate, or compute hidden insight, info-banner, or management-summary text; when simplifying statistics pages, remove the generation path and compatibility widgets—do not rely on `.hide()` alone.
 - **CJK Radio Button Guard (單選與核取按鈕 CJK 排版守衛)**: Never invoke `setLayoutDirection(Qt.LayoutDirection.RightToLeft)` on `QRadioButton` or `QCheckBox` containing CJK text. Windows Qt calculates reverse bounding boxes that cause indicator circles to render directly on top of Chinese characters. Keep default `LeftToRight` and structure container layouts with adequate widths.
 - **Table Column Width Single Source of Truth (表格欄位寬度單一真理標準)**: All `QTableWidget` columns must consume layout constants from `src/ui/layout_constants.py` (e.g. `CASE_QUEUE_*`, `NCR_LIST_CORE_*`, `EVENT_LIST_CORE_*`). Context-specific minimums are: case-queue Anomaly No `CASE_QUEUE_ANOMALY_NO_WIDTH = 106px`; event-list compact Anomaly No `EVENT_LIST_CORE_ANOMALY_NO_WIDTH = 106px`; NCR defect No `NCR_LIST_CORE_DEFECT_NO_WIDTH = 120px`. Other core business data remains Part No >= 130px, 7-char CJK headers >= 115px, Email >= 180px, and Phone >= 140px.
+- **Workbench four-tab layout**: `AnomalyManagementPage` uses `案件概覽` / `Action 清單` / `根本原因` / `附件與佐證`; the `處理歷程` tab and manual audit entry are retired (audit rows still write to `anomaly_audit_logs` in the background). Repeat issues route via header `潛在重複 (N)` to the dedicated management page, not an embedded panel.
+- **Workbench Action List Standard (工作台 Action 清單標準)**: `AnomalyActionTable` is read-only (`text_table_item` + tooltip); open-row edits use `EditAnomalyActionDialog` (dates via `QDateEdit` + `setCalendarPopup(True)` + `yyyy-MM-dd`); workflow buttons are separated in the `流程` column. Widths use `WORKBENCH_ACTION_*` constants from `layout_constants.py`. See `docs/ui-layout-theme-contract.md`.
 - **Symmetric Grid Layout Standard (雙欄表單網格對稱對齊標準)**: Multi-field forms must use symmetric 2-column grids (`field_count=2`: Col 0/2 for labels, Col 1/3 for fields with 1:1 stretch). Do not mix column offsets in a single grid layout. Accessory actions (such as '+ 建立' product buttons) must be packed inside the field container QHBoxLayout.
 - **Feedback**: `QMessageBox` for confirmations; destructive actions use explicit confirm dialogs.
 - **Export/UI display SSOT**: `list_column_contract` export cells must match page renderer strings (e.g. `overdue` → `逾期`/`—`); assert in `tests/test_exports_phase7.py`.

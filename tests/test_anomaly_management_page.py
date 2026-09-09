@@ -13,9 +13,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QTabWidget,
-    QTableWidget,
     QWidget,
 )
+
+from ui.widgets.anomaly_action_table import AnomalyActionTable
 
 from services.event import (
     _anomaly_service,
@@ -25,6 +26,7 @@ from services.event import (
 from services import repeat_issue_service
 from ui.sidebar_nav import PAGE_EVENT_OVERDUE
 from ui.widgets.anomaly_management_page import AnomalyManagementPage
+from ui.widgets.anomaly_photo_thumb_grid import ProblemEvidenceOverviewPanel
 from ui.widgets.common_widgets import CaseStageStepper
 
 
@@ -68,7 +70,6 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self.patchers = [
             mock.patch.object(_anomaly_service, "get_anomaly_detail", return_value=self.detail),
             mock.patch.object(_anomaly_workbench_service, "get_overview_card", return_value=self.overview),
-            mock.patch.object(_anomaly_workbench_service, "list_timeline", return_value=[]),
             mock.patch.object(_anomaly_workbench_service, "get_root_cause", return_value=None),
             mock.patch.object(_case_action_service, "list_case_actions", return_value=[]),
             mock.patch.object(
@@ -81,7 +82,6 @@ class AnomalyManagementPageTests(unittest.TestCase):
                 _anomaly_workbench_service, "list_attachment_hypotheses", return_value=[]
             ),
             mock.patch.object(_anomaly_workbench_service, "list_attachments", return_value=[]),
-            mock.patch.object(_anomaly_workbench_service, "list_audit_logs", return_value=[]),
             mock.patch.object(repeat_issue_service, "list_repeat_issues", return_value=[]),
         ]
         for patcher in self.patchers:
@@ -104,13 +104,13 @@ class AnomalyManagementPageTests(unittest.TestCase):
         self._pages.append(page)
         return page
 
-    def test_renders_five_management_tabs(self) -> None:
+    def test_renders_four_management_tabs(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
 
         tabs = page.findChild(QTabWidget, "AnomalyManagementTabs")
         self.assertIsNotNone(tabs)
-        self.assertEqual(tabs.count(), 5)
+        self.assertEqual(tabs.count(), 4)
         self.assertEqual(
             [tabs.tabText(index) for index in range(tabs.count())],
             list(AnomalyManagementPage.TAB_NAMES),
@@ -158,7 +158,7 @@ class AnomalyManagementPageTests(unittest.TestCase):
             self.assertEqual(1, len(scrolls))
             self.assertTrue(scrolls[0].widgetResizable())
 
-    def test_overview_tab_exposes_case_overview_only(self) -> None:
+    def test_overview_tab_exposes_case_and_problem_evidence_sections(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
         overview_tab = page.tabs.widget(0)
@@ -167,7 +167,23 @@ class AnomalyManagementPageTests(unittest.TestCase):
             for child in overview_tab.findChildren(QLabel)
             if child.property("role") == "sectionTitle"
         ]
-        self.assertEqual(["案件概覽"], labels)
+        self.assertEqual(["案件概覽", "不良現象與現場照片"], labels)
+        panel = overview_tab.findChild(
+            ProblemEvidenceOverviewPanel, "ProblemEvidenceOverviewPanel"
+        )
+        self.assertIsNotNone(panel)
+
+    def test_overview_view_all_attachments_switches_tab(self) -> None:
+        page = self._make_page()
+        page.load_anomaly("anomaly-1")
+        overview_tab = page.tabs.widget(0)
+        panel = overview_tab.findChild(
+            ProblemEvidenceOverviewPanel, "ProblemEvidenceOverviewPanel"
+        )
+        self.assertIsNotNone(panel)
+        panel.view_all_requested.emit()
+        self.assertEqual(3, page.tabs.currentIndex())
+        self.assertEqual("附件與佐證", page.tabs.tabText(page.tabs.currentIndex()))
 
     def test_root_cause_tab_exposes_investigation_sections(self) -> None:
         page = self._make_page()
@@ -178,18 +194,46 @@ class AnomalyManagementPageTests(unittest.TestCase):
             for child in root_cause_tab.findChildren(QLabel)
             if child.property("role") == "sectionTitle"
         ]
-        self.assertIn("調查進度", labels)
-        self.assertIn("根本原因", labels)
+        self.assertIn("調查與根本原因", labels)
+        self.assertNotIn("調查進度", labels)
         buttons = [child.text() for child in root_cause_tab.findChildren(QPushButton)]
         self.assertIn("編輯根本原因", buttons)
         self.assertNotIn("新增分析紀錄", buttons)
         self.assertNotIn("新增假設", buttons)
 
+    def test_root_cause_tab_renders_full_read_model(self) -> None:
+        page = self._make_page()
+        root_cause = {
+            "status": "已驗證",
+            "statement": "1. 治具磨損",
+            "validation_method": "1. 5-Why",
+            "validation_evidence": "1. 現場量測",
+            "conclusion_note": "1. 高信心",
+            "not_established_reason": "",
+        }
+        with mock.patch.object(
+            _anomaly_workbench_service, "get_root_cause", return_value=root_cause
+        ):
+            page.load_anomaly("anomaly-1")
+        root_cause_tab = page.tabs.widget(2)
+        rendered = [
+            child.text()
+            for child in root_cause_tab.findChildren(QLabel)
+            if child.property("role") == "value"
+        ]
+        joined = "\n".join(rendered)
+        self.assertIn("狀態：已驗證", joined)
+        self.assertIn("說明：1. 治具磨損", joined)
+        self.assertIn("驗證方式：1. 5-Why", joined)
+        self.assertIn("驗證證據：1. 現場量測", joined)
+        self.assertIn("結論說明：1. 高信心", joined)
+        self.assertNotIn("無法確認原因", joined)
+
     def test_actions_tab_exposes_action_table(self) -> None:
         page = self._make_page()
         page.load_anomaly("anomaly-1")
         actions_tab = page.tabs.widget(1)
-        self.assertIsNone(actions_tab.findChild(QTableWidget, "AnomalyActionTable"))
+        self.assertIsNone(actions_tab.findChild(AnomalyActionTable, "AnomalyActionTable"))
         buttons = [child.text() for child in actions_tab.findChildren(QPushButton)]
         self.assertIn("新增 Action", buttons)
 
@@ -209,9 +253,21 @@ class AnomalyManagementPageTests(unittest.TestCase):
         ):
             page.load_anomaly("anomaly-1")
             actions_tab = page.tabs.widget(1)
-            self.assertIsNotNone(
-                actions_tab.findChild(QTableWidget, "AnomalyActionTable")
-            )
+            table = actions_tab.findChild(AnomalyActionTable, "AnomalyActionTable")
+            self.assertIsNotNone(table)
+            self.assertEqual(list(AnomalyActionTable.TABLE_HEADERS), [
+                table.horizontalHeaderItem(index).text()
+                for index in range(table.columnCount())
+            ])
+            self.assertIsNotNone(table.item(0, AnomalyActionTable.COL_DESC))
+            buttons = [child.text() for child in actions_tab.findChildren(QPushButton)]
+            self.assertIn("編輯", buttons)
+            accessible = [
+                child.accessibleName()
+                for child in actions_tab.findChildren(QPushButton)
+            ]
+            self.assertTrue(any(name.startswith("編輯 Action") for name in accessible))
+            self.assertTrue(any(name.startswith("取消 Action") for name in accessible))
 
     def test_command_buttons_follow_save_then_cancel_order(self) -> None:
         page = self._make_page()
@@ -273,7 +329,8 @@ class AnomalyManagementPageTests(unittest.TestCase):
             actions_tab = page.tabs.widget(1)
             buttons = [btn.text() for btn in actions_tab.findChildren(QPushButton)]
             self.assertNotIn("開始執行", buttons)
-            self.assertNotIn("完成／取消", buttons)
+            self.assertNotIn("完成", buttons)
+            self.assertNotIn("取消", buttons)
             self.assertIn("新增 Action", buttons)
 
     def test_verification_button_hidden_after_result_recorded(self) -> None:

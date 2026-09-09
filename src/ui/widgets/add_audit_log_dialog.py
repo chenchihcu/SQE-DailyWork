@@ -50,7 +50,7 @@ ACTION_KIND_OPTIONS = [
 
 
 class AddAuditLogDialog(DirtyTrackingMixin, QDialog):
-    """Append a free-form audit entry that surfaces on the workbench timeline."""
+    """Legacy dialog; product UI entry retired — append_manual_audit is fail-closed."""
 
     audit_created = Signal(str)
 
@@ -78,7 +78,7 @@ class AddAuditLogDialog(DirtyTrackingMixin, QDialog):
         self.action_combo.setCurrentIndex(0)
 
         self.message_input = BulletListWidget(
-            placeholder="紀錄內容（會出現在處理歷程；建議簡要描述事件、決定或追蹤事項）"
+            placeholder="紀錄內容（legacy 對話框；產品已無處理歷程 Tab；建議簡要描述事件、決定或追蹤事項）"
         )
 
         self._setup_ui()

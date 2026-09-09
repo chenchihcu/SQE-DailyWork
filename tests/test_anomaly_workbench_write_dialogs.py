@@ -132,23 +132,29 @@ class AddAuditLogDialogTests(unittest.TestCase):
         dialog.message_input.setPlainText("再次與供應商確認")
         self.assertTrue(dialog._save_button.isEnabled())
 
-    def test_appends_manual_audit(self) -> None:
+    def test_manual_audit_retired(self) -> None:
         dialog = AddAuditLogDialog("an-1")
         dialog.action_combo.setCurrentText("MEETING")
         dialog.message_input.setPlainText("與供應商電話會議")
-        emitted = []
-        dialog.audit_created.connect(lambda v: emitted.append(v))
-        with mock.patch.object(
-            _anomaly_workbench_service,
-            "append_manual_audit",
-            return_value="audit-1",
-        ) as mk:
-            dialog._on_submit()
-        kwargs = mk.call_args.kwargs
-        self.assertEqual(kwargs["anomaly_id"], "an-1")
-        self.assertEqual(kwargs["action"], "MEETING")
-        self.assertEqual(kwargs["after_value"], "1. 與供應商電話會議")
-        self.assertEqual(emitted, ["audit-1"])
+        dialog._on_submit()
+        self.assertIn("退役", dialog._error_label.text())
+
+
+class WorkbenchTimelineRetireTests(unittest.TestCase):
+    def test_list_timeline_returns_empty(self) -> None:
+        self.assertEqual(_anomaly_workbench_service.list_timeline("an-1"), [])
+
+    def test_list_audit_logs_returns_empty(self) -> None:
+        self.assertEqual(_anomaly_workbench_service.list_audit_logs("an-1"), [])
+
+    def test_append_manual_audit_fail_closed(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            _anomaly_workbench_service.append_manual_audit(
+                anomaly_id="an-1",
+                action="NOTE",
+                after_value="test",
+            )
+        self.assertIn("退役", str(ctx.exception))
 
 
 if __name__ == "__main__":

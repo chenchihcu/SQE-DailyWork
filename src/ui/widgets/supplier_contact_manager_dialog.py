@@ -142,6 +142,7 @@ class SupplierContactManagerDialog(DirtyTrackingMixin, QDialog):
 
             act_layout.addStretch()
             self.table.setCellWidget(i, 5, actions)
+            self.table.resizeRowToContents(i)
         self.table.resizeColumnsToContents()
 
     def _on_add(self) -> None:

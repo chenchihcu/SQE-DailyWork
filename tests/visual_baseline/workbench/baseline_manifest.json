@@ -9,8 +9,7 @@
     "workbench@1.5x_workbench-page-overview.png",
     "workbench@1.5x_workbench-page-actions.png",
     "workbench@1.5x_workbench-page-root-cause.png",
-    "workbench@1.5x_workbench-page-attachments.png",
-    "workbench@1.5x_workbench-page-timeline.png"
+    "workbench@1.5x_workbench-page-attachments.png"
   ],
   "scales": {
     "1.0": {
@@ -24,8 +23,7 @@
         "workbench_workbench-page-overview.png",
         "workbench_workbench-page-actions.png",
         "workbench_workbench-page-root-cause.png",
-        "workbench_workbench-page-attachments.png",
-        "workbench_workbench-page-timeline.png"
+        "workbench_workbench-page-attachments.png"
       ]
     },
     "1.25": {
@@ -39,8 +37,7 @@
         "workbench@1.25x_workbench-page-overview.png",
         "workbench@1.25x_workbench-page-actions.png",
         "workbench@1.25x_workbench-page-root-cause.png",
-        "workbench@1.25x_workbench-page-attachments.png",
-        "workbench@1.25x_workbench-page-timeline.png"
+        "workbench@1.25x_workbench-page-attachments.png"
       ]
     },
     "1.5": {
@@ -54,8 +51,7 @@
         "workbench@1.5x_workbench-page-overview.png",
         "workbench@1.5x_workbench-page-actions.png",
         "workbench@1.5x_workbench-page-root-cause.png",
-        "workbench@1.5x_workbench-page-attachments.png",
-        "workbench@1.5x_workbench-page-timeline.png"
+        "workbench@1.5x_workbench-page-attachments.png"
       ]
     }
   }
