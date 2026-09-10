@@ -1,7 +1,7 @@
 ---
 name: sqe-dailywork-data-contract
 version: 1.0.0
-description: "SQE DailyWork 的 SQLite schema、migration、visit/anomaly 契約、儲存路徑與 PDF/Excel/PPTX 匯出契約。Use when 新增或修改上述資料契約、SQLite、schema、migration 或 export。Do NOT use for 通用資料庫 DDL（改用 design-database-schema）或僅 UI 佈局（改用 sqe-dailywork-ui-ux-flow-optimizer）。"
+description: "SQE DailyWork 的 SQLite schema、migration、visit/anomaly 契約、儲存路徑與 PDF/Excel/PPTX 匯出契約。Use when 在本 repo 新增或修改上述資料契約、SQLite schema、migration 或 export。Do NOT use for 通用資料庫 DDL（改用 design-database-schema）、僅 UI 佈局（改用 sqe-dailywork-ui-ux-flow-optimizer）或任務路由（改用 sqe-dailywork-change-router）。"
 allowed-tools: Read, Grep, Glob, Bash
 ---
 

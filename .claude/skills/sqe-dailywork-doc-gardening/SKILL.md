@@ -1,7 +1,7 @@
 ---
 name: sqe-dailywork-doc-gardening
 version: 1.0.0
-description: "唯讀檢查 SQE DailyWork 文件與 harness 漂移（README、AGENTS、.cursor/rules、docs/harness、risk ledger）。Use when 盤點文件是否與實作脫節、doc gardening 或 harness drift。Do NOT use for 跨專案通用文件同步（改用 sync-project-docs）或實際改程式（先用 sqe-dailywork-change-router）。"
+description: "唯讀檢查 SQE DailyWork 文件與 harness 漂移（README、AGENTS、.cursor/rules、docs/harness、risk ledger）。Use when 在本 repo 盤點文件是否與實作脫節或 harness drift。Do NOT use for 跨專案通用文件同步（改用 sync-project-docs）、實際改程式（先用 sqe-dailywork-change-router）或任務路由（改用 sqe-dailywork-change-router）。"
 allowed-tools: Read, Grep, Glob
 ---
 

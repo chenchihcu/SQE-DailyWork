@@ -1,7 +1,7 @@
 ---
 name: sqe-dailywork-ui-ux-flow-optimizer
 version: 2.0.0
-description: "SQE DailyWork PySide6 緊湊度、字體、操作動線、Workflow Shell、跨 Tab 輸入流與 SizePolicy。Use when 修本專案 UI 佈局緊湊、動線或視覺規範。Do NOT use for 通用 Qt theme（改用 configure-qt-layout-theme）或通用動態參數面板（改用 build-qt-parameter-selector）。"
+description: "SQE DailyWork PySide6 緊湊度、字體、操作動線、Workflow Shell、跨 Tab 輸入流與 SizePolicy。Use when 在本 repo 修 UI 佈局緊湊度、操作動線或視覺規範。Do NOT use for 通用 Qt theme/entrypoint（改用 configure-qt-layout-theme）、通用動態參數面板（改用 build-qt-parameter-selector）、native Qt 視覺 QA 閉環（改用 sqe-dailywork-visual-qa）或任務路由（改用 sqe-dailywork-change-router）。"
 allowed-tools: Read, Grep, Glob, Bash
 ---
 

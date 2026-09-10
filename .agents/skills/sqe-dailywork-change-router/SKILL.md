@@ -1,7 +1,7 @@
 ---
 name: sqe-dailywork-change-router
 version: 1.2.0
-description: "把 SQE DailyWork 變更路由到正確來源檔與驗證 gate（UI、資料契約、services、docs、tests、code-simplifier safe-pass）。Use when 要決定改哪裡、跑什麼驗證、route、change router、驗證 gate 或 code-simplifier。Do NOT use for 實際改 UI 佈局（改用 sqe-dailywork-ui-ux-flow-optimizer）、改 schema（改用 sqe-dailywork-data-contract）或文件盤點（改用 sqe-dailywork-doc-gardening）。"
+description: "把 SQE DailyWork 變更路由到正確來源檔與驗證 gate（UI、資料契約、services、docs、tests）。Use when 開始 SQE DailyWork 變更前需決定改哪一層、先讀哪些檔案與跑哪道 gate。Do NOT use for 實際改 UI 佈局（改用 sqe-dailywork-ui-ux-flow-optimizer）、改 schema（改用 sqe-dailywork-data-contract）、native Qt 視覺 QA（改用 sqe-dailywork-visual-qa）或文件盤點（改用 sqe-dailywork-doc-gardening）。"
 allowed-tools: Read, Grep, Glob
 ---
 
