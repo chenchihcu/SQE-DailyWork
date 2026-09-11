@@ -9,6 +9,12 @@ uses semantic versioning (MAJOR.MINOR.PATCH).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-10
+
+Supplier-event IA consolidation, master-data category split, visit product UI
+retirement, anomaly quantity/poka-yoke hardening, and workbench root-cause dialog
+field grading.
+
 ### Added
 - Consolidated supplier-event **作業佇列** page (`SupplierEventOpsPage`) with chips
   for 逾期案件 / 根因待查 / 處置項目 / 案件總覽; legacy PAGE_KEY aliases preserved.
@@ -17,6 +23,14 @@ uses semantic versioning (MAJOR.MINOR.PATCH).
 - User-maintainable anomaly category and source lexicons (`ui_settings`
   `supplier_event.anomaly_categories.v1` / `supplier_event.anomaly_sources.v1`)
   managed from **顯示設定 → 表單與業務**.
+- Anomaly quantity fields: `qty_inspected` (optional denominator), `qty_ng`, and
+  defect-rate SSOT (`qty_inspected` when >0 else `batch_qty`).
+- Same-supplier trace-number duplicate blocking on create/update (grandfather on
+  unchanged legacy rows).
+- Open-date calendar guard and `auto_fill_anomaly_no_on_date_change` preference
+  alignment for anomaly number preview.
+- Workbench root-cause dialog field grading (`BulletListWidget` for multi-point
+  fields; `QTextEdit` for summaries; progressive disclosure for verification).
 
 ### Changed
 - Sidebar supplier-event navigation reduced to four items (新增異常 / 事件查詢 /
@@ -25,6 +39,7 @@ uses semantic versioning (MAJOR.MINOR.PATCH).
 - Event query toolbar deduped (removed redundant 新增異常, source tag, status 已結案
   combo, overdue lens); workbench overview deduped.
 - Statistics dashboards use visible `AnalyticsWorkflowShell` control rows.
+- NCR handoff pre-fills `qty_ng` only; batch/inspected quantities remain manual.
 
 ### Removed
 - Retired visit product UI (`NewVisitDialog`, visit create/edit/preview dialogs,

@@ -1,5 +1,7 @@
 # Phase 4 項目 01、04–06、10–13、24 對照（Design-Derived）
 
+> **Historical note (2026-09-09):** Product workbench no longer projects a `處理歷程` Timeline tab; `list_timeline` / `list_audit_logs` product APIs return `[]`. Repository audit writes remain. See `workbench-timeline-tab-retire.md`.
+
 Plan status: completed — design-derived traceability + UI closure for 48-item rollout Phase 4
 
 ## Scope and methodology

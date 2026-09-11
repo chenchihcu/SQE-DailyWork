@@ -271,6 +271,8 @@ def _set_probe_widget_value(widget, value: object) -> None:
         widget.setChecked(bool(value))
     elif hasattr(widget, "setPlainText"):
         widget.setPlainText(str(value))
+    elif hasattr(widget, "setCurrentText"):
+        widget.setCurrentText(str(value))
     elif hasattr(widget, "setText"):
         widget.setText(str(value))
     elif hasattr(widget, "setCurrentIndex"):
@@ -1883,8 +1885,9 @@ def _capture_dialog_density(output: Path, app: "QApplication") -> list[str]:
     _fill(
         root_cause_dialog,
         statement_input="治具定位銷磨損導致尺寸偏移，需更換定位銷並重作首件確認。",
-        validation_method_input="5-Why",
+        validation_method_combo="5-Why",
         validation_evidence_input="現場拆解與量測紀錄",
+        conclusion_input="根因已驗證，建議供應商更換定位銷並提交 8D。",
     )
     verified_index = root_cause_dialog.status_combo.findData("已驗證")
     if verified_index >= 0:

@@ -63,12 +63,18 @@ class AnomalyRootCauseDialogTests(unittest.TestCase):
         dialog.not_established_input.setPlainText("樣本不足")
         self.assertTrue(dialog._save_button.isEnabled())
 
+    def test_hides_verification_section_for_not_started_status(self) -> None:
+        dialog = AnomalyRootCauseDialog("a-1")
+        not_started_index = dialog.status_combo.findData("尚未開始")
+        dialog.status_combo.setCurrentIndex(not_started_index)
+        self.assertFalse(dialog._verification_section.isVisible())
+
     def test_submit_calls_save_root_cause(self) -> None:
         dialog = AnomalyRootCauseDialog("a-1")
         dialog.statement_input.setPlainText("治具磨損")
         verified_index = dialog.status_combo.findData("已驗證")
         dialog.status_combo.setCurrentIndex(verified_index)
-        dialog.validation_method_input.setPlainText("5-Why")
+        dialog.validation_method_combo.setCurrentText("5-Why")
         emitted = []
         dialog.root_cause_saved.connect(lambda rid: emitted.append(rid))
         with mock.patch.object(
@@ -77,7 +83,7 @@ class AnomalyRootCauseDialogTests(unittest.TestCase):
             dialog._on_submit()
         self.assertEqual(mk.call_args.kwargs["statement"], "1. 治具磨損")
         self.assertEqual(mk.call_args.kwargs["status"], "已驗證")
-        self.assertEqual(mk.call_args.kwargs["validation_method"], "1. 5-Why")
+        self.assertEqual(mk.call_args.kwargs["validation_method"], "5-Why")
         self.assertEqual(emitted, ["rc-1"])
 
 

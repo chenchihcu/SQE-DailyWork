@@ -207,10 +207,19 @@ shared master-data area.
   `訪廠／稽核` shows none; `其他` shows all four as optional.
 - ERP format rules live in appearance preferences v9
   (`erp_*_pattern` fields). Non-empty trace numbers must match the configured
-  regex. Multiple anomalies for the same supplier may share the same trace
-  number; `anomaly_no` remains the unique case identifier.
+  regex. For the same supplier, a non-empty trace value in a given column must
+  not duplicate another open or closed anomaly row in that column; create/update
+  paths reject the save with the conflicting `anomaly_no`. Legacy rows that
+  already share a trace number are grandfathered until a conflicting field is
+  changed. `anomaly_no` remains the unique case identifier.
+- Supplier anomaly quantity fields: `batch_qty` (批量數), `qty_inspected`
+  (檢驗數, optional), `qty_ng` (不良數). `defect_rate` is read-only:
+  `qty_ng / qty_inspected` when `qty_inspected > 0`, otherwise
+  `qty_ng / batch_qty` when `batch_qty > 0`. `qty_ng` must not exceed the
+  active denominator.
 - NCR `轉開供應商異常` may copy `work_order_no` and `internal_work_order_no`
-  into the anomaly form plus `source_defect_no`. `transfer_slip_no` is not
+  into the anomaly form plus `source_defect_no`. NCR `qty` pre-fills anomaly
+  `qty_ng` (不良數), not `batch_qty` (批量數) or `qty_inspected`. `transfer_slip_no` is not
   equivalent to `outsource_receipt_no` and must not be auto-mapped.
 
 ## Supplier Anomaly Working Folders

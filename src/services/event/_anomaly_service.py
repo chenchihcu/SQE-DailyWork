@@ -14,10 +14,14 @@ from database.repo_helpers import (
 
 from services.appearance_preferences_service import load_application_preferences
 from services.anomaly_category_preset_service import is_valid_category
-from services.anomaly_trace_contract import normalize_anomaly_source
+from services.anomaly_trace_contract import (
+    TRACE_FIELD_LABELS,
+    normalize_anomaly_source,
+)
 from services.anomaly_trace_validator import (
     build_trace_patterns,
     validate_anomaly_trace_payload,
+    validate_trace_duplicates,
 )
 from services.process_keyword_codec import validate_process_keywords
 from services.repeat_issue_service import refresh_repeat_links_for_suppliers
@@ -57,6 +61,32 @@ def _resolve_trace_fields(
         payload=payload,
         patterns=patterns,
         allow_legacy_blank_source=allow_legacy_blank_source,
+    )
+
+
+def _existing_trace_fields(record: dict | None) -> dict[str, str]:
+    if not record:
+        return {field: "" for field in TRACE_FIELD_LABELS}
+    return {
+        field: str(record.get(field) or "").strip()
+        for field in TRACE_FIELD_LABELS
+    }
+
+
+def _validate_trace_duplicates(
+    conn,
+    *,
+    supplier_id: str,
+    trace_fields: dict[str, str],
+    exclude_anomaly_id: str | None = None,
+    existing: dict | None = None,
+) -> None:
+    validate_trace_duplicates(
+        conn,
+        supplier_id=supplier_id,
+        trace_fields=trace_fields,
+        exclude_anomaly_id=exclude_anomaly_id,
+        existing_trace_fields=_existing_trace_fields(existing),
     )
 
 
@@ -112,6 +142,8 @@ def _anomaly_write_fields(
         "outsource_work_order": trace_fields["outsource_work_order"],
         "outsource_receipt_no": trace_fields["outsource_receipt_no"],
         "batch_qty": payload.get("batch_qty", 0),
+        "qty_inspected": payload.get("qty_inspected", 0),
+        "qty_ng": payload.get("qty_ng", 0),
         "pending_items": payload.get("pending_items", ""),
         "responsible_person": payload.get("responsible_person", ""),
         "due_date": payload.get("due_date", ""),
@@ -147,6 +179,11 @@ def create_anomaly(payload: dict) -> str:
             allow_legacy_blank_source=not normalize_anomaly_source(
                 payload.get("anomaly_source", "")
             ),
+        )
+        _validate_trace_duplicates(
+            conn,
+            supplier_id=supplier_id,
+            trace_fields=trace_fields,
         )
         anomaly_no = repository.create_anomaly(
             conn,
@@ -200,6 +237,11 @@ def create_anomaly_with_visit_link(payload: dict) -> dict:
             allow_legacy_blank_source=not normalize_anomaly_source(
                 payload.get("anomaly_source", "")
             ),
+        )
+        _validate_trace_duplicates(
+            conn,
+            supplier_id=supplier_id,
+            trace_fields=trace_fields,
         )
         result = repository.create_anomaly_with_visit_link(
             conn,
@@ -272,6 +314,13 @@ def update_anomaly(anomaly_id: str, payload: dict) -> dict:
         trace_fields = _resolve_trace_fields(
             payload,
             allow_legacy_blank_source=allow_legacy_blank_source,
+        )
+        _validate_trace_duplicates(
+            conn,
+            supplier_id=supplier_id,
+            trace_fields=trace_fields,
+            exclude_anomaly_id=anomaly_key,
+            existing=existing,
         )
         repository.update_anomaly(
             conn,

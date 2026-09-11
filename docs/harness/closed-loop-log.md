@@ -2,6 +2,34 @@
 
 Use this file for reusable lessons from debugging, regressions, repeated failures, or Investigation Path work.
 
+## Poka-yoke auto-calc gaps — trace duplicate block + qty_inspected denominator
+
+Date: 2026-09-09
+Task: 補齊開案日不可未來、單號偏好、同供應商追蹤號重複擋存、檢驗數不良率分母。
+Changes: `NewAnomalyDialog` / NCR `event_date_edit` 設 `setMaximumDate(today)`；`_on_date_changed` 尊重 `auto_fill_anomaly_no_on_date_change`；`validate_trace_duplicates` + service create/update 擋同供應商追蹤欄重複（grandfather 未改欄）；`anomalies.qty_inspected` + `compute_defect_rate` 分母 SSOT；工作台/PDF/Markdown 加「檢驗數」。
+Impact: UI 日曆防呆與偏好一致；新寫入追蹤號不可撞車；不良率分母可選檢驗數；舊庫重複追蹤列仍可读、更新未改欄可存。
+Verification: `tests.test_anomaly_quantity_fields`, `tests.test_event_manage_actions`, `tests.test_anomaly_trace_fields`, `tests.test_poka_yoke_auto_calc` (61 focused OK)；native `qt_visual_probe --target event-create` 與 `--target workbench`（`visual_trustworthy: true`, `cjk_font_ok: true`, `qss_unknown_property_warnings: 0`）。
+Residual risk: Full `unittest discover` not re-run in this closeout; legacy duplicate trace rows remain in existing DBs until manually reconciled.
+Next action: Run `scripts/verify.ps1 -Profile Full` when practical.
+Harness update needed: yes
+Destination: `docs/architecture-workflow-contract.md`, `docs/exec-plans/completed/poka-yoke-auto-calc-gaps.md`, `tests/test_poka_yoke_auto_calc.py`, `AGENTS.md`, `docs/harness/test-patterns.md`, `docs/risk-ledger.md`
+
+## Root cause dialog IA — grade fields, wire BulletList placeholder
+
+Date: 2026-09-09
+Task: Redesign `AnomalyRootCauseDialog` after visual review; harvest reusable UI rules.
+Changes: `AnomalyRootCauseDialog` now uses status-first section cards, full-width stacked verification fields, editable combo for `驗證方式`, `QTextEdit` for conclusion/conditional reason, and progressive disclosure (`驗證` hidden for `尚未開始`). `BulletListWidget` now applies `placeholder` to row 1 and hides `刪除` on single-row lists. Added `parse_bullet_formatted_lines` / `plain_text_from_bullet_formatted` and `ANOMALY_ROOT_CAUSE_VALIDATION_METHOD_OPTIONS`.
+Impact: Root-cause editing is easier to scan; legacy numbered `validation_method` / note text still loads; saves normalize method/notes to plain text while multi-point statement/evidence keep numbered bullets.
+Verification: `tests.test_bullet_list_widget`, `tests.test_anomaly_workbench_dialogs`; native `qt_visual_probe --target dialog-density` at 1.0/1.25/1.5 (`visual_trustworthy: true`, `cjk_font_ok: true`, `qss_unknown_property_warnings: 0`).
+Residual risk: None after native probe PASS on Windows.
+Next action: Reuse field-grading pattern when adding new workbench write dialogs.
+Debug/RCA:
+Observed: Five identical `BulletListWidget` blocks in one modal; `placeholder` args never reached inputs (`條目 1` only); verification fields cramped in a two-column grid.
+Root cause: Over-application of the itemized-description standard without field-intent grading; missing `_sync_row_placeholders` in `BulletListWidget`.
+Fix: Component grading + section cards + shared placeholder/delete visibility helpers.
+Harness update needed: yes
+Destination: `AGENTS.md` §3, `docs/ui-layout-theme-contract.md`, `tests/test_bullet_list_widget.py`, `tests/test_anomaly_workbench_dialogs.py`
+
 ## Entry Template
 
 ```text
@@ -19,6 +47,18 @@ Fix:
 Harness update needed:
 Destination:
 ```
+
+## ActionItemListWidget row clipping — align CONTROL_MIN_HEIGHT and child validation
+
+Date: 2026-09-09
+Task: Fix Edit/Add Action dialog `Action 內容` row top-border clipping and index overlap; harvest reusable harness rule.
+Changes: `ActionItemListWidget` uses `ACTION_ITEM_ROW_MIN_HEIGHT` / `ACTION_ITEM_ROW_V_MARGIN` / `ACTION_ITEM_HEADER_GAP`; per-control height aligned to `CONTROL_MIN_HEIGHT`; added `set_validation_invalid()` for empty description fields; dialogs call it instead of `set_field_invalid()` on the container. Regression tests in `test_action_item_list_widget.py`; harness note in `test-patterns.md` §4.
+Impact: Action create/edit dialog rows no longer clip QLineEdit/QDateEdit top borders; validation borders appear on the correct child fields.
+Verification: `tests.test_action_item_list_widget`, `tests.test_layout_constants`; native `qt_visual_probe --target dialog-density` at 1.0/1.25/1.5; PNG read on `dialog-density-edit-action`.
+Residual risk: `BulletListWidget` still hardcodes `setMinimumHeight(28)`—same antipattern; track as follow-up.
+Next action: Align `BulletListWidget` row height with `CONTROL_MIN_HEIGHT` or shared helper.
+Harness update needed: yes
+Destination: `docs/harness/test-patterns.md` §4, `docs/ui-layout-theme-contract.md`, `docs/harness/closed-loop-log.md`, `AGENTS.md` Action Item List bullet.
 
 ## Table cell widget button clipping — use tableCellAction not secondary
 
@@ -455,7 +495,7 @@ Task: Behavior-preserving simplification for ERP trace fields and SMT process ke
 Changes: Extracted `_assert_trace_field_pattern` and removed redundant optional-loop guards in `anomaly_trace_validator`; extracted `_anomaly_write_fields` for anomaly CRUD kwargs; aligned ERP preference read/write loops in `appearance_preferences_dialog` to `TRACE_FIELD_PATTERN_KEYS`; routed NCR handoff hint through `processing_line_source_hint`; deduped visit detail fetch in `anomaly_visit_sync_mixin`; trimmed codec/preset dead code; iterated trace UI/payload off `TRACE_FIELD_LABELS`; merged keyword preset list move helpers.
 Impact: Less copy-paste across validator, service, and preference layers without changing workflow boundaries, error copy, repository signatures, or stats chart pipelines.
 Verification: Focused unittest bundle — service/trace/codec/preset (17 OK), appearance dialog (4 OK), visit routing (7 OK); `test_anomaly_process_keywords_form.test_submit_payload_includes_process_keywords` failed until submit test sets required `anomaly_source`.
-Residual risk: Full `unittest discover` remains slow (MainWindow boot); run service-layer tests first. Duplicate trace-number enforcement (`find_anomaly_trace_duplicate`) still not wired into validator.
+Residual risk: Full `unittest discover` remains slow (MainWindow boot); run service-layer tests first. Duplicate trace-number enforcement is now wired via `validate_trace_duplicates` in create/update paths (see 2026-09-09 poka-yoke entry).
 Next action: Keep new create-form submit tests aligned with required `anomaly_source`; confirm full verify when practical.
 Debug/RCA:
 Observed: After trace-field rollout, validator/CRUD/preferences duplicated four-field blocks; a process-keyword submit test returned empty `captured` despite patched create.

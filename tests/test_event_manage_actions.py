@@ -133,6 +133,72 @@ class EventManageActionsTests(unittest.TestCase):
             )
         self.assertIn("negative", str(ctx.exception).lower())
 
+    def test_create_anomaly_rejects_qty_ng_above_batch_qty(self) -> None:
+        supplier_id = self._create_supplier("Qty Ng Supplier")
+        with self.assertRaises(ValueError) as ctx:
+            repository.create_anomaly(
+                self.conn,
+                anomaly_date="2026-04-16",
+                supplier_id=supplier_id,
+                problem_desc="qty ng too high",
+                batch_qty=10,
+                qty_ng=11,
+            )
+        self.assertIn("exceed", str(ctx.exception).lower())
+
+    def test_create_anomaly_rejects_qty_ng_above_qty_inspected(self) -> None:
+        supplier_id = self._create_supplier("Qty Inspected Supplier")
+        with self.assertRaises(ValueError) as ctx:
+            repository.create_anomaly(
+                self.conn,
+                anomaly_date="2026-04-16",
+                supplier_id=supplier_id,
+                problem_desc="qty ng above inspected",
+                batch_qty=200,
+                qty_inspected=10,
+                qty_ng=11,
+            )
+        self.assertIn("exceed", str(ctx.exception).lower())
+
+    def test_create_anomaly_round_trips_qty_fields_and_defect_rate(self) -> None:
+        supplier_id = self._create_supplier("Qty Round Trip Supplier")
+        anomaly_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="qty round trip",
+            batch_qty=200,
+            qty_ng=5,
+        )
+        anomaly_id = self._find_anomaly_id(anomaly_no)
+        detail = repository.get_anomaly_detail(self.conn, anomaly_id)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(200, detail["batch_qty"])
+        self.assertEqual(5, detail["qty_ng"])
+        self.assertAlmostEqual(0.025, detail["defect_rate"])
+        self.assertEqual("2.50%", detail["defect_rate_display"])
+
+    def test_create_anomaly_round_trips_qty_inspected_denominator(self) -> None:
+        supplier_id = self._create_supplier("Qty Inspected Round Trip Supplier")
+        anomaly_no = repository.create_anomaly(
+            self.conn,
+            anomaly_date="2026-04-16",
+            supplier_id=supplier_id,
+            problem_desc="inspected denominator",
+            batch_qty=200,
+            qty_inspected=50,
+            qty_ng=2,
+        )
+        anomaly_id = self._find_anomaly_id(anomaly_no)
+        detail = repository.get_anomaly_detail(self.conn, anomaly_id)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(50, detail["qty_inspected"])
+        self.assertAlmostEqual(0.04, detail["defect_rate"])
+        self.assertEqual("4.00%", detail["defect_rate_display"])
+        self.assertEqual("檢驗數", detail["defect_rate_denominator_label"])
+
     def test_create_visit_rejects_negative_production_qty(self) -> None:
         supplier_id = self._create_supplier("Negative Qty Supplier")
         with self.assertRaises(ValueError) as ctx:
@@ -172,6 +238,7 @@ class EventManageActionsTests(unittest.TestCase):
             product_stage="試產",
             outsource_work_order="WO-123",
             batch_qty=88,
+            qty_ng=4,
         )
 
         detail = repository.get_anomaly_detail(self.conn, anomaly_id)
@@ -185,6 +252,7 @@ class EventManageActionsTests(unittest.TestCase):
         self.assertEqual("量產", detail["product_stage"])
         self.assertEqual("WO-123", detail["outsource_work_order"])
         self.assertEqual(88, detail["batch_qty"])
+        self.assertEqual(4, detail["qty_ng"])
         self.assertEqual(product_b, detail["product_id"])
 
     def test_quality_report_required_preserves_legacy_null_and_round_trips_bool(self) -> None:

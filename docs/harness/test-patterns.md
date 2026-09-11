@@ -19,6 +19,7 @@ This document consolidates detailed testing conventions, harness patterns, migra
 - **Workflow smoke trace contract**: `scripts/smoke_test_v2.py` must set `anomaly_source` (e.g. `訪廠／稽核` when trace ERP patterns are unset) and must not expect `supplier_id IS NULL` products inside `list_active_products_for_supplier` (strict mode).
 - **Exec-plan lifecycle**: Completed plans belong in `docs/exec-plans/completed/` only; `harness_check.ps1` fails if `active/` contains `Plan status: completed`.
 - **VIEW / repeat-links migration guards**: VIEW readiness via `sqlite_master.sql` or COUNT, not `_table_exists`; `product_records` VIEW filters `is_active=1` (Promotion CLI); `refresh_repeat_links_for_suppliers` calls `require_repeat_links_schema` before write (symmetric with `list_repeat_issues`).
+- **`_insert_anomaly_row` column parity**: When extending `INSERT INTO anomalies(...)`, column count must equal VALUES expression count and bound-parameter tuple length. Symptom: `sqlite3.OperationalError: N values for M columns`. Verify with any `create_anomaly_with_visit_link` / repository insert test after schema changes.
 
 ---
 
@@ -28,7 +29,7 @@ This document consolidates detailed testing conventions, harness patterns, migra
   - Loop `TRACE_FIELD_PATTERN_KEYS` / `TRACE_FIELD_LABELS` instead of hardcoding four field keys.
   - Reuse `_assert_trace_field_pattern` (validator), `_anomaly_write_fields` (anomaly CRUD), and `processing_line_source_hint` (NCR->異常 handoff).
   - Do not change locked `ValueError` copy (`ERP 格式規則`, `格式不符合`)—`tests/test_anomaly_trace_fields.py` asserts them.
-  - Exclude from simplify passes: `anomaly_trace_contract`, migrations/repository schema, `list_column_contract`, `layout_constants`, paired stats pareto pipelines in `stats_view_widget`, and wiring `find_anomaly_trace_duplicate` unless explicitly requested.
+  - Exclude from simplify passes: `anomaly_trace_contract`, migrations/repository schema, `list_column_contract`, `layout_constants`, paired stats pareto pipelines in `stats_view_widget`. Do not remove `validate_trace_duplicates` from create/update paths without an explicit contract change.
   - Qt create-form submit tests must set `anomaly_source` before `_on_submit()` or mocks never fire.
 
 ---
@@ -36,6 +37,7 @@ This document consolidates detailed testing conventions, harness patterns, migra
 ## 3. PySide6 / Qt Automated Testing Guardrails
 
 - **Automated Modal Guard**: Never invoke blocking `QMessageBox` / `QDialog.exec()` in `closeEvent`, `_ensure_has_active_suppliers`, or other automated handlers. Use `ui.runtime_mode.is_automated_runtime()` (`QT_QPA_PLATFORM == "offscreen"`, `SQE_TESTING`, `SQE_PROBE`, `SQE_REQUIRE_DISPOSABLE_DB`) and skip the prompt.
+- **DirtyTracking dialog teardown**: Tests that mutate `NewAnomalyDialog` / `CloseAnomalyDialog` fields before `addCleanup(dialog.close)` must set `dialog._dirty = False` or patch `_confirm_discard` to return `True`; otherwise `DirtyTrackingMixin.closeEvent` blocks on `QMessageBox.question` and offscreen runs hang until the hang watchdog fires.
 - **No `cls.app.quit()` in Test tearDownClass**: Never call `app.quit()` in test suite teardowns; doing so destroys the shared `QApplication` event loop for subsequent test suites.
 - **Single Fusion Style Init**: Never call `setStyle("Fusion")` inside individual test `setUpClass` methods; initialize it once globally in `tests/__init__.py` to prevent Qt C++ style engine race conditions.
 - **PySide6 eventFilter Return Contract**: In custom `eventFilter` implementations mounted on `QApplication`, unhandled events MUST `return False` directly; never invoke `return super().eventFilter(watched, event)` to prevent PySide6 C++ trampoline `RecursionError` hangs.
@@ -75,4 +77,4 @@ Example:
 ```powershell
 .venv\Scripts\python.exe scripts\qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5 --output Outputs\visual_qa\repeat-issues-management\probe.png
 ```
-
+

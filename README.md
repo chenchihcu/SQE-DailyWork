@@ -71,17 +71,17 @@ no separate launcher window, and no standalone NCR main window.
 - Supplier anomaly closure uses the user-selected `closed_at` date from the
   close dialog; closed anomalies can adjust that date without reopening, and
   supplier-event trend charts group closures by the same date.
-- 案件工作台（Phase 4）提供七個分頁：概況、歷程、分析（含多層原因假設樹）、8D、
-  改善措施、附件與變更紀錄；結案／重開走 header 與 footer 閘控，並寫入
-  `CASE_CLOSED` / `CASE_REOPENED` audit。
+- 案件工作台（Phase 4）提供四個分頁：案件概覽、Action 清單、根本原因、附件與佐證
+  （處理歷程 Tab 已退役；結案／重開與 Action 狀態變更仍背景寫入
+  `anomaly_audit_logs`）；結案／重開走 header 閘控。
 - 重複案件警示（Phase 5）以 `anomaly_repeat_links` 索引同供應商相似歷史異常；
-  工作台 `RepeatIssuesPanel` 與 Supplier 360 `repeat_flagged_anomaly_count` 共用
+  工作台 header `潛在重複 (N)` 按鈕與 Supplier 360 `repeat_flagged_anomaly_count` 共用
   scoring SSOT，且不納入倉庫 `defect_records`。
 - `案件總覽`（Phase 6）提供案件品質狀態總覽（含已結案、品質三欄、匯出）；逾期案件、
   根因待查、處置項目與案件總覽皆在側欄 **作業佇列** 頁內以 chips 切換。摘要列 enriched
   `get_anomaly_overview_card()`；逾期篩選與 KPI 與 case-action 到期日 SSOT 一致，不含 NCR 列。
 - 匯出／週報（Phase 7）讓 Excel／PDF／Markdown／PPTX 共用 overview read-model；
-  區間 Excel「異常」工作表含追溯欄位與假設樹 PNG（最多 12 案）；案件總覽可匯出
+  區間 Excel「異常」工作表含追溯欄位與 overview parity 欄位；案件總覽可匯出
   案件總覽 Excel 單一工作表。
 - 案件工作台的「下一步處置」與「改善措施」共用 canonical `case_actions`。
   Action 類型為 `NEXT_ACTION / CONTAINMENT / CORRECTION / CORRECTIVE_ACTION /

@@ -414,7 +414,10 @@ class AnomalyManagementPage(QWidget):
             ("品名", self._detail.get("product_name")),
             ("料號", self._detail.get("product_code")),
             ("異常類別", self._detail.get("category")),
-            ("數量", self._detail.get("batch_qty")),
+            ("批量數", self._detail.get("batch_qty")),
+            ("檢驗數", self._detail.get("qty_inspected")),
+            ("不良數", self._detail.get("qty_ng")),
+            ("不良率", self._detail.get("defect_rate_display")),
         )
         conditional_fields = (
             ("來源 NCR 單號", self._detail.get("source_defect_no")),

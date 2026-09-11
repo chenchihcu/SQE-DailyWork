@@ -131,7 +131,9 @@ class StatsViewCountAxisIntegrationTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto), \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=host)
             widget.set_range(month_key, month_key)
         widget.show()

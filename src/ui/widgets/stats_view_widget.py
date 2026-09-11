@@ -246,17 +246,55 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                 )
                 process_keyword_pareto_data = []
                 partial_failures.add("process_keyword")
+            try:
+                repeat_recurrence_data = (
+                    _query_service.get_anomaly_repeat_recurrence_by_range(
+                        iso_start, iso_end
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "get_anomaly_repeat_recurrence_by_range failed for %s ~ %s",
+                    iso_start,
+                    iso_end,
+                )
+                repeat_recurrence_data = []
+                partial_failures.add("repeat_recurrence")
+            try:
+                product_stage_data = (
+                    _query_service.get_anomaly_product_stage_distribution_by_range(
+                        iso_start, iso_end
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "get_anomaly_product_stage_distribution_by_range failed for %s ~ %s",
+                    iso_start,
+                    iso_end,
+                )
+                product_stage_data = []
+                partial_failures.add("product_stage")
 
             self._render_charts(
                 trend_data=trend_data,
                 resp_stats=resp_stats,
                 category_pareto_data=category_pareto_data,
                 process_keyword_pareto_data=process_keyword_pareto_data,
+                repeat_recurrence_data=repeat_recurrence_data,
+                product_stage_data=product_stage_data,
                 partial_failures=partial_failures,
             )
         except Exception as exc:
             logger.exception("重新整理統計視圖失敗")
-            self._render_charts([], [], [], [], error_message=localize_exception(exc))
+            self._render_charts(
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                error_message=localize_exception(exc),
+            )
 
     # ── 圖表協調 ──────────────────────────────────────────
 
@@ -284,11 +322,15 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         resp_stats: list[dict],
         category_pareto_data: list[dict],
         process_keyword_pareto_data: list[dict] | None = None,
+        repeat_recurrence_data: list[dict] | None = None,
+        product_stage_data: list[dict] | None = None,
         *,
         error_message: str | None = None,
         partial_failures: set[str] | None = None,
     ):
         process_keyword_pareto_data = process_keyword_pareto_data or []
+        repeat_recurrence_data = repeat_recurrence_data or []
+        product_stage_data = product_stage_data or []
         self._clear_chart_grid()
 
         if error_message:
@@ -350,13 +392,65 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         else:
             self.grid_layout.addWidget(EmptyStateWidget("暫無責任人數據"), 1, 0)
 
+        if "repeat_recurrence" in partial_failures:
+            self.grid_layout.addWidget(
+                EmptyStateWidget(
+                    "重複異常再發率暫時無法載入",
+                    "請按「重新整理」重試。",
+                ),
+                1,
+                1,
+            )
+        elif repeat_recurrence_data:
+            repeat_view = self._build_repeat_recurrence_chart(repeat_recurrence_data)
+            if repeat_view:
+                self.grid_layout.addWidget(repeat_view, 1, 1)
+            else:
+                self.grid_layout.addWidget(
+                    EmptyStateWidget("暫無重複異常再發率數據"),
+                    1,
+                    1,
+                )
+        else:
+            self.grid_layout.addWidget(
+                EmptyStateWidget("暫無重複異常再發率數據"),
+                1,
+                1,
+            )
+
+        if "product_stage" in partial_failures:
+            self.grid_layout.addWidget(
+                EmptyStateWidget(
+                    "產品階段分布暫時無法載入",
+                    "請按「重新整理」重試。",
+                ),
+                2,
+                0,
+            )
+        elif product_stage_data:
+            stage_view = self._build_product_stage_chart(product_stage_data)
+            if stage_view:
+                self.grid_layout.addWidget(stage_view, 2, 0)
+            else:
+                self.grid_layout.addWidget(
+                    EmptyStateWidget("暫無產品階段分布數據"),
+                    2,
+                    0,
+                )
+        else:
+            self.grid_layout.addWidget(
+                EmptyStateWidget("暫無產品階段分布數據"),
+                2,
+                0,
+            )
+
         if "process_keyword" in partial_failures:
             self.grid_layout.addWidget(
                 EmptyStateWidget(
                     "SMT 製程關鍵詞統計暫時無法載入",
                     "請按「重新整理」重試。",
                 ),
-                2,
+                3,
                 0,
                 1,
                 2,
@@ -364,11 +458,11 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         elif process_keyword_pareto_data:
             keyword_view = self._build_process_keyword_pareto_chart(process_keyword_pareto_data)
             if keyword_view:
-                self.grid_layout.addWidget(keyword_view, 2, 0, 1, 2)
+                self.grid_layout.addWidget(keyword_view, 3, 0, 1, 2)
             else:
                 self.grid_layout.addWidget(
                     EmptyStateWidget("暫無 SMT 製程關鍵詞數據"),
-                    2,
+                    3,
                     0,
                     1,
                     2,
@@ -376,7 +470,7 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         else:
             self.grid_layout.addWidget(
                 EmptyStateWidget("暫無 SMT 製程關鍵詞數據"),
-                2,
+                3,
                 0,
                 1,
                 2,
@@ -419,7 +513,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
         temp_paths = build_temp_chart_paths(
             temp_dir,
             pid,
-            ["trend", "responsible", "category_pareto", "process_keyword_pareto"],
+            [
+                "trend",
+                "responsible",
+                "category_pareto",
+                "process_keyword_pareto",
+                "repeat_recurrence",
+                "product_stage",
+            ],
             "temp_evt",
         )
         cleanup_temp_files(temp_paths)  # 確保刪除先前遺留的暫存檔
@@ -439,6 +540,14 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
             category_pareto_data = _query_service.get_anomaly_category_pareto_by_range(start_date, end_date)
             process_keyword_pareto_data = (
                 _query_service.get_anomaly_process_keyword_pareto_by_range(start_date, end_date)
+            )
+            repeat_recurrence_data = (
+                _query_service.get_anomaly_repeat_recurrence_by_range(start_date, end_date)
+            )
+            product_stage_data = (
+                _query_service.get_anomaly_product_stage_distribution_by_range(
+                    start_date, end_date
+                )
             )
             events_detail = _query_service.list_events_by_range(start_date, end_date)
 
@@ -485,6 +594,24 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                             "process_keyword_pareto"
                         ]
 
+                if repeat_recurrence_data:
+                    requested_chart_keys.append("repeat_recurrence")
+                    if render_chart_to_png(
+                        lambda: self._build_repeat_recurrence_chart(repeat_recurrence_data),
+                        temp_paths["repeat_recurrence"],
+                    ):
+                        active_temp_paths["repeat_recurrence"] = temp_paths[
+                            "repeat_recurrence"
+                        ]
+
+                if product_stage_data:
+                    requested_chart_keys.append("product_stage")
+                    if render_chart_to_png(
+                        lambda: self._build_product_stage_chart(product_stage_data),
+                        temp_paths["product_stage"],
+                    ):
+                        active_temp_paths["product_stage"] = temp_paths["product_stage"]
+
             # 呼叫匯出服務
             from services.event import _export_service
 
@@ -506,6 +633,8 @@ class StatsViewWidget(QWidget, _StatsChartMixin):
                             "responsible": "責任人統計圖",
                             "category_pareto": "異常類別柏拉圖",
                             "process_keyword_pareto": "SMT 製程關鍵詞柏拉圖",
+                            "repeat_recurrence": "重複異常再發率圖",
+                            "product_stage": "產品階段分布圖",
                         },
                     )
                 if missing_charts:

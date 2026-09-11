@@ -9,6 +9,7 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 - Antigravity gateway: `.agents/rules/agents_gateway.md`
 - AI rules compatibility register: `docs/harness/ai-rules-compatibility.md`
 - Verification gate: `scripts/verify.ps1`
+- Test and harness patterns: `docs/harness/test-patterns.md`
 - Harness structure check: `scripts/harness_check.ps1`
 - Native Qt visual probe: `scripts/qt_visual_probe.py`
 - Native Qt three-DPI belt and target manifest: `scripts/qt_visual_belt.py`,
@@ -30,14 +31,21 @@ This folder is the repo-local system of record for closed-loop Codex work. It ke
 
 ## Database Safety
 
-- `scripts/verify.ps1` always creates a disposable SQLite online-backup snapshot
-  and enables the formal-path refusal guard before imports or initialization.
+- `scripts/verify.ps1` always creates a disposable SQLite online-backup snapshot,
+  enables the formal-path refusal guard, runs runtime dependency floor and
+  `case_actions_v1` preflight, and compares formal DB fingerprint before/after.
 - Clean clones and GitHub Actions have no gitignored `data/sqe_v2.db`. Pass
   `-AllowSchemaOnlySource` so `scripts/prepare_verify_database.py` synthesizes a
   scratch schema-only source and backs it up; never write the formal path.
   Local runs without that switch still fail loud when the source DB is missing.
-- Use `-Profile Focused` for the recurrent safety/contract set and the default
-  `-Profile Full` for complete unit, native visual, baseline, and harness gates.
+- Use `-Profile Focused` for the recurrent safety/contract set (partial native
+  probes only: `form-density` + `event-create`; no pixel baseline regress).
+- Use `-Profile Full` for chunked unittest + NCR + pytest, offscreen smoke,
+  native three-DPI belt, visual regress, and harness.
+- Use `-Profile Release` for harness → smoke → button audit → build → portable
+  smoke (see `AGENTS.md` §7).
+- On CI (`GITHUB_ACTIONS=true`) or with `-AllowSchemaOnlySource`, verify
+  synthesizes a schema-only scratch DB when no formal DB is present.
 - CI Full (`GITHUB_ACTIONS` or `-SkipNativeVisual`) skips the native visual belt
   and pixel baselines. That skip is not visual evidence; native Windows Qt plus
   a verified disposable snapshot of the formal DB remains the visual gate.

@@ -54,7 +54,9 @@ class AnomalyManagementPageTests(unittest.TestCase):
             "product_name": "測試產品",
             "product_code": "P-001",
             "category": "外觀",
-            "batch_qty": 2,
+            "batch_qty": 200,
+            "qty_ng": 2,
+            "defect_rate_display": "1.00%",
             "problem_desc": "測試異常",
             "status": "待處理",
         }

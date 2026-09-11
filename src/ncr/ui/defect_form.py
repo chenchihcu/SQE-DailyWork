@@ -194,6 +194,7 @@ class DefectFieldsWidget(QWidget):
         self.event_date_edit = QDateEdit()
         self.event_date_edit.setCalendarPopup(True)
         self.event_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.event_date_edit.setMaximumDate(QDate.currentDate())
         # 確保 yyyy-MM-dd 與日曆鈕在 1.5x DPI 不被裁成 yyyy-MM
         self.event_date_edit.setMinimumWidth(NCR_DATE_FIELD_MIN_WIDTH)
 
@@ -1306,7 +1307,7 @@ class DefectEditDialog(DirtyTrackingMixin, QDialog):
                 "product_name": data.get("product_name") or "",
                 "problem_desc": data.get("defect_desc") or "",
                 "anomaly_date": data.get("event_date") or "",
-                "batch_qty": data.get("qty") or 0,
+                "qty_ng": data.get("qty") or 0,
                 "outsource_work_order": data.get("work_order_no") or "",
                 "internal_work_order_no": data.get("internal_work_order_no") or "",
                 "anomaly_source_hint": processing_line_source_hint(

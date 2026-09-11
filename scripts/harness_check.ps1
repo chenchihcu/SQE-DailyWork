@@ -462,6 +462,7 @@ $requiredFiles = @(
     "docs\harness\ai-rules-compatibility.md",
     "docs\harness\source-baseline-manifest.md",
     "docs\harness\quality-score.md",
+    "docs\harness\test-patterns.md",
     "docs\harness\doc-gardening.md",
     "docs\harness\closed-loop-log.md",
     "docs\harness\agent-orchestration.md",
@@ -518,6 +519,20 @@ Require-Text "AGENTS.md" "Harness update needed: yes" "learn-before-complete tri
 Require-Text "AGENTS.md" "/learn" "learn-before-complete workflow"
 
 Require-Text "CLAUDE.md" "@AGENTS.md" "Claude imports AGENTS policy"
+Require-Text "CLAUDE.md" "Invoke-UnittestDiscoverWindowsSafe" "Claude chunked unittest pointer"
+Require-Text "CLAUDE.md" "qt_probe_targets.json" "Claude probe manifest SSOT"
+$claudeAdapterText = Get-CachedText -LiteralPath (Join-RepoPath "CLAUDE.md")
+if ($claudeAdapterText -match '~279') {
+    Add-Failure "CLAUDE.md contains stale ~279 test count; use verify.ps1 profiles instead"
+}
+$testPatternsText = Get-CachedText -LiteralPath (Join-RepoPath "docs\harness\test-patterns.md")
+if ($testPatternsText -match 'unittest discover -s tests`\) is ~') {
+    Add-Failure "test-patterns.md still advertises bare unittest discover as Full evidence"
+}
+Require-Text "docs\harness\test-patterns.md" "Invoke-UnittestDiscoverWindowsSafe" "test-patterns chunked runner"
+Require-Text "docs\harness\test-patterns.md" "UI Visual Closure Gate" "test-patterns visual closure section"
+Require-Text "docs\harness\README.md" "test-patterns.md" "harness README test-patterns index"
+Require-Text "docs\harness\README.md" "-Profile Release" "harness README Release profile"
 Require-Text ".cursor\rules\agents_gateway.mdc" "AGENTS.md" "Cursor gateway points to AGENTS"
 Require-Text ".cursor\rules\agents_gateway.mdc" "alwaysApply: true" "Cursor gateway always-on"
 Require-Text ".agents\rules\agents_gateway.md" "AGENTS.md" "Antigravity gateway points to AGENTS"

@@ -80,12 +80,20 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(file_path))
             self.assertIn("已匯出至", msg)
 
+    @patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range")
+    @patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range")
     @patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range")
     @patch("services.event._query_service.get_anomaly_closure_activity_by_range")
     @patch("services.event._query_service.get_anomaly_category_pareto_by_range")
     @patch("services.event._query_service.list_events_by_range")
     def test_events_report_export_success(
-        self, mock_list_events, mock_pareto, mock_closure_activity, mock_keyword_pareto
+        self,
+        mock_list_events,
+        mock_pareto,
+        mock_closure_activity,
+        mock_keyword_pareto,
+        mock_repeat_recurrence,
+        mock_product_stage,
     ) -> None:
         # 柏拉圖表格與頁面圖表、嵌入 PNG 共用同一 SQL 來源(單一實作)
         mock_pareto.return_value = [
@@ -107,6 +115,14 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             }
         ]
         mock_closure_activity.return_value = 7
+        mock_repeat_recurrence.return_value = [
+            {"bucket": "重複警示", "count": 1, "percent": 33.3},
+            {"bucket": "首次異常", "count": 2, "percent": 66.7},
+        ]
+        mock_product_stage.return_value = [
+            {"product_stage": "量產", "count": 2, "percent": 66.7},
+            {"product_stage": "試產", "count": 1, "percent": 33.3},
+        ]
         # Mock 範圍事件列表
         mock_list_events.return_value = [
             {
@@ -201,6 +217,8 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             workbook = load_workbook(file_path)
             self.assertIn("異常類別柏拉圖", workbook.sheetnames)
             self.assertIn("SMT製程關鍵詞柏拉圖", workbook.sheetnames)
+            self.assertIn("重複異常再發率", workbook.sheetnames)
+            self.assertIn("產品階段分布", workbook.sheetnames)
             report_sheet = workbook["統計報告"]
             self.assertIn("期間新增異常", report_sheet["A5"].value)
             self.assertIn("其中", report_sheet["E5"].value)
@@ -217,6 +235,28 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
             ])
             # 表格必須以與頁面圖表相同的區間參數取自同一實作
             mock_pareto.assert_called_once_with("2026-06-01", "2026-06-30")
+            mock_repeat_recurrence.assert_called_once_with("2026-06-01", "2026-06-30")
+            mock_product_stage.assert_called_once_with("2026-06-01", "2026-06-30")
+
+            repeat_sheet = workbook["重複異常再發率"]
+            self.assertEqual(
+                ["分類", "件數", "佔比(%)"],
+                [repeat_sheet.cell(row=1, column=col).value for col in range(1, 4)],
+            )
+            self.assertEqual(
+                ["重複警示", 1, 33.3],
+                [repeat_sheet.cell(row=2, column=col).value for col in range(1, 4)],
+            )
+
+            stage_sheet = workbook["產品階段分布"]
+            self.assertEqual(
+                ["產品階段", "件數", "佔比(%)"],
+                [stage_sheet.cell(row=1, column=col).value for col in range(1, 4)],
+            )
+            self.assertEqual(
+                ["量產", 2, 66.7],
+                [stage_sheet.cell(row=2, column=col).value for col in range(1, 4)],
+            )
 
             self.assertNotIn("異常事件明細", workbook.sheetnames)
             self.assertNotIn("訪廠", workbook.sheetnames)
@@ -250,13 +290,11 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "改善措施狀態",
                     "有效性驗證",
                     "附件數",
-                    "原因假設數",
-                    "已採納假設",
                     "重複警示",
                     "狀態",
                     "結案日期",
                 ],
-                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 31)],
+                [anomaly_sheet.cell(row=1, column=col).value for col in range(1, 29)],
             )
             self.assertEqual(4, anomaly_sheet.max_row)
             self.assertEqual(
@@ -287,12 +325,10 @@ class ExcelReportCustomRangeTests(unittest.TestCase):
                     "—",
                     0,
                     0,
-                    "否",
-                    0,
                     "已結案",
                     "2026-06-12",
                 ],
-                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 31)],
+                [anomaly_sheet.cell(row=2, column=col).value for col in range(1, 29)],
             )
             self.assertEqual("否", anomaly_sheet.cell(row=3, column=17).value)
             self.assertEqual("未設定", anomaly_sheet.cell(row=4, column=17).value)

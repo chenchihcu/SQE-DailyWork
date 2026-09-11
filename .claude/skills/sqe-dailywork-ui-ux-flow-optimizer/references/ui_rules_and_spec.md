@@ -189,6 +189,9 @@ allowed-tools: Read, Grep, Glob, Bash
    - `python scripts/qt_visual_probe.py --target event-create --scale 1.0,1.25,1.5 --min-width`
    - `python scripts/qt_visual_probe.py --target repeat-issues-management --min-width --scale 1.0,1.25,1.5 --output Outputs/visual_qa/repeat-issues-management/probe.png`
 10. **檢查探針指標**：`visual_trustworthy == True` 且 `qss_unknown_property_warnings == 0`；**讀 PNG** 確認長文/CJK 未裁切。未跑 probe → `not verified`，不是 `Residual risk`。
+11. **表格 cell 按鈕裁切守衛**：`QTableWidget::setCellWidget` 內按鈕用 `make_table_cell_action_button`（`role="tableCellAction"`），不用 `variant="secondary"`；行高用 `WORKBENCH_ACTION_ROW_HEIGHT`。
+12. **複合 list row 高度守衛**：`ActionItemListWidget` 等逐行編輯器控制項高度對齊 `ACTION_ITEM_ROW_MIN_HEIGHT`（= `CONTROL_MIN_HEIGHT`）；禁止硬編碼 `setMinimumHeight(28)`。
+13. **複合 widget 驗證守衛**：複合清單驗證標記子欄位（如空白 `QLineEdit`），不用 `set_field_invalid()` 套整個容器。
 
 ---
 

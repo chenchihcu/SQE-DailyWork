@@ -14,6 +14,32 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.layout_constants import WORKBENCH_ROOT_CAUSE_COMPACT_ADD_HEIGHT
+
+_BULLET_PREFIX_RE = re.compile(r"^(\d+[\.\)]|\-|•|\*)\s*")
+
+
+def parse_bullet_formatted_lines(text: str) -> list[str]:
+    """Extract item strings from numbered or bulleted multiline text."""
+    if not text or not text.strip():
+        return []
+    extracted: list[str] = []
+    for line in text.strip().splitlines():
+        line_str = line.strip()
+        if not line_str:
+            continue
+        cleaned = _BULLET_PREFIX_RE.sub("", line_str)
+        extracted.append(cleaned if cleaned else line_str)
+    return extracted
+
+
+def plain_text_from_bullet_formatted(text: str, *, joiner: str = "\n") -> str:
+    """Normalize legacy numbered bullet text to plain multiline or joined text."""
+    items = parse_bullet_formatted_lines(text)
+    if not items:
+        return ""
+    return joiner.join(items)
+
 
 class BulletListItemRow(QWidget):
     """Single row in the bullet list widget."""
@@ -56,9 +82,10 @@ class BulletListItemRow(QWidget):
     def _on_text_changed(self):
         self.valueChanged.emit()
 
-    def set_index(self, index: int):
+    def set_index(self, index: int, *, placeholder: str | None = None):
         self.num_label.setText(f"{index}.")
-        self.line_edit.setPlaceholderText(f"條目 {index}")
+        placeholder_text = placeholder if placeholder is not None else f"條目 {index}"
+        self.line_edit.setPlaceholderText(placeholder_text)
         self.line_edit.setAccessibleName(f"條目 {index}")
         self.btn_delete.setAccessibleName(f"刪除條目 {index}")
 
@@ -75,12 +102,19 @@ class BulletListWidget(QWidget):
     valueChanged = Signal()
     textChanged = valueChanged
 
-    def __init__(self, placeholder: str = "新增條目...", parent=None):
+    def __init__(
+        self,
+        placeholder: str = "新增條目...",
+        *,
+        compact_add_button: bool = False,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self._rows: list[BulletListItemRow] = []
         self._placeholder = placeholder
         self._read_only = False
+        self._compact_add_button = compact_add_button
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -98,6 +132,12 @@ class BulletListWidget(QWidget):
         self.btn_add.setToolTip("新增一列條目")
         self.btn_add.setProperty("variant", "dashedPrimary")
         self.btn_add.clicked.connect(lambda: self.add_item(""))
+        if compact_add_button:
+            self.btn_add.setFixedHeight(WORKBENCH_ROOT_CAUSE_COMPACT_ADD_HEIGHT)
+            self.btn_add.setSizePolicy(
+                QSizePolicy.Policy.Maximum,
+                QSizePolicy.Policy.Fixed,
+            )
         self.main_layout.addWidget(self.btn_add)
 
         # Always start with at least 1 empty row
@@ -115,6 +155,7 @@ class BulletListWidget(QWidget):
         self._rows.append(row)
         self.items_layout.addWidget(row)
         self._update_indices()
+        self._sync_delete_visibility()
         self.items_layout.activate()
         self.items_layout.update()
         self.updateGeometry()
@@ -140,14 +181,25 @@ class BulletListWidget(QWidget):
             self.items_layout.removeWidget(row)
             row.deleteLater()
             self._update_indices()
+            self._sync_delete_visibility()
             self.items_layout.activate()
             self.items_layout.update()
             self.updateGeometry()
             self.valueChanged.emit()
 
-    def _update_indices(self):
+    def _update_indices(self) -> None:
         for idx, row in enumerate(self._rows, start=1):
-            row.set_index(idx)
+            if idx == 1:
+                row.set_index(idx, placeholder=self._placeholder)
+            else:
+                row.set_index(idx)
+
+    def _sync_delete_visibility(self) -> None:
+        if self._read_only:
+            return
+        show_delete = len(self._rows) > 1
+        for row in self._rows:
+            row.btn_delete.setVisible(show_delete)
 
     def _on_row_value_changed(self):
         self.valueChanged.emit()
@@ -183,16 +235,7 @@ class BulletListWidget(QWidget):
             self.set_items([])
             return
 
-        lines = text.strip().splitlines()
-        extracted_items = []
-        for line in lines:
-            line_str = line.strip()
-            if not line_str:
-                continue
-            cleaned = re.sub(r"^(\d+[\.\)]|\-|•|\*)\s*", "", line_str)
-            extracted_items.append(cleaned if cleaned else line_str)
-
-        self.set_items(extracted_items)
+        self.set_items(parse_bullet_formatted_lines(text))
 
     def isReadOnly(self) -> bool:
         return getattr(self, "_read_only", False)
@@ -202,7 +245,10 @@ class BulletListWidget(QWidget):
         self.btn_add.setVisible(not read_only)
         for row in self._rows:
             row.line_edit.setReadOnly(read_only)
-            row.btn_delete.setVisible(not read_only)
+        self._sync_delete_visibility()
+        if read_only:
+            for row in self._rows:
+                row.btn_delete.setVisible(False)
         self.items_layout.activate()
         self.items_layout.update()
         self.updateGeometry()
@@ -214,4 +260,3 @@ class BulletListWidget(QWidget):
     def toPlainText(self) -> str:
         """Compatibility alias for QTextEdit.toPlainText."""
         return self.get_formatted_text()
-

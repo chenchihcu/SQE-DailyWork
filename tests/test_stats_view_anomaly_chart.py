@@ -11,6 +11,7 @@ from PySide6.QtCharts import (
     QChartView,
     QHorizontalStackedBarSeries,
     QLineSeries,
+    QPieSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QDate, Qt
@@ -107,7 +108,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=trend_data or []), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_stats), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data or []), \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=host)
             widget.set_range(month_key, month_key)
 
@@ -237,11 +240,20 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             assert item is not None
             self.assertIsInstance(item.widget(), QChartView)
 
-        keyword_item = widget.grid_layout.itemAtPosition(2, 0)
+        repeat_item = widget.grid_layout.itemAtPosition(1, 1)
+        self.assertIsNotNone(repeat_item)
+        assert repeat_item is not None
+        self.assertIsInstance(repeat_item.widget(), EmptyStateWidget)
+
+        stage_item = widget.grid_layout.itemAtPosition(2, 0)
+        self.assertIsNotNone(stage_item)
+        assert stage_item is not None
+        self.assertIsInstance(stage_item.widget(), EmptyStateWidget)
+
+        keyword_item = widget.grid_layout.itemAtPosition(3, 0)
         self.assertIsNotNone(keyword_item)
         assert keyword_item is not None
         self.assertIsNotNone(keyword_item.widget())
-        self.assertIsNone(widget.grid_layout.itemAtPosition(1, 1))
 
         titles = {
             chart_view.chart().title()
@@ -537,6 +549,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 {"rank": 3, "category": "未分類", "count": 4, "percent": 20.0, "cumulative_percent": 100.0},
             ]),
             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]),
         ):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             widget.set_range("202601", "202606")
@@ -583,7 +597,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]) as mock_trend, \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]) as mock_resp, \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]) as mock_category, \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
 
@@ -612,7 +628,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
 
@@ -630,6 +648,8 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
             ),
             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]),
             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]),
         ):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
@@ -653,7 +673,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
             widget.set_range("202601", "202603")
@@ -684,7 +706,9 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
              patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]), \
              patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]), \
              patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]), \
-             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]):
+             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]), \
+             patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]):
             widget = StatsViewWidget(main_window=_DummyMainWindow())
             self._widgets.append(widget)
             widget.set_range("202501", "202606")
@@ -795,6 +819,53 @@ class StatsViewAnomalyChartTests(unittest.TestCase):
                 self.assertTrue(axis.titleFont().bold())
 
         self.assertFalse(hasattr(widget, "_build_visit_trend_chart"))
+
+    def test_stats_view_renders_repeat_and_product_stage_donut_charts(self) -> None:
+        summary = {
+            "anomaly_count": 3,
+            "visit_count": 0,
+            "closed_anomaly_count": 1,
+            "open_anomaly_count": 2,
+            "top_suppliers_by_anomaly": [],
+        }
+        repeat_data = [
+            {"bucket": "重複警示", "count": 1, "percent": 33.3},
+            {"bucket": "首次異常", "count": 2, "percent": 66.7},
+        ]
+        stage_data = [
+            {"product_stage": "量產", "count": 2, "percent": 66.7},
+            {"product_stage": "試產", "count": 1, "percent": 33.3},
+        ]
+        with (
+            patch("services.event._query_service.get_monthly_stats", return_value=summary),
+            patch("services.event._query_service.get_anomaly_trend_by_range", return_value=[]),
+            patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
+            patch(
+                "services.event._query_service.get_anomaly_repeat_recurrence_by_range",
+                return_value=repeat_data,
+            ),
+            patch(
+                "services.event._query_service.get_anomaly_product_stage_distribution_by_range",
+                return_value=stage_data,
+            ),
+        ):
+            widget = StatsViewWidget(main_window=_DummyMainWindow())
+            widget.set_range("202603", "202603")
+            widget.show()
+            self.app.processEvents()
+        self._widgets.append(widget)
+
+        pie_charts = [
+            view.chart()
+            for view in widget.findChildren(QChartView)
+            if any(isinstance(series, QPieSeries) for series in view.chart().series())
+        ]
+        self.assertEqual(2, len(pie_charts))
+        titles = {chart.title() for chart in pie_charts}
+        self.assertTrue(any("重複異常再發率" in title for title in titles))
+        self.assertTrue(any("產品階段分布" in title for title in titles))
 
 
 if __name__ == "__main__":

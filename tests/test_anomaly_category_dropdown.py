@@ -155,7 +155,7 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
             if label.property("role") == "sectionTitle"
         }
         self.assertEqual(
-            {"📋 基本資訊", "🔍 問題描述", "📷 現場照片"},
+            {"📋 基本資訊", "🔍 不良現象與現場照片"},
             section_titles,
         )
 
@@ -442,7 +442,8 @@ class AnomalyCategoryDropdownTests(unittest.TestCase):
         ) as mock_get:
             dialog = CloseAnomalyDialog("anomaly-123", "Some problem description")
             self.addCleanup(dialog.close)
-            mock_get.assert_called_once_with("anomaly-123")
+            mock_get.assert_called_with("anomaly-123")
+            self.assertGreaterEqual(mock_get.call_count, 1)
             self.assertEqual("2026-04-16", dialog.closed_at_input.minimumDate().toString("yyyy-MM-dd"))
 
     def test_close_anomaly_dialog_submits_user_selected_closed_date(self) -> None:

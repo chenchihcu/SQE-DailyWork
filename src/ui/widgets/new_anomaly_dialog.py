@@ -41,6 +41,7 @@ from services.anomaly_trace_contract import (
     required_trace_fields_for_source,
     visible_trace_fields_for_source,
 )
+from database.repo_helpers import defect_rate_denominator, format_defect_rate_display
 from services.event import _anomaly_service
 from ui.layout_constants import (
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
@@ -120,6 +121,7 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
+        self.date_edit.setMaximumDate(QDate.currentDate())
         self.date_edit.dateChanged.connect(self._on_date_changed)
 
         self.anomaly_no_preview_input = QLineEdit()
@@ -169,6 +171,15 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         self.outsource_work_order_input = self._trace_inputs[TRACE_FIELD_OUTSOURCE_WORK_ORDER]
         self.batch_qty_input = QLineEdit()
         self.batch_qty_input.setValidator(QIntValidator(0, 10_000_000))
+        self.qty_inspected_input = QLineEdit()
+        self.qty_inspected_input.setValidator(QIntValidator(0, 10_000_000))
+        self.qty_ng_input = QLineEdit()
+        self.qty_ng_input.setValidator(QIntValidator(0, 10_000_000))
+        self.defect_rate_label = QLabel("—")
+        self.defect_rate_label.setProperty("role", "messageText")
+        self.batch_qty_input.textChanged.connect(self._refresh_defect_rate)
+        self.qty_inspected_input.textChanged.connect(self._refresh_defect_rate)
+        self.qty_ng_input.textChanged.connect(self._refresh_defect_rate)
         self.responsible_person_input = QLineEdit()
         if not self._is_edit and not self._initial_data and prefs.default_responsible_person:
             self.responsible_person_input.setText(prefs.default_responsible_person)
@@ -267,8 +278,14 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
 
         grid.addWidget(QLabel("異常單號"), 5, 0)
         grid.addWidget(self.anomaly_no_preview_input, 5, 1)
-        grid.addWidget(QLabel("數量"), 5, 2)
+        grid.addWidget(QLabel("批量數"), 5, 2)
         grid.addWidget(self.batch_qty_input, 5, 3)
+        grid.addWidget(QLabel("檢驗數"), 6, 0)
+        grid.addWidget(self.qty_inspected_input, 6, 1)
+        grid.addWidget(QLabel("不良數"), 6, 2)
+        grid.addWidget(self.qty_ng_input, 6, 3)
+        grid.addWidget(QLabel("不良率"), 7, 0)
+        grid.addWidget(self.defect_rate_label, 7, 1)
 
         due_row = QWidget()
         dr_layout = QHBoxLayout(due_row)
@@ -285,12 +302,12 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         quality_report_layout.addWidget(self.quality_report_no_radio)
         quality_report_layout.addStretch(1)
 
-        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 6, 0)
-        grid.addWidget(quality_report_row, 6, 1)
-        grid.addWidget(QLabel("預計回覆日"), 6, 2)
-        grid.addWidget(due_row, 6, 3)
+        grid.addWidget(RequiredFieldLabel("品質異常單要求"), 8, 0)
+        grid.addWidget(quality_report_row, 8, 1)
+        grid.addWidget(QLabel("預計回覆日"), 8, 2)
+        grid.addWidget(due_row, 8, 3)
 
-        trace_row = 7
+        trace_row = 9
         for field in TRACE_FIELD_LABELS:
             grid.addWidget(self._trace_labels[field], trace_row, 0)
             grid.addWidget(self._trace_inputs[field], trace_row, 1, 1, 3)
@@ -390,6 +407,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.responsible_person_input,
             self.anomaly_no_preview_input,
             self.batch_qty_input,
+            self.qty_inspected_input,
+            self.qty_ng_input,
             self.quality_report_yes_radio,
             self.quality_report_no_radio,
             self.due_date_check,
@@ -479,6 +498,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         for line_edit in self._trace_inputs.values():
             line_edit.setReadOnly(True)
         self.batch_qty_input.setReadOnly(True)
+        self.qty_inspected_input.setReadOnly(True)
+        self.qty_ng_input.setReadOnly(True)
         self.category_input.setEnabled(False)
         self.anomaly_source_combo.setEnabled(False)
         self.responsible_person_input.setReadOnly(True)
@@ -515,6 +536,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.product_stage_combo.currentTextChanged,
             *[widget.textChanged for widget in self._trace_inputs.values()],
             self.batch_qty_input.textChanged,
+            self.qty_inspected_input.textChanged,
+            self.qty_ng_input.textChanged,
             self.responsible_person_input.textChanged,
             self.anomaly_no_preview_input.textChanged,
             self.due_date_check.toggled,
@@ -530,7 +553,25 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
             self.rc_internal_inv_combo.currentTextChanged,
         ])
 
+    def _refresh_defect_rate(self, *_args) -> None:
+        batch_qty = int(self.batch_qty_input.text().strip() or 0)
+        qty_inspected = int(self.qty_inspected_input.text().strip() or 0)
+        qty_ng = int(self.qty_ng_input.text().strip() or 0)
+        display = format_defect_rate_display(
+            batch_qty,
+            qty_ng,
+            qty_inspected=qty_inspected,
+        )
+        if display == "—":
+            self.defect_rate_label.setText("—")
+            return
+        _denominator, label = defect_rate_denominator(batch_qty, qty_inspected)
+        self.defect_rate_label.setText(f"{display}（{label}）")
+
     def _on_date_changed(self, _date: QDate | None = None) -> None:
+        prefs = load_application_preferences()
+        if not prefs.auto_fill_anomaly_no_on_date_change:
+            return
         self._update_anomaly_no_preview()
 
     def _update_anomaly_no_preview(self, _date: QDate | None = None):
@@ -625,6 +666,9 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
         for field, widget in self._trace_inputs.items():
             widget.setText(str(self._initial_data.get(field) or ""))
         self.batch_qty_input.setText(str(self._initial_data.get("batch_qty") or ""))
+        self.qty_inspected_input.setText(str(self._initial_data.get("qty_inspected") or ""))
+        self.qty_ng_input.setText(str(self._initial_data.get("qty_ng") or ""))
+        self._refresh_defect_rate()
         self.problem_input.set_formatted_text(str(self._initial_data.get("problem_desc") or ""))
         self.process_keywords_input.set_delimited_text(
             self._initial_data.get("process_keywords", "")
@@ -741,6 +785,8 @@ class NewAnomalyDialog(DirtyTrackingMixin, QDialog, SupplierProductFormMixin):
                 for field in TRACE_FIELD_LABELS
             },
             "batch_qty": int(self.batch_qty_input.text().strip() or 0),
+            "qty_inspected": int(self.qty_inspected_input.text().strip() or 0),
+            "qty_ng": int(self.qty_ng_input.text().strip() or 0),
             "responsible_person": self.responsible_person_input.text().strip(),
             "due_date": due_date_value,
             "pending_items": self.pending_items_input.get_formatted_text(),

@@ -6,7 +6,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QTextEdit
-from ui.widgets.bullet_list_widget import BulletListWidget, BulletListItemRow
+from ui.widgets.bullet_list_widget import (
+    BulletListItemRow,
+    BulletListWidget,
+    plain_text_from_bullet_formatted,
+)
 from ui.widgets.defect_form_widgets import set_text_edit_visible_rows
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
 
@@ -97,6 +101,34 @@ class BulletListWidgetTests(unittest.TestCase):
         loaded_items = dialog.problem_input.get_items()
         self.assertEqual(len(loaded_items), 7)
         self.assertIn("下批進板取爽板開立鋼板(待追蹤)", loaded_items[0])
+
+    def test_plain_text_from_bullet_formatted_strips_prefixes(self) -> None:
+        self.assertEqual(
+            plain_text_from_bullet_formatted("1. 5-Why\n2. 現場觀察", joiner="；"),
+            "5-Why；現場觀察",
+        )
+
+    def test_first_row_uses_widget_placeholder(self) -> None:
+        widget = BulletListWidget(placeholder="根本原因是什麼？")
+        self.assertEqual(
+            widget._rows[0].line_edit.placeholderText(),
+            "根本原因是什麼？",
+        )
+        widget.add_item("")
+        self.assertEqual(widget._rows[1].line_edit.placeholderText(), "條目 2")
+
+    def test_single_row_hides_delete_button(self) -> None:
+        widget = BulletListWidget()
+        self.assertEqual(len(widget._rows), 1)
+        self.assertTrue(widget._rows[0].btn_delete.isHidden())
+        widget.add_item("第二條")
+        self.assertFalse(widget._rows[0].btn_delete.isHidden())
+        self.assertFalse(widget._rows[1].btn_delete.isHidden())
+
+    def test_compact_add_button_uses_fixed_height(self) -> None:
+        widget = BulletListWidget(compact_add_button=True)
+        self.assertEqual(widget.btn_add.height(), 28)
+        self.assertEqual(widget.btn_add.maximumHeight(), 28)
 
     def test_set_text_edit_visible_rows_safety(self) -> None:
         # 對 QTextEdit 設定行高：正常運作

@@ -18,11 +18,11 @@ from PySide6.QtWidgets import (
 
 from database import connection as database_connection
 from ui.layout_constants import (
-    ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_HEIGHT,
     ANOMALY_DIALOG_PREFERRED_WIDTH,
     FORM_MAX_WIDTH,
 )
+from ui.widgets.evidence_bullet_list_widget import EvidenceBulletListWidget
 from ui.widgets.bullet_list_widget import BulletListWidget
 from ui.widgets.defect_form_shim import CloseAnomalyDialog, ProductSectionEditor
 from ui.widgets.new_anomaly_dialog import NewAnomalyDialog
@@ -90,10 +90,9 @@ class FormFieldPairingLayoutTests(unittest.TestCase):
         self.assertLessEqual(dialog.width(), ANOMALY_DIALOG_PREFERRED_WIDTH)
         self.assertGreaterEqual(dialog.width(), dialog.minimumWidth())
         self.assertLessEqual(dialog.height(), ANOMALY_DIALOG_PREFERRED_HEIGHT)
-        self.assertEqual(
-            ANOMALY_ATTACHMENT_COMPACT_HEIGHT,
-            dialog.attachment_editor.list_widget.height(),
-        )
+        self.assertIsInstance(dialog.problem_input, EvidenceBulletListWidget)
+        self.assertGreaterEqual(len(dialog.problem_input._rows), 1)
+        self.assertTrue(dialog.problem_input._rows[0].btn_photos.isEnabled())
         self.assertEqual(0, dialog.form_scroll.verticalScrollBar().value())
         self.assertEqual(0, dialog.form_scroll.horizontalScrollBar().maximum())
         self.assertEqual(dialog.problem_input.maximumHeight(), 16777215)

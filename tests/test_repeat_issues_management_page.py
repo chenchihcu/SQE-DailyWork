@@ -17,10 +17,11 @@ import tests  # noqa: F401
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
-from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
+from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy, QWidget
 
 from services import repeat_issue_service
 from services.event import _anomaly_service, _anomaly_workbench_service
+from ui.layout_constants import FORM_VERTICAL_SPACING
 from ui.widgets.repeat_issues_management_page import RepeatIssuesManagementPage
 
 
@@ -112,11 +113,30 @@ class RepeatIssuesManagementPageTests(unittest.TestCase):
         page = self._make_page()
         sc_layout = page.source_card.layout()
         self.assertIsNotNone(sc_layout)
-        self.assertEqual(6, sc_layout.spacing())
+        self.assertEqual(FORM_VERTICAL_SPACING, sc_layout.spacing())
 
         pc_layout = page.peer_card.layout()
         self.assertIsNotNone(pc_layout)
-        self.assertEqual(6, pc_layout.spacing())
+        self.assertEqual(FORM_VERTICAL_SPACING, pc_layout.spacing())
+
+    def test_comparison_panel_has_scroll_area(self) -> None:
+        page = self._make_page()
+        self.assertIsInstance(page.compare_scroll, QScrollArea)
+        self.assertTrue(page.compare_scroll.widgetResizable())
+        self.assertIs(page.compare_scroll.widget(), page.compare_scroll_body)
+        self.assertIs(page.source_card.parent(), page.compare_scroll_body)
+        self.assertIs(page.peer_card.parent(), page.compare_scroll_body)
+        self.assertFalse(page.confirm_btn.parent() is page.compare_scroll_body)
+
+    def test_comparison_headers_use_multiline_contract(self) -> None:
+        page = self._make_page()
+        for label in (page.sc_header, page.pc_header):
+            self.assertTrue(label.wordWrap())
+            self.assertEqual(label.property("role"), "sectionTitle")
+            self.assertEqual(
+                label.sizePolicy().verticalPolicy(),
+                QSizePolicy.Policy.Minimum,
+            )
 
     def test_comparison_metadata_labels_use_multiline_contract(self) -> None:
         page = self._make_page()

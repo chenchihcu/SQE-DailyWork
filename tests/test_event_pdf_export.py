@@ -56,6 +56,8 @@ class EventPdfExportTests(unittest.TestCase):
             "product_stage": "試產",
             "outsource_work_order": "5102-260401002",
             "batch_qty": 220,
+            "qty_ng": 11,
+            "defect_rate_display": "5.00%",
             "status": "待處理",
             "category": "刮傷",
             "product_lot_no": "LOT-001",
@@ -85,6 +87,17 @@ class EventPdfExportTests(unittest.TestCase):
         self.assertIn("供應商異常處理報告", html)
         self.assertNotIn("關聯訪廠", html)
         self.assertNotIn("訪廠異常追蹤報告", html)
+
+    def test_anomaly_html_includes_quantity_fields(self) -> None:
+        html = event_pdf_exporter.build_event_pdf_html(
+            self._anomaly_row(),
+            self._anomaly_detail(),
+        )
+
+        self.assertIn("批量數", html)
+        self.assertIn("不良數", html)
+        self.assertIn("不良率", html)
+        self.assertIn("5.00%", html)
 
     def test_report_html_embeds_mitcorp_brand_assets(self) -> None:
         html = event_pdf_exporter.build_event_pdf_html(

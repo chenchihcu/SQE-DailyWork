@@ -38,7 +38,9 @@ class EventPreviewTests(unittest.TestCase):
         self.assertFalse(dialog.supplier_combo.isEnabled())
         self.assertTrue(dialog.problem_input.isReadOnly())
         self.assertEqual(dialog.save_button.text(), "關閉")
-        self.assertFalse(dialog.attachment_editor.add_button.isEnabled())
+        self.assertTrue(dialog.problem_input.isReadOnly())
+        first_row = dialog.problem_input._rows[0]
+        self.assertFalse(first_row.btn_photos.isEnabled())
 
 if __name__ == "__main__":
     unittest.main()

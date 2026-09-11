@@ -120,6 +120,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
         self.assertEqual(
             [
                 "案件詳情",
+                "潛在重複異常",
                 "刪除異常",
                 "結案",
                 "",
@@ -134,7 +135,7 @@ class EventActionMenuConsistencyTests(unittest.TestCase):
         controller.open_anomaly_details("anomaly-001")
 
         self.main_window.open_anomaly_management.assert_called_once_with(
-            "anomaly-001", edit=False
+            "anomaly-001", edit=False, initial_tab=None
         )
 
     def test_repeat_issues_uses_repeat_page(self) -> None:

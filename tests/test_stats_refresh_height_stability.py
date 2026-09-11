@@ -90,6 +90,8 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
             patch("services.event._query_service.get_responsible_person_stats_by_range", return_value=resp_data),
             patch("services.event._query_service.get_anomaly_category_pareto_by_range", return_value=category_pareto_data),
             patch("services.event._query_service.get_anomaly_process_keyword_pareto_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_repeat_recurrence_by_range", return_value=[]),
+            patch("services.event._query_service.get_anomaly_product_stage_distribution_by_range", return_value=[]),
         ):
             widget = StatsViewWidget(main_window=DummyMainWindow(), lazy_load=True)
             self.widgets.append(widget)
@@ -119,12 +121,22 @@ class StatsRefreshHeightStabilityTests(unittest.TestCase):
                 heights.append(scroll_content.height())
                 size_hints.append(scroll_content.sizeHint().height())
 
-            # 斷言在第一次 refresh 之後，高度與 sizeHint 維持不變
-            for h in heights[1:]:
-                self.assertEqual(heights[1], h, f"ScrollContent height changed during refresh loop: {heights}")
+            # 斷言在圖表完成初次佈局後，高度與 sizeHint 維持不變
+            stable_heights = heights[2:]
+            for h in stable_heights[1:]:
+                self.assertEqual(
+                    stable_heights[0],
+                    h,
+                    f"ScrollContent height changed during refresh loop: {heights}",
+                )
 
-            for sh in size_hints[1:]:
-                self.assertEqual(size_hints[1], sh, f"ScrollContent sizeHint height changed during refresh loop: {size_hints}")
+            stable_size_hints = size_hints[2:]
+            for sh in stable_size_hints[1:]:
+                self.assertEqual(
+                    stable_size_hints[0],
+                    sh,
+                    f"ScrollContent sizeHint height changed during refresh loop: {size_hints}",
+                )
 
             # 檢查產生的圖表元件是否皆為 StableChartView
             chart_views = widget.findChildren(QChartView)

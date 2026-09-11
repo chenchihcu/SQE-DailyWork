@@ -17,6 +17,8 @@ class DateRangeAndExportWarningTests(unittest.TestCase):
             _query_service.get_responsible_person_stats_by_range,
             _query_service.get_anomaly_trend_by_range,
             _query_service.get_anomaly_closure_activity_by_range,
+            _query_service.get_anomaly_repeat_recurrence_by_range,
+            _query_service.get_anomaly_product_stage_distribution_by_range,
         )
         for function in functions:
             with self.subTest(function=function.__name__):

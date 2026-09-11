@@ -126,44 +126,6 @@ class AnomalyTraceRepositoryTests(unittest.TestCase):
         self.assertEqual(ANOMALY_SOURCE_OUTSOURCE_PROCESSING, detail["anomaly_source"])
         self.assertEqual("OWO-9001", detail["outsource_work_order"])
 
-    def test_same_supplier_trace_number_allows_multiple_anomalies(self) -> None:
-        create_anomaly_with_visit_link(
-            self.conn,
-            anomaly_date="2026-05-12",
-            supplier_id="sup-1",
-            product_id="prod-1",
-            problem_desc="第一筆",
-            anomaly_source=ANOMALY_SOURCE_OUTSOURCE_PROCESSING,
-            outsource_work_order="OWO-9001",
-            sync_visit=False,
-            anomaly_no="20260512001",
-        )
-        second = create_anomaly_with_visit_link(
-            self.conn,
-            anomaly_date="2026-05-13",
-            supplier_id="sup-1",
-            product_id="prod-1",
-            problem_desc="第二筆",
-            anomaly_source=ANOMALY_SOURCE_OUTSOURCE_PROCESSING,
-            outsource_work_order="OWO-9001",
-            sync_visit=False,
-            anomaly_no="20260513001",
-        )
-        duplicate = find_anomaly_trace_duplicate(
-            self.conn,
-            supplier_id="sup-1",
-            field_name="outsource_work_order",
-            field_value="OWO-9001",
-        )
-        self.assertIsNotNone(duplicate)
-        self.assertIn(
-            duplicate["anomaly_no"],
-            {"20260512001", "20260513001"},
-        )
-        second_detail = get_anomaly_detail(self.conn, str(second["anomaly_id"]))
-        assert second_detail is not None
-        self.assertEqual("OWO-9001", second_detail["outsource_work_order"])
-
 
 class AnomalyTraceMigrationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -371,6 +333,8 @@ class NcrToAnomalyHandoffTests(unittest.TestCase):
         self.assertEqual("IWO-200", captured["internal_work_order_no"])
         self.assertEqual("NCR-001", captured["source_defect_no"])
         self.assertEqual("委外加工", captured["anomaly_source_hint"])
+        self.assertEqual(12, captured["qty_ng"])
+        self.assertNotIn("batch_qty", captured)
         self.assertNotIn("transfer_slip_no", captured)
         self.assertNotIn("outsource_receipt_no", captured)
 

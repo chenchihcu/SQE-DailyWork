@@ -101,6 +101,41 @@ def validate_anomaly_trace_payload(
     return values
 
 
+def validate_trace_duplicates(
+    conn: object,
+    *,
+    supplier_id: object,
+    trace_fields: dict[str, str],
+    exclude_anomaly_id: str | None = None,
+    existing_trace_fields: dict[str, str] | None = None,
+) -> None:
+    """Reject save when a non-empty trace value duplicates another anomaly row."""
+    from database import repository
+
+    existing = existing_trace_fields or {}
+    normalized_supplier = str(supplier_id or "").strip()
+    for field, value in trace_fields.items():
+        normalized_value = str(value or "").strip()
+        if not normalized_value:
+            continue
+        if str(existing.get(field) or "").strip() == normalized_value:
+            continue
+        duplicate = repository.find_anomaly_trace_duplicate(
+            conn,
+            supplier_id=normalized_supplier,
+            field_name=field,
+            field_value=normalized_value,
+            exclude_anomaly_id=exclude_anomaly_id,
+        )
+        if duplicate is None:
+            continue
+        label = TRACE_FIELD_LABELS.get(field, field)
+        anomaly_no = str(duplicate.get("anomaly_no") or "").strip()
+        raise ValueError(
+            f"{label}與異常單號 {anomaly_no} 重複，請改號或開啟既有案件。"
+        )
+
+
 def sanitize_trace_payload_for_source(
     anomaly_source: object,
     payload: object,

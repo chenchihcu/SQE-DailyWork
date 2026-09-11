@@ -2,6 +2,8 @@
 version: alpha
 name: SQE DailyWork Design System
 description: Unified Industrial Inspection & Quality Engineering Design System (Slate + Electric Blue)
+
+> **Historical note (2026-09-09):** Workbench now uses four tabs (`案件概覽` / `Action 清單` / `根本原因` / `附件與佐證`); the `處理歷程` tab and embedded analysis/hypothesis flows are retired. See `docs/exec-plans/completed/workbench-timeline-tab-retire.md` and `workbench-legacy-analysis-retire.md`. Sections below may describe pre-retirement layout.
 colors:
   # ── Surfaces ─────────────────────────────────────────────────────────────
   app-bg: "#F1F5F9"
@@ -449,10 +451,12 @@ Corners are tightly controlled to project an engineered, robust appearance:
 ### Archetype 3: Anomaly Management Workbench (`AnomalyManagementPage`)
 - **Fixed Header**: Case identity banner displaying Anomaly No, Supplier, Responsible Person, Creation Date, and current Status Badge.
 - **Header Lifecycle Action**: Dynamic contextual button (shows `結案` for open cases, `重新開啟` for closed cases).
-- **Tabbed Layout**: Exactly 3 tabs with independent scroll ownership:
-  1. `案件處理 (Case Processing)`: 2×2 quick overview card, Next Action card with due date countdown, Root Cause investigation card, Corrective Action review, and Supplier 8D tracking.
-  2. `附件與佐證 (Attachments & Evidence)`: Visual thumbnail grid with attachment category badges and live upload dropzone.
-  3. `處理歷程 (Audit Timeline)`: Chronological audit trail recording all status transitions, hypothesis evaluations, and action sign-offs.
+- **Tabbed Layout**: Four tabs with independent scroll ownership (2026-09-09):
+  1. `案件概覽 (Case Overview)`: 2×2 quick overview card, Next Action card with due date countdown, and embedded basic anomaly edit.
+  2. `Action 清單 (Action List)`: Read-only `AnomalyActionTable` with workflow buttons; create/edit via dialogs using `ActionItemListWidget`.
+  3. `根本原因 (Root Cause)`: Investigation badges and the single root-cause card.
+  4. `附件與佐證 (Attachments & Evidence)`: Visual thumbnail grid with attachment category badges and live upload dropzone; Supplier 8D via attachment category.
+  - Retired: `處理歷程 (Audit Timeline)` tab — audit rows still write to `anomaly_audit_logs` in the background.
 
 ### Archetype 4: Zero-Noise Analytics Dashboard (`StatsViewWidget`)
 - **Header Controls**: Minimalist toolbar containing only `Date Range Filter`, `重新整理 (Secondary Button)`, and `匯出 Excel (Primary Button)`.

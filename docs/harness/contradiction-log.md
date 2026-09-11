@@ -26,5 +26,5 @@ do not self-adjudicate. Record the conflict here and ask the user. See
 - Agent B says: Cursor Cloud Agent SOP — create `cursor/<descriptive-name>-7802` and open a PR against `main`.
 - Risk: Direct `main` push vs PR review; two writers if both happen in the same worktree.
 - Required user decision: Whether Cloud Agent runs may use PR branches, or must commit only to `main`.
-- Resolution (filled after the user decides):
+- Resolution (filled after the user decides): Repo `AGENTS.md` §8 TBD is authoritative for this project. All agents commit directly to `main`; feature branches and PR-only workflows are not used unless the human owner explicitly overrides TBD for a specific run. Cursor Cloud Agent may open PRs only when the human owner has authorized that exception for that session.
 

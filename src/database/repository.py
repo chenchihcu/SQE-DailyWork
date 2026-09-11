@@ -106,6 +106,7 @@ from database.repo_helpers import (
     _ensure_date_not_in_future,
     _normalize_non_negative_int,
     _normalize_month,
+    defect_rate_denominator,
     _month_from_date_value,
     _normalize_product_stage,
     _normalize_product_stage_for_read,
@@ -354,6 +355,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             outsource_work_order TEXT NOT NULL DEFAULT '',
             outsource_receipt_no TEXT NOT NULL DEFAULT '',
             batch_qty INTEGER NOT NULL DEFAULT 0,
+            qty_ng INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT '待處理' CHECK (status IN ('待處理','已結案')),
             improvement_desc TEXT NOT NULL DEFAULT '',
             closed_by TEXT NOT NULL DEFAULT '',
@@ -846,6 +848,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         conn, "anomalies", "outsource_work_order", "TEXT NOT NULL DEFAULT ''"
     )
     _ensure_column(conn, "anomalies", "batch_qty", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "anomalies", "qty_ng", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "anomalies", "qty_inspected", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "anomalies", "visit_id", "TEXT REFERENCES visits(id)")
     _ensure_column(conn, "anomalies", "closed_by", "TEXT NOT NULL DEFAULT ''")
     cur = conn.execute("PRAGMA table_info(anomalies)")
@@ -3872,6 +3876,19 @@ class _AnomalyInputs:
     resolved_product_name: str
     normalized_product_stage: str
     normalized_batch_qty: int
+    normalized_qty_inspected: int
+    normalized_qty_ng: int
+
+
+def _validate_anomaly_quantities(
+    batch_qty: int,
+    qty_ng: int,
+    *,
+    qty_inspected: int = 0,
+) -> None:
+    denominator, _label = defect_rate_denominator(batch_qty, qty_inspected)
+    if denominator > 0 and qty_ng > denominator:
+        raise ValueError("Defect quantity cannot exceed batch quantity")
 
 
 def _prepare_anomaly_inputs(
@@ -3884,6 +3901,8 @@ def _prepare_anomaly_inputs(
     product_name: str,
     product_stage: str,
     batch_qty: int,
+    qty_ng: int = 0,
+    qty_inspected: int = 0,
 ) -> _AnomalyInputs:
     """Shared validation + normalization for create_anomaly and
     create_anomaly_with_visit_link (audit finding D1). Both callers
@@ -3916,6 +3935,19 @@ def _prepare_anomaly_inputs(
         batch_qty,
         field_name="Batch quantity",
     )
+    normalized_qty_inspected = _normalize_non_negative_int(
+        qty_inspected,
+        field_name="Inspected quantity",
+    )
+    normalized_qty_ng = _normalize_non_negative_int(
+        qty_ng,
+        field_name="Defect quantity",
+    )
+    _validate_anomaly_quantities(
+        normalized_batch_qty,
+        normalized_qty_ng,
+        qty_inspected=normalized_qty_inspected,
+    )
     return _AnomalyInputs(
         normalized_supplier_id=normalized_supplier_id,
         normalized_date=normalized_date,
@@ -3923,6 +3955,8 @@ def _prepare_anomaly_inputs(
         resolved_product_name=resolved_product_name,
         normalized_product_stage=normalized_product_stage,
         normalized_batch_qty=normalized_batch_qty,
+        normalized_qty_inspected=normalized_qty_inspected,
+        normalized_qty_ng=normalized_qty_ng,
     )
 
 
@@ -3943,6 +3977,8 @@ def create_anomaly(
     outsource_work_order: str = "",
     outsource_receipt_no: str = "",
     batch_qty: int = 0,
+    qty_ng: int = 0,
+    qty_inspected: int = 0,
     visit_id: str | None = None,
     pending_items: str = "",
     responsible_person: str = "",
@@ -3963,6 +3999,8 @@ def create_anomaly(
         product_name=product_name,
         product_stage=product_stage,
         batch_qty=batch_qty,
+        qty_ng=qty_ng,
+        qty_inspected=qty_inspected,
     )
     _validate_visit_supplier(
         conn,
@@ -3986,6 +4024,8 @@ def create_anomaly(
         outsource_work_order=outsource_work_order,
         outsource_receipt_no=outsource_receipt_no,
         batch_qty=inputs.normalized_batch_qty,
+        qty_inspected=inputs.normalized_qty_inspected,
+        qty_ng=inputs.normalized_qty_ng,
         visit_id=visit_id,
         pending_items=pending_items,
         responsible_person=responsible_person,
@@ -5049,6 +5089,8 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
     anomaly_key = (anomaly_id or "").strip()
     if not anomaly_key:
         return None
+    _ensure_column(conn, "anomalies", "qty_ng", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "anomalies", "qty_inspected", "INTEGER NOT NULL DEFAULT 0")
     source_defect_expr = (
         "a.source_defect_no AS source_defect_no"
         if _has_column(conn, "anomalies", "source_defect_no")
@@ -5079,6 +5121,11 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
         if _has_column(conn, "anomalies", "outsource_receipt_no")
         else "'' AS outsource_receipt_no"
     )
+    qty_inspected_expr = (
+        "a.qty_inspected AS qty_inspected"
+        if _has_column(conn, "anomalies", "qty_inspected")
+        else "0 AS qty_inspected"
+    )
     row = conn.execute(
         f"""
         SELECT
@@ -5102,6 +5149,8 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
             a.outsource_work_order AS outsource_work_order,
             {outsource_receipt_expr},
             a.batch_qty AS batch_qty,
+            {qty_inspected_expr},
+            a.qty_ng AS qty_ng,
             a.status AS status,
             a.improvement_desc AS improvement_desc,
             a.closed_by AS closed_by,
@@ -5130,12 +5179,16 @@ def get_anomaly_detail(conn: sqlite3.Connection, anomaly_id: str) -> dict | None
         return None
     result = dict(row)
     result["batch_qty"] = _as_int(result.get("batch_qty"), 0)
+    result["qty_inspected"] = _as_int(result.get("qty_inspected"), 0)
+    result["qty_ng"] = _as_int(result.get("qty_ng"), 0)
     result["product_stage"] = _normalize_product_stage(result.get("product_stage"))
     if result.get("quality_report_required") is not None:
         result["quality_report_required"] = bool(
             _as_int(result.get("quality_report_required"), 0)
         )
-    return result
+    from database.repo_helpers import enrich_anomaly_quantity_fields
+
+    return enrich_anomaly_quantity_fields(result)
 
 
 def update_anomaly(
@@ -5156,6 +5209,8 @@ def update_anomaly(
     outsource_work_order: str = "",
     outsource_receipt_no: str = "",
     batch_qty: int = 0,
+    qty_ng: int = 0,
+    qty_inspected: int = 0,
     pending_items: str = "",
     responsible_person: str = "",
     due_date: str = "",
@@ -5172,6 +5227,8 @@ def update_anomaly(
     if not anomaly_key:
         raise ValueError("Anomaly id is required")
     _ensure_column(conn, "anomalies", "process_keywords", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "anomalies", "qty_ng", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "anomalies", "qty_inspected", "INTEGER NOT NULL DEFAULT 0")
     existing = get_anomaly_detail(conn, anomaly_key)
     if existing is None:
         raise ValueError("Anomaly not found")
@@ -5224,6 +5281,19 @@ def update_anomaly(
         batch_qty,
         field_name="Batch quantity",
     )
+    normalized_qty_ng = _normalize_non_negative_int(
+        qty_ng,
+        field_name="Defect quantity",
+    )
+    normalized_qty_inspected = _normalize_non_negative_int(
+        qty_inspected,
+        field_name="Inspected quantity",
+    )
+    _validate_anomaly_quantities(
+        normalized_batch_qty,
+        normalized_qty_ng,
+        qty_inspected=normalized_qty_inspected,
+    )
     normalized_due_date = _normalize_optional_iso_date(
         due_date, field_name="Due date"
     )
@@ -5246,6 +5316,8 @@ def update_anomaly(
                 outsource_work_order = ?,
                 outsource_receipt_no = ?,
                 batch_qty = ?,
+                qty_inspected = ?,
+                qty_ng = ?,
                 pending_items = ?,
                 responsible_person = ?,
                 due_date = ?,
@@ -5274,6 +5346,8 @@ def update_anomaly(
                 (outsource_work_order or "").strip(),
                 (outsource_receipt_no or "").strip(),
                 normalized_batch_qty,
+                normalized_qty_inspected,
+                normalized_qty_ng,
                 (pending_items or "").strip(),
                 (responsible_person or "").strip(),
                 normalized_due_date,
@@ -5998,6 +6072,8 @@ def create_anomaly_with_visit_link(
     outsource_work_order: str = "",
     outsource_receipt_no: str = "",
     batch_qty: int = 0,
+    qty_ng: int = 0,
+    qty_inspected: int = 0,
     visit_id: str | None = None,
     sync_visit: bool = False,
     visit_summary: str = "",
@@ -6022,6 +6098,8 @@ def create_anomaly_with_visit_link(
         product_name=product_name,
         product_stage=product_stage,
         batch_qty=batch_qty,
+        qty_ng=qty_ng,
+        qty_inspected=qty_inspected,
     )
     normalized_supplier_id = inputs.normalized_supplier_id
     normalized_date = inputs.normalized_date
@@ -6112,6 +6190,8 @@ def create_anomaly_with_visit_link(
         outsource_work_order=outsource_work_order,
         outsource_receipt_no=outsource_receipt_no,
         batch_qty=normalized_batch_qty,
+        qty_inspected=inputs.normalized_qty_inspected,
+        qty_ng=inputs.normalized_qty_ng,
         visit_id=linked_visit_id,
         anomaly_no=resolved_anomaly_no,
         pending_items=pending_items,
@@ -7074,6 +7154,8 @@ def _insert_anomaly_row(
     outsource_work_order: str = "",
     outsource_receipt_no: str = "",
     batch_qty: int = 0,
+    qty_ng: int = 0,
+    qty_inspected: int = 0,
     visit_id: str | None = None,
     anomaly_no: str | None = None,
     pending_items: str = "",
@@ -7089,6 +7171,8 @@ def _insert_anomaly_row(
 ) -> str:
     _ensure_column(conn, "anomalies", "source_defect_no", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "anomalies", "process_keywords", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "anomalies", "qty_ng", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "anomalies", "qty_inspected", "INTEGER NOT NULL DEFAULT 0")
     normalized_date = _normalize_strict_iso_date(
         anomaly_date,
         field_name="Anomaly date",
@@ -7098,6 +7182,19 @@ def _insert_anomaly_row(
     normalized_batch_qty = _normalize_non_negative_int(
         batch_qty,
         field_name="Batch quantity",
+    )
+    normalized_qty_inspected = _normalize_non_negative_int(
+        qty_inspected,
+        field_name="Inspected quantity",
+    )
+    normalized_qty_ng = _normalize_non_negative_int(
+        qty_ng,
+        field_name="Defect quantity",
+    )
+    _validate_anomaly_quantities(
+        normalized_batch_qty,
+        normalized_qty_ng,
+        qty_inspected=normalized_qty_inspected,
     )
     normalized_due_date = _normalize_optional_iso_date(
         due_date, field_name="Due date"
@@ -7110,12 +7207,12 @@ def _insert_anomaly_row(
                 id, anomaly_no, anomaly_date, supplier_id, visit_id, product_id, problem_desc,
                 category, product_lot_no, product_name, product_stage,
                 anomaly_source, material_receipt_no, internal_work_order_no,
-                outsource_work_order, outsource_receipt_no, batch_qty,
+                outsource_work_order, outsource_receipt_no, batch_qty, qty_inspected, qty_ng,
                 status, improvement_desc, closed_at, created_at, updated_at,
                 pending_items, responsible_person, due_date,
                 rc_supplier_inventory, rc_supplier_wip, rc_in_transit, rc_internal_inventory,
                 quality_report_required, source_defect_no, process_keywords
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '待處理', '', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _gen_id(),
@@ -7135,6 +7232,8 @@ def _insert_anomaly_row(
                 (outsource_work_order or "").strip(),
                 (outsource_receipt_no or "").strip(),
                 normalized_batch_qty,
+                normalized_qty_inspected,
+                normalized_qty_ng,
                 _now_iso(),
                 _now_iso(),
                 (pending_items or "").strip(),

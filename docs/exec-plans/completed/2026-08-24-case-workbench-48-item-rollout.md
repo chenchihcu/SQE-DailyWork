@@ -1,5 +1,7 @@
 # SQE DailyWork 全量 48 項七階段導入
 
+> **Historical note (2026-09-09):** Post-rollout retirements: workbench `處理歷程` tab (`workbench-timeline-tab-retire.md`), legacy analysis/hypothesis product UI (`workbench-legacy-analysis-retire.md`), and embedded `RepeatIssuesPanel` (header button route).
+
 Plan status: completed — all seven phases completed; 48-item rollout closed
 
 ## Goal

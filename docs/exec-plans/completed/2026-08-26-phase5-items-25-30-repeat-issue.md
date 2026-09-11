@@ -1,5 +1,7 @@
 # Phase 5 項目 25–30 對照（Design-Derived）
 
+> **Historical note (2026-09-09):** Workbench repeat issues now route via header `潛在重複 (N)` to a dedicated page; `RepeatIssuesPanel` is not embedded in the workbench.
+
 Plan status: completed — design-derived traceability + repeat-issue schema/UI for 48-item rollout Phase 5
 
 ## Scope and methodology

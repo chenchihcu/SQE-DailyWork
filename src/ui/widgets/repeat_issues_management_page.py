@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -25,9 +26,9 @@ from services import repeat_issue_service
 from services.event import _anomaly_service, _anomaly_workbench_service
 from services.event._supplier_service import list_active_suppliers
 from ui.layout_constants import (
-    CONTROL_MIN_HEIGHT,
     CONTROL_ROW_SPACING,
     FORM_HORIZONTAL_SPACING,
+    FORM_VERTICAL_SPACING,
     PAGE_OUTER_MARGINS,
     PANEL_MARGINS,
 )
@@ -192,18 +193,31 @@ class RepeatIssuesManagementPage(QWidget):
         compare_title_row.addStretch(1)
         bottom_layout.addLayout(compare_title_row)
 
-        compare_cards_layout = QHBoxLayout()
+        self.compare_scroll = QScrollArea()
+        self.compare_scroll.setObjectName("RepeatIssuesCompareScroll")
+        self.compare_scroll.setWidgetResizable(True)
+        self.compare_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.compare_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.compare_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self.compare_scroll_body = QWidget()
+        self.compare_scroll_body.setObjectName("RepeatIssuesCompareBody")
+        compare_cards_layout = QHBoxLayout(self.compare_scroll_body)
+        compare_cards_layout.setContentsMargins(0, 0, 0, 0)
         compare_cards_layout.setSpacing(FORM_HORIZONTAL_SPACING)
 
         # 左欄：基準案件
-        self.source_card = create_section_card(self)
+        self.source_card = create_section_card(self.compare_scroll_body)
         self.source_card.setObjectName("ComparisonSourceCard")
         sc_layout = self.source_card.layout()
         assert sc_layout is not None
-        sc_layout.setSpacing(6)
+        sc_layout.setSpacing(FORM_VERTICAL_SPACING)
 
-        self.sc_header = QLabel("【基準案件】")
-        self.sc_header.setProperty("role", "sectionTitle")
+        self.sc_header = make_multiline_label("【基準案件】", role="sectionTitle")
         sc_layout.addWidget(self.sc_header)
 
         self.sc_meta_summary = make_multiline_label("—", role="helperText")
@@ -230,14 +244,13 @@ class RepeatIssuesManagementPage(QWidget):
         compare_cards_layout.addWidget(self.source_card, 1)
 
         # 右欄：歷史相似案件
-        self.peer_card = create_section_card(self)
+        self.peer_card = create_section_card(self.compare_scroll_body)
         self.peer_card.setObjectName("ComparisonPeerCard")
         pc_layout = self.peer_card.layout()
         assert pc_layout is not None
-        pc_layout.setSpacing(6)
+        pc_layout.setSpacing(FORM_VERTICAL_SPACING)
 
-        self.pc_header = QLabel("【歷史相似案件】")
-        self.pc_header.setProperty("role", "sectionTitle")
+        self.pc_header = make_multiline_label("【歷史相似案件】", role="sectionTitle")
         pc_layout.addWidget(self.pc_header)
 
         self.pc_meta_summary = make_multiline_label("—", role="helperText")
@@ -265,7 +278,8 @@ class RepeatIssuesManagementPage(QWidget):
         pc_layout.addWidget(self.pc_actions)
 
         compare_cards_layout.addWidget(self.peer_card, 1)
-        bottom_layout.addLayout(compare_cards_layout, 1)
+        self.compare_scroll.setWidget(self.compare_scroll_body)
+        bottom_layout.addWidget(self.compare_scroll, 1)
 
         # 處置動作操作列
         action_bar = QHBoxLayout()
@@ -527,6 +541,7 @@ class RepeatIssuesManagementPage(QWidget):
         s_act = src_detail.get("improvement_desc") or "—"
 
         self.sc_header.setText(f"【基準案件】{s_no}  [{s_status}]")
+        sync_multiline_label_geometry(self.sc_header)
         self.sc_meta_summary.setText(
             f"供應商：{s_supplier}　|　類別：{s_cat}　|　日期：{s_date}"
         )
@@ -555,6 +570,7 @@ class RepeatIssuesManagementPage(QWidget):
         disp = data.get("disposition") or repeat_issue_service.DISPOSITION_PENDING
 
         self.pc_header.setText(f"【歷史案件】{p_no}  [{p_status}]  相似度：{score} 分 ({disp})")
+        sync_multiline_label_geometry(self.pc_header)
         self.pc_meta_summary.setText(
             f"供應商：{p_supplier}　|　類別：{p_cat}　|　日期：{p_date}"
         )
@@ -575,9 +591,38 @@ class RepeatIssuesManagementPage(QWidget):
         self.reset_disp_btn.setEnabled(bool(source_id and peer_id))
         self.open_peer_btn.setEnabled(bool(peer_id))
         self.open_source_btn.setEnabled(bool(source_id))
+        self._reset_compare_scroll()
+        QTimer.singleShot(0, self, self._sync_all_comparison_labels)
+
+    def _comparison_multiline_labels(self) -> tuple:
+        return (
+            self.sc_header,
+            self.sc_meta_summary,
+            self.sc_meta_product,
+            self.sc_problem,
+            self.sc_root_cause,
+            self.sc_actions,
+            self.pc_header,
+            self.pc_meta_summary,
+            self.pc_meta_product,
+            self.pc_meta_reasons,
+            self.pc_problem,
+            self.pc_root_cause,
+            self.pc_actions,
+        )
+
+    def _sync_all_comparison_labels(self) -> None:
+        for label in self._comparison_multiline_labels():
+            sync_multiline_label_geometry(label)
+
+    def _reset_compare_scroll(self) -> None:
+        bar = self.compare_scroll.verticalScrollBar()
+        if bar is not None:
+            bar.setValue(0)
 
     def _clear_comparison(self) -> None:
         self.sc_header.setText("【基準案件】")
+        sync_multiline_label_geometry(self.sc_header)
         self.sc_meta_summary.setText("—")
         self.sc_meta_product.setText("—")
         self.sc_problem.setText("—")
@@ -585,6 +630,7 @@ class RepeatIssuesManagementPage(QWidget):
         self.sc_actions.setText("—")
 
         self.pc_header.setText("【歷史相似案件】")
+        sync_multiline_label_geometry(self.pc_header)
         self.pc_meta_summary.setText("—")
         self.pc_meta_product.setText("—")
         self.pc_meta_reasons.setText("—")
@@ -597,6 +643,7 @@ class RepeatIssuesManagementPage(QWidget):
         self.reset_disp_btn.setEnabled(False)
         self.open_peer_btn.setEnabled(False)
         self.open_source_btn.setEnabled(False)
+        self._reset_compare_scroll()
 
     def _on_cell_double_clicked(self, row: int, _col: int) -> None:
         if row < 0 or row >= len(self._current_rows):

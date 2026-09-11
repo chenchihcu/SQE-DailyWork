@@ -21,6 +21,8 @@ from PySide6.QtCharts import (
     QHorizontalBarSeries,
     QHorizontalStackedBarSeries,
     QLineSeries,
+    QPieSeries,
+    QPieSlice,
     QValueAxis,
 )
 from PySide6.QtCore import QMargins, Qt
@@ -28,6 +30,7 @@ from PySide6.QtGui import QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import QToolTip, QSizePolicy
 
 from services.appearance_preferences_service import load_application_preferences
+from ui.design_tokens import PALETTE
 from ui.layout_constants import CHART_MIN_HEIGHT
 from ui.status_colors import get_status_palette
 from ui.theme import TOKENS
@@ -48,6 +51,19 @@ CHART_OPEN_PALETTE = get_status_palette("待處理")
 CHART_CLOSED_PALETTE = get_status_palette("已結案")
 CHART_OPEN_COLOR = QColor(CHART_OPEN_PALETTE.chart)
 CHART_CLOSED_COLOR = QColor(CHART_CLOSED_PALETTE.chart)
+_C_DANGER = QColor(PALETTE["danger_chart"])
+_C_SUCCESS = QColor(PALETTE["success_chart"])
+_C_INFO = QColor(PALETTE["info_chart"])
+_C_PENDING = QColor(PALETTE["pending_chart"])
+_C_NA = QColor(PALETTE["na_chart"])
+_REPEAT_RECURRENCE_COLORS = {
+    "重複警示": _C_DANGER,
+    "首次異常": _C_SUCCESS,
+}
+_PRODUCT_STAGE_COLORS = {
+    "量產": _C_INFO,
+    "試產": _C_PENDING,
+}
 
 
 class _StatsChartMixin:
@@ -445,6 +461,65 @@ class _StatsChartMixin:
         bar_series.hovered.connect(lambda status, idx, bs: self._on_trend_bar_hovered(status, idx, data))
 
         return chart_view
+
+    # ── 分布環形圖（再發率 / 產品階段） ─────────────────────────
+
+    def _build_distribution_donut_chart(
+        self,
+        rows: list[dict],
+        name_key: str,
+        title: str,
+        color_map: dict[str, QColor],
+    ) -> QChartView | None:
+        if not rows:
+            return None
+
+        series = QPieSeries()
+        series.setHoleSize(0.4)
+        total_count = sum(int(row.get("count") or 0) for row in rows)
+
+        for row in rows:
+            name = str(row.get(name_key) or "未註明")
+            count = int(row.get("count") or 0)
+            if count <= 0:
+                continue
+            pct = (count / total_count * 100) if total_count > 0 else 0
+            slice_obj = series.append(f"{name} ({count}件, {pct:.1f}%)", count)
+            slice_obj.setLabelVisible(True)
+            slice_obj.setLabelPosition(QPieSlice.LabelPosition.LabelOutside)
+            slice_obj.setLabelFont(get_chart_font(CHART_DATA_LABEL_POINT_SIZE))
+            slice_obj.setBrush(color_map.get(name, _C_NA))
+
+        if series.count() <= 0:
+            return None
+
+        chart = QChart()
+        chart.addSeries(series)
+        chart.setTitle(title)
+        apply_chart_surface(chart)
+        chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+
+        chart_view = StableChartView(chart)
+        chart_view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        chart_view.setMinimumHeight(CHART_MIN_HEIGHT)
+        chart_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        return chart_view
+
+    def _build_repeat_recurrence_chart(self, rows: list[dict]) -> QChartView | None:
+        return self._build_distribution_donut_chart(
+            rows,
+            "bucket",
+            f"重複異常再發率 ({self._range_text()})",
+            _REPEAT_RECURRENCE_COLORS,
+        )
+
+    def _build_product_stage_chart(self, rows: list[dict]) -> QChartView | None:
+        return self._build_distribution_donut_chart(
+            rows,
+            "product_stage",
+            f"產品階段分布 ({self._range_text()})",
+            _PRODUCT_STAGE_COLORS,
+        )
 
     def _on_trend_bar_hovered(self, status: bool, index: int, data: list[dict]):
         if not status or index < 0 or index >= len(data):

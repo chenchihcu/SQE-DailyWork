@@ -17,16 +17,16 @@ Plan status: active
 
 ## Progress
 
-- [ ] Phase 0 backup and current-state hashes
-- [ ] Phase 1 route keywords JSON parse/schema/smoke gate
-- [ ] Phase 2 skill version, reference split, route terminology, mirror sync
-- [ ] Phase 3 `AppearanceSettings` verification profile
-- [ ] Phase 4 focus, geometry, top-level dialog, overflow, contrast assertions
-- [ ] Phase 5 renderer and fixture provenance
-- [ ] Phase 6 baseline candidate and reviewed promotion
-- [ ] Phase 7 docs, harness, command policy, closed-loop synchronization
-- [ ] Phase 8 focused/native/full verification
-- [ ] Phase 9 global trigger-linter namespace change (separate authorization)
+- [x] Phase 0 backup and current-state hashes (partial — disposable DB + baseline hashes via existing verify flow)
+- [x] Phase 1 route keywords JSON parse/schema/smoke gate (`.codex/hooks/sqe-dailywork-route-keywords.json`)
+- [x] Phase 2 skill version, reference split, route terminology, mirror sync (visual-qa skill v2.0.0; `.claude` + `.agents` mirror)
+- [ ] Phase 3 `AppearanceSettings` verification profile (`-Profile AppearanceSettings` not yet in `scripts/verify.ps1`)
+- [x] Phase 4 focus, geometry, top-level dialog, overflow, contrast assertions (partial — `appearance-settings` probe + focused tests)
+- [x] Phase 5 renderer and fixture provenance (partial — `qt_visual_probe.py` fixture paths documented in skill)
+- [x] Phase 6 baseline candidate and reviewed promotion (`tests/visual_baseline/appearance-settings/` promoted)
+- [ ] Phase 7 docs, harness, command policy, closed-loop synchronization (in progress — doc-gardening 2026-09-09)
+- [ ] Phase 8 focused/native/full verification (Focused PASS; Full residual open per closed-loop-log)
+- [ ] Phase 9 global trigger-linter namespace change (separate authorization — blocked)
 
 ## Verification
 

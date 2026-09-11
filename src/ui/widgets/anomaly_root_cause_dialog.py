@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import shiboken6
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QGridLayout,
     QLabel,
     QScrollArea,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -21,6 +22,7 @@ from database.repo_helpers import (
     ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
     ANOMALY_ROOT_CAUSE_NOT_STARTED,
     ANOMALY_ROOT_CAUSE_STATUSES,
+    ANOMALY_ROOT_CAUSE_VALIDATION_METHOD_OPTIONS,
     ANOMALY_ROOT_CAUSE_VERIFIED,
 )
 from services.event import _anomaly_workbench_service
@@ -31,21 +33,24 @@ from ui.layout_constants import (
     FORM_HORIZONTAL_SPACING,
     FORM_MAX_WIDTH,
     FORM_VERTICAL_SPACING,
-    GRID_GUTTER,
-    ROW_GAP,
     WORKBENCH_ROOT_CAUSE_DIALOG_PREFERRED_HEIGHT,
     WORKBENCH_ROOT_CAUSE_DIALOG_PREFERRED_WIDTH,
 )
 from ui.popup_i18n import localize_exception, localize_popup_message
-from ui.widgets.bullet_list_widget import BulletListWidget
+from ui.widgets.bullet_list_widget import (
+    BulletListWidget,
+    plain_text_from_bullet_formatted,
+)
 from ui.widgets.common_widgets import (
     DirtyTrackingMixin,
     RequiredFieldLabel,
+    create_section_card,
     make_inline_error_label,
     set_field_invalid,
 )
 from ui.widgets.defect_form_widgets import (
     apply_dialog_layout,
+    set_text_edit_visible_rows,
     style_dialog_buttons,
 )
 
@@ -56,6 +61,7 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
     root_cause_saved = Signal(str)
 
     _BODY_FOOTER_ESTIMATE = 72
+    _NARRATIVE_VISIBLE_ROWS = 3
 
     def __init__(
         self,
@@ -75,12 +81,6 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
 
         bullet_kwargs = {"compact_add_button": True}
 
-        self.statement_input = BulletListWidget(
-            placeholder="根本原因是什麼？",
-            **bullet_kwargs,
-        )
-        self.statement_input.set_formatted_text(str(initial.get("statement") or ""))
-
         self.status_combo = QComboBox()
         for status in ANOMALY_ROOT_CAUSE_STATUSES:
             self.status_combo.addItem(status, status)
@@ -88,13 +88,22 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         status_index = self.status_combo.findData(current_status)
         self.status_combo.setCurrentIndex(max(status_index, 0))
 
-        self.validation_method_input = BulletListWidget(
-            placeholder="如 5-Why、Fishbone、8D D4",
+        self.statement_input = BulletListWidget(
+            placeholder="根本原因是什麼？",
             **bullet_kwargs,
         )
-        self.validation_method_input.set_formatted_text(
-            str(initial.get("validation_method") or "")
+        self.statement_input.set_formatted_text(str(initial.get("statement") or ""))
+
+        self.validation_method_combo = QComboBox()
+        self.validation_method_combo.setEditable(True)
+        for option in ANOMALY_ROOT_CAUSE_VALIDATION_METHOD_OPTIONS:
+            self.validation_method_combo.addItem(option)
+        method_text = plain_text_from_bullet_formatted(
+            str(initial.get("validation_method") or ""),
+            joiner="；",
         )
+        if method_text:
+            self.validation_method_combo.setCurrentText(method_text)
 
         self.validation_evidence_input = BulletListWidget(
             placeholder="支持根本原因的證據",
@@ -104,24 +113,26 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
             str(initial.get("validation_evidence") or "")
         )
 
-        self.conclusion_input = BulletListWidget(
-            placeholder="信心程度、待確認事項、建議後續驗證",
-            **bullet_kwargs,
+        self.conclusion_input = QTextEdit()
+        set_text_edit_visible_rows(self.conclusion_input, self._NARRATIVE_VISIBLE_ROWS)
+        self.conclusion_input.setPlaceholderText(
+            "信心程度、待確認事項、建議後續驗證"
         )
-        self.conclusion_input.set_formatted_text(
-            str(initial.get("conclusion_note") or "")
+        self.conclusion_input.setPlainText(
+            plain_text_from_bullet_formatted(str(initial.get("conclusion_note") or ""))
         )
 
-        self.not_established_input = BulletListWidget(
-            placeholder="狀態為「無法確認」時必填",
-            **bullet_kwargs,
-        )
-        self.not_established_input.set_formatted_text(
-            str(initial.get("not_established_reason") or "")
+        self.not_established_input = QTextEdit()
+        set_text_edit_visible_rows(self.not_established_input, self._NARRATIVE_VISIBLE_ROWS)
+        self.not_established_input.setPlaceholderText("狀態為「無法確認」時必填")
+        self.not_established_input.setPlainText(
+            plain_text_from_bullet_formatted(
+                str(initial.get("not_established_reason") or "")
+            )
         )
 
         self._setup_ui()
-        self._sync_not_established_visibility()
+        self._sync_section_visibility()
         self._update_validation()
         self._connect_dirty_signals()
         self._refit_dialog_geometry()
@@ -132,43 +143,47 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         lay.setContentsMargins(*DIALOG_OUTER_MARGINS)
         lay.setSpacing(FORM_VERTICAL_SPACING)
 
-        lay.addWidget(self._group_title("核心"))
+        progress_card = create_section_card(self._content)
+        progress_card.layout().addWidget(self._group_title("進度"))
+        progress_form = QFormLayout()
+        progress_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+        progress_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
+        progress_form.addRow(RequiredFieldLabel("狀態"), self.status_combo)
+        progress_card.layout().addLayout(progress_form)
+        lay.addWidget(progress_card)
 
+        core_card = create_section_card(self._content)
+        core_card.layout().addWidget(self._group_title("核心"))
         core_form = QFormLayout()
         core_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         core_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
         core_form.addRow(RequiredFieldLabel("根本原因說明"), self.statement_input)
         self._statement_error = make_inline_error_label()
         core_form.addRow("", self._statement_error)
-        core_form.addRow(RequiredFieldLabel("狀態"), self.status_combo)
-        lay.addLayout(core_form)
+        core_card.layout().addLayout(core_form)
+        lay.addWidget(core_card)
 
-        lay.addWidget(self._group_title("驗證"))
+        self._verification_section = create_section_card(self._content)
+        self._verification_section.layout().addWidget(self._group_title("驗證"))
+        verify_form = QFormLayout()
+        verify_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
+        verify_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
+        verify_form.addRow(QLabel("驗證方式"), self.validation_method_combo)
+        verify_form.addRow(QLabel("驗證證據"), self.validation_evidence_input)
+        self._verification_section.layout().addLayout(verify_form)
+        lay.addWidget(self._verification_section)
 
-        verify_grid = QGridLayout()
-        verify_grid.setHorizontalSpacing(GRID_GUTTER)
-        verify_grid.setVerticalSpacing(ROW_GAP)
-        verify_grid.setColumnStretch(1, 1)
-        verify_grid.setColumnStretch(3, 1)
-        verify_grid.addWidget(QLabel("驗證方式"), 0, 0)
-        verify_grid.addWidget(self.validation_method_input, 0, 1)
-        verify_grid.addWidget(QLabel("驗證證據"), 0, 2)
-        verify_grid.addWidget(self.validation_evidence_input, 0, 3)
-        lay.addLayout(verify_grid)
-
-        lay.addWidget(self._group_title("結論"))
-
+        conclusion_card = create_section_card(self._content)
+        conclusion_card.layout().addWidget(self._group_title("結論"))
         conclusion_form = QFormLayout()
         conclusion_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         conclusion_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
         conclusion_form.addRow(QLabel("結論說明"), self.conclusion_input)
-        lay.addLayout(conclusion_form)
+        conclusion_card.layout().addLayout(conclusion_form)
+        lay.addWidget(conclusion_card)
 
-        self._not_established_section = QWidget()
-        not_established_layout = QVBoxLayout(self._not_established_section)
-        not_established_layout.setContentsMargins(0, 0, 0, 0)
-        not_established_layout.setSpacing(FORM_VERTICAL_SPACING)
-        not_established_layout.addWidget(self._group_title("條件"))
+        self._not_established_section = create_section_card(self._content)
+        self._not_established_section.layout().addWidget(self._group_title("條件"))
         conditional_form = QFormLayout()
         conditional_form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
         conditional_form.setVerticalSpacing(FORM_VERTICAL_SPACING)
@@ -178,7 +193,7 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         )
         self._not_established_error = make_inline_error_label()
         conditional_form.addRow("", self._not_established_error)
-        not_established_layout.addLayout(conditional_form)
+        self._not_established_section.layout().addLayout(conditional_form)
         lay.addWidget(self._not_established_section)
 
         buttons = QDialogButtonBox(
@@ -200,13 +215,14 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
 
         self.statement_input.valueChanged.connect(self._on_content_geometry_changed)
         self.status_combo.currentIndexChanged.connect(self._on_status_changed)
-        self.not_established_input.valueChanged.connect(self._on_content_geometry_changed)
-        for widget in (
-            self.validation_method_input,
-            self.validation_evidence_input,
-            self.conclusion_input,
-        ):
-            widget.valueChanged.connect(self._on_content_geometry_changed)
+        self.validation_method_combo.editTextChanged.connect(
+            self._on_content_geometry_changed
+        )
+        self.validation_evidence_input.valueChanged.connect(
+            self._on_content_geometry_changed
+        )
+        self.conclusion_input.textChanged.connect(self._on_content_geometry_changed)
+        self.not_established_input.textChanged.connect(self._on_content_geometry_changed)
 
     @staticmethod
     def _group_title(text: str) -> QLabel:
@@ -218,14 +234,14 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         self._init_dirty_tracking([
             self.statement_input.valueChanged,
             self.status_combo.currentIndexChanged,
-            self.validation_method_input.valueChanged,
+            self.validation_method_combo.editTextChanged,
             self.validation_evidence_input.valueChanged,
-            self.conclusion_input.valueChanged,
-            self.not_established_input.valueChanged,
+            self.conclusion_input.textChanged,
+            self.not_established_input.textChanged,
         ])
 
     def _on_status_changed(self) -> None:
-        self._sync_not_established_visibility()
+        self._sync_section_visibility()
         self._update_validation()
         self._refit_dialog_geometry()
 
@@ -233,9 +249,12 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         self._update_validation()
         self._refit_dialog_geometry()
 
-    def _sync_not_established_visibility(self) -> None:
-        visible = self._current_status() == ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED
-        self._not_established_section.setVisible(visible)
+    def _sync_section_visibility(self) -> None:
+        status = self._current_status()
+        self._verification_section.setVisible(status != ANOMALY_ROOT_CAUSE_NOT_STARTED)
+        self._not_established_section.setVisible(
+            status == ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED
+        )
 
     def _usable_dialog_height(self) -> int:
         geometry = _available_geometry(self)
@@ -264,6 +283,8 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
         outer.insertWidget(0, body, 1)
 
     def _refit_dialog_geometry(self) -> None:
+        if not shiboken6.isValid(self._content):
+            return
         natural_height = self._natural_content_height()
         usable_height = self._usable_dialog_height()
         needs_scroll = natural_height > usable_height
@@ -301,7 +322,7 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
     def _update_validation(self) -> None:
         status = self._current_status()
         statement = self.statement_input.get_formatted_text().strip()
-        not_established = self.not_established_input.get_formatted_text().strip()
+        not_established = self.not_established_input.toPlainText().strip()
         statement_required = status in (
             ANOMALY_ROOT_CAUSE_VERIFIED,
             ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
@@ -325,7 +346,7 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
                 if not_established_valid
                 else "狀態為「無法確認」時需填寫原因說明（必填）"
             )
-        if self._save_button is not None:
+        if self._save_button is not None and shiboken6.isValid(self._save_button):
             self._save_button.setEnabled(valid)
 
     def _on_submit(self) -> None:
@@ -337,10 +358,10 @@ class AnomalyRootCauseDialog(DirtyTrackingMixin, QDialog):
                 anomaly_id=self._anomaly_id,
                 statement=self.statement_input.get_formatted_text().strip(),
                 status=self._current_status(),
-                validation_method=self.validation_method_input.get_formatted_text().strip(),
+                validation_method=self.validation_method_combo.currentText().strip(),
                 validation_evidence=self.validation_evidence_input.get_formatted_text().strip(),
-                conclusion_note=self.conclusion_input.get_formatted_text().strip(),
-                not_established_reason=self.not_established_input.get_formatted_text().strip(),
+                conclusion_note=self.conclusion_input.toPlainText().strip(),
+                not_established_reason=self.not_established_input.toPlainText().strip(),
             )
         except ValueError as exc:
             message = localize_exception(exc)

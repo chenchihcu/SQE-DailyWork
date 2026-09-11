@@ -176,6 +176,16 @@ ANOMALY_ROOT_CAUSE_STATUSES: tuple[str, ...] = (
     ANOMALY_ROOT_CAUSE_VERIFIED,
     ANOMALY_ROOT_CAUSE_NOT_ESTABLISHED,
 )
+ANOMALY_ROOT_CAUSE_VALIDATION_METHOD_OPTIONS: tuple[str, ...] = (
+    "",
+    "5-Why",
+    "Fishbone（魚骨圖）",
+    "8D D4",
+    "現場觀察",
+    "實驗驗證",
+    "文件審查",
+    "其他",
+)
 
 CORRECTIVE_ACTION_STATUS_PLANNED = "已規劃"
 CORRECTIVE_ACTION_STATUS_IN_PROGRESS = "執行中"
@@ -587,6 +597,67 @@ def parse_numbered_description_lines(text: str) -> list[str]:
 def is_multiline_case_action_description(text: str) -> bool:
     """True when a case_actions.description should be treated as legacy multi-item."""
     return len(parse_numbered_description_lines(text)) >= 2
+
+
+def defect_rate_denominator(batch_qty: int, qty_inspected: int) -> tuple[int, str]:
+    """Return active defect-rate denominator value and Traditional Chinese label."""
+    inspected = int(qty_inspected or 0)
+    batch = int(batch_qty or 0)
+    if inspected > 0:
+        return inspected, "檢驗數"
+    return batch, "批量數"
+
+
+def compute_defect_rate(
+    batch_qty: int,
+    qty_ng: int,
+    *,
+    qty_inspected: int = 0,
+) -> float | None:
+    """Return defect rate as a fraction, or None when the denominator is invalid."""
+    denominator, _label = defect_rate_denominator(batch_qty, qty_inspected)
+    if denominator <= 0 or qty_ng < 0:
+        return None
+    return qty_ng / denominator
+
+
+def format_defect_rate_display(
+    batch_qty: int,
+    qty_ng: int,
+    *,
+    qty_inspected: int = 0,
+) -> str:
+    rate = compute_defect_rate(
+        batch_qty,
+        qty_ng,
+        qty_inspected=qty_inspected,
+    )
+    if rate is None:
+        return "—"
+    return f"{rate * 100:.2f}%"
+
+
+def enrich_anomaly_quantity_fields(row: dict) -> dict:
+    batch_qty = int(row.get("batch_qty") or 0)
+    qty_inspected = int(row.get("qty_inspected") or 0)
+    qty_ng = int(row.get("qty_ng") or 0)
+    row["batch_qty"] = batch_qty
+    row["qty_inspected"] = qty_inspected
+    row["qty_ng"] = qty_ng
+    denominator, denominator_label = defect_rate_denominator(batch_qty, qty_inspected)
+    row["defect_rate_denominator"] = denominator
+    row["defect_rate_denominator_label"] = denominator_label
+    row["defect_rate"] = compute_defect_rate(
+        batch_qty,
+        qty_ng,
+        qty_inspected=qty_inspected,
+    )
+    row["defect_rate_display"] = format_defect_rate_display(
+        batch_qty,
+        qty_ng,
+        qty_inspected=qty_inspected,
+    )
+    return row
 
 
 # ── Schema helpers ─────────────────────────────────────────────────────────
